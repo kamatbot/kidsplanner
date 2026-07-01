@@ -1,0 +1,9 @@
+# API keys — never commit
+config.js
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
