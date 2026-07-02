@@ -42,16 +42,30 @@ This keeps every phase shippable and useful on its own.
 3. **Drag-to-reschedule** on week view; keyboard Esc to close modals.
 4. **Security hygiene:** hash passwords (SHA-256 + salt via WebCrypto — still demo-grade, honest about limits), complete the `esc()` sanitization everywhere user text is rendered, move the Anthropic key behind the serverless proxy from Phase 2.
 
-### Phase 2 — Moodle & school calendar integration
-*The headline feature: the school's Moodle feeds the planner automatically.*
+### Phase 2 — School calendar integration
+*The headline feature: the school's calendars feed the planner automatically.*
 
-1. **Moodle iCal subscription (baseline — works for every parent)**
-   - Settings screen: paste the Moodle calendar export URL (with a step-by-step illustrated guide, since parents will need hand-holding).
-   - **Google Calendar path:** our school's Moodle surfaces export as "add to Google Calendar". Two supported routes: (a) the Google button wraps Moodle's own .ics URL — the guide shows how to copy it from the export page if present; (b) otherwise, parents add the calendar to Google Calendar and paste Google's "Secret address in iCal format" (Settings → Integrate calendar). Both feed the identical pipeline. Handle the reset-secret-address case with a "feed stopped working? re-paste the URL" recovery state.
-   - Serverless proxy fetches the .ics on demand (CORS + hides nothing sensitive; URL contains the user's auth token so it is stored locally only).
-   - Parser maps VEVENTs → KidsPlanner events, category `school`, marked **read-only & source-tagged** (`source: "moodle"`) so re-syncs update rather than duplicate (keyed by iCal UID).
+**Discovery (verified 2026-07-03):** the school publishes six **public Google Calendars** with directly fetchable ICS feeds — no Moodle login, no secret URLs, no per-parent setup. Feed URL pattern: `https://calendar.google.com/calendar/ical/<calendar-id>/public/basic.ics`.
+
+| Built-in feed | Calendar ID (`@group.calendar.google.com`) | Events | Maps to |
+|---|---|---|---|
+| STA Whole School | `standrews.ac.th_a25bgo8dl9bcggkqtvbdg73rpg` | ~416 | school events |
+| STA High School | `standrews.ac.th_o9pe6t3oi3lmn9u9hme5ujo95s` | ~1,678 | school events |
+| STA HS Sport Competition | `41753qg2fl7ii5mk5g2r5jj41c` | ~3,516 | sports/extracurricular |
+| CAHE (college & careers) | `standrews.ac.th_83llb0e0nai91e7iui5pl8uadk` | ~503 | deadlines → homework hub |
+| Class of 2027 Senior Studies | `standrews.ac.th_lk64660d4utn2agjlp99nnkb7o` | ~606 | deadlines → homework hub |
+| Class of 2026 Senior Studies | `standrews.ac.th_urlaprs6nnhf1vkct73creehd4` | ~464 | deadlines → homework hub |
+
+1. **Built-in school feeds (zero-setup onboarding)**
+   - Feeds ship preconfigured; per-kid subscription is a checkbox list ("High School + Sport + Class of 2027").
+   - Serverless CORS proxy fetches the .ics (Google's ICS endpoints don't send CORS headers; the proxy is a dumb pass-through — feeds are public, nothing sensitive).
+   - **Windowing:** sync only a rolling window (past 2 weeks → next 3 months) — the sport feed alone has 3,500+ events and would blow the localStorage budget.
+   - **Filtering:** per-feed keyword/team filters (e.g. only "U13" fixtures) so a kid's calendar shows their fixtures, not the whole school's.
+   - Parser maps VEVENTs → KidsPlanner events, marked **read-only & source-tagged** (`source: "school"`) so re-syncs update rather than duplicate (keyed by iCal UID).
    - Manual "Sync now" + auto-refresh on app open (throttled to ~1/hour).
-   - Assignment-type Moodle events (due dates) are detected by keyword/CATEGORIES and become **homework items**, not just calendar blocks.
+   - **Deadline detection:** Senior Studies and CAHE feeds are deadline calendars ("IA 1st Copy", "Extended Essay outline", university deadlines) — these become **homework/deadline items**, pre-populating the Phase 3 homework hub from day one.
+2. **Custom iCal URLs (fallback & future-proofing)**
+   - Settings also accepts any pasted iCal URL — Moodle's own export URL, Google's "Secret address in iCal format", or private club feeds — through the identical pipeline. Includes a "feed stopped working? re-paste the URL" recovery state for reset/rotated URLs.
 2. **Moodle Web Services API (enhanced tier — if the school enables it)**
    - Token-based: `core_calendar_get_calendar_events`, `mod_assign_get_assignments`, `core_enrol_get_users_courses`.
    - Gives structured homework (course, description, attachments, due datetime) instead of inferred iCal entries.
@@ -131,8 +145,10 @@ Settings → paste iCal URL → validate & preview 5 events → confirm
 ## 5. Risks & mitigations
 | Risk | Mitigation |
 |---|---|
-| School blocks/never enables Web Services API | iCal export is user-self-serve and the default path; API is a bonus tier |
-| Moodle iCal URL contains the user's token | Store locally only, never log at proxy, warn user not to share |
+| School makes the public calendars private or rotates IDs | Custom-URL fallback path; sync errors surface a clear recovery state |
+| Feed volume (sport calendar: 3,500+ events) | Rolling sync window + per-feed keyword/team filters |
+| School blocks/never enables Web Services API | Public Google feeds are the default path; API is a bonus tier |
+| Moodle iCal URL contains the user's token (custom-URL path only) | Store locally only, never log at proxy, warn user not to share |
 | localStorage quota (base64 uploads already stored there) | Phase 6 backend; meanwhile cap upload size & offer delete |
 | Two parents, no sync until Phase 6 | Add export/import family JSON in Phase 1 as a stopgap |
 | Anthropic API key currently client-exposed | Move behind the same serverless proxy in Phase 2 |
