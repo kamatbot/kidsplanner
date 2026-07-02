@@ -47,6 +47,7 @@ This keeps every phase shippable and useful on its own.
 
 1. **Moodle iCal subscription (baseline — works for every parent)**
    - Settings screen: paste the Moodle calendar export URL (with a step-by-step illustrated guide, since parents will need hand-holding).
+   - **Google Calendar path:** our school's Moodle surfaces export as "add to Google Calendar". Two supported routes: (a) the Google button wraps Moodle's own .ics URL — the guide shows how to copy it from the export page if present; (b) otherwise, parents add the calendar to Google Calendar and paste Google's "Secret address in iCal format" (Settings → Integrate calendar). Both feed the identical pipeline. Handle the reset-secret-address case with a "feed stopped working? re-paste the URL" recovery state.
    - Serverless proxy fetches the .ics on demand (CORS + hides nothing sensitive; URL contains the user's auth token so it is stored locally only).
    - Parser maps VEVENTs → KidsPlanner events, category `school`, marked **read-only & source-tagged** (`source: "moodle"`) so re-syncs update rather than duplicate (keyed by iCal UID).
    - Manual "Sync now" + auto-refresh on app open (throttled to ~1/hour).
