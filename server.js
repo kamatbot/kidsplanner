@@ -256,9 +256,28 @@ function requireAuth(req, res, next) {
   req.user = user;
   next();
 }
-// The user's primary family (parents currently belong to at most one family
-// in this scaffold; multi-family support is future work).
+function userRole(user) {
+  return (user && user.data && user.data.profile && user.data.profile.role) || "parent";
+}
+// Blocks kid sessions from parent-only actions (billing, family management,
+// member/kid removal, backup codes, account deletion, kid-device provisioning
+// itself). See APP-BRIEF.md "Kids' privacy & compliance" — kids are role-
+// scoped to their own calendar/homework/goals + family chat only.
+function requireParent(req, res, next) {
+  if (userRole(req.user) === "kid") return res.status(403).json({ error: "Parents only." });
+  next();
+}
+// The user's primary family. Parents resolve it via family.familiesForUser
+// (parents currently belong to at most one family in this scaffold); kid
+// users have no parentIds membership, so resolve via their user.data.kid
+// linkage instead — a kid must reach their own family for chat, calendar, etc.
 function requireFamily(req, res, next) {
+  if (userRole(req.user) === "kid") {
+    const fam = family.familyForKidUser(req.user);
+    if (!fam) return res.status(404).json({ error: "No family found for this account." });
+    req.family = fam;
+    return next();
+  }
   const fams = family.familiesForUser(req.user.id);
   if (!fams.length) return res.status(404).json({ error: "No family yet — create or join one first." });
   req.family = fams[0];
@@ -282,6 +301,7 @@ function publicProfile(user) {
     id: user.id,
     email: user.email,
     name: user.data.profile.name,
+    role: userRole(user),
     createdAt: user.createdAt,
   };
 }
@@ -292,7 +312,7 @@ app.post("/api/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete("/api/account", requireAuth, (req, res) => {
+app.delete("/api/account", requireAuth, requireParent, (req, res) => {
   store.deleteUser(req.user.id);
   req.session = null;
   res.json({ ok: true });
@@ -305,12 +325,12 @@ app.get("/api/me", (req, res) => {
 });
 
 // ===================== BILLING (Stripe) =====================
-app.get("/api/billing/status", requireAuth, (req, res) => {
+app.get("/api/billing/status", requireAuth, requireParent, (req, res) => {
   res.set("Cache-Control", "no-store");
   res.json(billing.publicStatus(req.user));
 });
 
-app.post("/api/billing/checkout", requireAuth, async (req, res) => {
+app.post("/api/billing/checkout", requireAuth, requireParent, async (req, res) => {
   if (!billing.enabled()) return res.status(503).json({ error: "Billing is not configured." });
   if (billing.hasPaidPlan(req.user)) {
     return res.status(409).json({ error: "You already have an active plan.", code: "already_subscribed" });
@@ -378,7 +398,7 @@ app.post("/api/billing/checkout", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/billing/portal", requireAuth, async (req, res) => {
+app.post("/api/billing/portal", requireAuth, requireParent, async (req, res) => {
   if (!billing.enabled()) return res.status(503).json({ error: "Billing is not configured." });
   const customerId = req.user.billing && req.user.billing.stripeCustomerId;
   if (!customerId) return res.status(400).json({ error: "No billing account yet — start a plan first." });
@@ -672,7 +692,7 @@ app.post("/api/auth/backup/verify", authLimiter, (req, res) => {
   req.session.uid = hit.user.id;
   res.json({ user: publicProfile(hit.user) });
 });
-app.post("/api/auth/backup/issue", authLimiter, requireAuth, (req, res) => {
+app.post("/api/auth/backup/issue", authLimiter, requireAuth, requireParent, (req, res) => {
   const user = req.user;
   if (user.backupCodes) return res.json({ issued: false });
   const set = backupCodes.generateSet();
@@ -680,7 +700,7 @@ app.post("/api/auth/backup/issue", authLimiter, requireAuth, (req, res) => {
   store.saveUser(user);
   res.json({ issued: true, backupCodes: set.plaintext });
 });
-app.post("/api/auth/backup/regenerate", authLimiter, requireAuth, (req, res) => {
+app.post("/api/auth/backup/regenerate", authLimiter, requireAuth, requireParent, (req, res) => {
   const user = req.user;
   const set = backupCodes.generateSet();
   user.backupCodes = set.record;
@@ -701,13 +721,13 @@ app.get("/api/family", requireAuth, (req, res) => {
   const fams = family.familiesForUser(req.user.id);
   res.json({ families: fams.map(pubFam) });
 });
-app.post("/api/family", requireAuth, (req, res) => {
+app.post("/api/family", requireAuth, requireParent, (req, res) => {
   const existing = family.familiesForUser(req.user.id);
   if (existing.length) return res.status(409).json({ error: "You already belong to a family." });
   const fam = family.createFamily(req.user.id, (req.body || {}).name);
   res.json({ family: pubFam(fam) });
 });
-app.post("/api/family/join", requireAuth, (req, res) => {
+app.post("/api/family/join", requireAuth, requireParent, (req, res) => {
   const code = (req.body || {}).code;
   const result = family.joinFamilyAsParent(code, req.user.id);
   if (result.error) return res.status(400).json({ error: result.error });
@@ -715,27 +735,98 @@ app.post("/api/family/join", requireAuth, (req, res) => {
 });
 // Kid profiles: parent-only, minimal data (name, grade, color) — no email,
 // no login, per APP-BRIEF.md.
-app.post("/api/family/kids", requireAuth, requireFamily, (req, res) => {
+app.post("/api/family/kids", requireAuth, requireParent, requireFamily, (req, res) => {
   const { name, grade, color } = req.body || {};
   const result = family.addKid(req.family.id, req.user.id, { name, grade, color });
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ family: pubFam(result.family), kid: result.kid });
 });
-app.patch("/api/family/kids/:kidId", requireAuth, requireFamily, (req, res) => {
+app.patch("/api/family/kids/:kidId", requireAuth, requireParent, requireFamily, (req, res) => {
   const result = family.updateKid(req.family.id, req.user.id, req.params.kidId, req.body || {});
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ family: pubFam(result.family), kid: result.kid });
 });
-app.delete("/api/family/kids/:kidId", requireAuth, requireFamily, (req, res) => {
+app.delete("/api/family/kids/:kidId", requireAuth, requireParent, requireFamily, (req, res) => {
   const result = family.removeKid(req.family.id, req.user.id, req.params.kidId);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ family: pubFam(result.family) });
 });
 // Remove a PARENT member — the "block equivalent" for Apple UGC review.
-app.delete("/api/family/members/:userId", requireAuth, requireFamily, (req, res) => {
+app.delete("/api/family/members/:userId", requireAuth, requireParent, requireFamily, (req, res) => {
   const result = family.removeMember(req.family.id, req.user.id, req.params.userId);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ family: pubFam(result.family) });
+});
+
+// ----- Kid device provisioning (parent-provisioned passkey per device) -----
+// Runs on the KID's device while the PARENT is authenticated on it. Mirrors
+// the signup/options+verify pattern but binds the new credential to a kid
+// USER record (find-or-create) instead of creating a new parent. The parent's
+// own session.uid is left untouched throughout — this never signs the parent
+// out or switches the session to the kid.
+app.post("/api/family/kids/:kidId/device/options", requireAuth, requireParent, requireFamily, async (req, res) => {
+  if (!family.kidBelongsToFamily(req.family.id, req.params.kidId)) {
+    return res.status(404).json({ error: "Kid not found in this family." });
+  }
+  const kidProfile = req.family.kids.find((k) => k.id === req.params.kidId);
+  const kidUser = store.findOrCreateKidUser(req.family.id, req.params.kidId, kidProfile.name);
+  const { rpID, rpName } = rpForRequest(req);
+  const existing = store.listCredentials(kidUser.id);
+  const options = await generateRegistrationOptions({
+    rpName,
+    rpID,
+    userID: new TextEncoder().encode(kidUser.id),
+    userName: kidUser.data.profile.name || "kid-" + kidUser.id.slice(2, 8),
+    userDisplayName: kidUser.data.profile.name || "Fam ETC kid",
+    attestationType: "none",
+    excludeCredentials: existing.map((c) => ({ id: c.id, transports: c.transports })),
+    authenticatorSelection: { residentKey: "required", userVerification: "required" },
+  });
+  // Keyed by kidId (not a single shared session slot) so provisioning two
+  // kids' devices back-to-back from the same parent session can't collide.
+  if (!req.session.waKidReg) req.session.waKidReg = {};
+  req.session.waKidReg[req.params.kidId] = { challenge: options.challenge, kidUserId: kidUser.id };
+  res.json(options);
+});
+app.post("/api/family/kids/:kidId/device/verify", requireAuth, requireParent, requireFamily, async (req, res) => {
+  if (!family.kidBelongsToFamily(req.family.id, req.params.kidId)) {
+    return res.status(404).json({ error: "Kid not found in this family." });
+  }
+  const pending = req.session.waKidReg && req.session.waKidReg[req.params.kidId];
+  if (req.session.waKidReg) delete req.session.waKidReg[req.params.kidId];
+  if (!pending) return res.status(400).json({ error: "Device setup session expired — try again." });
+  const { rpID, origins } = rpForRequest(req);
+  let verification;
+  try {
+    verification = await verifyRegistrationResponse({
+      response: req.body,
+      expectedChallenge: pending.challenge,
+      expectedOrigin: origins,
+      expectedRPID: rpID,
+      requireUserVerification: true,
+    });
+  } catch (e) {
+    return res.status(400).json({ error: "Could not set up this device. " + e.message });
+  }
+  if (!verification.verified || !verification.registrationInfo) {
+    return res.status(400).json({ error: "Device passkey could not be verified." });
+  }
+  const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+  if (store.findByCredentialId(credential.id)) {
+    return res.status(409).json({ error: "That passkey is already registered." });
+  }
+  store.addCredential(pending.kidUserId, {
+    id: credential.id,
+    publicKey: toB64url(credential.publicKey),
+    counter: credential.counter || 0,
+    transports: credential.transports || [],
+    deviceType: credentialDeviceType,
+    backedUp: credentialBackedUp,
+    name: "This device",
+    createdAt: new Date().toISOString(),
+  });
+  // The PARENT stays logged in — session.uid is never touched here.
+  res.json({ ok: true });
 });
 
 // ===================== CHAT =====================
@@ -747,10 +838,14 @@ app.get("/api/chat/messages", requireAuth, requireFamily, (req, res) => {
   res.json({ messages: msgs });
 });
 app.post("/api/chat/messages", requireAuth, requireFamily, async (req, res) => {
-  const { text, card, senderType, senderId } = req.body || {};
+  const { text, card } = req.body || {};
+  // senderType/senderId are derived from the authenticated session, never
+  // trusted from the request body — a kid session always posts as its own
+  // kid profile id, a parent session always posts as itself.
+  const isKid = userRole(req.user) === "kid";
   const result = chat.sendMessage(req.family.id, {
-    senderType: senderType === "kid" ? "kid" : "parent",
-    senderId: senderType === "kid" ? senderId : req.user.id,
+    senderType: isKid ? "kid" : "parent",
+    senderId: isKid ? req.user.data.kid.kidId : req.user.id,
     postedByUserId: req.user.id,
     text,
     card,
@@ -768,7 +863,8 @@ app.post("/api/chat/messages", requireAuth, requireFamily, async (req, res) => {
   res.json({ message: result.message });
 });
 // Any parent may delete any message (parent-admin control, UGC review 1.2).
-app.delete("/api/chat/messages/:id", requireAuth, requireFamily, (req, res) => {
+// Kids may never delete — requireParent enforces that at the route level.
+app.delete("/api/chat/messages/:id", requireAuth, requireParent, requireFamily, (req, res) => {
   const result = chat.deleteMessage(req.family.id, req.user.id, req.params.id);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ message: result.message });
