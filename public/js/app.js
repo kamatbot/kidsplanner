@@ -272,6 +272,7 @@ async function bootstrapSession() {
   }
   sessionUser = me.user;
   save('fam_user', sessionUser);
+  applyRoleScopingToUI();
 
   try {
     const families = await window.auth.getFamilies();
@@ -282,12 +283,43 @@ async function bootstrapSession() {
   save('fam_family', currentFamily);
 
   if (!currentFamily) {
-    showFirstRunPanel();
+    // A kid session should never reach first-run (their family already
+    // exists — a parent created it) — but guard anyway rather than show a
+    // parent-only create/join panel to a kid.
+    if (isKidSession()) {
+      toast('❌ No family found for this account. Ask a parent to check your device setup.');
+    } else {
+      showFirstRunPanel();
+    }
   } else {
     hideFirstRunPanel();
     renderKidSwitcher();
   }
   return true;
+}
+
+/* ============================================================
+   ROLE SCOPING (kid sessions vs parent sessions)
+   Kids are role-scoped to their own calendar/homework/goals + family chat —
+   NOT billing, family management, or removing members. See APP-BRIEF.md
+   "Kid sign-in". The backend enforces this independently (requireParent on
+   every parent-only route) — this is UI-layer only, so a kid never even
+   sees a control they can't use.
+============================================================ */
+function isKidSession() {
+  return !!(sessionUser && sessionUser.role === 'kid');
+}
+
+function applyRoleScopingToUI() {
+  const kid = isKidSession();
+
+  const billingLink = document.getElementById('nav-billing-link');
+  if (billingLink) billingLink.style.display = kid ? 'none' : '';
+
+  const settingsParentOnly = document.getElementById('settings-parent-only');
+  const settingsNotice = document.getElementById('kid-settings-notice');
+  if (settingsParentOnly) settingsParentOnly.style.display = kid ? 'none' : '';
+  if (settingsNotice) settingsNotice.style.display = kid ? '' : 'none';
 }
 
 function showFirstRunPanel() {
@@ -377,6 +409,18 @@ function renderKidSwitcher() {
   const el = document.getElementById('kid-switcher');
   if (!el || !currentFamily) return;
   const kids = currentFamily.kids || [];
+
+  // A kid session is locked to its own profile — no "All kids" view and no
+  // switching to a sibling. Render a single, non-interactive chip instead.
+  if (isKidSession()) {
+    const mine = kids.find((k) => k.id === sessionUser.kidId);
+    activeKidId = sessionUser.kidId || null;
+    el.innerHTML = mine
+      ? `<span class="kid-chip active" style="--kid-color:${mine.color}">${esc(mine.name)}</span>`
+      : '';
+    return;
+  }
+
   const chips = [`<button class="kid-chip${activeKidId === null ? ' active' : ''}" onclick="setActiveKid(null)">All kids</button>`]
     .concat(kids.map((k) =>
       `<button class="kid-chip${activeKidId === k.id ? ' active' : ''}" style="--kid-color:${k.color}" onclick="setActiveKid('${k.id}')">${esc(k.name)}</button>`
@@ -392,6 +436,13 @@ function setActiveKid(kidId) {
 }
 
 function renderManageFamily() {
+  applyRoleScopingToUI();
+  // Kid sessions never render family-management controls at all — the
+  // parent-only container is hidden by applyRoleScopingToUI(), and the
+  // backend independently rejects any parent-only call a kid might still
+  // trigger (e.g. via devtools), so this is defense in depth, not the gate.
+  if (isKidSession()) return;
+
   const parentsEl0 = document.getElementById('manage-family-parents');
   const inviteEl0  = document.getElementById('co-parent-invite');
   const kidsEl0    = document.getElementById('manage-family-kids');
@@ -456,9 +507,26 @@ function renderManageFamily() {
         <span class="kid-row-swatch" style="background:${k.color}"></span>
         <span class="kid-row-name">${esc(k.name)}</span>
         <span class="kid-row-grade">${esc(k.grade || '')}</span>
+        <button class="kid-row-device" onclick="handleProvisionKidDevice('${k.id}','${esc(k.name).replace(/'/g,"\\'")}')" title="Set up this device for ${esc(k.name)}">📱 Set up this device</button>
         <button class="kid-row-remove" onclick="handleRemoveKid('${k.id}')" title="Remove kid">×</button>
       </div>`
     ).join('') || '<p class="text-muted">No kids added yet.</p>';
+  }
+}
+
+/* Parent-provisioned kid device passkey — run on the KID's device while the
+   PARENT is signed in on it (Settings > Kids). Never touches the parent's
+   own session. See APP-BRIEF.md "Kid sign-in". */
+async function handleProvisionKidDevice(kidId, kidName) {
+  if (!window.PublicKeyCredential) {
+    toast('❌ Passkeys are not supported in this browser.');
+    return;
+  }
+  try {
+    await window.auth.provisionKidDevice(kidId);
+    toast(`${kidName || 'Kid'}'s device is set up! They can now sign in here with Face ID / Touch ID. 🎉`);
+  } catch (err) {
+    toast(`❌ ${err.message}`);
   }
 }
 

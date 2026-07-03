@@ -746,6 +746,13 @@ body {
   transition: color .15s, background .15s;
 }
 .kid-row-remove:hover { color: var(--red); background: var(--red-light); }
+.kid-row-device {
+  background: var(--primary-light); border: none; color: var(--primary);
+  font-family: 'Nunito',sans-serif; font-weight: 800; font-size: 12px;
+  cursor: pointer; padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+  transition: background .15s;
+}
+.kid-row-device:hover { background: var(--primary); color: white; }
 
 /* Co-parent invite box */
 .invite-box {

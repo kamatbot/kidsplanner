@@ -297,11 +297,15 @@ function isIOSClient(req) {
 }
 
 function publicProfile(user) {
+  const role = userRole(user);
   return {
     id: user.id,
     email: user.email,
     name: user.data.profile.name,
-    role: userRole(user),
+    role,
+    // Exposes the kid PROFILE id (distinct from this user id) so the client
+    // can lock the kid switcher to this kid's own view. Omitted for parents.
+    kidId: role === "kid" && user.data.kid ? user.data.kid.kidId : undefined,
     createdAt: user.createdAt,
   };
 }
@@ -971,7 +975,7 @@ app.get("/terms", (req, res) => sendPage(req, res, "terms.html", PUB));
 app.get("/pricing", (req, res) => sendPage(req, res, "pricing.html", PUB));
 app.get("/help", (req, res) => sendPage(req, res, "help.html", PUB));
 app.get("/security", requireAuth, (req, res) => sendPage(req, res, "security.html"));
-app.get("/billing", requireAuth, (req, res) => sendPage(req, res, "billing.html"));
+app.get("/billing", requireAuth, requireParent, (req, res) => sendPage(req, res, "billing.html"));
 app.get("/", (req, res) => {
   if (!currentUser(req)) return sendPage(req, res, "landing.html", PUB);
   sendPage(req, res, "index.html");

@@ -216,6 +216,31 @@
     });
   }
 
+  /* ---------- parent-provisioned kid device passkey (Settings kid rows) ----------
+     Run on the KID's device while the PARENT is signed in on it. Registers a
+     device-bound passkey for the kid's own user record without touching the
+     parent's session — see APP-BRIEF.md "Kid sign-in". */
+  async function provisionKidDeviceOptions(kidId) {
+    return api("/api/family/kids/" + encodeURIComponent(kidId) + "/device/options", { method: "POST" });
+  }
+
+  async function provisionKidDeviceVerify(kidId, payload) {
+    return api("/api/family/kids/" + encodeURIComponent(kidId) + "/device/verify", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function provisionKidDevice(kidId) {
+    if (!window.PublicKeyCredential) throw new Error("Passkeys are not supported in this browser.");
+    const options = await provisionKidDeviceOptions(kidId);
+    const publicKey = convertCreationOptions(options);
+    const credential = await navigator.credentials.create({ publicKey });
+    if (!credential) throw new Error("Device setup was cancelled.");
+    const payload = credentialToJSON(credential);
+    return provisionKidDeviceVerify(kidId, payload);
+  }
+
   async function issueBackupCodes() {
     return api("/api/auth/backup/issue", { method: "POST" });
   }
@@ -240,6 +265,31 @@
     return api("/api/billing/portal", { method: "POST" });
   }
 
+  /* ---------- chat ---------- */
+  async function getMessages(since) {
+    const qs = since ? ("?since=" + encodeURIComponent(since)) : "";
+    const data = await api("/api/chat/messages" + qs, { method: "GET" });
+    return (data && data.messages) || [];
+  }
+
+  async function sendChatMessage(text, card) {
+    return api("/api/chat/messages", {
+      method: "POST",
+      body: JSON.stringify(card ? { text: text || "", card } : { text: text || "" }),
+    });
+  }
+
+  async function deleteChatMessage(id) {
+    return api("/api/chat/messages/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  async function flagChatMessage(id, reason) {
+    return api("/api/chat/messages/" + encodeURIComponent(id) + "/flag", {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || "" }),
+    });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -257,10 +307,17 @@
     renameCredential,
     removeCredential,
     registerAdditionalPasskey,
+    provisionKidDeviceOptions,
+    provisionKidDeviceVerify,
+    provisionKidDevice,
     issueBackupCodes,
     regenerateBackupCodes,
     getBillingStatus,
     startCheckout,
     openBillingPortal,
+    getMessages,
+    sendChatMessage,
+    deleteChatMessage,
+    flagChatMessage,
   };
 })();
