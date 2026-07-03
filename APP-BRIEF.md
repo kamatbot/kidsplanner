@@ -24,7 +24,7 @@
 |---|---|---|
 | Shape | **hybrid iOS + web** (RetireOdds model: native shell + native tabs + WKWebView surfaces) | iOS Tiers 1–3 reused; native hero screens + HybridWebView for the rest |
 | Native screens at launch | **Today/dashboard, Chat, Calendar, Homework fully native**; Settings, Goals, Activities, billing, marketing stay web via HybridWebView | native where interaction speed matters; web where content churns |
-| iPad support | REQUIRED — adaptive native layouts (split view / sidebar) on native tabs, not stretched iPhone; web surfaces render responsively | SwiftUI size classes + responsive web |
+| iPad support | **iPad-FIRST** — kids each have personal iPads (no phones); design and build for iPad landscape first: nav rail + main content + permanently docked family chat column. iPhone (parents' secondary device) collapses to tab-bar layout; iPad portrait collapses chat to a slide-over. Personal devices — one passkey login per device, no shared-device profile switching. | SwiftUI size classes + responsive web |
 | Chat backend | lightweight custom (WebSocket/polling on our Node/Hostinger backend, same auth + encryption) | net-new chat.js module; not a copy-ready RetireOdds component |
 | Auth | passkey-only + backup codes; family invite code links members into one Fam ETC group | webauthn.js, backup-codes.js, AuthService.swift |
 | Account sync | shared cookie session (AuthService syncs HTTPCookieStorage ↔ WKWebsiteDataStore) — one passkey login covers native tabs AND the embedded web surfaces; web app also serves billing/settings/marketing + desktop access | AuthService.swift as-is |
