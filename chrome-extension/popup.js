@@ -194,14 +194,12 @@ async function importIntoTab(tabId, payload) {
 /* ---------- main flow ---------- */
 async function handleImport() {
   const moodleUserId = el.moodleUserId.value.trim();
-  const kidId = el.kidId.value.trim();
+  // The field now takes the child's NAME (as shown in Fam ETC), and is
+  // optional if there's only one child — the in-app bridge resolves it.
+  const kidName = el.kidId.value.trim();
 
   if (!moodleUserId || !/^\d+$/.test(moodleUserId)) {
     setStatus("Enter a valid Moodle user id (numbers only).", "error");
-    return;
-  }
-  if (!kidId) {
-    setStatus("Enter the Fam ETC kid id.", "error");
     return;
   }
 
@@ -255,7 +253,7 @@ async function handleImport() {
       return;
     }
 
-    const payload = { kidId, moodleUserId, homework, timetable };
+    const payload = { kidName, moodleUserId, homework, timetable };
     let result;
     try {
       result = await importIntoTab(tab.id, payload);

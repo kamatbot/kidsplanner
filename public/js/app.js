@@ -2850,11 +2850,22 @@ async function famImportSchoolData(payload) {
       toast('❌ Please finish loading Fam ETC (sign in) before importing.');
       return result;
     }
-    const kidId = payload && payload.kidId;
-    if (!kidId || !(currentFamily.kids || []).some((k) => k.id === kidId)) {
-      toast('❌ Import failed: unknown kid id.');
+    // Resolve which child to import into: an explicit kidId, else a name
+    // match, else the only child in the family. No need for the parent to
+    // know any internal id.
+    const kids = currentFamily.kids || [];
+    let kid = null;
+    if (payload && payload.kidId) kid = kids.find((k) => k.id === payload.kidId);
+    if (!kid && payload && payload.kidName) {
+      const n = String(payload.kidName).trim().toLowerCase();
+      kid = kids.find((k) => (k.name || '').trim().toLowerCase() === n);
+    }
+    if (!kid && kids.length === 1) kid = kids[0];
+    if (!kid) {
+      toast('❌ Import: which child? Enter a name — ' + (kids.map((k) => k.name).join(', ') || 'no children in this family'));
       return result;
     }
+    const kidId = kid.id;
 
     /* ---------- Homework ---------- */
     const hwList = (payload && Array.isArray(payload.homework)) ? payload.homework : [];
