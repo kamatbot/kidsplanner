@@ -265,6 +265,26 @@
     return api("/api/billing/portal", { method: "POST" });
   }
 
+  /* ---------- web push ---------- */
+  async function getVapidPublicKey() {
+    const data = await api("/api/push/vapid-public-key", { method: "GET" });
+    return (data && data.publicKey) || null;
+  }
+
+  async function subscribeWebPush(subscription) {
+    return api("/api/push/web/subscribe", {
+      method: "POST",
+      body: JSON.stringify({ subscription }),
+    });
+  }
+
+  async function unsubscribeWebPush(endpoint) {
+    return api("/api/push/web/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
   /* ---------- chat ---------- */
   async function getMessages(since) {
     const qs = since ? ("?since=" + encodeURIComponent(since)) : "";
@@ -315,6 +335,9 @@
     getBillingStatus,
     startCheckout,
     openBillingPortal,
+    getVapidPublicKey,
+    subscribeWebPush,
+    unsubscribeWebPush,
     getMessages,
     sendChatMessage,
     deleteChatMessage,

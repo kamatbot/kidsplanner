@@ -262,6 +262,19 @@
 
       <!-- Settings Tab: Manage Family -->
       <div class="tab-panel" id="tab-settings">
+        <section class="card" id="notifications-settings-card">
+          <h3>🔔 Notifications</h3>
+          <p class="text-muted" style="margin-bottom:12px">
+            Get a browser notification when a new family chat message arrives while this app isn't open.
+          </p>
+          <div id="notifications-control">
+            <button type="button" class="btn-primary" id="notifications-toggle-btn" onclick="handleToggleNotifications()">
+              Turn on notifications
+            </button>
+            <p id="notifications-status-text" class="text-muted" style="margin-top:8px"></p>
+          </div>
+        </section>
+
         <section class="card">
           <h3>⚙️ Manage Family</h3>
           <!-- Kid sessions are role-scoped: family management (parents, invite,

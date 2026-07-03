@@ -1521,6 +1521,123 @@ async function handleLogout() {
 }
 
 /* ============================================================
+   WEB PUSH NOTIFICATIONS (Settings tab)
+   Registers a root-scope service worker and lets any session (parent OR
+   kid — kids have chat access, so this is deliberately not gated behind
+   requireParent) subscribe to browser push for new chat messages.
+   Gracefully degrades where the browser/OS doesn't support it — notably
+   iOS/iPadOS Safari, which only supports web push for a Home Screen–
+   installed PWA, not a regular browser tab.
+============================================================ */
+let swRegistration = null;
+
+function pushSupported() {
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
+
+// VAPID public key (base64url, from the server) -> Uint8Array, the shape
+// pushManager.subscribe({ applicationServerKey }) requires.
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function registerServiceWorker() {
+  if (!pushSupported()) return null;
+  try {
+    swRegistration = await navigator.serviceWorker.register('/sw.js');
+    return swRegistration;
+  } catch (e) {
+    console.error('Service worker registration failed:', e);
+    return null;
+  }
+}
+
+// Renders the current state of the notifications control:
+// 'unsupported' | 'blocked' | 'off' | 'on'
+async function renderNotificationsControl() {
+  const btn = document.getElementById('notifications-toggle-btn');
+  const statusText = document.getElementById('notifications-status-text');
+  if (!btn || !statusText) return;
+
+  if (!pushSupported()) {
+    btn.style.display = 'none';
+    statusText.textContent = "Notifications aren't supported in this browser. On iPhone/iPad, add Fam ETC to your Home Screen first, then enable them.";
+    return;
+  }
+
+  if (Notification.permission === 'denied') {
+    btn.style.display = 'none';
+    statusText.textContent = 'Notifications are blocked for this site. Enable them in your browser settings to turn them back on.';
+    return;
+  }
+
+  btn.style.display = '';
+  let isSubscribed = false;
+  try {
+    const reg = swRegistration || await registerServiceWorker();
+    if (reg) {
+      const existing = await reg.pushManager.getSubscription();
+      isSubscribed = !!existing;
+    }
+  } catch (e) { /* treat as not subscribed */ }
+
+  if (isSubscribed) {
+    btn.textContent = 'Turn off notifications';
+    statusText.textContent = "You'll get a notification when a new family chat message arrives.";
+  } else {
+    btn.textContent = 'Turn on notifications';
+    statusText.textContent = 'Notifications are off.';
+  }
+}
+
+async function handleToggleNotifications() {
+  if (!pushSupported()) return;
+  const btn = document.getElementById('notifications-toggle-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const reg = swRegistration || await registerServiceWorker();
+    if (!reg) {
+      toast('❌ Could not set up notifications on this device.');
+      return;
+    }
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      await existing.unsubscribe();
+      try { await window.auth.unsubscribeWebPush(existing.endpoint); } catch (e) { /* best effort */ }
+      toast('🔕 Notifications turned off');
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        await renderNotificationsControl();
+        if (permission === 'denied') toast('❌ Notifications blocked. Enable them in your browser settings.');
+        return;
+      }
+      const publicKey = await window.auth.getVapidPublicKey();
+      if (!publicKey) {
+        toast('❌ Notifications are not configured yet.');
+        return;
+      }
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await window.auth.subscribeWebPush(subscription.toJSON ? subscription.toJSON() : subscription);
+      toast('🔔 Notifications turned on');
+    }
+  } catch (e) {
+    toast('❌ ' + (e.message || 'Could not update notification settings.'));
+  } finally {
+    if (btn) btn.disabled = false;
+    await renderNotificationsControl();
+  }
+}
+
+/* ============================================================
    INIT
 ============================================================ */
 async function init() {
@@ -1528,6 +1645,7 @@ async function init() {
   const ok = await bootstrapSession();
   if (!ok) return; // redirected to /login
   showDashboard();
+  registerServiceWorker().then(renderNotificationsControl);
 }
 
 document.addEventListener('DOMContentLoaded', init);
