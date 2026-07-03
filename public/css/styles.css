@@ -168,11 +168,10 @@ body {
 .app-logo { font-size: 28px; line-height: 1; }
 .app-name { font-size: 20px; font-weight: 900; color: var(--primary); }
 
-.header-center { flex: 1; text-align: center; overflow: hidden; }
-.header-greeting {
-  font-size: 15px; font-weight: 700; color: var(--text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+/* Kid switcher now lives inline in the header (no separate bar) so the
+   dashboard + family chat sit higher and the chat Send button stays above
+   the fold. Scrolls horizontally if a family has many kids on a narrow header. */
+.header-center { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; }
 
 .header-right { display: flex; align-items: center; gap: 14px; justify-content: flex-end; min-width: 200px; }
 .header-date { font-size: 13px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
@@ -687,8 +686,7 @@ body {
 }
 
 @media (max-width: 640px) {
-  .app-header { padding: 0 16px; }
-  .header-center { display: none; }
+  .app-header { padding: 0 16px; gap: 10px; }
   .week-view { grid-template-columns: repeat(4,1fr); }
   .widgets-grid { grid-template-columns: 1fr; }
   .quiz-options { grid-template-columns: 1fr; }
@@ -708,12 +706,8 @@ body {
 ============================================================ */
 .text-muted { color: var(--text-muted); }
 
-/* Kid switcher bar */
-.kid-switcher-bar {
-  background: white; padding: 10px 24px;
-  border-bottom: 1px solid var(--border);
-}
-.kid-switcher { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Kid switcher (inline in header) */
+.kid-switcher { display: flex; gap: 8px; flex-wrap: nowrap; }
 .kid-chip {
   --kid-color: var(--primary);
   border: 2px solid var(--border); background: white; color: var(--text);

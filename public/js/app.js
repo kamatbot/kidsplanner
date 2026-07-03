@@ -569,10 +569,6 @@ async function handleRemoveParent(userId) {
 ============================================================ */
 function showDashboard() {
   const now  = new Date();
-  const hour = now.getHours();
-  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const greetEl = document.getElementById('header-greeting');
-  if (greetEl) greetEl.textContent = `${greet}, ${sessionUser.name || 'there'}! 👋`;
   const dateEl = document.getElementById('header-date');
   if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
