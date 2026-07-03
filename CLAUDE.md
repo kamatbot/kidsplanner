@@ -1,8 +1,11 @@
 # Fam ETC — project instructions
 
-Fam ETC is a native-heavy iOS + web family hub (school calendars, homework,
+Fam ETC is a hybrid iOS + web family hub (school calendars, homework,
 activities, goals, and family group chat for 2 parents + kids). It evolves the
-original KidsPlanner web app in this repo. All product decisions are recorded in
+original KidsPlanner web app in this repo. Following the RetireOdds model: a
+native SwiftUI shell with native tabs for the hero screens (Today, Chat,
+Calendar, Homework) and WKWebView surfaces for the rest (Settings, Goals,
+Activities, billing, marketing). All product decisions are recorded in
 [APP-BRIEF.md](APP-BRIEF.md) — that brief is a contract; changing Identity or
 Design rows is a rebrand/pivot and requires listing affected files and getting
 explicit confirmation first.
@@ -11,9 +14,11 @@ explicit confirmation first.
 - **Web app** (fametc.com, on Hostinger): Node/Express backend, passkey auth,
   encrypted JSON storage, Stripe billing, marketing/landing + desktop family
   settings. Reuses the RetireOdds server foundation (see rename map in the brief).
-- **iOS app** (com.fametc.app, Apple team B4F73U5RGR): native SwiftUI, all tabs
-  native, iPhone + iPad adaptive layouts, shared passkey account against the same
-  backend API. Native document scanner (Vision OCR) + APNs push at launch.
+- **iOS app** (com.fametc.app, Apple team B4F73U5RGR): native SwiftUI shell,
+  native tabs for Today/Chat/Calendar/Homework, HybridWebView for Settings/Goals/
+  Activities, iPhone + iPad adaptive layouts, shared cookie session (one passkey
+  login across native + web). Native document scanner (Vision OCR) + APNs push at
+  launch.
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
 

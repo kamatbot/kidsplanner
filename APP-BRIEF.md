@@ -22,12 +22,12 @@
 ## Architecture
 | Decision | Value | → Components |
 |---|---|---|
-| Shape | **native-heavy iOS from day one** (⚠ slow path — see Risks) | all iOS tiers now; SwiftUI screens are net-new Opus-level work, NOT WebView reuse |
-| Native screens at launch | **all tabs native** (Today, Calendar, Homework, Goals, Activities, Chat, Settings) | no HybridWebView shell inside the app |
-| iPad support | REQUIRED — adaptive native layouts (split view / sidebar), not stretched iPhone | SwiftUI size classes |
+| Shape | **hybrid iOS + web** (RetireOdds model: native shell + native tabs + WKWebView surfaces) | iOS Tiers 1–3 reused; native hero screens + HybridWebView for the rest |
+| Native screens at launch | **Today/dashboard, Chat, Calendar, Homework fully native**; Settings, Goals, Activities, billing, marketing stay web via HybridWebView | native where interaction speed matters; web where content churns |
+| iPad support | REQUIRED — adaptive native layouts (split view / sidebar) on native tabs, not stretched iPhone; web surfaces render responsively | SwiftUI size classes + responsive web |
 | Chat backend | lightweight custom (WebSocket/polling on our Node/Hostinger backend, same auth + encryption) | net-new chat.js module; not a copy-ready RetireOdds component |
 | Auth | passkey-only + backup codes; family invite code links members into one Fam ETC group | webauthn.js, backup-codes.js, AuthService.swift |
-| Account sync | shared passkey account via backend API (no cookie-sharing — no WKWebView); web app = billing/settings/marketing + desktop access | AuthService against shared backend |
+| Account sync | shared cookie session (AuthService syncs HTTPCookieStorage ↔ WKWebsiteDataStore) — one passkey login covers native tabs AND the embedded web surfaces; web app also serves billing/settings/marketing + desktop access | AuthService.swift as-is |
 | Encryption at rest | **yes** — chat messages + kids' schedule/activity data. Key backup location: ⚠ TBD, record before first prod deploy (Hostinger panel DATA_ENCRYPTION_KEY + offline backup) | datacrypto.js, gen-encryption-key.js |
 | Worker pool | no | skip simpool.js |
 | Uploads | yes — timetable/homework photos (JPG/PNG/PDF), feeds existing Claude parse pipeline | multer; native document scanner on iOS |
@@ -96,7 +96,7 @@
 - [ ] Family model: invite code links 2 parents + kids into one group; per-kid data scoping works
 - [ ] Chat: real-time message send/receive between two family members; encrypted at rest
 - [ ] Calendar sync: St Andrews public feeds import, deduped by UID, windowed
-- [ ] iOS native tabs render on iPhone AND iPad (adaptive layout); passkey autofill works on device
+- [ ] iOS native tabs (Today, Chat, Calendar, Homework) render on iPhone AND iPad (adaptive layout); web tabs (Settings/Goals/Activities) load in HybridWebView with shared session; passkey autofill works on device
 - [ ] AASA served with com.fametc.app + team B4F73U5RGR
 - [ ] Push: APNs delivers a chat message + a reminder to a real device
 - [ ] grep for retireodds|RO_|np_sess|kp_ → zero hits
