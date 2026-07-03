@@ -73,7 +73,7 @@
 | JSCore engine | no | skip SimEngine |
 | Camera/OCR | yes — native document scanner (Vision OCR, on-device) for timetables/homework, feeds existing Claude parse pipeline | ScannerService + DocumentScannerViewController + NSCameraUsageDescription |
 | Voice | decided: none (add on-device SFSpeechRecognizer later if younger kids need it) | — |
-| Push | **at launch** (⚠ net-new work — no copy-ready code): chat messages + reminders. Needs APNs setup + server-side push sender. | net-new APNsService + server sender |
+| Push | **at launch** (⚠ net-new work — no copy-ready code): chat messages + reminders. Needs APNs setup + server-side push sender. **Build as a REUSABLE, app-agnostic module** (decided 2026-07-03): generic sender core (token-based .p8 auth, HTTP/2, retries, bad-token feedback pruning) configured only via env/config (team ID, key ID, bundle ID, key path); no Fam ETC logic inside. Fam ETC's notification triggers are a thin app layer on top. Intended reuse: RetireOdds, mytharva. Device-token registration endpoint + iOS registration client follow the same split. | net-new apns-sender (portable) + fam-notifications (app layer) |
 
 ## Kids' privacy & compliance (decided 2026-07-03)
 | Decision | Value |
