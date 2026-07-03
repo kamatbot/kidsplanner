@@ -10,6 +10,12 @@
    that and calls into these pure functions.
 ============================================================ */
 
+// Wrapped in an IIFE so these internal consts/functions do NOT leak into the
+// browser global scope — app.js declares the same names by destructuring
+// window.famSchoolStats, and two same-named globals is a fatal
+// "already declared" SyntaxError that kills the whole app.
+(function () {
+
 const LOW_BALANCE_THRESHOLD = 200; // ฿ — "below ฿200" per the notification spec
 const LOW_BALANCE_RENOTIFY_MS = 24 * 60 * 60 * 1000; // don't re-notify low balance more than once/24h
 
@@ -88,3 +94,5 @@ if (typeof module !== "undefined" && module.exports) {
 if (typeof window !== "undefined") {
   window.famSchoolStats = api;
 }
+
+})();
