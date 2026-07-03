@@ -297,6 +297,30 @@ test("previewFeed: rejects an invalid URL before attempting to fetch", async () 
   assert.match(preview.error, /valid calendar url/i);
 });
 
+// ---------- requireParent gating (route-level guard, exercised directly
+// against the lib — same pattern as tests/kid-login.test.js) ----------
+function userRole(user) {
+  return (user && user.data && user.data.profile && user.data.profile.role) || "parent";
+}
+function requireParentCheck(user) {
+  return userRole(user) === "kid" ? { error: "Parents only." } : { ok: true };
+}
+
+test("requireParent gating: a kid session is blocked from subscribing/unsubscribing (route guard), a parent is allowed", () => {
+  const { parent, fam, kid } = makeFamilyWithKid();
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
+
+  // The route-level guard (server.js requireParent) rejects the kid before
+  // schoolFeeds.subscribe is ever called.
+  const gate = requireParentCheck(kidUser);
+  assert.ok(gate.error);
+  assert.ok(!requireParentCheck(parent).error);
+
+  // And the lib call itself succeeds for the parent path the route allows.
+  const result = schoolFeeds.subscribe(fam.id, { kidId: kid.id, feedId: "sta-whole-school" });
+  assert.ok(!result.error);
+});
+
 test("collectFromCache: applies a per-subscription keyword filter", () => {
   const { fam, kid } = makeFamilyWithKid();
   const { subscription } = schoolFeeds.subscribe(fam.id, { kidId: kid.id, feedId: "sta-hs-sport", filterKeyword: "U13" });

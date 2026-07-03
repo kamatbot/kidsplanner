@@ -31,6 +31,7 @@ const backupCodes = require("./lib/backup-codes");
 const analytics = require("./lib/analytics");
 const family = require("./lib/family");
 const chat = require("./lib/chat");
+const schoolFeeds = require("./lib/school-feeds");
 const notifications = require("./lib/fam-notifications");
 const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
 
@@ -878,6 +879,58 @@ app.post("/api/chat/messages/:id/flag", requireAuth, requireFamily, (req, res) =
   const result = chat.flagMessage(req.family.id, req.user.id, req.params.id, (req.body || {}).reason);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ message: result.message });
+});
+
+// ===================== SCHOOL CALENDAR (Phase 2) =====================
+// Feed subscriptions are family data (shared across parents), so reads open
+// to any signed-in family member (kids included — they should see their own
+// school calendar) but mutations (subscribe/unsubscribe/preview-fetch) are
+// parent-only, matching the family/kids routes above.
+app.get("/api/calendar/feeds", requireAuth, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(schoolFeeds.listFeedsForFamily(req.family.id));
+});
+
+app.post("/api/calendar/feeds/preview", requireAuth, requireParent, async (req, res) => {
+  const url = (req.body || {}).url;
+  if (!url || typeof url !== "string") return res.status(400).json({ error: "Provide a calendar URL to preview." });
+  try {
+    const preview = await schoolFeeds.previewFeed(url.trim());
+    if (!preview.ok) return res.status(400).json({ error: preview.error });
+    res.json(preview);
+  } catch (e) {
+    console.error("[calendar] preview error:", e.message);
+    res.status(502).json({ error: "Could not check that calendar right now. Please try again." });
+  }
+});
+
+app.post("/api/calendar/feeds/subscribe", requireAuth, requireParent, requireFamily, (req, res) => {
+  const { kidId, feedId, customUrl, customName, filterKeyword } = req.body || {};
+  const result = schoolFeeds.subscribe(req.family.id, { kidId, feedId, customUrl, customName, filterKeyword });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ subscription: result.subscription });
+});
+
+app.post("/api/calendar/feeds/unsubscribe", requireAuth, requireParent, requireFamily, (req, res) => {
+  const { kidId, feedId, customUrl, subscriptionId } = req.body || {};
+  const result = schoolFeeds.unsubscribe(req.family.id, { kidId, feedId, customUrl, subscriptionId });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+// Reads are open to kids too (they should see their own synced school
+// events); the sync itself only fetches/writes family-level subscription
+// data that a parent already configured, so no requireParent here.
+app.post("/api/calendar/sync", requireAuth, requireFamily, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const force = !!(req.body && req.body.force) && userRole(req.user) !== "kid";
+  try {
+    const result = await schoolFeeds.syncFamily(req.family.id, { force });
+    res.json(result);
+  } catch (e) {
+    console.error("[calendar] sync error:", e.message);
+    res.status(502).json({ error: "Could not sync school calendars right now. Please try again." });
+  }
 });
 
 // ===================== PUSH: device token registration =====================
