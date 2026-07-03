@@ -339,6 +339,10 @@ function applyRoleScopingToUI() {
   const schoolNotice = document.getElementById('kid-school-notice');
   if (schoolParentOnly) schoolParentOnly.style.display = kid ? 'none' : '';
   if (schoolNotice) schoolNotice.style.display = kid ? '' : 'none';
+
+  // Adding school calendars is a parent action — hide the sidebar shortcut for kids.
+  const addSchoolCal = document.getElementById('sidebar-add-school-cal');
+  if (addSchoolCal) addSchoolCal.style.display = kid ? 'none' : '';
 }
 
 function showFirstRunPanel() {
@@ -900,13 +904,16 @@ function renderSchoolSettings() {
 
   let html = '';
 
-  // Built-in St Andrews feeds — per-kid checkbox grid.
+  // Built-in St Andrews feeds — per-kid checkbox grid. Pin the column count to
+  // the number of kids (auto-fit resolves by width, which wrapped extra kids
+  // onto their own rows).
+  const feedCols = `grid-template-columns:minmax(0,1fr) repeat(${kids.length},minmax(56px,72px))`;
   html += '<div class="school-feed-table">';
-  html += `<div class="school-feed-row school-feed-hdr">
+  html += `<div class="school-feed-row school-feed-hdr" style="${feedCols}">
       <span></span>${kids.map(k => `<span class="school-feed-kid-hdr" style="color:${k.color}">${esc(k.name)}</span>`).join('')}
     </div>`;
   builtin.forEach(feed => {
-    html += `<div class="school-feed-row">
+    html += `<div class="school-feed-row" style="${feedCols}">
         <span class="school-feed-name">${esc(feed.name)}${feed.deadline ? ' <span class=\"school-feed-deadline-tag\">deadlines</span>' : ''}</span>
         ${kids.map(k => {
           const existing = subKey(k.id, feed.id);

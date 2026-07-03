@@ -264,6 +264,12 @@ body {
   box-shadow: 0 4px 14px rgba(255,107,157,.3);
 }
 .btn-upload:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(255,107,157,.42); }
+.btn-upload-secondary {
+  margin-top: 10px;
+  background: var(--primary-light); color: var(--primary);
+  box-shadow: none;
+}
+.btn-upload-secondary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(108,99,255,.25); }
 
 /* Uploaded files list */
 .uploads-list { display: flex; flex-direction: column; gap: 8px; }
