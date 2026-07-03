@@ -177,7 +177,7 @@ app.use(express.urlencoded({ extended: true }));
 // Content-hash build tag for asset cache-busting (?v=BUILD).
 const BUILD = (() => {
   try {
-    const files = ["css/styles.css", "js/app.js"].map((f) => fs.readFileSync(path.join(PUBLIC, f)));
+    const files = ["css/styles.css", "js/app.js", "js/auth.js", "js/school-stats.js"].map((f) => fs.readFileSync(path.join(PUBLIC, f)));
     return crypto.createHash("md5").update(Buffer.concat(files)).digest("hex").slice(0, 10);
   } catch (e) {
     return String(Date.now());
@@ -1288,6 +1288,8 @@ const sendPage = (req, res, file, opts = {}) => {
     try {
       const html = fs.readFileSync(path.join(PUBLIC, file), "utf8")
         .replace(/\/css\/styles\.css/g, `/css/styles.css?v=${BUILD}`)
+        .replace(/\/js\/school-stats\.js/g, `/js/school-stats.js?v=${BUILD}`)
+        .replace(/\/js\/auth\.js/g, `/js/auth.js?v=${BUILD}`)
         .replace(/\/js\/app\.js/g, `/js/app.js?v=${BUILD}`);
       pageCache.set(file, html);
     } catch (e) {
