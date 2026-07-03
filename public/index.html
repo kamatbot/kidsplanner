@@ -231,11 +231,20 @@
         </div>
       </div>
 
-      <!-- Homework Tab (Phase 3 — placeholder) -->
+      <!-- Homework Tab (Phase 3) -->
       <div class="tab-panel" id="tab-homework">
-        <section class="card">
-          <h3>📚 Homework</h3>
-          <p class="text-muted">Homework hub is coming in a future update — see FEATURE_PLAN.md Phase 3.</p>
+        <section class="card homework-hub">
+          <div class="homework-hub-header">
+            <h3>📚 Homework</h3>
+            <div class="homework-hub-actions">
+              <select id="homework-subject-filter" class="homework-filter-select" onchange="renderHomeworkHub()">
+                <option value="">All subjects</option>
+              </select>
+              <button type="button" class="btn-secondary" onclick="openSnapHomeworkModal()">📸 Snap homework</button>
+              <button type="button" class="btn-primary" onclick="openAddHomeworkModal()">+ Add homework</button>
+            </div>
+          </div>
+          <div id="homework-list" class="homework-list"></div>
         </section>
       </div>
 
@@ -614,8 +623,155 @@
   </div>
 </div>
 
+<!-- Add/Edit Homework Modal (Phase 3) -->
+<div id="add-homework-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-homework-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="add-homework-title">📚 Add homework</h3>
+      <button class="modal-close" onclick="closeModal('add-homework-modal')">×</button>
+    </div>
+    <form onsubmit="saveHomeworkForm(event)">
+      <div class="form-group" id="homework-kid-group">
+        <label>Kid</label>
+        <select id="homework-kid"></select>
+      </div>
+      <div class="form-group">
+        <label>Title *</label>
+        <input type="text" id="homework-title" placeholder="Math worksheet, Book report…" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Subject</label>
+          <input type="text" id="homework-subject" placeholder="Math, English…">
+        </div>
+        <div class="form-group">
+          <label>Est. effort (min)</label>
+          <input type="number" id="homework-effort" min="1" step="5" placeholder="30">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Due date *</label>
+          <input type="date" id="homework-due-date" required>
+        </div>
+        <div class="form-group">
+          <label>Due time</label>
+          <input type="time" id="homework-due-time">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="homework-notes" placeholder="Any extra details…" rows="2"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Checklist sub-steps</label>
+        <div id="homework-checklist-editor" class="homework-checklist-editor"></div>
+        <button type="button" class="btn-link" onclick="addHomeworkChecklistRow()">+ Add step</button>
+      </div>
+      <div id="homework-form-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-homework-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save homework 📚</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Homework Detail Modal (Phase 3) -->
+<div id="homework-detail-modal" class="modal-overlay" onclick="closeModalOnBg(event,'homework-detail-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="detail-category-badge" id="hw-detail-badge"></div>
+      <button class="modal-close" onclick="closeModal('homework-detail-modal')">×</button>
+    </div>
+    <h3 class="detail-title" id="hw-detail-title"></h3>
+    <div class="detail-rows">
+      <div class="detail-row"><span class="detail-icon">📅</span><span id="hw-detail-due"></span></div>
+      <div class="detail-row" id="hw-detail-effort-row"><span class="detail-icon">⏱️</span><span id="hw-detail-effort"></span></div>
+      <div class="detail-row" id="hw-detail-notes-row"><span class="detail-icon">📝</span><span id="hw-detail-notes"></span></div>
+    </div>
+    <div id="hw-detail-checklist" class="homework-checklist-view"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('homework-detail-modal')">Close</button>
+      <button type="button" class="btn-secondary" id="hw-detail-plan-btn" onclick="planWorkSessionForCurrentHomework()">🗓️ Plan a work session</button>
+      <button type="button" class="btn-secondary" id="hw-detail-edit-btn" onclick="editCurrentHomework()">✏️ Edit</button>
+      <button type="button" class="btn-danger" id="hw-detail-delete-btn" onclick="deleteCurrentHomework()">Delete 🗑️</button>
+    </div>
+  </div>
+</div>
+
+<!-- Snap Homework (AI parse from a photo of the homework diary) — reuses the
+     same photo-upload + Claude parse pipeline as the timetable importer, but
+     extracts homework items instead of class periods. Phase 3. -->
+<div id="snap-homework-modal" class="modal-overlay" onclick="closeModalOnBg(event,'snap-homework-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📸 Snap homework</h3>
+      <button class="modal-close" onclick="closeModal('snap-homework-modal')">×</button>
+    </div>
+    <div class="upload-zone" id="hw-upload-zone"
+         onclick="document.getElementById('hw-file-input').click()"
+         ondragover="handleDragOver(event)"
+         ondragleave="handleDragLeave(event)"
+         ondrop="handleHomeworkDrop(event)">
+      <div class="upload-icon">📷</div>
+      <p class="upload-text">Click or drag &amp; drop a photo of the homework diary/planner</p>
+      <p class="upload-hint">Supports JPG, PNG, PDF</p>
+      <input type="file" id="hw-file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleHomeworkFileSelect(event)">
+    </div>
+    <div id="hw-upload-preview" class="upload-preview" style="display:none">
+      <div class="preview-header">
+        <span id="hw-preview-filename" class="preview-fname"></span>
+        <button class="btn-link-danger" onclick="clearHomeworkUpload()">Remove</button>
+      </div>
+      <div id="hw-preview-content" class="preview-content"></div>
+    </div>
+    <div id="hw-ai-parse-section" class="ai-parse-section" style="display:none">
+      <div class="ai-parse-status" id="hw-ai-parse-status">
+        <span class="ai-spinner" id="hw-ai-spinner">⏳</span>
+        <span id="hw-ai-status-text">Parsing homework diary with AI…</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Snap Homework Review Modal — parent reviews+edits parsed items before saving as source:"ai" homework -->
+<div id="snap-homework-review-modal" class="modal-overlay" onclick="closeModalOnBg(event,'snap-homework-review-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📸 Review parsed homework</h3>
+      <button class="modal-close" onclick="closeModal('snap-homework-review-modal')">×</button>
+    </div>
+    <p class="parse-intro">Review the homework items below, then save the ones you want to keep.</p>
+    <div class="form-group" id="hw-parse-kid-group">
+      <label>Assign to kid</label>
+      <select id="hw-parse-kid"></select>
+    </div>
+    <div class="parse-table-wrap">
+      <table class="parse-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="hw-parse-check-all" onchange="toggleAllHomeworkParsed(this.checked)" checked title="Select all"></th>
+            <th>Subject</th>
+            <th>Title</th>
+            <th>Due date</th>
+          </tr>
+        </thead>
+        <tbody id="hw-parse-tbody"></tbody>
+      </table>
+    </div>
+    <div class="parse-summary" id="hw-parse-summary"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('snap-homework-review-modal')">Cancel</button>
+      <button type="button" class="btn-primary" onclick="applyParsedHomework()">Save homework 📚</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+<!-- Confetti canvas (celebration animation for kid completions) -->
+<canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
 
 <script src="/js/auth.js"></script>
 <script src="/js/app.js"></script>

@@ -601,6 +601,10 @@ function showDashboard() {
   renderStreak();
   renderManageFamily();
 
+  // Homework (Phase 3): load once up front so calendar "due" chips render on
+  // first paint; the Homework tab reloads on its own each time it's opened.
+  loadHomework().then(() => renderCalendar());
+
   // School calendar: load subscriptions then auto-sync (throttled ~1/hour
   // both client- and server-side) — fire-and-forget so the dashboard never
   // blocks on a slow feed fetch.
@@ -737,12 +741,17 @@ function renderWeekView() {
     const isT = ds === today;
     const isW = i >= 5;
     const evs = events.filter(e => e.date === ds);
+    const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="week-day-col${isT?' is-today':''}${isW?' is-weekend':''}">
       <div class="week-day-col-hdr">
         <div class="wday-name">${days[i]}</div>
         <div class="wday-num">${d.getDate()}</div>
       </div>
       <div class="week-day-events">
+        ${dueHw.map(h => `
+          <div class="week-evt hw-due-chip" onclick="switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">
+            <span class="hw-due-icon">📚</span>${esc(h.title)}
+          </div>`).join('')}
         ${evs.map(ev => `
           <div class="week-evt c-${ev.category}${ev.source === 'school' ? ' school-evt' : ''}" onclick="showDetail('${ev.id}')">
             ${ev.time ? `<span class="evt-time">${fmt12(ev.time)}</span>` : ''}
@@ -782,8 +791,12 @@ function renderMonthView() {
     const ds   = isoDate(date);
     const isT  = ds === today;
     const evs  = events.filter(e => e.date === ds);
+    const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="month-day${isT?' is-today':''}" onclick="openAddEventModal('${ds}')">
       <span class="mday-num">${isT ? `<span>${day}</span>` : day}</span>
+      ${dueHw.slice(0,3).map(h =>
+        `<span class="month-evt hw-due-chip" onclick="event.stopPropagation();switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">📚 ${esc(h.title)}</span>`
+      ).join('')}
       ${evs.slice(0,3).map(ev =>
         `<span class="month-evt chip-${ev.category}${ev.source === 'school' ? ' school-evt' : ''}" onclick="event.stopPropagation();showDetail('${ev.id}')">${ev.source === 'school' ? '🎓 ' : ''}${esc(ev.title)}</span>`
       ).join('')}
@@ -1784,6 +1797,623 @@ async function handleFlagChatMessage(id) {
 }
 
 /* ============================================================
+   HOMEWORK HUB (Phase 3)
+   Server-sourced (family/kid-scoped, see lib/homework.js) — never stored in
+   localStorage. Grouped by due date (Overdue / Today / This week / Later),
+   filtered by the kid switcher (activeKidId) + a subject dropdown. Kid
+   sessions see + can complete only their own homework (also enforced
+   server-side — see server.js /api/homework routes).
+============================================================ */
+let homeworkItems   = [];   // last-loaded list from GET /api/homework
+let editingHomeworkId = null; // set when add-homework modal is in edit mode
+let activeHomeworkId  = null; // currently open in the detail modal
+
+async function loadHomework() {
+  try {
+    homeworkItems = await window.auth.getHomework(isKidSession() ? { kidId: sessionUser.kidId } : {});
+  } catch (e) {
+    homeworkItems = [];
+  }
+  return homeworkItems;
+}
+
+/* Local (non-persisted) due-date grouping mirroring lib/homework.js
+   groupByDueDate() — kept in sync deliberately; see tests/homework.test.js
+   for the server-side source of truth this must match. */
+function groupHomeworkByDueDate(items) {
+  const today = isoDate(new Date());
+  const weekEnd = isoDate(new Date(Date.now() + 7 * 86400000));
+  const groups = { overdue: [], today: [], thisWeek: [], later: [] };
+  items.forEach((item) => {
+    if (!item.dueDate) { groups.later.push(item); return; }
+    if (item.dueDate < today) groups.overdue.push(item);
+    else if (item.dueDate === today) groups.today.push(item);
+    else if (item.dueDate <= weekEnd) groups.thisWeek.push(item);
+    else groups.later.push(item);
+  });
+  return groups;
+}
+
+function homeworkSourceBadge(source) {
+  if (source === 'school') return '<span class="hw-source-badge" title="Synced from school calendar">🎓</span>';
+  if (source === 'ai') return '<span class="hw-source-badge" title="Added from a photo (AI parsed)">📸</span>';
+  return '<span class="hw-source-badge" title="Added manually">✏️</span>';
+}
+
+function kidNameFor(kidId) {
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const k = kids.find((x) => x.id === kidId);
+  return k ? k.name : '';
+}
+
+function populateSubjectFilter() {
+  const sel = document.getElementById('homework-subject-filter');
+  if (!sel) return;
+  const current = sel.value;
+  const subjects = Array.from(new Set(homeworkItems.map((h) => h.subject).filter(Boolean))).sort();
+  sel.innerHTML = '<option value="">All subjects</option>' +
+    subjects.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  if (subjects.includes(current)) sel.value = current;
+}
+
+function renderHomeworkHub() {
+  populateSubjectFilter();
+  const list = document.getElementById('homework-list');
+  if (!list) return;
+
+  const subjectFilter = document.getElementById('homework-subject-filter')?.value || '';
+  let items = homeworkItems.slice();
+  if (activeKidId) items = items.filter((h) => h.kidId === activeKidId);
+  if (subjectFilter) items = items.filter((h) => h.subject === subjectFilter);
+
+  if (!items.length) {
+    list.innerHTML = `<p class="text-muted">No homework yet. ${isKidSession() ? "Nice — you're all caught up! 🎉" : 'Add one, or sync your school calendars for automatic deadlines.'}</p>`;
+    return;
+  }
+
+  const groups = groupHomeworkByDueDate(items);
+  const sections = [
+    ['overdue', '🔴 Overdue'],
+    ['today', '🟡 Today'],
+    ['thisWeek', '📅 This week'],
+    ['later', '🗓️ Later'],
+  ];
+
+  list.innerHTML = sections
+    .filter(([key]) => groups[key].length)
+    .map(([key, label]) => `
+      <div class="homework-group">
+        <h4 class="homework-group-title">${label} <span class="homework-group-count">${groups[key].length}</span></h4>
+        <div class="homework-group-items">
+          ${groups[key].sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(renderHomeworkRow).join('')}
+        </div>
+      </div>
+    `).join('');
+}
+
+function renderHomeworkRow(item) {
+  const done = item.status === 'done';
+  const checklistDone = (item.checklist || []).filter((c) => c.done).length;
+  const checklistTotal = (item.checklist || []).length;
+  const kidLabel = (!isKidSession() && !activeKidId) ? `<span class="hw-kid-tag">${esc(kidNameFor(item.kidId))}</span>` : '';
+  return `
+    <div class="homework-row${done ? ' hw-done' : ''}" data-hw-id="${item.id}">
+      <button class="hw-check${done ? ' checked' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')" title="${done ? 'Mark as not done' : 'Mark as done'}" aria-label="Toggle done">${done ? '✓' : ''}</button>
+      <div class="hw-row-main" onclick="openHomeworkDetail('${item.id}')">
+        <div class="hw-row-title-line">
+          ${homeworkSourceBadge(item.source)}
+          <span class="hw-row-title">${esc(item.title)}</span>
+          ${kidLabel}
+        </div>
+        <div class="hw-row-meta">
+          ${item.subject ? `<span class="hw-chip hw-subject-chip">${esc(item.subject)}</span>` : ''}
+          <span class="hw-chip hw-status-chip hw-status-${item.status}">${item.status === 'in_progress' ? 'In progress' : (item.status === 'done' ? 'Done' : 'To do')}</span>
+          <span class="hw-due-label">${formatShort(parseIso(item.dueDate))}${item.dueTime ? ' · ' + fmt12(item.dueTime) : ''}</span>
+          ${checklistTotal ? `<span class="hw-checklist-progress">${checklistDone}/${checklistTotal} steps</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function toggleHomeworkDone(id) {
+  const item = homeworkItems.find((h) => h.id === id);
+  if (!item) return;
+  const nextStatus = item.status === 'done' ? 'todo' : 'done';
+  try {
+    const res = await window.auth.updateHomework(id, { status: nextStatus });
+    const idx = homeworkItems.findIndex((h) => h.id === id);
+    if (idx >= 0) homeworkItems[idx] = res.homework;
+    renderHomeworkHub();
+    if (nextStatus === 'done') {
+      toast('Nice work! ✅');
+      if (isKidSession()) celebrateHomeworkDone();
+    }
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+/* ---------- Add / Edit homework ---------- */
+let homeworkChecklistDraft = []; // [{text, done}] while the add/edit modal is open
+
+function openAddHomeworkModal(prefill) {
+  editingHomeworkId = null;
+  homeworkChecklistDraft = [];
+  document.getElementById('add-homework-title').textContent = '📚 Add homework';
+  document.getElementById('homework-title').value = (prefill && prefill.title) || '';
+  document.getElementById('homework-subject').value = (prefill && prefill.subject) || '';
+  document.getElementById('homework-effort').value = '';
+  document.getElementById('homework-due-date').value = (prefill && prefill.dueDate) || isoDate(new Date());
+  document.getElementById('homework-due-time').value = '';
+  document.getElementById('homework-notes').value = '';
+  document.getElementById('homework-form-error').textContent = '';
+  renderHomeworkChecklistEditor();
+
+  const kidGroup = document.getElementById('homework-kid-group');
+  const kidSelect = document.getElementById('homework-kid');
+  if (isKidSession()) {
+    kidGroup.style.display = 'none';
+  } else {
+    kidGroup.style.display = '';
+    const kids = (currentFamily && currentFamily.kids) || [];
+    kidSelect.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">Add a kid first</option>';
+    if (activeKidId) kidSelect.value = activeKidId;
+  }
+  openModal('add-homework-modal');
+}
+
+function editCurrentHomework() {
+  const item = homeworkItems.find((h) => h.id === activeHomeworkId);
+  if (!item) return;
+  editingHomeworkId = item.id;
+  homeworkChecklistDraft = (item.checklist || []).map((c) => Object.assign({}, c));
+  document.getElementById('add-homework-title').textContent = '✏️ Edit homework';
+  document.getElementById('homework-title').value = item.title;
+  document.getElementById('homework-subject').value = item.subject || '';
+  document.getElementById('homework-effort').value = item.effortMin || '';
+  document.getElementById('homework-due-date').value = item.dueDate;
+  document.getElementById('homework-due-time').value = item.dueTime || '';
+  document.getElementById('homework-notes').value = item.notes || '';
+  document.getElementById('homework-form-error').textContent = '';
+  renderHomeworkChecklistEditor();
+
+  const kidGroup = document.getElementById('homework-kid-group');
+  if (isKidSession()) {
+    kidGroup.style.display = 'none';
+  } else {
+    kidGroup.style.display = '';
+    const kids = (currentFamily && currentFamily.kids) || [];
+    document.getElementById('homework-kid').innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('');
+    document.getElementById('homework-kid').value = item.kidId;
+  }
+  closeModal('homework-detail-modal');
+  openModal('add-homework-modal');
+}
+
+function renderHomeworkChecklistEditor() {
+  const el = document.getElementById('homework-checklist-editor');
+  if (!el) return;
+  el.innerHTML = homeworkChecklistDraft.map((c, i) => `
+    <div class="homework-checklist-row">
+      <input type="checkbox" ${c.done ? 'checked' : ''} onchange="homeworkChecklistDraft[${i}].done=this.checked">
+      <input type="text" value="${esc(c.text)}" placeholder="Sub-step…" oninput="homeworkChecklistDraft[${i}].text=this.value">
+      <button type="button" class="hw-checklist-remove" onclick="removeHomeworkChecklistRow(${i})" aria-label="Remove step">×</button>
+    </div>`).join('');
+}
+
+function addHomeworkChecklistRow() {
+  homeworkChecklistDraft.push({ text: '', done: false });
+  renderHomeworkChecklistEditor();
+}
+
+function removeHomeworkChecklistRow(i) {
+  homeworkChecklistDraft.splice(i, 1);
+  renderHomeworkChecklistEditor();
+}
+
+async function saveHomeworkForm(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('homework-form-error');
+  const title = document.getElementById('homework-title').value.trim();
+  const subject = document.getElementById('homework-subject').value.trim();
+  const effortMin = document.getElementById('homework-effort').value;
+  const dueDate = document.getElementById('homework-due-date').value;
+  const dueTime = document.getElementById('homework-due-time').value;
+  const notes = document.getElementById('homework-notes').value.trim();
+  const checklist = homeworkChecklistDraft.filter((c) => c.text.trim());
+  const kidId = isKidSession() ? sessionUser.kidId : document.getElementById('homework-kid').value;
+
+  if (!isKidSession() && !kidId) { errEl.textContent = 'Add a kid profile first.'; return; }
+
+  try {
+    if (editingHomeworkId) {
+      const res = await window.auth.updateHomework(editingHomeworkId, { title, subject, dueDate, dueTime, effortMin, notes, checklist });
+      const idx = homeworkItems.findIndex((h) => h.id === editingHomeworkId);
+      if (idx >= 0) homeworkItems[idx] = res.homework;
+      toast('Homework updated 📚');
+    } else {
+      const res = await window.auth.addHomework({ kidId, title, subject, dueDate, dueTime, effortMin, notes, checklist });
+      homeworkItems.push(res.homework);
+      toast('Homework added 📚');
+    }
+    closeModal('add-homework-modal');
+    renderHomeworkHub();
+    renderCalendar();
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+/* ---------- Detail / delete ---------- */
+function openHomeworkDetail(id) {
+  const item = homeworkItems.find((h) => h.id === id);
+  if (!item) return;
+  activeHomeworkId = id;
+
+  const badge = document.getElementById('hw-detail-badge');
+  badge.innerHTML = homeworkSourceBadge(item.source) + ' ' + (item.subject ? esc(item.subject) : 'Homework');
+  badge.className = `detail-category-badge hw-status-${item.status}`;
+
+  document.getElementById('hw-detail-title').textContent = item.title;
+  document.getElementById('hw-detail-due').textContent = `${formatLong(parseIso(item.dueDate))}${item.dueTime ? ' · ' + fmt12(item.dueTime) : ''}`;
+
+  const effortRow = document.getElementById('hw-detail-effort-row');
+  if (item.effortMin) {
+    document.getElementById('hw-detail-effort').textContent = `~${item.effortMin} min`;
+    effortRow.style.display = '';
+  } else {
+    effortRow.style.display = 'none';
+  }
+
+  const notesRow = document.getElementById('hw-detail-notes-row');
+  if (item.notes) {
+    document.getElementById('hw-detail-notes').textContent = item.notes;
+    notesRow.style.display = '';
+  } else {
+    notesRow.style.display = 'none';
+  }
+
+  const checklistEl = document.getElementById('hw-detail-checklist');
+  if (item.checklist && item.checklist.length) {
+    checklistEl.innerHTML = item.checklist.map((c, i) => `
+      <label class="hw-checklist-view-row">
+        <input type="checkbox" ${c.done ? 'checked' : ''} onchange="toggleHomeworkChecklistItem('${item.id}',${i},this.checked)">
+        <span${c.done ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(c.text)}</span>
+      </label>`).join('');
+  } else {
+    checklistEl.innerHTML = '';
+  }
+
+  // Kids can edit/delete only their OWN homework (also enforced server-side).
+  const canManage = !isKidSession() || item.kidId === sessionUser.kidId;
+  document.getElementById('hw-detail-edit-btn').style.display = canManage ? '' : 'none';
+  document.getElementById('hw-detail-delete-btn').style.display = canManage ? '' : 'none';
+  document.getElementById('hw-detail-plan-btn').style.display = isKidSession() ? 'none' : '';
+
+  openModal('homework-detail-modal');
+}
+
+async function toggleHomeworkChecklistItem(id, index, done) {
+  try {
+    const res = await window.auth.updateHomework(id, {
+      checklist: (homeworkItems.find((h) => h.id === id).checklist || []).map((c, i) => i === index ? { text: c.text, done } : c),
+    });
+    const idx = homeworkItems.findIndex((h) => h.id === id);
+    if (idx >= 0) homeworkItems[idx] = res.homework;
+    renderHomeworkHub();
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+async function deleteCurrentHomework() {
+  if (!activeHomeworkId) return;
+  try {
+    await window.auth.deleteHomework(activeHomeworkId);
+    homeworkItems = homeworkItems.filter((h) => h.id !== activeHomeworkId);
+    closeModal('homework-detail-modal');
+    renderHomeworkHub();
+    renderCalendar();
+    toast('Homework removed.');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+/* "Plan a work session" — creates a linked manual calendar event (existing
+   localStorage event model) before the due date. Parent-only affordance. */
+function planWorkSessionForCurrentHomework() {
+  const item = homeworkItems.find((h) => h.id === activeHomeworkId);
+  if (!item) return;
+  closeModal('homework-detail-modal');
+  const dayBefore = new Date(+parseIso(item.dueDate) - 86400000);
+  openAddEventModal(isoDate(dayBefore));
+  // Pre-fill the add-event form with a helpful title; user picks time/category.
+  const titleEl = document.getElementById('event-title');
+  if (titleEl) titleEl.value = `Work session: ${item.title}`;
+  const notesEl = document.getElementById('event-notes');
+  if (notesEl) notesEl.value = `Linked to homework: ${item.title} (due ${item.dueDate})`;
+}
+
+/* ---------- Celebration animation (kid completions) ----------
+   Lightweight CSS/JS confetti burst — no libraries. Draws a short-lived
+   particle burst on the #confetti-canvas overlay, then clears itself. */
+function celebrateHomeworkDone() {
+  const canvas = document.getElementById('confetti-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.classList.add('show');
+
+  const colors = ['#6C63FF', '#FF6B9D', '#4ECDC4', '#FFB84C', '#5AC8FA'];
+  const particles = Array.from({ length: 80 }, () => ({
+    x: canvas.width / 2 + (Math.random() - 0.5) * 120,
+    y: canvas.height * 0.3,
+    vx: (Math.random() - 0.5) * 12,
+    vy: -Math.random() * 10 - 4,
+    size: Math.random() * 8 + 4,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rotation: Math.random() * 360,
+    vr: (Math.random() - 0.5) * 20,
+  }));
+
+  const gravity = 0.35;
+  let frame = 0;
+  const maxFrames = 90;
+
+  function step() {
+    frame++;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach((p) => {
+      p.vy += gravity;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rotation += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rotation * Math.PI) / 180);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, 1 - frame / maxFrames);
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+      ctx.restore();
+    });
+    if (frame < maxFrames) {
+      requestAnimationFrame(step);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.classList.remove('show');
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------- Calendar fusion: homework "due" chips ----------
+   Amber due chips on the week/month calendar, distinct from events,
+   respecting the kid switcher + per-kid color (see visibleHomeworkDueItems). */
+function visibleHomeworkDueItems() {
+  let items = homeworkItems.filter((h) => h.status !== 'done');
+  if (activeKidId) items = items.filter((h) => h.kidId === activeKidId);
+  return items;
+}
+
+/* ---------- Snap homework (AI parse from a photo) ----------
+   Reuses the SAME photo-upload + Claude parse pipeline as
+   parseScheduleWithAI()/processUpload() (see the AI PARSE section above),
+   adapted to extract homework items (subject, title, due date) instead of
+   class periods. Parent reviews+edits before saving as source:"ai".
+   TODO(security): same client-exposed Anthropic key as parseScheduleWithAI()
+   — tracked Phase 1 item, not fixed here (see that function's TODO). */
+let hwUploadedFile = null;
+let parsedHomeworkItems = [];
+
+function openSnapHomeworkModal() {
+  clearHomeworkUpload();
+  openModal('snap-homework-modal');
+}
+
+function handleHomeworkDrop(e) {
+  e.preventDefault();
+  document.getElementById('hw-upload-zone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) processHomeworkUpload(file);
+}
+
+function handleHomeworkFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processHomeworkUpload(file);
+}
+
+function processHomeworkUpload(file) {
+  hwUploadedFile = file;
+  document.getElementById('hw-preview-filename').textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const content = document.getElementById('hw-preview-content');
+    if (file.type.startsWith('image/')) {
+      content.innerHTML = `<img src="${ev.target.result}" alt="Homework diary preview">`;
+    } else if (file.type === 'application/pdf') {
+      content.innerHTML = `<iframe src="${ev.target.result}" title="Homework diary PDF"></iframe>`;
+    } else {
+      content.innerHTML = `<div style="padding:16px;color:var(--text-muted)">Preview not available for this file type.</div>`;
+    }
+    document.getElementById('hw-upload-preview').style.display = '';
+    hwUploadedFile._dataUrl = ev.target.result;
+
+    if (typeof ANTHROPIC_API_KEY !== 'undefined' && ANTHROPIC_API_KEY) {
+      document.getElementById('hw-ai-parse-section').style.display = '';
+      setHomeworkParseStatus('⏳', 'Parsing homework diary with AI…');
+      parseHomeworkWithAI();
+    } else {
+      setHomeworkParseStatus('⚠️', 'No API key configured in config.js');
+      document.getElementById('hw-ai-parse-section').style.display = '';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearHomeworkUpload() {
+  hwUploadedFile = null;
+  document.getElementById('hw-upload-preview').style.display = 'none';
+  document.getElementById('hw-preview-content').innerHTML = '';
+  document.getElementById('hw-file-input').value = '';
+  document.getElementById('hw-ai-parse-section').style.display = 'none';
+}
+
+function setHomeworkParseStatus(icon, text) {
+  const spinner = document.getElementById('hw-ai-spinner');
+  const label = document.getElementById('hw-ai-status-text');
+  if (spinner) spinner.textContent = icon;
+  if (label) label.textContent = text;
+}
+
+async function parseHomeworkWithAI() {
+  const apiKey = (typeof ANTHROPIC_API_KEY !== 'undefined' && ANTHROPIC_API_KEY) ? ANTHROPIC_API_KEY : '';
+  if (!apiKey) { setHomeworkParseStatus('⚠️', 'No API key configured in config.js'); return; }
+
+  try {
+    let base64, mediaType;
+    if (hwUploadedFile.type === 'application/pdf') {
+      const result = await renderPdfToBase64(hwUploadedFile);
+      base64 = result.base64;
+      mediaType = result.mediaType;
+    } else {
+      const dataUrl = hwUploadedFile._dataUrl;
+      base64 = dataUrl.split(',')[1];
+      mediaType = dataUrl.split(',')[0].match(/:(.*?);/)[1];
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mediaType)) {
+        throw new Error('Unsupported image type. Please use JPG or PNG.');
+      }
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+            { type: 'text', text: `Parse this photo of a homework diary/planner page into a JSON array of homework items.
+Each element must have exactly these fields:
+{
+  "subject": "subject or class name",
+  "title": "short description of the homework/assignment",
+  "dueDate": "YYYY-MM-DD — infer the year from context if not shown; use today's date ${isoDate(new Date())} as a reference point for 'this Friday' etc. style phrasing"
+}
+Rules:
+- One entry per homework/assignment item, even if several are for the same subject.
+- If no due date is visible for an item, make your best guess based on context (e.g. tomorrow) rather than omitting it.
+- Return ONLY a valid JSON array with no markdown, no code blocks, no extra text.` },
+          ],
+        }],
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    let rawText = data.content?.[0]?.text?.trim() || '';
+    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) rawText = fenceMatch[1].trim();
+
+    const items = JSON.parse(rawText);
+    if (!Array.isArray(items) || items.length === 0) throw new Error('No homework items found in the photo.');
+
+    setHomeworkParseStatus('✅', `Found ${items.length} item(s) — review below`);
+    openHomeworkParseReview(items);
+  } catch (err) {
+    setHomeworkParseStatus('❌', `Parse failed: ${err.message}`);
+    toast(`❌ ${err.message}`);
+    console.error(err);
+  }
+}
+
+function openHomeworkParseReview(items) {
+  parsedHomeworkItems = items;
+  closeModal('snap-homework-modal');
+
+  const kidGroup = document.getElementById('hw-parse-kid-group');
+  const kidSelect = document.getElementById('hw-parse-kid');
+  if (isKidSession()) {
+    kidGroup.style.display = 'none';
+  } else {
+    kidGroup.style.display = '';
+    const kids = (currentFamily && currentFamily.kids) || [];
+    kidSelect.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">Add a kid first</option>';
+    if (activeKidId) kidSelect.value = activeKidId;
+  }
+
+  renderHomeworkParseTable(items);
+  updateHomeworkParseSummary();
+  openModal('snap-homework-review-modal');
+}
+
+function renderHomeworkParseTable(items) {
+  const tbody = document.getElementById('hw-parse-tbody');
+  tbody.innerHTML = items.map((it, i) => `
+    <tr>
+      <td><input type="checkbox" class="hw-parse-check" data-i="${i}" checked onchange="updateHomeworkParseSummary()"></td>
+      <td><input type="text" value="${esc(it.subject || '')}" oninput="parsedHomeworkItems[${i}].subject=this.value"></td>
+      <td><input type="text" value="${esc(it.title || '')}" oninput="parsedHomeworkItems[${i}].title=this.value"></td>
+      <td><input type="date" value="${esc(it.dueDate || '')}" oninput="parsedHomeworkItems[${i}].dueDate=this.value"></td>
+    </tr>`).join('');
+}
+
+function toggleAllHomeworkParsed(checked) {
+  document.querySelectorAll('.hw-parse-check').forEach((cb) => { cb.checked = checked; });
+  updateHomeworkParseSummary();
+}
+
+function updateHomeworkParseSummary() {
+  const checked = document.querySelectorAll('.hw-parse-check:checked').length;
+  const total = parsedHomeworkItems.length;
+  const summary = document.getElementById('hw-parse-summary');
+  if (summary) summary.textContent = `${checked} of ${total} item(s) selected`;
+}
+
+async function applyParsedHomework() {
+  const kidId = isKidSession() ? sessionUser.kidId : document.getElementById('hw-parse-kid').value;
+  if (!kidId) { toast('Add a kid profile first.'); return; }
+
+  const rows = document.querySelectorAll('#hw-parse-tbody tr');
+  const selected = [];
+  rows.forEach((row, i) => {
+    if (!row.querySelector('.hw-parse-check')?.checked) return;
+    selected.push(parsedHomeworkItems[i]);
+  });
+  if (!selected.length) { toast('No items selected.'); return; }
+
+  let added = 0;
+  for (const it of selected) {
+    if (!it.title || !it.dueDate) continue;
+    try {
+      const res = await window.auth.addHomework({
+        kidId, title: it.title, subject: it.subject || '', dueDate: it.dueDate, source: 'ai',
+      });
+      homeworkItems.push(res.homework);
+      added++;
+    } catch (err) { /* skip individual failures, keep going */ }
+  }
+
+  closeModal('snap-homework-review-modal');
+  renderHomeworkHub();
+  renderCalendar();
+  toast(`✅ Added ${added} homework item${added === 1 ? '' : 's'}!`);
+}
+
+/* ============================================================
    NAV TABS (Calendar[=Dashboard] / Homework / Goals / Activities / Settings)
    Chat is not a tab — it's a persistent part of the Calendar/dashboard panel
    (see index.html .dashboard-chat). Its poll lifecycle is tied to the
@@ -1800,6 +2430,7 @@ function switchNavTab(tab) {
   });
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
+  if (tab === 'homework') { loadHomework().then(renderHomeworkHub); }
   if (tab === 'calendar') {
     loadChatMessages();
     startChatPolling();

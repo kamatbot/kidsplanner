@@ -930,3 +930,105 @@ body {
 .feed-guide-panel code {
   background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px;
 }
+
+/* ============================================================
+   HOMEWORK HUB (Phase 3)
+============================================================ */
+.homework-hub-header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
+}
+.homework-hub-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.homework-filter-select {
+  border: 2px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px;
+  font-family: 'Nunito',sans-serif; font-weight: 700; font-size: 13px; color: var(--text);
+  background: white; cursor: pointer;
+}
+
+.homework-group { margin-bottom: 22px; }
+.homework-group:last-child { margin-bottom: 0; }
+.homework-group-title {
+  font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text-muted); margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+}
+.homework-group-count {
+  background: var(--primary-light); color: var(--primary); font-size: 11px; font-weight: 800;
+  padding: 1px 8px; border-radius: 999px;
+}
+.homework-group-items { display: flex; flex-direction: column; gap: 8px; }
+
+.homework-row {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px;
+  border: 2px solid var(--border); border-radius: var(--radius-sm); background: white;
+  transition: border-color .15s, background .15s;
+}
+.homework-row:hover { border-color: var(--primary-light); }
+.homework-row.hw-done { opacity: .65; }
+.homework-row.hw-done .hw-row-title { text-decoration: line-through; }
+
+.hw-check {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border);
+  background: white; cursor: pointer; font-size: 14px; font-weight: 900; color: white;
+  display: flex; align-items: center; justify-content: center; transition: all .15s; margin-top: 2px;
+}
+.hw-check:hover { border-color: var(--accent); transform: scale(1.08); }
+.hw-check.checked { background: var(--green); border-color: var(--green); }
+
+.hw-row-main { flex: 1; min-width: 0; cursor: pointer; }
+.hw-row-title-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.hw-row-title { font-weight: 800; font-size: 14px; color: var(--text); }
+.hw-source-badge { font-size: 12px; }
+.hw-kid-tag {
+  font-size: 10px; font-weight: 800; color: var(--text-muted); background: var(--bg);
+  padding: 1px 8px; border-radius: 999px; margin-left: 2px;
+}
+.hw-row-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.hw-chip {
+  font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 999px;
+}
+.hw-subject-chip { background: var(--primary-light); color: var(--primary); }
+.hw-status-chip.hw-status-todo { background: var(--bg); color: var(--text-muted); }
+.hw-status-chip.hw-status-in_progress { background: var(--yellow-light); color: #92400E; }
+.hw-status-chip.hw-status-done { background: var(--green-light); color: #065F46; }
+.hw-due-label { color: var(--text-muted); font-weight: 700; }
+.hw-checklist-progress { color: var(--text-muted); font-weight: 700; }
+
+/* Amber "due" chips fused into the week/month calendar — distinct from
+   category event chips. */
+.hw-due-chip {
+  background: #FFF4D6; color: #92400E; border-left: 3px solid var(--yellow);
+  cursor: pointer; display: flex; align-items: center; gap: 4px;
+}
+.hw-due-icon { font-size: 11px; }
+.month-evt.hw-due-chip { border-left: none; }
+
+/* Checklist editor (add/edit homework modal) */
+.homework-checklist-editor { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.homework-checklist-row { display: flex; align-items: center; gap: 8px; }
+.homework-checklist-row input[type="text"] {
+  flex: 1; border: 2px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 10px; font-family: 'Nunito',sans-serif; font-size: 13px;
+}
+.hw-checklist-remove {
+  border: none; background: none; color: var(--text-muted); font-size: 18px;
+  cursor: pointer; line-height: 1; padding: 0 4px;
+}
+.hw-checklist-remove:hover { color: var(--red); }
+
+.btn-link {
+  background: none; border: none; color: var(--primary); font-weight: 800;
+  font-size: 13px; cursor: pointer; padding: 4px 0; font-family: 'Nunito',sans-serif;
+}
+.btn-link:hover { text-decoration: underline; }
+
+/* Checklist view (detail modal) */
+.homework-checklist-view { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.hw-checklist-view-row { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.hw-checklist-view-row input { width: 16px; height: 16px; cursor: pointer; }
+
+/* Confetti celebration overlay (kid completions) */
+.confetti-canvas {
+  position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+  display: none;
+}
+.confetti-canvas.show { display: block; }
