@@ -206,6 +206,14 @@ let chatLastAt      = null;   // createdAt cursor for polling ?since=
 let chatPollTimer   = null;
 const CHAT_POLL_MS  = 4000;
 
+/* School calendar (Phase 2) — server-sourced, read-only events merged
+   alongside localStorage manual events for display. Never written to
+   localStorage; always re-fetched from /api/calendar/sync. */
+let schoolFeedsInfo  = null;  // { builtin, subscriptions, lastSyncAt } from GET /api/calendar/feeds
+let schoolEvents     = [];    // windowed, deduped, tagged events from last sync
+let schoolSyncErrors = [];    // [{ subscriptionId, label, error }] from the last sync
+const SCHOOL_AUTO_SYNC_MIN_MS = 60 * 60 * 1000; // mirrors server-side throttle
+
 /* ============================================================
    UTILITIES
 ============================================================ */
@@ -326,6 +334,11 @@ function applyRoleScopingToUI() {
   const settingsNotice = document.getElementById('kid-settings-notice');
   if (settingsParentOnly) settingsParentOnly.style.display = kid ? 'none' : '';
   if (settingsNotice) settingsNotice.style.display = kid ? '' : 'none';
+
+  const schoolParentOnly = document.getElementById('settings-parent-only-school');
+  const schoolNotice = document.getElementById('kid-school-notice');
+  if (schoolParentOnly) schoolParentOnly.style.display = kid ? 'none' : '';
+  if (schoolNotice) schoolNotice.style.display = kid ? '' : 'none';
 }
 
 function showFirstRunPanel() {
@@ -588,6 +601,14 @@ function showDashboard() {
   renderStreak();
   renderManageFamily();
 
+  // School calendar: load subscriptions then auto-sync (throttled ~1/hour
+  // both client- and server-side) — fire-and-forget so the dashboard never
+  // blocks on a slow feed fetch.
+  loadSchoolFeedsInfo().then(() => {
+    renderSchoolSettings();
+    syncSchoolCalendar({ silent: false, showToast: false });
+  });
+
   // Chat is a core part of the dashboard (not a separate tab) — load + poll
   // it as soon as the dashboard is shown. switchNavTab() takes over the
   // start/stop lifecycle from here on as the user navigates between tabs.
@@ -601,7 +622,7 @@ function showDashboard() {
 function renderMiniCal() {
   const d     = miniMonth;
   const today = isoDate(new Date());
-  const evDates = new Set(getEvents().map(e => e.date));
+  const evDates = new Set(visibleEvents().map(e => e.date));
   const names = ['S','M','T','W','T','F','S'];
 
   document.getElementById('mini-cal-month').textContent =
@@ -660,10 +681,40 @@ function calNext() {
   renderCalendar();
 }
 
+/* Normalize a server school-feed event (ISO start/end, possibly all-day)
+   into the same {date, time, endTime, category, title} shape manual events
+   use, so week/month rendering doesn't need two code paths. School events
+   are always read-only and carry source:"school" + a feedId/uid for the
+   detail modal's lock affordance. */
+function normalizeSchoolEvent(ev) {
+  const startDate = ev.allDay ? ev.start : (ev.start || '').slice(0, 10);
+  const time = (!ev.allDay && ev.start && ev.start.length > 10) ? ev.start.slice(11, 16) : '';
+  const endTime = (!ev.allDay && ev.end && ev.end.length > 10) ? ev.end.slice(11, 16) : '';
+  return {
+    id: 'school-' + ev.subscriptionId + '-' + ev.uid,
+    uid: ev.uid,
+    title: ev.title,
+    date: startDate,
+    time,
+    endTime,
+    category: ev.isDeadline ? 'other' : (ev.feedId === 'sta-hs-sport' ? 'sports' : 'school'),
+    notes: ev.description || '',
+    location: ev.location || '',
+    kidId: ev.kidId || null,
+    source: 'school',
+    readOnly: true,
+    isDeadline: !!ev.isDeadline,
+    feedLabel: ev.feedLabel,
+    recurring: !!ev.recurring,
+  };
+}
+
 function visibleEvents() {
   const events = getEvents();
-  if (!activeKidId) return events;
-  return events.filter(e => e.kidId === activeKidId);
+  const school = schoolEvents.map(normalizeSchoolEvent);
+  const merged = events.concat(school);
+  if (!activeKidId) return merged;
+  return merged.filter(e => e.kidId === activeKidId || (e.source === 'school' && !e.kidId));
 }
 
 function renderCalendar() {
@@ -693,8 +744,9 @@ function renderWeekView() {
       </div>
       <div class="week-day-events">
         ${evs.map(ev => `
-          <div class="week-evt c-${ev.category}" onclick="showDetail('${ev.id}')">
+          <div class="week-evt c-${ev.category}${ev.source === 'school' ? ' school-evt' : ''}" onclick="showDetail('${ev.id}')">
             ${ev.time ? `<span class="evt-time">${fmt12(ev.time)}</span>` : ''}
+            ${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}
             ${esc(ev.title)}
           </div>`).join('')}
         <button class="week-add-btn" onclick="openAddEventModal('${ds}')">+ Add</button>
@@ -733,7 +785,7 @@ function renderMonthView() {
     html += `<div class="month-day${isT?' is-today':''}" onclick="openAddEventModal('${ds}')">
       <span class="mday-num">${isT ? `<span>${day}</span>` : day}</span>
       ${evs.slice(0,3).map(ev =>
-        `<span class="month-evt chip-${ev.category}" onclick="event.stopPropagation();showDetail('${ev.id}')">${esc(ev.title)}</span>`
+        `<span class="month-evt chip-${ev.category}${ev.source === 'school' ? ' school-evt' : ''}" onclick="event.stopPropagation();showDetail('${ev.id}')">${ev.source === 'school' ? '🎓 ' : ''}${esc(ev.title)}</span>`
       ).join('')}
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
@@ -744,6 +796,247 @@ function renderMonthView() {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ============================================================
+   SCHOOL CALENDAR SYNC (Phase 2)
+   Server-sourced, read-only events merged into the calendar views.
+   Auto-syncs (throttled ~1/hour server-side) on app open; "Sync now"
+   in Settings forces a refetch. See lib/school-feeds.js for the
+   windowing/dedup/deadline-flagging logic.
+============================================================ */
+let lastSchoolSyncAttempt = null; // client-side guard so app-open doesn't hammer the endpoint on every tab switch
+
+async function loadSchoolFeedsInfo() {
+  try {
+    schoolFeedsInfo = await window.auth.getCalendarFeeds();
+  } catch (e) {
+    schoolFeedsInfo = null;
+  }
+  return schoolFeedsInfo;
+}
+
+async function syncSchoolCalendar(opts) {
+  const { force = false, silent = false, showToast = false } = opts || {};
+  const now = Date.now();
+  if (!force && lastSchoolSyncAttempt && (now - lastSchoolSyncAttempt) < SCHOOL_AUTO_SYNC_MIN_MS) {
+    return; // client-side throttle mirrors the server's ~1/hour guard
+  }
+  lastSchoolSyncAttempt = now;
+  try {
+    const result = await window.auth.syncCalendar(force);
+    schoolEvents = result.events || [];
+    schoolSyncErrors = result.errors || [];
+    renderCalendar();
+    renderMiniCal();
+    renderSchoolSettings();
+    if (schoolSyncErrors.length && !silent) {
+      const names = schoolSyncErrors.map(e => e.label).join(', ');
+      toast(`⚠️ Couldn't sync: ${names}`);
+    } else if (showToast) {
+      const deadlineCount = schoolEvents.filter(e => e.isDeadline).length;
+      toast(`Synced ${schoolEvents.length} school events, ${deadlineCount} deadlines 🎓`);
+    }
+  } catch (e) {
+    if (!silent) toast(`❌ Could not sync school calendars: ${e.message || 'unknown error'}`);
+  }
+}
+
+async function handleSyncNowClick() {
+  const btn = document.getElementById('school-sync-now-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  await loadSchoolFeedsInfo();
+  await syncSchoolCalendar({ force: true, showToast: true });
+  if (btn) { btn.disabled = false; btn.textContent = 'Sync now 🔄'; }
+}
+
+function timeAgo(iso) {
+  if (!iso) return 'never';
+  const ms = Date.now() - Date.parse(iso);
+  if (ms < 60000) return 'just now';
+  if (ms < 3600000) return `${Math.round(ms / 60000)} min ago`;
+  if (ms < 86400000) return `${Math.round(ms / 3600000)} hr ago`;
+  return `${Math.round(ms / 86400000)} day${Math.round(ms / 86400000) === 1 ? '' : 's'} ago`;
+}
+
+/* ---------- Settings > School calendars ---------- */
+function renderSchoolSettings() {
+  const el = document.getElementById('school-calendars-list');
+  const lastSyncedEl = document.getElementById('school-last-synced');
+  if (!el || isKidSession()) return;
+
+  if (lastSyncedEl) {
+    lastSyncedEl.textContent = schoolFeedsInfo && schoolFeedsInfo.lastSyncAt
+      ? `Last synced ${timeAgo(schoolFeedsInfo.lastSyncAt)}`
+      : 'Never synced yet';
+  }
+
+  if (!currentFamily) {
+    el.innerHTML = '<p class="text-muted">Create or join a family first to subscribe kids to school calendars.</p>';
+    return;
+  }
+  const kids = currentFamily.kids || [];
+  if (!kids.length) {
+    el.innerHTML = '<p class="text-muted">Add a kid profile above, then subscribe them to their school calendars here.</p>';
+    return;
+  }
+
+  const builtin = (schoolFeedsInfo && schoolFeedsInfo.builtin) || [];
+  const subs = (schoolFeedsInfo && schoolFeedsInfo.subscriptions) || [];
+  const subKey = (kidId, feedId, customUrl) => subs.find(s => s.kidId === kidId && (feedId ? s.feedId === feedId : s.customUrl === customUrl));
+
+  let html = '';
+
+  // Built-in St Andrews feeds — per-kid checkbox grid.
+  html += '<div class="school-feed-table">';
+  html += `<div class="school-feed-row school-feed-hdr">
+      <span></span>${kids.map(k => `<span class="school-feed-kid-hdr" style="color:${k.color}">${esc(k.name)}</span>`).join('')}
+    </div>`;
+  builtin.forEach(feed => {
+    html += `<div class="school-feed-row">
+        <span class="school-feed-name">${esc(feed.name)}${feed.deadline ? ' <span class=\"school-feed-deadline-tag\">deadlines</span>' : ''}</span>
+        ${kids.map(k => {
+          const existing = subKey(k.id, feed.id);
+          const checked = existing ? 'checked' : '';
+          return `<label class="school-feed-checkbox"><input type="checkbox" ${checked} onchange="handleToggleBuiltinFeed('${k.id}','${feed.id}',this.checked)"></label>`;
+        }).join('')}
+      </div>`;
+  });
+  html += '</div>';
+
+  // Custom / club feeds already subscribed.
+  const customSubs = subs.filter(s => s.customUrl);
+  if (customSubs.length) {
+    html += '<h4 style="margin:18px 0 8px">Your custom calendars</h4>';
+    html += customSubs.map(s => {
+      const kid = kids.find(k => k.id === s.kidId);
+      return `<div class="custom-feed-row">
+          <span class="custom-feed-label">${esc(s.customName || 'Custom calendar')}${s.deadline ? ' <span class="school-feed-deadline-tag">deadlines</span>' : ''}</span>
+          <span class="custom-feed-kid" style="color:${kid ? kid.color : '#6C63FF'}">${kid ? esc(kid.name) : ''}</span>
+          <button type="button" class="kid-row-remove" title="Remove" onclick="handleRemoveCustomFeed('${s.id}')">×</button>
+        </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = html;
+
+  if (schoolSyncErrors.length) {
+    const errEl = document.getElementById('school-sync-errors');
+    if (errEl) {
+      errEl.style.display = '';
+      errEl.innerHTML = '⚠️ Couldn\'t sync: ' + schoolSyncErrors.map(e => `<strong>${esc(e.label)}</strong> (${esc(e.error)})`).join(', ');
+    }
+  } else {
+    const errEl = document.getElementById('school-sync-errors');
+    if (errEl) errEl.style.display = 'none';
+  }
+}
+
+async function handleToggleBuiltinFeed(kidId, feedId, checked) {
+  try {
+    if (checked) {
+      await window.auth.subscribeCalendarFeed({ kidId, feedId });
+    } else {
+      await window.auth.unsubscribeCalendarFeed({ kidId, feedId });
+    }
+    await loadSchoolFeedsInfo();
+    renderSchoolSettings();
+    await syncSchoolCalendar({ force: true, silent: true });
+    toast(checked ? 'Subscribed! Syncing… 🎓' : 'Unsubscribed.');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+    renderSchoolSettings(); // revert the checkbox to actual state
+  }
+}
+
+async function handleRemoveCustomFeed(subscriptionId) {
+  try {
+    await window.auth.unsubscribeCalendarFeed({ subscriptionId });
+    await loadSchoolFeedsInfo();
+    renderSchoolSettings();
+    await syncSchoolCalendar({ force: true, silent: true });
+    toast('Calendar removed.');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+/* ---------- Add your school's calendar (custom URL, guided flow) ---------- */
+let customFeedPreview = null; // { normalizedUrl, calendarName, count, sampleTitles } from the last successful preview
+
+function openAddSchoolCalendarModal() {
+  customFeedPreview = null;
+  document.getElementById('custom-feed-url').value = '';
+  document.getElementById('custom-feed-name').value = '';
+  document.getElementById('custom-feed-preview-result').style.display = 'none';
+  document.getElementById('custom-feed-preview-result').innerHTML = '';
+  document.getElementById('custom-feed-confirm-section').style.display = 'none';
+  document.getElementById('custom-feed-error').textContent = '';
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const kidSelect = document.getElementById('custom-feed-kid');
+  kidSelect.innerHTML = kids.map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">No kids yet</option>';
+  openModal('add-school-calendar-modal');
+}
+
+async function handlePreviewCustomFeed() {
+  const url = document.getElementById('custom-feed-url').value.trim();
+  const errEl = document.getElementById('custom-feed-error');
+  const resultEl = document.getElementById('custom-feed-preview-result');
+  const confirmEl = document.getElementById('custom-feed-confirm-section');
+  errEl.textContent = '';
+  resultEl.style.display = 'none';
+  confirmEl.style.display = 'none';
+  customFeedPreview = null;
+  if (!url) { errEl.textContent = 'Paste a calendar link first.'; return; }
+
+  const btn = document.getElementById('custom-feed-preview-btn');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const preview = await window.auth.previewCalendarFeed(url);
+    customFeedPreview = preview;
+    const nameLine = preview.calendarName ? `Found <strong>${esc(preview.calendarName)}</strong> — ` : 'Found ';
+    resultEl.innerHTML = `✅ ${nameLine}${preview.count} event${preview.count === 1 ? '' : 's'}.` +
+      (preview.sampleTitles && preview.sampleTitles.length
+        ? `<div class="text-muted" style="margin-top:6px">e.g. ${preview.sampleTitles.map(t => `“${esc(t)}”`).join(', ')}</div>`
+        : '');
+    resultEl.style.display = '';
+    document.getElementById('custom-feed-name').value = preview.calendarName || '';
+    confirmEl.style.display = '';
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not check that calendar.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Check this link';
+  }
+}
+
+async function handleSaveCustomFeed(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('custom-feed-error');
+  if (!customFeedPreview || !customFeedPreview.ok) {
+    errEl.textContent = 'Check the link first so we know it works.';
+    return;
+  }
+  const kidId = document.getElementById('custom-feed-kid').value;
+  const customName = document.getElementById('custom-feed-name').value.trim();
+  if (!kidId) { errEl.textContent = 'Add a kid profile first, then pick who this calendar is for.'; return; }
+  try {
+    await window.auth.subscribeCalendarFeed({
+      kidId,
+      customUrl: customFeedPreview.normalizedUrl,
+      customName: customName || customFeedPreview.calendarName || 'School calendar',
+    });
+    closeModal('add-school-calendar-modal');
+    await loadSchoolFeedsInfo();
+    renderSchoolSettings();
+    await syncSchoolCalendar({ force: true, showToast: true });
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+function switchFeedGuideTab(tab) {
+  document.querySelectorAll('.feed-guide-tab').forEach(t => t.classList.toggle('active', t.dataset.guide === tab));
+  document.querySelectorAll('.feed-guide-panel').forEach(p => p.classList.toggle('active', p.id === `guide-${tab}`));
 }
 
 /* ============================================================
@@ -782,13 +1075,17 @@ function saveEvent(e) {
 }
 
 function showDetail(id) {
-  const ev = getEvents().find(e => e.id === id);
+  // School events live in server state (schoolEvents), not localStorage —
+  // look there first via the normalized id shape ('school-<subId>-<uid>').
+  const ev = String(id).startsWith('school-')
+    ? visibleEvents().find(e => e.id === id)
+    : getEvents().find(e => e.id === id);
   if (!ev) return;
   activeEventId = id;
 
   const catLabel = { school:'🏫 School', sports:'⚽ Sports', arts:'🎨 Arts', social:'👫 Social', other:'⭐ Other' };
   const badge = document.getElementById('detail-badge');
-  badge.textContent  = catLabel[ev.category] || ev.category;
+  badge.textContent  = (ev.source === 'school' ? '🎓 ' : '') + (ev.isDeadline ? 'Deadline' : (catLabel[ev.category] || ev.category));
   badge.className    = `detail-category-badge chip-${ev.category}`;
 
   document.getElementById('detail-title').textContent = ev.title;
@@ -797,21 +1094,35 @@ function showDetail(id) {
     ? `${fmt12(ev.time)}${ev.endTime ? ' – ' + fmt12(ev.endTime) : ''}`
     : 'All day';
   const notesRow = document.getElementById('detail-notes-row');
-  if (ev.notes) {
-    document.getElementById('detail-notes').textContent = ev.notes;
+  const notesParts = [ev.notes, ev.location ? `📍 ${ev.location}` : ''].filter(Boolean);
+  if (notesParts.length) {
+    document.getElementById('detail-notes').textContent = notesParts.join(' · ');
     notesRow.style.display = '';
   } else {
     notesRow.style.display = 'none';
   }
 
-  // Any signed-in parent can delete (parent-only app — see APP-BRIEF.md).
-  document.getElementById('btn-delete-event').style.display = '';
+  // School events are read-only (synced from the school's calendar) — hide
+  // delete and show a lock hint instead. Any signed-in parent can delete a
+  // manual event (parent-only app — see APP-BRIEF.md).
+  const deleteBtn = document.getElementById('btn-delete-event');
+  const lockHint = document.getElementById('detail-readonly-hint');
+  if (ev.source === 'school') {
+    deleteBtn.style.display = 'none';
+    if (lockHint) {
+      lockHint.style.display = '';
+      lockHint.textContent = `🔒 Synced from ${ev.feedLabel || 'the school calendar'} — read-only.` + (ev.recurring ? ' Repeats — showing the next occurrence.' : '');
+    }
+  } else {
+    deleteBtn.style.display = '';
+    if (lockHint) lockHint.style.display = 'none';
+  }
 
   openModal('event-detail-modal');
 }
 
 function deleteCurrentEvent() {
-  if (!activeEventId) return;
+  if (!activeEventId || String(activeEventId).startsWith('school-')) return;
   saveEvents(getEvents().filter(e => e.id !== activeEventId));
   closeModal('event-detail-modal');
   renderCalendar();
@@ -1488,7 +1799,7 @@ function switchNavTab(tab) {
     p.classList.toggle('active', p.id === `tab-${tab}`);
   });
   // Re-render dynamic panels each time they're opened so they reflect current state.
-  if (tab === 'settings') renderManageFamily();
+  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
   if (tab === 'calendar') {
     loadChatMessages();
     startChatPolling();

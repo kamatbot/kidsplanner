@@ -270,6 +270,33 @@
           </div>
         </section>
 
+        <!-- School calendars (Phase 2) — per-kid feed subscriptions + custom
+             iCal import. Parent-only mutation (subscribe/unsubscribe), same
+             scoping as Manage Family below. -->
+        <section class="card" id="school-calendars-card">
+          <h3>🎓 School calendars</h3>
+          <p id="kid-school-notice" class="text-muted" style="display:none">
+            Your school calendar is synced automatically — ask a parent to add or change subscriptions here.
+          </p>
+          <div id="settings-parent-only-school">
+            <p class="text-muted" style="margin-bottom:12px">
+              Subscribe each kid to their school calendars. Events sync automatically and show up
+              on the calendar with a 🎓 badge — read-only, since they come straight from the school.
+            </p>
+            <div class="school-sync-row">
+              <button type="button" class="btn-primary" id="school-sync-now-btn" onclick="handleSyncNowClick()">Sync now 🔄</button>
+              <span id="school-last-synced" class="text-muted">Never synced yet</span>
+            </div>
+            <p id="school-sync-errors" class="error-msg" style="display:none;margin-top:8px"></p>
+
+            <div id="school-calendars-list" style="margin:16px 0"></div>
+
+            <button type="button" class="btn-secondary" onclick="openAddSchoolCalendarModal()">
+              ➕ Add your school's calendar
+            </button>
+          </div>
+        </section>
+
         <section class="card">
           <h3>⚙️ Manage Family</h3>
           <!-- Kid sessions are role-scoped: family management (parents, invite,
@@ -433,10 +460,90 @@
       <div class="detail-row"><span class="detail-icon">⏰</span><span id="detail-time"></span></div>
       <div class="detail-row" id="detail-notes-row"><span class="detail-icon">📝</span><span id="detail-notes"></span></div>
     </div>
+    <p id="detail-readonly-hint" class="text-muted" style="display:none;margin:8px 0 0"></p>
     <div class="modal-actions">
       <button type="button" class="btn-secondary" onclick="closeModal('event-detail-modal')">Close</button>
       <button type="button" class="btn-danger" id="btn-delete-event" onclick="deleteCurrentEvent()" style="display:none">Delete 🗑️</button>
     </div>
+  </div>
+</div>
+
+<!-- Add Your School's Calendar Modal (Phase 2 — provider-neutral guided
+     import: works for ANY school's calendar system, not just St Andrews'
+     built-in feeds). Validate + preview server-side before saving. -->
+<div id="add-school-calendar-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-school-calendar-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>🎓 Add your school's calendar</h3>
+      <button class="modal-close" onclick="closeModal('add-school-calendar-modal')">×</button>
+    </div>
+    <p class="text-muted" style="margin-bottom:14px">
+      Paste any public calendar link your school (or a club) gives you — we'll check it works before saving.
+    </p>
+
+    <div class="form-group">
+      <label>Calendar link</label>
+      <input type="text" id="custom-feed-url" placeholder="https://... or webcal://...">
+    </div>
+    <div class="modal-actions" style="justify-content:flex-start;margin:0 0 12px">
+      <button type="button" class="btn-secondary" id="custom-feed-preview-btn" onclick="handlePreviewCustomFeed()">Check this link</button>
+    </div>
+    <div id="custom-feed-preview-result" class="text-muted" style="display:none;margin-bottom:12px"></div>
+    <div id="custom-feed-error" class="error-msg"></div>
+
+    <div id="custom-feed-confirm-section" style="display:none">
+      <div class="form-group">
+        <label>Name this calendar</label>
+        <input type="text" id="custom-feed-name" placeholder="e.g. School, Football club">
+      </div>
+      <div class="form-group">
+        <label>Applies to</label>
+        <select id="custom-feed-kid"></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-school-calendar-modal')">Cancel</button>
+        <button type="button" class="btn-primary" onclick="handleSaveCustomFeed(event)">Save calendar 🎓</button>
+      </div>
+    </div>
+
+    <hr style="margin:20px 0;border:none;border-top:1px solid var(--border)">
+
+    <h4 style="margin-bottom:10px">Where do I find this link?</h4>
+    <div class="feed-guide-tabs">
+      <button type="button" class="feed-guide-tab active" data-guide="google" onclick="switchFeedGuideTab('google')">Google Calendar</button>
+      <button type="button" class="feed-guide-tab" data-guide="moodle" onclick="switchFeedGuideTab('moodle')">Moodle / school portal</button>
+      <button type="button" class="feed-guide-tab" data-guide="apple" onclick="switchFeedGuideTab('apple')">Apple / Outlook</button>
+      <button type="button" class="feed-guide-tab" data-guide="other" onclick="switchFeedGuideTab('other')">Other</button>
+    </div>
+    <div class="feed-guide-panels">
+      <ol class="feed-guide-panel active" id="guide-google">
+        <li>Open Google Calendar on the web.</li>
+        <li>Hover the school's calendar in the left sidebar → click the <strong>⋮</strong> (Options) → <strong>Settings and sharing</strong>.</li>
+        <li>Scroll to <strong>Integrate calendar</strong>.</li>
+        <li>Copy the <strong>Public address in iCal format</strong> (or the <strong>Secret address in iCal format</strong> if the calendar isn't public) and paste it above.</li>
+        <li>A school "Add to Google Calendar" link works too — open it, then follow the steps above.</li>
+      </ol>
+      <ol class="feed-guide-panel" id="guide-moodle">
+        <li>Go to your school portal's <strong>Calendar</strong> page.</li>
+        <li>Click <strong>Export calendar</strong>.</li>
+        <li>Choose <strong>All events</strong> and a date range.</li>
+        <li>Click <strong>Get calendar URL</strong> and copy the iCal link above.</li>
+      </ol>
+      <ol class="feed-guide-panel" id="guide-apple">
+        <li>Find the calendar's <strong>Publish</strong> or <strong>Subscribe</strong> link (Apple/iCloud) or the shared calendar's ICS link (Outlook / Office 365).</li>
+        <li>Copy the link — it may start with <code>webcal://</code>, that's fine, we'll convert it automatically.</li>
+      </ol>
+      <p class="feed-guide-panel" id="guide-other">
+        Paste any <code>.ics</code> or <code>webcal://</code> link your school gives you — most calendar
+        systems (Google, Moodle, Blackbaud, ManageBac, club sign-up sites) can generate one.
+        If a link doesn't work, it's usually a private web page rather than a calendar feed — look
+        for wording like "iCal", "ICS", "subscribe", or "export calendar".
+      </p>
+    </div>
+
+    <p class="text-muted" style="margin-top:16px;font-size:13px">
+      Feed stopped working? Just re-paste the URL above — schools sometimes reset a "secret" calendar address.
+    </p>
   </div>
 </div>
 

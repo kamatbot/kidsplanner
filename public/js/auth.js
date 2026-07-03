@@ -310,6 +310,39 @@
     });
   }
 
+  /* ---------- school calendar (Phase 2) ---------- */
+  async function getCalendarFeeds() {
+    return api("/api/calendar/feeds", { method: "GET" });
+  }
+
+  async function previewCalendarFeed(url) {
+    return api("/api/calendar/feeds/preview", {
+      method: "POST",
+      body: JSON.stringify({ url: url || "" }),
+    });
+  }
+
+  async function subscribeCalendarFeed(opts) {
+    return api("/api/calendar/feeds/subscribe", {
+      method: "POST",
+      body: JSON.stringify(opts || {}),
+    });
+  }
+
+  async function unsubscribeCalendarFeed(opts) {
+    return api("/api/calendar/feeds/unsubscribe", {
+      method: "POST",
+      body: JSON.stringify(opts || {}),
+    });
+  }
+
+  async function syncCalendar(force) {
+    return api("/api/calendar/sync", {
+      method: "POST",
+      body: JSON.stringify(force ? { force: true } : {}),
+    });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -322,6 +355,11 @@
     updateKid,
     removeKid,
     removeMember,
+    getCalendarFeeds,
+    previewCalendarFeed,
+    subscribeCalendarFeed,
+    unsubscribeCalendarFeed,
+    syncCalendar,
     backupCodeSignIn,
     getCredentials,
     renameCredential,
