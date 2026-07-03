@@ -291,12 +291,14 @@ async function bootstrapSession() {
 }
 
 function showFirstRunPanel() {
+  // .modal-overlay is display:none by default and shown via the .open class
+  // (see openModal/closeModal) — toggling style.display alone never shows it.
   const panel = document.getElementById('first-run-panel');
-  if (panel) panel.style.display = '';
+  if (panel) panel.classList.add('open');
 }
 function hideFirstRunPanel() {
   const panel = document.getElementById('first-run-panel');
-  if (panel) panel.style.display = 'none';
+  if (panel) panel.classList.remove('open');
 }
 
 async function handleCreateFamily(e) {
@@ -395,8 +397,8 @@ function renderManageFamily() {
   const kidsEl0    = document.getElementById('manage-family-kids');
   if (!currentFamily) {
     // No family loaded yet — guide the user instead of showing blank sections.
-    const msg = `<p class="text-muted">You're not in a family yet. Create or join one from the
-      <a href="#" onclick="showFirstRunPanel();switchNavTab('today');return false" style="color:var(--primary);font-weight:700">dashboard</a> to add parents and kids.</p>`;
+    const msg = `<p class="text-muted">You're not in a family yet.
+      <a href="#" onclick="showFirstRunPanel();return false" style="color:var(--primary);font-weight:700">Create or join a family</a> to add parents and kids.</p>`;
     if (parentsEl0) parentsEl0.innerHTML = msg;
     if (inviteEl0)  inviteEl0.innerHTML = '';
     if (kidsEl0)    kidsEl0.innerHTML = '';
