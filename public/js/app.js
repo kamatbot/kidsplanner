@@ -1197,7 +1197,7 @@ function openAddEventModal(ds) {
 function saveEvent(e) {
   e.preventDefault();
   const events = getEvents();
-  events.push({
+  const ev = {
     id:       uid(),
     userId:   sessionUser.id,
     kidId:    activeKidId || null,
@@ -1207,12 +1207,36 @@ function saveEvent(e) {
     endTime:  document.getElementById('event-end-time').value,
     category: document.querySelector('input[name="cat"]:checked').value,
     notes:    document.getElementById('event-notes').value.trim(),
-  });
+  };
+  events.push(ev);
   saveEvents(events);
+  announceEventToChat(ev);
   closeModal('add-event-modal');
   renderCalendar();
   renderMiniCal();
   toast('Event added! 🎯');
+}
+
+// A manually-added calendar event lives only in this device's localStorage
+// (fam_events). The shared family chat is the one server-synced surface
+// everyone sees, so we post the new event there to notify the group. Bulk
+// imports (school feeds, timetable) call saveEvents() directly and deliberately
+// skip this, so they never flood the chat. Fire-and-forget: the event is
+// already saved, so a chat hiccup must not block the add or throw on the
+// calendar flow.
+function announceEventToChat(ev) {
+  if (!ev || !ev.title) return;
+  if (!window.auth || typeof window.auth.sendChatMessage !== 'function') return;
+  try {
+    const catIcon = { school: '🏫', sports: '⚽', arts: '🎨', social: '👫', other: '⭐' };
+    const when = ev.time
+      ? `${formatLong(parseIso(ev.date))} at ${fmt12(ev.time)}`
+      : `${formatLong(parseIso(ev.date))} (all day)`;
+    const kidName = ev.kidId ? kidNameFor(ev.kidId) : '';
+    const forWho = kidName ? ` for ${kidName}` : '';
+    const text = `📅 New event${forWho}: ${catIcon[ev.category] || '📌'} ${ev.title} — ${when}`;
+    Promise.resolve(window.auth.sendChatMessage(text)).catch(() => {});
+  } catch (_) { /* never let the announcement break adding an event */ }
 }
 
 function showDetail(id) {
