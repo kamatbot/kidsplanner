@@ -927,16 +927,12 @@ app.post("/api/calendar/sync", requireAuth, requireFamily, async (req, res) => {
   const force = !!(req.body && req.body.force) && userRole(req.user) !== "kid";
   try {
     const result = await schoolFeeds.syncFamily(req.family.id, { force });
-    // Phase 3: any deadline-flagged events from the sync become homework
-    // automatically. Idempotent via sourceUid (see lib/homework.js
-    // ingestDeadlines) — safe to call on every sync, throttled or not.
-    try {
-      const deadlineEvents = (result.events || []).filter((e) => e.isDeadline || e.type === "deadline");
-      homework.ingestDeadlines(req.family.id, deadlineEvents);
-    } catch (e) {
-      console.error("[homework] ingestDeadlines error:", e.message);
-      // Never fail the calendar sync response because homework ingestion hiccuped.
-    }
+    // NOTE: public school calendars are informational (term dates, university
+    // deadlines, IA copies) — NOT assignable homework. We do NOT create
+    // homework items from them. Real homework comes from the school's
+    // authenticated homework portal (see the homework-import feature).
+    // Purge any homework a previous build auto-ingested from these feeds.
+    try { homework.removeBySource(req.family.id, "school"); } catch (e) { /* non-fatal */ }
     res.json(result);
   } catch (e) {
     console.error("[calendar] sync error:", e.message);

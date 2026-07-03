@@ -320,3 +320,15 @@ test("route guard: a parent can modify any kid's homework", () => {
   const { homework: item } = homework.addHomework(fam.id, { kidId: kid.id, title: "X", dueDate: "2026-08-01" });
   assert.equal(homework.canAccess(parent, "parent", fam.id, homework.getById(fam.id, item.id)), true);
 });
+
+test("removeBySource: purges only items of the given source", () => {
+  const { fam, kid } = makeFamilyWithKid("purge");
+  homework.addHomework(fam.id, { kidId: kid.id, title: "Manual essay", source: "manual", dueDate: "2026-07-10" });
+  homework.ingestDeadlines(fam.id, [deadlineEvent({ kidId: kid.id })]);
+  assert.equal(homework.listForFamily(fam.id).length, 2);
+  const removed = homework.removeBySource(fam.id, "school");
+  assert.equal(removed, 1);
+  const left = homework.listForFamily(fam.id);
+  assert.equal(left.length, 1);
+  assert.equal(left[0].source, "manual");
+});
