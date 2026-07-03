@@ -62,6 +62,48 @@ test("flagMessage: sets the report/flag fields without deleting content", () => 
   assert.equal(result.message.text, "flag me"); // content untouched
 });
 
+test("sendMessage: accepts a valid https://media.giphy.com/... gif with no text", () => {
+  const { p1, fam } = makeFamily();
+  const media = { type: "gif", url: "https://media.giphy.com/media/abc/giphy.gif", previewUrl: "https://media.giphy.com/media/abc/200.gif", width: 480, height: 270 };
+  const result = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, media });
+  assert.ok(!result.error);
+  assert.deepEqual(result.message.media, media);
+  assert.equal(result.message.text, "");
+});
+
+test("sendMessage: rejects a non-giphy media host, but still sends if text is present", () => {
+  const { p1, fam } = makeFamily();
+  const media = { type: "gif", url: "https://evil.com/x.gif", previewUrl: "https://evil.com/x-small.gif", width: 100, height: 100 };
+  const result = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "look at this", media });
+  assert.ok(!result.error);
+  assert.equal(result.message.media, null);
+  assert.equal(result.message.text, "look at this");
+});
+
+test("sendMessage: rejects a non-giphy media host and rejects the message entirely when there's no text either", () => {
+  const { p1, fam } = makeFamily();
+  const media = { type: "gif", url: "https://evil.com/x.gif", previewUrl: "https://evil.com/x-small.gif", width: 100, height: 100 };
+  const result = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, media });
+  assert.ok(result.error);
+});
+
+test("sendMessage: rejects media with a non-'gif' type", () => {
+  const { p1, fam } = makeFamily();
+  const media = { type: "image", url: "https://media.giphy.com/media/abc/giphy.gif", previewUrl: "https://media.giphy.com/media/abc/200.gif" };
+  const result = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "hi", media });
+  assert.ok(!result.error);
+  assert.equal(result.message.media, null);
+});
+
+test("sendMessage: clamps oversized width/height to the 800 cap", () => {
+  const { p1, fam } = makeFamily();
+  const media = { type: "gif", url: "https://media.giphy.com/media/abc/giphy.gif", previewUrl: "https://media.giphy.com/media/abc/200.gif", width: 5000, height: 9000 };
+  const result = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, media });
+  assert.ok(!result.error);
+  assert.equal(result.message.media.width, 800);
+  assert.equal(result.message.media.height, 800);
+});
+
 test("listMessages: since filter only returns newer messages", async () => {
   const { p1, fam } = makeFamily();
   chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "old" });

@@ -31,6 +31,7 @@ const backupCodes = require("./lib/backup-codes");
 const analytics = require("./lib/analytics");
 const family = require("./lib/family");
 const chat = require("./lib/chat");
+const gifs = require("./lib/gifs");
 const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
 const schoolAccount = require("./lib/school-account");
@@ -62,7 +63,7 @@ const CSP = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://*.giphy.com",
   "font-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline' blob:",
@@ -245,6 +246,7 @@ function envNum(name, def) {
   return Number(process.env[name]) > 0 ? Number(process.env[name]) : def;
 }
 const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: envNum("RL_API_MAX", 300) });
+const gifLimiter = rateLimit({ windowMs: 60 * 1000, max: envNum("RL_GIF_MAX", 60), message: "Too many GIF searches — please slow down and try again in a moment." });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: envNum("RL_AUTH_MAX", 60), message: "Too many sign-in attempts — please wait a minute and try again." });
 const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: envNum("RL_SIGNUP_MAX", 15), message: "Too many sign-up attempts — please try again later." });
 app.use("/api", apiLimiter);
@@ -846,7 +848,7 @@ app.get("/api/chat/messages", requireAuth, requireFamily, (req, res) => {
   res.json({ messages: msgs });
 });
 app.post("/api/chat/messages", requireAuth, requireFamily, async (req, res) => {
-  const { text, card } = req.body || {};
+  const { text, card, media } = req.body || {};
   // senderType/senderId are derived from the authenticated session, never
   // trusted from the request body — a kid session always posts as its own
   // kid profile id, a parent session always posts as itself.
@@ -857,6 +859,7 @@ app.post("/api/chat/messages", requireAuth, requireFamily, async (req, res) => {
     postedByUserId: req.user.id,
     text,
     card,
+    media,
   });
   if (result.error) return res.status(400).json({ error: result.error });
   try {
@@ -882,6 +885,33 @@ app.post("/api/chat/messages/:id/flag", requireAuth, requireFamily, (req, res) =
   const result = chat.flagMessage(req.family.id, req.user.id, req.params.id, (req.body || {}).reason);
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ message: result.message });
+});
+
+// ----- GIFs (Giphy proxy) -----
+// The client never calls Giphy directly (connect-src stays 'self') — this
+// proxies trending/search so the API key never reaches the browser. Every
+// request is pinned server-side to rating=pg (see lib/gifs.js) — this is a
+// kids' app and that is non-negotiable. If GIPHY_API_KEY is unset the
+// feature is simply off ({ gifs: [] }), not an error.
+app.get("/api/gifs/trending", requireAuth, gifLimiter, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const result = await gifs.trending(req.query.limit);
+    res.json(result);
+  } catch (e) {
+    console.error("[gifs] trending error:", e.message);
+    res.status(502).json({ error: "GIFs unavailable" });
+  }
+});
+app.get("/api/gifs/search", requireAuth, gifLimiter, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const result = await gifs.search(req.query.q, req.query.limit);
+    res.json(result);
+  } catch (e) {
+    console.error("[gifs] search error:", e.message);
+    res.status(502).json({ error: "GIFs unavailable" });
+  }
 });
 
 // ===================== SCHOOL CALENDAR (Phase 2) =====================
