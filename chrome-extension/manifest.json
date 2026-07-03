@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Fam ETC School Import",
+  "version": "0.1.0",
+  "description": "Import your child's Moodle homework and timetable into Fam ETC using your already-logged-in Moodle session.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Fam ETC School Import"
+  },
+  "permissions": ["scripting", "tabs", "activeTab"],
+  "host_permissions": [
+    "https://bangkok.learn.nae.school/*",
+    "https://www.fametc.com/*",
+    "https://fametc.com/*"
+  ]
+}
