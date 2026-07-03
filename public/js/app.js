@@ -200,6 +200,12 @@ let activeEventId   = null;
 let pendingDate     = null;   // pre-filled date for add-event modal
 let uploadedFile    = null;
 
+/* Chat */
+let chatMessages    = [];     // messages currently rendered, oldest-first
+let chatLastAt      = null;   // createdAt cursor for polling ?since=
+let chatPollTimer   = null;
+const CHAT_POLL_MS  = 4000;
+
 /* ============================================================
    UTILITIES
 ============================================================ */
@@ -1303,7 +1309,167 @@ function closeModalOnBg(e, id) {
 }
 
 /* ============================================================
-   NAV TABS (Calendar / Homework / Goals / Activities / Settings)
+   CHAT
+   Poll-based (GET /api/chat/messages?since=) rather than WebSocket for this
+   scaffold — see lib/chat.js. Polling only runs while the chat tab is the
+   active panel; switching away stops it so background tabs don't hammer
+   the API. Parent-only controls (delete/flag) are still backend-enforced
+   (requireParent) — the UI just doesn't offer delete to a kid session.
+============================================================ */
+function kidColorFor(kidProfileId) {
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const k = kids.find((x) => x.id === kidProfileId);
+  return k ? k.color : null;
+}
+
+function chatSenderName(msg) {
+  if (msg.senderType === 'kid') {
+    const kids = (currentFamily && currentFamily.kids) || [];
+    const k = kids.find((x) => x.id === msg.senderId);
+    return k ? k.name : 'Kid';
+  }
+  if (currentFamily && currentFamily.parents) {
+    const p = currentFamily.parents.find((x) => x.id === msg.senderId);
+    if (p && p.name) return p.name;
+  }
+  if (sessionUser && msg.senderId === sessionUser.id) return sessionUser.name || 'You';
+  return 'Parent';
+}
+
+function isOwnMessage(msg) {
+  if (!sessionUser) return false;
+  if (isKidSession()) return msg.senderType === 'kid' && msg.senderId === sessionUser.kidId;
+  return msg.senderType === 'parent' && msg.senderId === sessionUser.id;
+}
+
+function renderChatCard(card) {
+  if (!card || !card.type) return '';
+  const icon = card.type === 'homework' ? '📚' : card.type === 'event' ? '📅' : '🔗';
+  const label = card.type === 'homework' ? 'Homework' : card.type === 'event' ? 'Event' : esc(card.type);
+  return `<div class="chat-msg-card">
+    <span class="chat-card-icon">${icon}</span>
+    <div class="chat-card-body">
+      <div class="chat-card-label">${label}</div>
+      ${card.title ? `<div class="chat-card-title">${esc(card.title)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderChatMessages() {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+
+  el.innerHTML = chatMessages.map((m) => {
+    if (m.deleted) {
+      return `<div class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
+    }
+    const own = isOwnMessage(m);
+    const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--primary)') : 'var(--primary)';
+    const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    const controls = !isKidSession() ? `
+      <div class="chat-msg-controls">
+        <button class="chat-msg-ctrl" onclick="handleDeleteChatMessage('${m.id}')" title="Delete message">🗑️</button>
+        <button class="chat-msg-ctrl" onclick="handleFlagChatMessage('${m.id}')" title="Report / flag message">🚩</button>
+      </div>` : `
+      <div class="chat-msg-controls">
+        <button class="chat-msg-ctrl" onclick="handleFlagChatMessage('${m.id}')" title="Report / flag message">🚩</button>
+      </div>`;
+    return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
+      ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}</div>` : ''}
+      <div class="chat-msg-bubble" style="${own ? '' : `--sender-color:${color}`}">
+        ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
+        ${renderChatCard(m.card)}
+      </div>
+      <div class="chat-msg-meta">
+        <span class="chat-msg-time">${time}</span>
+        ${controls}
+      </div>
+    </div>`;
+  }).join('') || '<p class="text-muted chat-empty">No messages yet. Say hi! 👋</p>';
+
+  if (wasAtBottom) el.scrollTop = el.scrollHeight;
+}
+
+async function loadChatMessages() {
+  try {
+    const msgs = await window.auth.getMessages();
+    chatMessages = msgs;
+    chatLastAt = msgs.length ? msgs[msgs.length - 1].createdAt : null;
+    renderChatMessages();
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+async function pollChatMessages() {
+  try {
+    const msgs = await window.auth.getMessages(chatLastAt);
+    if (msgs.length) {
+      // Merge by id: a poll can return an update to an already-seen message
+      // (e.g. deleted/flagged in place), not just brand-new ones.
+      const byId = new Map(chatMessages.map((m) => [m.id, m]));
+      for (const m of msgs) byId.set(m.id, m);
+      chatMessages = Array.from(byId.values()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+      chatLastAt = chatMessages[chatMessages.length - 1].createdAt;
+      renderChatMessages();
+    }
+  } catch (err) { /* transient poll failures shouldn't spam toasts */ }
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  chatPollTimer = setInterval(pollChatMessages, CHAT_POLL_MS);
+}
+
+function stopChatPolling() {
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+
+async function handleSendChatMessage(e) {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const text = input ? input.value.trim() : '';
+  if (!text) return;
+  try {
+    const res = await window.auth.sendChatMessage(text);
+    if (input) input.value = '';
+    if (res && res.message) {
+      chatMessages.push(res.message);
+      chatLastAt = res.message.createdAt;
+      renderChatMessages();
+    } else {
+      await pollChatMessages();
+    }
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+async function handleDeleteChatMessage(id) {
+  if (!confirm('Delete this message for the whole family?')) return;
+  try {
+    const res = await window.auth.deleteChatMessage(id);
+    const idx = chatMessages.findIndex((m) => m.id === id);
+    if (idx !== -1 && res && res.message) chatMessages[idx] = res.message;
+    renderChatMessages();
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+async function handleFlagChatMessage(id) {
+  const reason = prompt('What\'s wrong with this message? (optional)') || '';
+  try {
+    await window.auth.flagChatMessage(id, reason);
+    toast('Message reported. A parent will review it. 🚩');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+/* ============================================================
+   NAV TABS (Calendar / Chat / Homework / Goals / Activities / Settings)
 ============================================================ */
 function switchNavTab(tab) {
   document.querySelectorAll('.nav-tab').forEach((t) => {
@@ -1314,6 +1480,12 @@ function switchNavTab(tab) {
   });
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'settings') renderManageFamily();
+  if (tab === 'chat') {
+    loadChatMessages();
+    startChatPolling();
+  } else {
+    stopChatPolling();
+  }
 }
 
 /* ============================================================

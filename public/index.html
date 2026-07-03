@@ -85,6 +85,7 @@
   <!-- Nav tabs -->
   <nav class="nav-tabs">
     <button class="nav-tab active" data-tab="calendar" onclick="switchNavTab('calendar')">📅 Calendar</button>
+    <button class="nav-tab" data-tab="chat" onclick="switchNavTab('chat')">💬 Chat</button>
     <button class="nav-tab" data-tab="homework" onclick="switchNavTab('homework')">📚 Homework</button>
     <button class="nav-tab" data-tab="goals" onclick="switchNavTab('goals')">🎯 Goals</button>
     <button class="nav-tab" data-tab="activities" onclick="switchNavTab('activities')">⚽ Activities</button>
@@ -203,6 +204,17 @@
             <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
           </div>
 
+        </section>
+      </div>
+
+      <!-- Chat Tab -->
+      <div class="tab-panel" id="tab-chat">
+        <section class="card chat-card">
+          <div class="chat-messages" id="chat-messages"></div>
+          <form id="chat-send-form" class="chat-send-row" onsubmit="handleSendChatMessage(event)">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Message the family…" autocomplete="off" maxlength="4000">
+            <button type="submit" class="btn-primary chat-send-btn">Send</button>
+          </form>
         </section>
       </div>
 
