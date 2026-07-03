@@ -435,7 +435,7 @@ app.get("/api/health", (req, res) => {
       hasPriceId: !!(process.env.STRIPE_PRICE_ID || "").trim(),
       hasWebhookSecret: !!(process.env.STRIPE_WEBHOOK_SECRET || "").trim(),
     },
-    push: { enabled: notifications.enabled() },
+    push: { enabled: notifications.enabled(), webEnabled: notifications.webEnabled() },
   });
 });
 
@@ -858,6 +858,7 @@ app.post("/api/chat/messages", requireAuth, requireFamily, async (req, res) => {
   try {
     await notifications.notifyChatMessage({
       familyParentIds: req.family.parentIds,
+      familyKidUserIds: store.listKidUserIdsForFamily(req.family.id),
       senderUserId: req.user.id,
       senderName: req.user.data.profile.name || "Family chat",
       familyId: req.family.id,
@@ -889,6 +890,26 @@ app.post("/api/push/register", requireAuth, (req, res) => {
 app.post("/api/push/unregister", requireAuth, (req, res) => {
   const token = (req.body || {}).token;
   if (token) notifications.removeToken(req.user.id, token);
+  res.json({ ok: true });
+});
+
+// ===================== PUSH: web subscription registration =====================
+// Public key only — not secret, the browser needs it to call
+// pushManager.subscribe({ applicationServerKey: ... }). requireAuth just
+// keeps this off anonymous scraping; it's not sensitive.
+app.get("/api/push/vapid-public-key", requireAuth, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || null });
+});
+app.post("/api/push/web/subscribe", requireAuth, (req, res) => {
+  const subscription = (req.body || {}).subscription;
+  if (!subscription || !subscription.endpoint) return res.status(400).json({ error: "Missing subscription." });
+  notifications.addWebSubscription(req.user.id, subscription);
+  res.json({ ok: true });
+});
+app.post("/api/push/web/unsubscribe", requireAuth, (req, res) => {
+  const endpoint = (req.body || {}).endpoint;
+  if (endpoint) notifications.removeWebSubscription(req.user.id, endpoint);
   res.json({ ok: true });
 });
 
