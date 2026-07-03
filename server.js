@@ -689,21 +689,29 @@ app.post("/api/auth/backup/regenerate", authLimiter, requireAuth, (req, res) => 
 });
 
 // ===================== FAMILY =====================
+// Resolve a parent userId -> display name so publicFamily can list co-parents
+// by name (used by the Settings "Parents" section).
+function parentName(id) {
+  const u = store.getUser(id);
+  return u ? (u.data.profile.name || u.email || "Parent") : "Parent";
+}
+const pubFam = (fam) => family.publicFamily(fam, parentName);
+
 app.get("/api/family", requireAuth, (req, res) => {
   const fams = family.familiesForUser(req.user.id);
-  res.json({ families: fams.map(family.publicFamily) });
+  res.json({ families: fams.map(pubFam) });
 });
 app.post("/api/family", requireAuth, (req, res) => {
   const existing = family.familiesForUser(req.user.id);
   if (existing.length) return res.status(409).json({ error: "You already belong to a family." });
   const fam = family.createFamily(req.user.id, (req.body || {}).name);
-  res.json({ family: family.publicFamily(fam) });
+  res.json({ family: pubFam(fam) });
 });
 app.post("/api/family/join", requireAuth, (req, res) => {
   const code = (req.body || {}).code;
   const result = family.joinFamilyAsParent(code, req.user.id);
   if (result.error) return res.status(400).json({ error: result.error });
-  res.json({ family: family.publicFamily(result.family) });
+  res.json({ family: pubFam(result.family) });
 });
 // Kid profiles: parent-only, minimal data (name, grade, color) — no email,
 // no login, per APP-BRIEF.md.
@@ -711,23 +719,23 @@ app.post("/api/family/kids", requireAuth, requireFamily, (req, res) => {
   const { name, grade, color } = req.body || {};
   const result = family.addKid(req.family.id, req.user.id, { name, grade, color });
   if (result.error) return res.status(400).json({ error: result.error });
-  res.json({ family: family.publicFamily(result.family), kid: result.kid });
+  res.json({ family: pubFam(result.family), kid: result.kid });
 });
 app.patch("/api/family/kids/:kidId", requireAuth, requireFamily, (req, res) => {
   const result = family.updateKid(req.family.id, req.user.id, req.params.kidId, req.body || {});
   if (result.error) return res.status(400).json({ error: result.error });
-  res.json({ family: family.publicFamily(result.family), kid: result.kid });
+  res.json({ family: pubFam(result.family), kid: result.kid });
 });
 app.delete("/api/family/kids/:kidId", requireAuth, requireFamily, (req, res) => {
   const result = family.removeKid(req.family.id, req.user.id, req.params.kidId);
   if (result.error) return res.status(400).json({ error: result.error });
-  res.json({ family: family.publicFamily(result.family) });
+  res.json({ family: pubFam(result.family) });
 });
 // Remove a PARENT member — the "block equivalent" for Apple UGC review.
 app.delete("/api/family/members/:userId", requireAuth, requireFamily, (req, res) => {
   const result = family.removeMember(req.family.id, req.user.id, req.params.userId);
   if (result.error) return res.status(400).json({ error: result.error });
-  res.json({ family: family.publicFamily(result.family) });
+  res.json({ family: pubFam(result.family) });
 });
 
 // ===================== CHAT =====================

@@ -72,3 +72,17 @@ test("removeMember: a parent can remove the other parent (block-equivalent contr
   assert.equal(result.family.parentIds.length, 1);
   assert.ok(!result.family.parentIds.includes(p2.id));
 });
+
+test("publicFamily: lists parents with resolved names and the parent cap", () => {
+  const p1 = store.createUser("p12@example.com", "Mum");
+  const p2 = store.createUser("p13@example.com", "Dad");
+  const fam = family.createFamily(p1.id, "Named Family");
+  family.joinFamilyAsParent(fam.inviteCode, p2.id);
+  const names = { [p1.id]: "Mum", [p2.id]: "Dad" };
+  const pub = family.publicFamily(fam, (id) => names[id]);
+  assert.equal(pub.maxParents, family.MAX_PARENTS);
+  assert.equal(pub.parents.length, 2);
+  assert.deepEqual(pub.parents.map((p) => p.name).sort(), ["Dad", "Mum"]);
+  // resolver is optional — names fall back to null without one
+  assert.equal(family.publicFamily(fam).parents[0].name, null);
+});

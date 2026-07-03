@@ -180,6 +180,10 @@
     return api("/api/family/kids/" + encodeURIComponent(kidId), { method: "DELETE" });
   }
 
+  async function removeMember(userId) {
+    return api("/api/family/members/" + encodeURIComponent(userId), { method: "DELETE" });
+  }
+
   /* ---------- passkey / credential management (security.html) ---------- */
   async function getCredentials() {
     const data = await api("/api/webauthn/credentials", { method: "GET" });
@@ -247,6 +251,7 @@
     addKid,
     updateKid,
     removeKid,
+    removeMember,
     backupCodeSignIn,
     getCredentials,
     renameCredential,

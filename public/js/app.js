@@ -390,19 +390,91 @@ function setActiveKid(kidId) {
 }
 
 function renderManageFamily() {
+  if (!currentFamily) return;
+
+  // --- Parents ---
+  const parentsEl = document.getElementById('manage-family-parents');
+  if (parentsEl) {
+    const parents = currentFamily.parents || (currentFamily.parentIds || []).map((id) => ({ id, name: null }));
+    parentsEl.innerHTML = parents.map((p) => {
+      const isYou = p.id === (sessionUser && sessionUser.id);
+      const label = esc(p.name || 'Parent') + (isYou ? ' <span class="text-muted">(you)</span>' : '');
+      const remove = isYou ? '' :
+        `<button class="kid-row-remove" onclick="handleRemoveParent('${p.id}')" title="Remove co-parent">×</button>`;
+      return `<div class="kid-row">
+        <span class="kid-row-swatch" style="background:#6C63FF"></span>
+        <span class="kid-row-name">${label}</span>
+        <span class="kid-row-grade">Parent</span>
+        ${remove}
+      </div>`;
+    }).join('');
+  }
+
+  // --- Co-parent invite (only while there's an open slot) ---
+  const inviteEl = document.getElementById('co-parent-invite');
+  if (inviteEl) {
+    const max = currentFamily.maxParents || 2;
+    const count = (currentFamily.parentIds || []).length;
+    if (count >= max) {
+      inviteEl.innerHTML = `<p class="text-muted">Both parents are set up. 🎉</p>`;
+    } else {
+      const code = esc(currentFamily.inviteCode || '');
+      inviteEl.innerHTML =
+        `<div class="invite-box">
+          <p style="margin:0 0 6px;font-weight:700">Invite the other parent</p>
+          <p class="text-muted" style="margin:0 0 12px">
+            Ask them to sign up at <strong>fametc.com</strong> and enter this family code.
+            They'll get their own passkey on their own device.
+          </p>
+          <div class="invite-code-row">
+            <code id="invite-code-value" class="invite-code">${code}</code>
+            <button type="button" class="btn-secondary" onclick="copyInviteCode()">Copy code</button>
+          </div>
+        </div>`;
+    }
+  }
+
+  // --- Kids ---
   const el = document.getElementById('manage-family-kids');
-  if (!el || !currentFamily) return;
-  const kids = currentFamily.kids || [];
-  el.innerHTML = kids.map((k) =>
-    `<div class="kid-row">
-      <span class="kid-row-swatch" style="background:${k.color}"></span>
-      <span class="kid-row-name">${esc(k.name)}</span>
-      <span class="kid-row-grade">${esc(k.grade || '')}</span>
-      <button class="kid-row-remove" onclick="handleRemoveKid('${k.id}')" title="Remove kid">×</button>
-    </div>`
-  ).join('') || '<p class="text-muted">No kids added yet.</p>';
-  const codeEl = document.getElementById('family-invite-code');
-  if (codeEl) codeEl.textContent = currentFamily.inviteCode || '';
+  if (el) {
+    const kids = currentFamily.kids || [];
+    el.innerHTML = kids.map((k) =>
+      `<div class="kid-row">
+        <span class="kid-row-swatch" style="background:${k.color}"></span>
+        <span class="kid-row-name">${esc(k.name)}</span>
+        <span class="kid-row-grade">${esc(k.grade || '')}</span>
+        <button class="kid-row-remove" onclick="handleRemoveKid('${k.id}')" title="Remove kid">×</button>
+      </div>`
+    ).join('') || '<p class="text-muted">No kids added yet.</p>';
+  }
+}
+
+function copyInviteCode() {
+  const code = currentFamily && currentFamily.inviteCode;
+  if (!code) return;
+  const done = () => toast('Invite code copied! 📋');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(done).catch(() => done());
+  } else {
+    const t = document.createElement('textarea');
+    t.value = code; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(t); done();
+  }
+}
+
+async function handleRemoveParent(userId) {
+  if (!currentFamily) return;
+  if (!confirm('Remove this co-parent from the family? They will lose access to the family chat and calendar.')) return;
+  try {
+    const res = await window.auth.removeMember(userId);
+    currentFamily = res.family;
+    save('fam_family', currentFamily);
+    renderManageFamily();
+    toast('Co-parent removed from the family.');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
 }
 
 /* ============================================================

@@ -747,6 +747,18 @@ body {
 }
 .kid-row-remove:hover { color: var(--red); background: var(--red-light); }
 
+/* Co-parent invite box */
+.invite-box {
+  background: var(--primary-light); border-radius: 14px; padding: 16px 18px;
+}
+.invite-code-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.invite-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px; font-weight: 800; letter-spacing: 3px;
+  color: var(--primary); background: #fff; border: 2px dashed var(--primary);
+  border-radius: 10px; padding: 8px 16px;
+}
+
 /* Static marketing/legal pages */
 .static-page {
   max-width: 720px; margin: 0 auto; padding: 40px 24px; line-height: 1.7;
