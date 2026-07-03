@@ -343,6 +343,31 @@
     });
   }
 
+  /* ---------- homework (Phase 3) ---------- */
+  async function getHomework(opts) {
+    const params = new URLSearchParams();
+    if (opts && opts.kidId) params.set("kidId", opts.kidId);
+    if (opts && opts.subject) params.set("subject", opts.subject);
+    const qs = params.toString() ? ("?" + params.toString()) : "";
+    const data = await api("/api/homework" + qs, { method: "GET" });
+    return (data && data.homework) || [];
+  }
+
+  async function addHomework(payload) {
+    return api("/api/homework", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function updateHomework(id, patch) {
+    return api("/api/homework/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteHomework(id) {
+    return api("/api/homework/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -380,5 +405,9 @@
     sendChatMessage,
     deleteChatMessage,
     flagChatMessage,
+    getHomework,
+    addHomework,
+    updateHomework,
+    deleteHomework,
   };
 })();

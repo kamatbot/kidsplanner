@@ -32,6 +32,7 @@ const analytics = require("./lib/analytics");
 const family = require("./lib/family");
 const chat = require("./lib/chat");
 const schoolFeeds = require("./lib/school-feeds");
+const homework = require("./lib/homework");
 const notifications = require("./lib/fam-notifications");
 const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
 
@@ -926,11 +927,106 @@ app.post("/api/calendar/sync", requireAuth, requireFamily, async (req, res) => {
   const force = !!(req.body && req.body.force) && userRole(req.user) !== "kid";
   try {
     const result = await schoolFeeds.syncFamily(req.family.id, { force });
+    // Phase 3: any deadline-flagged events from the sync become homework
+    // automatically. Idempotent via sourceUid (see lib/homework.js
+    // ingestDeadlines) — safe to call on every sync, throttled or not.
+    try {
+      const deadlineEvents = (result.events || []).filter((e) => e.isDeadline || e.type === "deadline");
+      homework.ingestDeadlines(req.family.id, deadlineEvents);
+    } catch (e) {
+      console.error("[homework] ingestDeadlines error:", e.message);
+      // Never fail the calendar sync response because homework ingestion hiccuped.
+    }
     res.json(result);
   } catch (e) {
     console.error("[calendar] sync error:", e.message);
     res.status(502).json({ error: "Could not sync school calendars right now. Please try again." });
   }
+});
+
+// ===================== HOMEWORK (Phase 3) =====================
+// Family/kid-scoped homework hub. Ownership is enforced here (never trusted
+// from the request body): a kid session may only list/add/edit/delete their
+// OWN homework (kidId derived from req.user.data.kid.kidId), a parent may
+// touch any homework in their family. See lib/homework.js canAccess().
+function kidIdForUser(req) {
+  return req.user && req.user.data && req.user.data.kid && req.user.data.kid.kidId;
+}
+
+app.get("/api/homework", requireAuth, requireFamily, (req, res) => {
+  const role = userRole(req.user);
+  let kidId = req.query.kidId ? String(req.query.kidId) : null;
+  if (role === "kid") {
+    // Kids can never list a sibling's homework, regardless of what ?kidId=
+    // was passed — force it to their own.
+    kidId = kidIdForUser(req);
+  }
+  const items = homework.listForFamily(req.family.id, { kidId, subject: req.query.subject });
+  res.json({ homework: items });
+});
+
+app.post("/api/homework", requireAuth, requireFamily, (req, res) => {
+  const role = userRole(req.user);
+  const body = req.body || {};
+  // A kid session may only add homework for THEMSELVES — kidId is derived
+  // server-side, never trusted from the body, for a kid. Parents may add for
+  // any kid in the family (the kidId they send is validated against the
+  // family's kid list inside addHomework()).
+  const kidId = role === "kid" ? kidIdForUser(req) : body.kidId;
+  if (role === "kid" && !kidId) return res.status(403).json({ error: "No kid profile linked to this session." });
+  const result = homework.addHomework(req.family.id, {
+    kidId,
+    title: body.title,
+    subject: body.subject,
+    dueDate: body.dueDate,
+    dueTime: body.dueTime,
+    effortMin: body.effortMin,
+    source: role === "kid" ? "manual" : (body.source || "manual"),
+    notes: body.notes,
+    checklist: body.checklist,
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ homework: result.homework });
+});
+
+app.patch("/api/homework/:id", requireAuth, requireFamily, (req, res) => {
+  const role = userRole(req.user);
+  const existing = homework.getById(req.family.id, req.params.id);
+  if (!existing) return res.status(404).json({ error: "Homework item not found." });
+  if (!homework.canAccess(req.user, role, req.family.id, existing)) {
+    return res.status(403).json({ error: "You don't have access to this homework item." });
+  }
+  const body = req.body || {};
+  const patch = {
+    status: body.status,
+    notes: body.notes,
+    checklist: body.checklist,
+  };
+  // Only a parent may edit the descriptive fields (title/subject/due date/
+  // effort) — a kid can update their own status/notes/checklist (the
+  // "complete it" workflow) but not rewrite what the assignment IS.
+  if (role !== "kid") {
+    if (body.title !== undefined) patch.title = body.title;
+    if (body.subject !== undefined) patch.subject = body.subject;
+    if (body.dueDate !== undefined) patch.dueDate = body.dueDate;
+    if (body.dueTime !== undefined) patch.dueTime = body.dueTime;
+    if (body.effortMin !== undefined) patch.effortMin = body.effortMin;
+  }
+  const result = homework.updateHomework(req.family.id, req.params.id, patch);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ homework: result.homework });
+});
+
+app.delete("/api/homework/:id", requireAuth, requireFamily, (req, res) => {
+  const role = userRole(req.user);
+  const existing = homework.getById(req.family.id, req.params.id);
+  if (!existing) return res.status(404).json({ error: "Homework item not found." });
+  if (!homework.canAccess(req.user, role, req.family.id, existing)) {
+    return res.status(403).json({ error: "You don't have access to this homework item." });
+  }
+  const result = homework.removeHomework(req.family.id, req.params.id);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
 });
 
 // ===================== PUSH: device token registration =====================

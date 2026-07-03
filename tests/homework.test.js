@@ -236,3 +236,87 @@ test("groupByDueDate: items with no dueDate fall into later", () => {
   const groups = homework.groupByDueDate([{ dueDate: null, status: "todo" }], "2026-07-03");
   assert.equal(groups.later.length, 1);
 });
+
+// ---------- route-level ownership enforcement ----------
+// Mirrors server.js's PATCH/DELETE /api/homework/:id guard: fetch the item,
+// canAccess() check, then only apply the mutation if it passes — exercised
+// directly against lib/homework.js + lib/store.js (same style as
+// tests/kid-login.test.js) so this doesn't need to boot the HTTP server.
+function userRole(user) {
+  return (user && user.data && user.data.profile && user.data.profile.role) || "parent";
+}
+
+test("route guard: a kid cannot modify another kid's homework (PATCH)", () => {
+  const parent = store.createUser("routeguard-p@example.com", "Route Guard Parent");
+  const fam = family.createFamily(parent.id, "Route Guard Family");
+  const { kid: kidA } = family.addKid(fam.id, parent.id, { name: "KidA" });
+  const { kid: kidB } = family.addKid(fam.id, parent.id, { name: "KidB" });
+  const { homework: itemB } = homework.addHomework(fam.id, { kidId: kidB.id, title: "KidB's homework", dueDate: "2026-08-01" });
+
+  const kidAUser = store.findOrCreateKidUser(fam.id, kidA.id, kidA.name);
+  assert.equal(userRole(kidAUser), "kid");
+
+  // Route logic: fetch existing, canAccess check BEFORE applying the patch.
+  const existing = homework.getById(fam.id, itemB.id);
+  const allowed = homework.canAccess(kidAUser, userRole(kidAUser), fam.id, existing);
+  assert.equal(allowed, false);
+  // Confirm the item is untouched (the route would 403 and never call updateHomework).
+  assert.equal(homework.getById(fam.id, itemB.id).title, "KidB's homework");
+});
+
+test("route guard: a kid CAN modify their own homework (PATCH)", () => {
+  const parent = store.createUser("routeguard2-p@example.com", "Route Guard Parent 2");
+  const fam = family.createFamily(parent.id, "Route Guard Family 2");
+  const { kid: kidA } = family.addKid(fam.id, parent.id, { name: "KidA2" });
+  const { homework: itemA } = homework.addHomework(fam.id, { kidId: kidA.id, title: "KidA2's homework", dueDate: "2026-08-01" });
+
+  const kidAUser = store.findOrCreateKidUser(fam.id, kidA.id, kidA.name);
+  const existing = homework.getById(fam.id, itemA.id);
+  const allowed = homework.canAccess(kidAUser, userRole(kidAUser), fam.id, existing);
+  assert.equal(allowed, true);
+
+  const result = homework.updateHomework(fam.id, itemA.id, { status: "done" });
+  assert.equal(result.homework.status, "done");
+});
+
+test("route guard: a kid cannot delete another kid's homework (DELETE)", () => {
+  const parent = store.createUser("routeguard3-p@example.com", "Route Guard Parent 3");
+  const fam = family.createFamily(parent.id, "Route Guard Family 3");
+  const { kid: kidA } = family.addKid(fam.id, parent.id, { name: "KidA3" });
+  const { kid: kidB } = family.addKid(fam.id, parent.id, { name: "KidB3" });
+  const { homework: itemB } = homework.addHomework(fam.id, { kidId: kidB.id, title: "X", dueDate: "2026-08-01" });
+
+  const kidAUser = store.findOrCreateKidUser(fam.id, kidA.id, kidA.name);
+  const existing = homework.getById(fam.id, itemB.id);
+  assert.equal(homework.canAccess(kidAUser, userRole(kidAUser), fam.id, existing), false);
+  // Route would 403 before calling removeHomework — item survives.
+  assert.ok(homework.getById(fam.id, itemB.id));
+});
+
+test("route guard: a kidId derived from the session cannot be overridden by request body", () => {
+  // Mirrors server.js POST /api/homework: for a kid session, kidId is always
+  // req.user.data.kid.kidId — a malicious body.kidId is never consulted.
+  const parent = store.createUser("routeguard4-p@example.com", "Route Guard Parent 4");
+  const fam = family.createFamily(parent.id, "Route Guard Family 4");
+  const { kid: kidA } = family.addKid(fam.id, parent.id, { name: "KidA4" });
+  const { kid: kidB } = family.addKid(fam.id, parent.id, { name: "KidB4" });
+  const kidAUser = store.findOrCreateKidUser(fam.id, kidA.id, kidA.name);
+
+  // Simulate the route: role is kid, so kidId comes from the session, NOT
+  // from an attacker-supplied body.kidId of kidB.id.
+  const role = userRole(kidAUser);
+  const sessionKidId = kidAUser.data.kid.kidId;
+  const bodyKidId = kidB.id; // attacker-supplied, must be ignored
+  const kidIdUsed = role === "kid" ? sessionKidId : bodyKidId;
+  const result = homework.addHomework(fam.id, { kidId: kidIdUsed, title: "Sneaky", dueDate: "2026-08-01" });
+  assert.equal(result.homework.kidId, kidA.id);
+  assert.notEqual(result.homework.kidId, kidB.id);
+});
+
+test("route guard: a parent can modify any kid's homework", () => {
+  const parent = store.createUser("routeguard5-p@example.com", "Route Guard Parent 5");
+  const fam = family.createFamily(parent.id, "Route Guard Family 5");
+  const { kid } = family.addKid(fam.id, parent.id, { name: "KidA5" });
+  const { homework: item } = homework.addHomework(fam.id, { kidId: kid.id, title: "X", dueDate: "2026-08-01" });
+  assert.equal(homework.canAccess(parent, "parent", fam.id, homework.getById(fam.id, item.id)), true);
+});
