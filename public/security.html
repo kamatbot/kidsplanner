@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security &amp; Passkeys — Fam ETC</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+        <span class="app-logo">🗂️</span>
+        <span class="app-name">Fam ETC</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <a href="/" style="color:var(--primary);font-weight:800;text-decoration:none">← Back to app</a>
+    </div>
+  </header>
+
+  <main class="static-page">
+    <h1>Security &amp; Passkeys</h1>
+
+    <section class="card" style="margin:20px 0;padding:24px">
+      <h3 style="margin-bottom:14px">Your passkeys</h3>
+      <div id="credentials-list"></div>
+      <form id="add-passkey-form" style="margin-top:18px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="form-group" style="margin:0;flex:1;min-width:180px">
+          <label>Label (optional)</label>
+          <input type="text" id="new-passkey-label" placeholder="My laptop">
+        </div>
+        <button type="submit" class="btn-primary">+ Add a passkey</button>
+      </form>
+      <div id="passkey-error" class="error-msg"></div>
+    </section>
+
+    <section class="card" style="margin:20px 0;padding:24px">
+      <h3 style="margin-bottom:14px">Backup codes</h3>
+      <p class="text-muted" style="margin-bottom:14px">Backup codes let you sign in if you lose access to all your passkeys. Regenerating replaces any existing codes.</p>
+      <button class="btn-secondary" id="regen-backup-btn" onclick="handleRegenerateBackupCodes()">Regenerate backup codes</button>
+      <div id="backup-codes-output" style="margin-top:14px"></div>
+    </section>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function renderCredentials() {
+      const list = document.getElementById('credentials-list');
+      try {
+        const creds = await window.auth.getCredentials();
+        if (!creds.length) {
+          list.innerHTML = '<p class="text-muted">No passkeys yet.</p>';
+          return;
+        }
+        list.innerHTML = creds.map((c) => `
+          <div class="upload-item" style="justify-content:space-between">
+            <span>🔑</span>
+            <span class="upload-item-name" style="cursor:default">${esc(c.name)} ${c.lastUsed ? '· last used ' + esc(new Date(c.lastUsed).toLocaleDateString()) : ''}</span>
+            <button class="upload-delete-btn" style="opacity:1" onclick="handleRemoveCredential('${c.id}')" title="Remove passkey">×</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        list.innerHTML = `<p class="error-msg">${esc(err.message)}</p>`;
+      }
+    }
+
+    async function handleRemoveCredential(id) {
+      try {
+        await window.auth.removeCredential(id);
+        renderCredentials();
+      } catch (err) {
+        document.getElementById('passkey-error').textContent = err.message;
+      }
+    }
+
+    document.getElementById('add-passkey-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const label = document.getElementById('new-passkey-label').value.trim();
+      const errEl = document.getElementById('passkey-error');
+      errEl.textContent = '';
+      try {
+        await window.auth.registerAdditionalPasskey(label);
+        document.getElementById('new-passkey-label').value = '';
+        renderCredentials();
+      } catch (err) {
+        errEl.textContent = err.message;
+      }
+    });
+
+    async function handleRegenerateBackupCodes() {
+      const out = document.getElementById('backup-codes-output');
+      try {
+        const res = await window.auth.regenerateBackupCodes();
+        const codes = (res && res.backupCodes) || [];
+        out.innerHTML = `<p style="font-weight:800;margin-bottom:8px">Save these codes somewhere safe — shown once:</p>
+          <pre style="background:var(--bg);padding:14px;border-radius:var(--radius-sm);font-weight:700">${codes.map(esc).join('\n')}</pre>`;
+      } catch (err) {
+        out.innerHTML = `<p class="error-msg">${esc(err.message)}</p>`;
+      }
+    }
+
+    renderCredentials();
+  </script>
+</body>
+</html>

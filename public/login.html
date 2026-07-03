@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — Fam ETC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<div class="auth-bg">
+  <div class="auth-blob auth-blob-1"></div>
+  <div class="auth-blob auth-blob-2"></div>
+  <div class="auth-blob auth-blob-3"></div>
+</div>
+<div class="auth-container">
+  <div class="auth-hero">
+    <div class="auth-logo">🗂️</div>
+    <h1 class="auth-title">Fam ETC</h1>
+    <p class="auth-subtitle">Welcome back!</p>
+  </div>
+  <div class="auth-card">
+
+    <!-- Passkey sign-in -->
+    <form id="login-form">
+      <div id="login-error" class="error-msg"></div>
+      <button type="submit" class="btn-primary full-width" id="login-submit">Sign in with passkey 🔑</button>
+    </form>
+
+    <button type="button" class="btn-secondary full-width" style="margin-top:12px" onclick="toggleBackup()">Use a backup code instead</button>
+
+    <!-- Backup code recovery -->
+    <form id="backup-form" style="display:none;margin-top:16px">
+      <div class="form-group">
+        <label>Backup code</label>
+        <input type="text" id="backup-code" placeholder="xxxx-xxxx-xxxx" required autocomplete="one-time-code">
+      </div>
+      <div id="backup-error" class="error-msg"></div>
+      <button type="submit" class="btn-primary full-width">Sign in with backup code</button>
+    </form>
+
+    <p class="demo-hint">Don't have an account? <a href="/signup" style="color:var(--primary);font-weight:800">Sign up</a></p>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+<script src="/js/auth.js"></script>
+<script>
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+function toggleBackup() {
+  const form = document.getElementById('backup-form');
+  form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-submit');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    await window.auth.signIn();
+    window.location.href = '/';
+  } catch (err) {
+    errEl.textContent = err.message || 'Sign-in failed. Please try again.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('backup-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('backup-error');
+  const code = document.getElementById('backup-code').value.trim();
+  errEl.textContent = '';
+  try {
+    await window.auth.backupCodeSignIn(code);
+    window.location.href = '/';
+  } catch (err) {
+    errEl.textContent = err.message || 'That code did not work.';
+  }
+});
+
+// If already signed in, skip straight to the app.
+(async () => {
+  try {
+    const me = await window.auth.getMe();
+    if (me && me.user) window.location.href = '/';
+  } catch (e) { /* not signed in — stay on this page */ }
+})();
+</script>
+</body>
+</html>

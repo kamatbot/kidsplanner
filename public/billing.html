@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing — Fam ETC</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+        <span class="app-logo">🗂️</span>
+        <span class="app-name">Fam ETC</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <a href="/" style="color:var(--primary);font-weight:800;text-decoration:none">← Back to app</a>
+    </div>
+  </header>
+
+  <main class="static-page">
+    <h1>Billing</h1>
+
+    <section class="card" style="margin:20px 0;padding:24px;max-width:480px">
+      <div id="billing-status">
+        <p class="text-muted">Loading billing status…</p>
+      </div>
+      <div id="billing-actions" style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap"></div>
+      <div id="billing-error" class="error-msg"></div>
+    </section>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function loadBillingStatus() {
+      const statusEl = document.getElementById('billing-status');
+      const actionsEl = document.getElementById('billing-actions');
+      try {
+        const status = await window.auth.getBillingStatus();
+        const plan = status.lifetime ? 'lifetime' : (status.status || 'none');
+        const trialEndsAt = status.trialEndsAt ? new Date(status.trialEndsAt).toLocaleDateString() : null;
+        statusEl.innerHTML = `
+          <p><strong>Plan:</strong> ${esc(plan)}</p>
+          ${status.onFreeTrial ? `<p class="text-muted">Free trial — ${esc(status.trialDaysLeft)} day(s) left${trialEndsAt ? ' (ends ' + esc(trialEndsAt) + ')' : ''}</p>` : ''}
+        `;
+        actionsEl.innerHTML = '';
+        if (status.hasPaidPlan) {
+          const btn = document.createElement('button');
+          btn.className = 'btn-secondary';
+          btn.textContent = 'Manage billing';
+          btn.onclick = handleManageBilling;
+          actionsEl.appendChild(btn);
+        } else {
+          const btn = document.createElement('button');
+          btn.className = 'btn-primary';
+          btn.textContent = 'Start plan';
+          btn.onclick = handleStartCheckout;
+          actionsEl.appendChild(btn);
+        }
+      } catch (err) {
+        statusEl.innerHTML = `<p class="error-msg">${esc(err.message)}</p>`;
+      }
+    }
+
+    async function handleStartCheckout() {
+      const errEl = document.getElementById('billing-error');
+      errEl.textContent = '';
+      try {
+        const res = await window.auth.startCheckout('annual');
+        if (res && res.url) window.location.href = res.url;
+      } catch (err) {
+        errEl.textContent = err.message;
+      }
+    }
+
+    async function handleManageBilling() {
+      const errEl = document.getElementById('billing-error');
+      errEl.textContent = '';
+      try {
+        const res = await window.auth.openBillingPortal();
+        if (res && res.url) window.location.href = res.url;
+      } catch (err) {
+        errEl.textContent = err.message;
+      }
+    }
+
+    loadBillingStatus();
+  </script>
+</body>
+</html>

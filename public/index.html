@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fam ETC — Family Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- PDF.js for rendering PDF uploads to images for AI parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Developer API key config — never shown to users. See app.js TODO(security)
+       for the known client-exposed-key issue this depends on. -->
+  <script src="/config.js" onerror="void 0"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     FIRST-RUN: CREATE OR JOIN A FAMILY (shown until a family exists)
+═══════════════════════════════════════════════════════════ -->
+<div id="first-run-panel" class="modal-overlay" style="display:none">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>👋 Welcome to Fam ETC!</h3>
+    </div>
+    <p style="margin-bottom:16px;color:var(--text-muted);font-weight:600">Create your family, or join one with an invite code from your co-parent.</p>
+
+    <form id="first-run-create-form" style="margin-bottom:20px">
+      <div class="form-group">
+        <label>Family name</label>
+        <input type="text" id="first-run-family-name" placeholder="The Johnsons" required>
+      </div>
+      <button type="submit" class="btn-primary full-width">Create our family 🏠</button>
+    </form>
+
+    <hr class="dropdown-divider">
+
+    <form id="first-run-join-form" style="margin-top:20px">
+      <div class="form-group">
+        <label>Invite code</label>
+        <input type="text" id="first-run-join-code" placeholder="ABC123" required>
+      </div>
+      <button type="submit" class="btn-secondary full-width">Join with a code</button>
+    </form>
+
+    <div id="first-run-error" class="error-msg" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP SHELL
+═══════════════════════════════════════════════════════════ -->
+<div id="dashboard-screen" class="screen active">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="app-logo">🗂️</span>
+      <span class="app-name">Fam ETC</span>
+    </div>
+    <div class="header-center">
+      <span id="header-greeting" class="header-greeting"></span>
+    </div>
+    <div class="header-right">
+      <span id="header-date" class="header-date"></span>
+      <div class="user-menu">
+        <div class="user-avatar" id="user-avatar" tabindex="0"></div>
+        <div class="user-dropdown" id="user-dropdown">
+          <div class="dropdown-name" id="user-name-display"></div>
+          <hr class="dropdown-divider">
+          <a class="dropdown-item" href="/security" style="display:block;text-decoration:none;color:inherit">🔐 Security &amp; passkeys</a>
+          <a class="dropdown-item" href="/billing" style="display:block;text-decoration:none;color:inherit">💳 Billing</a>
+          <button class="dropdown-item logout-item" onclick="handleLogout()">🚪 Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Kid switcher -->
+  <div class="kid-switcher-bar">
+    <div id="kid-switcher" class="kid-switcher"></div>
+  </div>
+
+  <!-- Nav tabs -->
+  <nav class="nav-tabs">
+    <button class="nav-tab active" data-tab="calendar" onclick="switchNavTab('calendar')">📅 Calendar</button>
+    <button class="nav-tab" data-tab="homework" onclick="switchNavTab('homework')">📚 Homework</button>
+    <button class="nav-tab" data-tab="goals" onclick="switchNavTab('goals')">🎯 Goals</button>
+    <button class="nav-tab" data-tab="activities" onclick="switchNavTab('activities')">⚽ Activities</button>
+    <button class="nav-tab" data-tab="settings" onclick="switchNavTab('settings')">⚙️ Settings</button>
+  </nav>
+
+  <!-- App Body -->
+  <div class="app-layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Mini Calendar -->
+      <div class="card mini-calendar-card">
+        <div class="mini-cal-header">
+          <button class="mini-nav" onclick="miniCalPrev()" aria-label="Previous month">‹</button>
+          <span id="mini-cal-month" class="mini-cal-title"></span>
+          <button class="mini-nav" onclick="miniCalNext()" aria-label="Next month">›</button>
+        </div>
+        <div class="mini-cal-grid" id="mini-cal-grid"></div>
+      </div>
+
+      <!-- Upload Button -->
+      <button class="btn-upload" onclick="openUploadModal()">📎 Upload Schedule</button>
+
+      <!-- Uploaded Schedules List -->
+      <div id="uploads-list" class="uploads-list"></div>
+
+      <!-- Streak -->
+      <div class="card streak-card">
+        <div class="streak-icon">🔥</div>
+        <div class="streak-count" id="streak-count">0</div>
+        <div class="streak-label">Day Streak!</div>
+        <div class="streak-sublabel">Answer daily quiz to build your streak</div>
+      </div>
+
+    </aside>
+
+    <!-- Main -->
+    <main class="main-content">
+
+      <!-- Calendar Tab -->
+      <div class="tab-panel active" id="tab-calendar">
+        <section class="card calendar-section">
+          <div class="cal-header">
+            <div class="cal-nav">
+              <button class="cal-nav-btn" onclick="calPrev()" aria-label="Previous">‹</button>
+              <h3 id="cal-title" class="cal-title"></h3>
+              <button class="cal-nav-btn" onclick="calNext()" aria-label="Next">›</button>
+            </div>
+            <div class="cal-controls">
+              <div class="cal-view-btns">
+                <button class="view-btn active" id="btn-week" onclick="setCalView('week')">Week</button>
+                <button class="view-btn" id="btn-month" onclick="setCalView('month')">Month</button>
+              </div>
+              <button class="btn-add-event" onclick="openAddEventModal()">+ Add Event</button>
+            </div>
+          </div>
+          <div id="calendar-grid" class="calendar-grid"></div>
+        </section>
+
+        <!-- Widgets Grid -->
+        <section class="widgets-grid">
+
+          <!-- Quote of the Day -->
+          <div class="widget card widget-quote">
+            <div class="widget-header">
+              <span class="widget-icon">💬</span>
+              <span class="widget-label">Quote of the Day</span>
+            </div>
+            <blockquote class="quote-text" id="quote-text"></blockquote>
+            <cite class="quote-author" id="quote-author"></cite>
+          </div>
+
+          <!-- SAT Word -->
+          <div class="widget card widget-word">
+            <div class="widget-header">
+              <span class="widget-icon">📖</span>
+              <span class="widget-label">SAT Word of the Day</span>
+            </div>
+            <div class="sat-word" id="sat-word"></div>
+            <div class="sat-pos" id="sat-pos"></div>
+            <div class="sat-def" id="sat-def"></div>
+            <div class="sat-example" id="sat-example"></div>
+          </div>
+
+          <!-- Science/History Fact -->
+          <div class="widget card widget-fact">
+            <div class="widget-header">
+              <span class="widget-icon" id="fact-icon">🔬</span>
+              <span class="widget-label" id="fact-label">Science Fact</span>
+            </div>
+            <div class="fact-text" id="fact-text"></div>
+          </div>
+
+          <!-- Interesting News -->
+          <div class="widget card widget-news">
+            <div class="widget-header">
+              <span class="widget-icon">📰</span>
+              <span class="widget-label">Interesting News</span>
+            </div>
+            <span class="news-badge" id="news-badge"></span>
+            <div class="news-headline" id="news-headline"></div>
+            <div class="news-summary" id="news-summary"></div>
+          </div>
+
+          <!-- General Knowledge Quiz -->
+          <div class="widget card widget-quiz">
+            <div class="widget-header">
+              <span class="widget-icon">🧠</span>
+              <span class="widget-label">Daily Brain Teaser</span>
+            </div>
+            <div class="quiz-question" id="quiz-question"></div>
+            <div class="quiz-options" id="quiz-options"></div>
+            <div class="quiz-feedback" id="quiz-feedback"></div>
+            <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
+          </div>
+
+        </section>
+      </div>
+
+      <!-- Homework Tab (Phase 3 — placeholder) -->
+      <div class="tab-panel" id="tab-homework">
+        <section class="card">
+          <h3>📚 Homework</h3>
+          <p class="text-muted">Homework hub is coming in a future update — see FEATURE_PLAN.md Phase 3.</p>
+        </section>
+      </div>
+
+      <!-- Goals Tab (Phase 5 — placeholder) -->
+      <div class="tab-panel" id="tab-goals">
+        <section class="card">
+          <h3>🎯 Goals</h3>
+          <p class="text-muted">Goals &amp; streaks are coming in a future update — see FEATURE_PLAN.md Phase 5.</p>
+        </section>
+      </div>
+
+      <!-- Activities Tab (Phase 4 — placeholder) -->
+      <div class="tab-panel" id="tab-activities">
+        <section class="card">
+          <h3>⚽ Activities</h3>
+          <p class="text-muted">Extracurricular activities are coming in a future update — see FEATURE_PLAN.md Phase 4.</p>
+        </section>
+      </div>
+
+      <!-- Settings Tab: Manage Family -->
+      <div class="tab-panel" id="tab-settings">
+        <section class="card">
+          <h3>⚙️ Manage Family</h3>
+          <p class="text-muted" style="margin:8px 0 16px">Family invite code: <strong id="family-invite-code"></strong></p>
+
+          <div id="manage-family-kids" style="margin-bottom:24px"></div>
+
+          <h4 style="margin-bottom:10px">Add a kid profile</h4>
+          <form id="add-kid-form" onsubmit="handleAddKid(event)">
+            <div class="form-group">
+              <label>Name</label>
+              <input type="text" id="kid-name" placeholder="Maya" required>
+            </div>
+            <div class="form-group">
+              <label>Grade</label>
+              <select id="kid-grade">
+                <option value="">Select grade…</option>
+                <option>Kindergarten</option>
+                <option>1st Grade</option><option>2nd Grade</option><option>3rd Grade</option>
+                <option>4th Grade</option><option>5th Grade</option><option>6th Grade</option>
+                <option>7th Grade</option><option>8th Grade</option><option>9th Grade</option>
+                <option>10th Grade</option><option>11th Grade</option><option>12th Grade</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Color</label>
+              <div class="category-picker" id="kid-color-picker">
+                <label class="cat-opt"><input type="radio" name="kid-color" value="#6C63FF" checked><span class="cat-chip" style="background:#EDE9FF;color:#6C63FF">●</span></label>
+                <label class="cat-opt"><input type="radio" name="kid-color" value="#FF6B9D"><span class="cat-chip" style="background:#FFE4EF;color:#FF6B9D">●</span></label>
+                <label class="cat-opt"><input type="radio" name="kid-color" value="#4ECDC4"><span class="cat-chip" style="background:#E0F7F6;color:#4ECDC4">●</span></label>
+                <label class="cat-opt"><input type="radio" name="kid-color" value="#FFB84C"><span class="cat-chip" style="background:#FFF3E0;color:#FFB84C">●</span></label>
+                <label class="cat-opt"><input type="radio" name="kid-color" value="#5AC8FA"><span class="cat-chip" style="background:#E3F6FF;color:#5AC8FA">●</span></label>
+                <label class="cat-opt"><input type="radio" name="kid-color" value="#FF7A7A"><span class="cat-chip" style="background:#FFEDED;color:#FF7A7A">●</span></label>
+              </div>
+            </div>
+            <div id="kid-form-error" class="error-msg"></div>
+            <button type="submit" class="btn-primary">Add kid 👋</button>
+          </form>
+        </section>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════════════════════ -->
+
+<!-- Add Event Modal -->
+<div id="add-event-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-event-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>✏️ Add New Event</h3>
+      <button class="modal-close" onclick="closeModal('add-event-modal')">×</button>
+    </div>
+    <form onsubmit="saveEvent(event)">
+      <div class="form-group">
+        <label>Event Title *</label>
+        <input type="text" id="event-title" placeholder="Math homework, Soccer practice…" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="event-date" required>
+        </div>
+        <div class="form-group">
+          <label>Start Time</label>
+          <input type="time" id="event-time">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>End Time</label>
+        <input type="time" id="event-end-time">
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <div class="category-picker">
+          <label class="cat-opt"><input type="radio" name="cat" value="school" checked><span class="cat-chip school">🏫 School</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="sports"><span class="cat-chip sports">⚽ Sports</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="arts"><span class="cat-chip arts">🎨 Arts</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="social"><span class="cat-chip social">👫 Social</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="other"><span class="cat-chip other">⭐ Other</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="event-notes" placeholder="Any extra details…" rows="2"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-event-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save Event 🎯</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Upload Schedule Modal -->
+<div id="upload-modal" class="modal-overlay" onclick="closeModalOnBg(event,'upload-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📎 Upload Schedule</h3>
+      <button class="modal-close" onclick="closeModal('upload-modal')">×</button>
+    </div>
+    <div class="upload-zone" id="upload-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="handleDragOver(event)"
+         ondragleave="handleDragLeave(event)"
+         ondrop="handleDrop(event)">
+      <div class="upload-icon">📄</div>
+      <p class="upload-text">Click or drag &amp; drop your schedule here</p>
+      <p class="upload-hint">Supports PDF, JPG, PNG</p>
+      <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleFileSelect(event)">
+    </div>
+    <div id="upload-preview" class="upload-preview" style="display:none">
+      <div class="preview-header">
+        <span id="preview-filename" class="preview-fname"></span>
+        <button class="btn-link-danger" onclick="clearUpload()">Remove</button>
+      </div>
+      <div id="preview-content" class="preview-content"></div>
+    </div>
+    <!-- AI parse status (auto-shown when file selected) -->
+    <div id="ai-parse-section" class="ai-parse-section" style="display:none">
+      <div class="ai-parse-status" id="ai-parse-status">
+        <span class="ai-spinner" id="ai-spinner">⏳</span>
+        <span id="ai-status-text">Parsing schedule with AI…</span>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:16px">
+      <label>Schedule Name</label>
+      <input type="text" id="schedule-name" placeholder="e.g. Spring Semester 2026">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('upload-modal')">Cancel</button>
+      <button type="button" class="btn-primary" onclick="saveSchedule()">Save Schedule 📚</button>
+    </div>
+  </div>
+</div>
+
+<!-- Event Detail Modal -->
+<div id="event-detail-modal" class="modal-overlay" onclick="closeModalOnBg(event,'event-detail-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="detail-category-badge" id="detail-badge"></div>
+      <button class="modal-close" onclick="closeModal('event-detail-modal')">×</button>
+    </div>
+    <h3 class="detail-title" id="detail-title"></h3>
+    <div class="detail-rows">
+      <div class="detail-row"><span class="detail-icon">📅</span><span id="detail-date"></span></div>
+      <div class="detail-row"><span class="detail-icon">⏰</span><span id="detail-time"></span></div>
+      <div class="detail-row" id="detail-notes-row"><span class="detail-icon">📝</span><span id="detail-notes"></span></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('event-detail-modal')">Close</button>
+      <button type="button" class="btn-danger" id="btn-delete-event" onclick="deleteCurrentEvent()" style="display:none">Delete 🗑️</button>
+    </div>
+  </div>
+</div>
+
+<!-- View Schedule Modal -->
+<div id="view-schedule-modal" class="modal-overlay" onclick="closeModalOnBg(event,'view-schedule-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3 id="view-schedule-title">📋 My Schedule</h3>
+      <button class="modal-close" onclick="closeModal('view-schedule-modal')">×</button>
+    </div>
+    <div id="view-schedule-content" class="preview-content"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('view-schedule-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Parse Review Modal -->
+<div id="parse-modal" class="modal-overlay" onclick="closeModalOnBg(event,'parse-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📅 Review Parsed Schedule</h3>
+      <button class="modal-close" onclick="closeModal('parse-modal')">×</button>
+    </div>
+    <p class="parse-intro">Review the classes below. Edit times or categories, then choose which week(s) to add them to.</p>
+
+    <div class="parse-week-row">
+      <div class="form-group" style="margin:0;flex:1">
+        <label>Apply to week starting (Monday)</label>
+        <input type="date" id="parse-week-date">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Repeat for</label>
+        <select id="parse-repeat" onchange="updateParseSummary()">
+          <option value="1">1 week only</option>
+          <option value="4">4 weeks</option>
+          <option value="8">8 weeks</option>
+          <option value="12">12 weeks (semester)</option>
+          <option value="18">18 weeks</option>
+          <option value="36">36 weeks (full year)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="parse-table-wrap">
+      <table class="parse-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="parse-check-all" onchange="toggleAllParsed(this.checked)" checked title="Select all"></th>
+            <th>Day</th>
+            <th>Subject</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Teacher / Room</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody id="parse-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="parse-summary" id="parse-summary"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('parse-modal')">Cancel</button>
+      <button type="button" class="btn-primary" onclick="applyParsedSchedule()">Add to Calendar 🗓️</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+<script src="/js/auth.js"></script>
+<script src="/js/app.js"></script>
+<script>
+  document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);
+  document.getElementById('first-run-join-form').addEventListener('submit', handleJoinFamily);
+</script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign up — Fam ETC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<div class="auth-bg">
+  <div class="auth-blob auth-blob-1"></div>
+  <div class="auth-blob auth-blob-2"></div>
+  <div class="auth-blob auth-blob-3"></div>
+</div>
+<div class="auth-container">
+  <div class="auth-hero">
+    <div class="auth-logo">🗂️</div>
+    <h1 class="auth-title">Fam ETC</h1>
+    <p class="auth-subtitle">Create your family's hub. Free for 30 days, no card required.</p>
+  </div>
+  <div class="auth-card">
+
+    <!-- Parent-only signup — no role picker, no kid path. -->
+    <form id="signup-form">
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" id="signup-name" placeholder="Alex Johnson" required autocomplete="name">
+      </div>
+      <div id="signup-error" class="error-msg"></div>
+      <button type="submit" class="btn-primary full-width" id="signup-submit">Create your passkey 🎉</button>
+      <p class="demo-hint">You'll be asked to create a passkey (Face ID / Touch ID / device PIN) — no password needed. This account is for parents; you'll add kid profiles once you're in.</p>
+    </form>
+
+    <p class="demo-hint">Already have an account? <a href="/login" style="color:var(--primary);font-weight:800">Sign in</a></p>
+  </div>
+</div>
+
+<script src="/js/auth.js"></script>
+<script>
+document.getElementById('signup-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('signup-error');
+  const btn = document.getElementById('signup-submit');
+  const name = document.getElementById('signup-name').value.trim();
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    await window.auth.signUp(name);
+    window.location.href = '/';
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not create your account. Please try again.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// If already signed in, skip straight to the app.
+(async () => {
+  try {
+    const me = await window.auth.getMe();
+    if (me && me.user) window.location.href = '/';
+  } catch (e) { /* not signed in — stay on this page */ }
+})();
+</script>
+</body>
+</html>
