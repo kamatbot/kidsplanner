@@ -180,6 +180,10 @@ async function findFamEtcTab() {
 async function importIntoTab(tabId, payload) {
   const [{ result } = {}] = await chrome.scripting.executeScript({
     target: { tabId },
+    // MUST run in the page's MAIN world — the default "isolated" world shares
+    // the DOM but NOT the page's window globals, so window.famImportSchoolData
+    // (defined by the page's app.js) is only visible here in MAIN.
+    world: "MAIN",
     func: (data) => {
       if (typeof window.famImportSchoolData !== "function") {
         return { error: "NOT_LOADED" };
