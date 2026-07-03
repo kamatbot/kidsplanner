@@ -591,6 +591,12 @@ function showDashboard() {
   renderUploads();
   renderStreak();
   renderManageFamily();
+
+  // Chat is a core part of the dashboard (not a separate tab) — load + poll
+  // it as soon as the dashboard is shown. switchNavTab() takes over the
+  // start/stop lifecycle from here on as the user navigates between tabs.
+  loadChatMessages();
+  startChatPolling();
 }
 
 /* ============================================================
@@ -1311,9 +1317,11 @@ function closeModalOnBg(e, id) {
 /* ============================================================
    CHAT
    Poll-based (GET /api/chat/messages?since=) rather than WebSocket for this
-   scaffold — see lib/chat.js. Polling only runs while the chat tab is the
-   active panel; switching away stops it so background tabs don't hammer
-   the API. Parent-only controls (delete/flag) are still backend-enforced
+   scaffold — see lib/chat.js. Chat lives on the dashboard (Calendar tab),
+   not a separate tab — polling runs while the dashboard is the active panel
+   and stops the moment the user switches to another tab (Homework/Goals/
+   Activities/Settings), so it doesn't poll needlessly in the background.
+   Parent-only controls (delete/flag) are still backend-enforced
    (requireParent) — the UI just doesn't offer delete to a kid session.
 ============================================================ */
 function kidColorFor(kidProfileId) {
@@ -1469,7 +1477,12 @@ async function handleFlagChatMessage(id) {
 }
 
 /* ============================================================
-   NAV TABS (Calendar / Chat / Homework / Goals / Activities / Settings)
+   NAV TABS (Calendar[=Dashboard] / Homework / Goals / Activities / Settings)
+   Chat is not a tab — it's a persistent part of the Calendar/dashboard panel
+   (see index.html .dashboard-chat). Its poll lifecycle is tied to the
+   dashboard tab being visible: polling starts when the user is on the
+   dashboard and stops the moment they switch to any other tab, so it never
+   polls needlessly in the background.
 ============================================================ */
 function switchNavTab(tab) {
   document.querySelectorAll('.nav-tab').forEach((t) => {
@@ -1480,7 +1493,7 @@ function switchNavTab(tab) {
   });
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'settings') renderManageFamily();
-  if (tab === 'chat') {
+  if (tab === 'calendar') {
     loadChatMessages();
     startChatPolling();
   } else {
