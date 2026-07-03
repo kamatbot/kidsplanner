@@ -20,6 +20,7 @@ npm-debug.log*
 
 # Build artifacts
 *.zip
+build-info.json
 ios/build/
 ios/DerivedData/
 

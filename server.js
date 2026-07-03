@@ -185,6 +185,20 @@ const BUILD = (() => {
   }
 })();
 
+// Human-readable, timestamped build label so any given deploy is identifiable
+// in the startup log and at /api/health (e.g. "20260703-1547Z-6e4b7d8"). It is
+// written into build-info.json at package/deploy time (see the deploy step);
+// falls back to the content hash when the file is absent (e.g. local dev). This
+// is what lets us say "what went wrong with which build".
+const BUILD_INFO = (() => {
+  try {
+    const info = JSON.parse(fs.readFileSync(path.join(__dirname, "build-info.json"), "utf8"));
+    return { label: info.label || BUILD, builtAt: info.builtAt || null, commit: info.commit || null };
+  } catch (e) {
+    return { label: BUILD, builtAt: null, commit: null };
+  }
+})();
+
 const SESSION_SECRET = process.env.SESSION_SECRET;
 const IS_PROD = process.env.NODE_ENV === "production" || !!SESSION_SECRET;
 if (IS_PROD && !SESSION_SECRET) {
@@ -430,6 +444,10 @@ app.get("/api/health", (req, res) => {
   res.set("Cache-Control", "no-store");
   res.json({
     ok: true,
+    build: BUILD_INFO.label,
+    builtAt: BUILD_INFO.builtAt,
+    commit: BUILD_INFO.commit,
+    assetHash: BUILD,
     encryption: {
       keyConfigured: !!(process.env.DATA_ENCRYPTION_KEY || "").trim(),
       atRestEncrypted: db.isFileEncrypted(),
@@ -1370,7 +1388,7 @@ app.get(["/app", "/app/*", "/goals", "/activities", "/settings"], requireAuth, (
 
 const listenTarget = process.env.SOCKET_PATH || PORT;
 const server = app.listen(listenTarget, () => {
-  console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD})`);
+  console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD_INFO.label}${BUILD_INFO.builtAt ? " @ " + BUILD_INFO.builtAt : ""}, assets ${BUILD})`);
 });
 
 // Tests require this module directly and need the bound `server` (e.g. to
