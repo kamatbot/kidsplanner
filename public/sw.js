@@ -32,7 +32,17 @@ self.addEventListener('push', (event) => {
     data: data.data || { url: '/' },
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  // Show the notification AND immediately nudge any open app tab to refresh,
+  // so a chat message renders in the open window with ~no lag instead of
+  // waiting for the next poll tick.
+  event.waitUntil((async () => {
+    await self.registration.showNotification(title, options);
+    try {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const famType = (data.data && data.data.famType) || null;
+      for (const c of clients) c.postMessage({ type: 'fam-push', famType });
+    } catch (e) { /* best-effort */ }
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {

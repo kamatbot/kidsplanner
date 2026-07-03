@@ -204,7 +204,7 @@ let uploadedFile    = null;
 let chatMessages    = [];     // messages currently rendered, oldest-first
 let chatLastAt      = null;   // createdAt cursor for polling ?since=
 let chatPollTimer   = null;
-const CHAT_POLL_MS  = 4000;
+const CHAT_POLL_MS  = 2000;
 
 /* School calendar (Phase 2) — server-sourced, read-only events merged
    alongside localStorage manual events for display. Never written to
@@ -1909,10 +1909,29 @@ async function pollChatMessages() {
 function startChatPolling() {
   stopChatPolling();
   chatPollTimer = setInterval(pollChatMessages, CHAT_POLL_MS);
+  setupChatRealtimeNudges();
 }
 
 function stopChatPolling() {
   if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+}
+
+// Instant-refresh triggers so a new message renders with ~no lag instead of
+// waiting for the poll tick: (a) the service worker posts 'fam-push' the moment
+// a chat push arrives; (b) the tab regaining focus/visibility. Both only poll
+// while chat is actually active (chatPollTimer set). Registered once.
+let chatNudgesReady = false;
+function setupChatRealtimeNudges() {
+  if (chatNudgesReady) return;
+  chatNudgesReady = true;
+  const nudge = () => { if (chatPollTimer) pollChatMessages(); };
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'fam-push') nudge();
+    });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) nudge(); });
+  window.addEventListener('focus', nudge);
 }
 
 async function handleSendChatMessage(e) {
