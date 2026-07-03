@@ -206,6 +206,19 @@ let chatLastAt      = null;   // createdAt cursor for polling ?since=
 let chatPollTimer   = null;
 const CHAT_POLL_MS  = 2000;
 
+/* Chat: emoji + GIF pickers (see CHAT PICKERS section near the bottom) */
+const CHAT_EMOJI_LIST = [
+  '😀','😁','😂','🤣','😊','😍','😘','😜','🤪','😎',
+  '🥳','🤩','😇','🙂','😉','😢','😭','😱','😡','🤔',
+  '🙄','😴','🤗','🤭','😬','🥺','😅','😆','😋','🤤',
+  '👍','👎','👏','🙌','🙏','💪','🤝','👋','✌️','🤞',
+  '❤️','🧡','💛','💚','💙','💜','🖤','💕','💯','🔥',
+  '⭐','✨','🎉','🎈','🎂','🏆','⚽','🎮','📚','🐶',
+  '🐱','🦄','🌈','☀️','🍕','🍔','🍦','🚗','🏠','⏰',
+];
+let chatGifSearchTimer = null;
+let chatGifOpenToken   = 0; // bumped on every open/search so stale async loads no-op
+
 /* School calendar (Phase 2) — server-sourced, read-only events merged
    alongside localStorage manual events for display. Never written to
    localStorage; always re-fetched from /api/calendar/sync. */
@@ -1844,6 +1857,14 @@ function renderChatCard(card) {
   </div>`;
 }
 
+function renderChatMedia(media) {
+  if (!media || media.type !== 'gif' || !media.previewUrl) return '';
+  const full = media.url || media.previewUrl;
+  return `<a href="${esc(full)}" target="_blank" rel="noopener noreferrer" class="chat-msg-gif-link">
+    <img src="${esc(media.previewUrl)}" alt="GIF" class="chat-msg-gif" loading="lazy">
+  </a>`;
+}
+
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
@@ -1868,6 +1889,7 @@ function renderChatMessages() {
       ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}</div>` : ''}
       <div class="chat-msg-bubble" style="${own ? '' : `--sender-color:${color}`}">
         ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
+        ${renderChatMedia(m.media)}
         ${renderChatCard(m.card)}
       </div>
       <div class="chat-msg-meta">
@@ -1975,6 +1997,138 @@ async function handleFlagChatMessage(id) {
     toast(`❌ ${err.message}`);
   }
 }
+
+/* ============================================================
+   CHAT PICKERS — emoji popover (hardcoded unicode grid, no external lib)
+   and GIF popover (Giphy, proxied through our server — see auth.js
+   searchGifs/trendingGifs). Only one popover is open at a time.
+============================================================ */
+function closeChatPickers() {
+  const emojiPop = document.getElementById('chat-emoji-popover');
+  const gifPop = document.getElementById('chat-gif-popover');
+  if (emojiPop) emojiPop.hidden = true;
+  if (gifPop) gifPop.hidden = true;
+  chatGifOpenToken++; // invalidate any in-flight GIF load/search for this open
+}
+
+function renderEmojiPopover() {
+  const el = document.getElementById('chat-emoji-popover');
+  if (!el) return;
+  el.innerHTML = CHAT_EMOJI_LIST.map((e) =>
+    `<button type="button" class="chat-emoji-item" onclick="insertChatEmoji('${e}')">${e}</button>`
+  ).join('');
+}
+
+function toggleEmojiPicker() {
+  const el = document.getElementById('chat-emoji-popover');
+  if (!el) return;
+  const wasHidden = el.hidden;
+  closeChatPickers();
+  if (wasHidden) {
+    renderEmojiPopover();
+    el.hidden = false;
+  }
+}
+
+function insertChatEmoji(emoji) {
+  const input = document.getElementById('chat-input');
+  if (!input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+  const caret = start + emoji.length;
+  input.focus();
+  input.setSelectionRange(caret, caret);
+}
+
+function toggleGifPicker() {
+  const el = document.getElementById('chat-gif-popover');
+  if (!el) return;
+  const wasHidden = el.hidden;
+  closeChatPickers();
+  if (wasHidden) {
+    el.hidden = false;
+    const search = document.getElementById('chat-gif-search');
+    if (search) search.value = '';
+    loadTrendingGifsIntoPicker();
+  }
+}
+
+function renderGifGrid(gifs, token) {
+  if (token !== chatGifOpenToken) return; // a newer open/search superseded this one
+  const grid = document.getElementById('chat-gif-grid');
+  if (!grid) return;
+  if (!gifs.length) {
+    grid.innerHTML = '<p class="text-muted chat-gif-empty">No GIFs found.</p>';
+    return;
+  }
+  grid.innerHTML = gifs.map((g) =>
+    `<button type="button" class="chat-gif-thumb" onclick="handleSendGif('${g.url.replace(/'/g, "\\'")}','${g.previewUrl.replace(/'/g, "\\'")}',${g.width || 0},${g.height || 0})">
+      <img src="${esc(g.previewUrl)}" alt="${esc(g.title || 'GIF')}" loading="lazy">
+    </button>`
+  ).join('');
+}
+
+async function loadTrendingGifsIntoPicker() {
+  const token = ++chatGifOpenToken;
+  const grid = document.getElementById('chat-gif-grid');
+  if (grid) grid.innerHTML = '<p class="text-muted chat-gif-loading">Loading GIFs…</p>';
+  try {
+    const gifs = await window.auth.trendingGifs();
+    renderGifGrid(gifs, token);
+  } catch (err) {
+    if (token !== chatGifOpenToken) return;
+    if (grid) grid.innerHTML = '<p class="text-muted chat-gif-empty">GIFs unavailable</p>';
+  }
+}
+
+function handleGifSearchInput() {
+  const input = document.getElementById('chat-gif-search');
+  const q = input ? input.value.trim() : '';
+  if (chatGifSearchTimer) clearTimeout(chatGifSearchTimer);
+  chatGifSearchTimer = setTimeout(async () => {
+    const token = ++chatGifOpenToken;
+    const grid = document.getElementById('chat-gif-grid');
+    if (grid) grid.innerHTML = '<p class="text-muted chat-gif-loading">Loading GIFs…</p>';
+    try {
+      const gifs = q ? await window.auth.searchGifs(q) : await window.auth.trendingGifs();
+      renderGifGrid(gifs, token);
+    } catch (err) {
+      if (token !== chatGifOpenToken) return;
+      if (grid) grid.innerHTML = '<p class="text-muted chat-gif-empty">GIFs unavailable</p>';
+    }
+  }, 350);
+}
+
+async function handleSendGif(url, previewUrl, width, height) {
+  closeChatPickers();
+  try {
+    const res = await window.auth.sendChatMessage('', { type: 'gif', url, previewUrl, width, height });
+    if (res && res.message) {
+      chatMessages.push(res.message);
+      chatLastAt = res.message.createdAt;
+      renderChatMessages();
+    } else {
+      await pollChatMessages();
+    }
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+// Close popovers on an outside click (but not clicks on the toggle buttons
+// themselves — they handle their own open/close via toggle*Picker above).
+document.addEventListener('click', (e) => {
+  const anchor = document.getElementById('chat-emoji-popover');
+  const gifAnchor = document.getElementById('chat-gif-popover');
+  if (!anchor && !gifAnchor) return;
+  const emojiOpen = anchor && !anchor.hidden;
+  const gifOpen = gifAnchor && !gifAnchor.hidden;
+  if (!emojiOpen && !gifOpen) return;
+  const withinPopover = e.target.closest('.chat-popover');
+  const isToggleBtn = e.target.closest('#chat-emoji-btn, #chat-gif-btn');
+  if (!withinPopover && !isToggleBtn) closeChatPickers();
+});
 
 /* ============================================================
    HOMEWORK HUB (Phase 3)

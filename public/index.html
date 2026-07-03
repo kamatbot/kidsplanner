@@ -235,7 +235,19 @@
                 <span class="chat-card-header-label">Family Chat</span>
               </div>
               <div class="chat-messages" id="chat-messages"></div>
+              <!-- Emoji + GIF popovers: absolutely positioned relative to
+                   .chat-send-row (position:relative in CSS), toggled by
+                   toggleEmojiPicker()/toggleGifPicker() in app.js. -->
+              <div class="chat-picker-anchor">
+                <div class="chat-popover chat-emoji-popover" id="chat-emoji-popover" hidden></div>
+                <div class="chat-popover chat-gif-popover" id="chat-gif-popover" hidden>
+                  <input type="text" id="chat-gif-search" class="chat-gif-search" placeholder="Search GIFs…" autocomplete="off" oninput="handleGifSearchInput()">
+                  <div class="chat-gif-grid" id="chat-gif-grid"></div>
+                </div>
+              </div>
               <form id="chat-send-form" class="chat-send-row" onsubmit="handleSendChatMessage(event)">
+                <button type="button" class="chat-picker-btn" id="chat-emoji-btn" title="Add an emoji" onclick="toggleEmojiPicker()">😀</button>
+                <button type="button" class="chat-picker-btn chat-gif-btn" id="chat-gif-btn" title="Send a GIF" onclick="toggleGifPicker()">GIF</button>
                 <input type="text" id="chat-input" class="chat-input" placeholder="Message the family…" autocomplete="off" maxlength="4000">
                 <button type="submit" class="btn-primary chat-send-btn">Send</button>
               </form>

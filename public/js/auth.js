@@ -303,11 +303,10 @@
     return (data && data.messages) || [];
   }
 
-  async function sendChatMessage(text, card) {
-    return api("/api/chat/messages", {
-      method: "POST",
-      body: JSON.stringify(card ? { text: text || "", card } : { text: text || "" }),
-    });
+  async function sendChatMessage(text, media) {
+    const body = { text: text || "" };
+    if (media) body.media = media;
+    return api("/api/chat/messages", { method: "POST", body: JSON.stringify(body) });
   }
 
   async function deleteChatMessage(id) {
@@ -319,6 +318,21 @@
       method: "POST",
       body: JSON.stringify({ reason: reason || "" }),
     });
+  }
+
+  /* ---------- GIFs (Giphy, proxied through our server — see server.js) ---------- */
+  async function trendingGifs(limit) {
+    const qs = limit ? ("?limit=" + encodeURIComponent(limit)) : "";
+    const data = await api("/api/gifs/trending" + qs, { method: "GET" });
+    return (data && data.gifs) || [];
+  }
+
+  async function searchGifs(q, limit) {
+    const params = new URLSearchParams();
+    params.set("q", q || "");
+    if (limit) params.set("limit", limit);
+    const data = await api("/api/gifs/search?" + params.toString(), { method: "GET" });
+    return (data && data.gifs) || [];
   }
 
   /* ---------- school calendar (Phase 2) ---------- */
@@ -458,6 +472,8 @@
     sendChatMessage,
     deleteChatMessage,
     flagChatMessage,
+    trendingGifs,
+    searchGifs,
     getHomework,
     addHomework,
     updateHomework,
