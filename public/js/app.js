@@ -2802,6 +2802,198 @@ async function handleToggleNotifications() {
 }
 
 /* ============================================================
+   SCHOOL IMPORT BRIDGE (Chrome extension) — Part A
+   Stable global entry point the Fam ETC Chrome extension calls after it
+   scrapes homework + timetable from an already-logged-in Moodle tab (see
+   chrome-extension/). This is intentionally NOT the /api/school/* flow
+   (which drives a server-side Moodle login) — the extension already has an
+   authenticated session in the browser, so it just hands us parsed data and
+   we do the same client-side work the manual "parse schedule" flow does
+   (see applyParsedSchedule above) plus a homework POST.
+
+   Payload shape:
+     {
+       kidId: string,               // Fam ETC kid id (currentFamily.kids[].id)
+       moodleUserId: string|number, // informational only, not required
+       homework: [{ subject, title, dueDate (YYYY-MM-DD or parseable), completed }],
+       timetable: [{ day: 0-4 (Mon-Fri) or 'Mon'.., period, time: 'HH:MM', subject }]
+     }
+   Returns: { homeworkAdded, eventsAdded, homeworkSkipped } (also toasted).
+============================================================ */
+
+// Dedupe key helpers — exported as plain functions so they're easy to unit
+// test in isolation if ever pulled into a node-testable module.
+function schoolImportHomeworkKey(title, dueDate) {
+  return `${String(title || '').trim().toLowerCase()}|${dueDate || ''}`;
+}
+function schoolImportEventKey(date, time, title) {
+  return `${date}|${time || ''}|${String(title || '').trim().toLowerCase()}`;
+}
+
+// Normalize a day value from the extension into a 0-4 (Mon-Fri) offset, or
+// null if it can't be mapped (weekend / unrecognized — skipped).
+function schoolImportDayOffset(day) {
+  if (typeof day === 'number' && day >= 0 && day <= 4) return day;
+  const map = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4 };
+  const key = String(day || '').trim().slice(0, 3).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+}
+
+async function famImportSchoolData(payload) {
+  const result = { homeworkAdded: 0, eventsAdded: 0, homeworkSkipped: 0 };
+  try {
+    if (isKidSession()) {
+      toast('Ask a parent to import');
+      return result;
+    }
+    if (!sessionUser || !currentFamily) {
+      toast('❌ Please finish loading Fam ETC (sign in) before importing.');
+      return result;
+    }
+    const kidId = payload && payload.kidId;
+    if (!kidId || !(currentFamily.kids || []).some((k) => k.id === kidId)) {
+      toast('❌ Import failed: unknown kid id.');
+      return result;
+    }
+
+    /* ---------- Homework ---------- */
+    const hwList = (payload && Array.isArray(payload.homework)) ? payload.homework : [];
+    if (hwList.length) {
+      let existing;
+      try {
+        existing = await window.auth.getHomework({ kidId });
+      } catch (e) {
+        existing = [];
+      }
+      const existingKeys = new Set(
+        (existing || []).map((h) => schoolImportHomeworkKey(h.title, h.dueDate))
+      );
+      const seenThisRun = new Set();
+
+      for (const hw of hwList) {
+        if (!hw || hw.completed) { result.homeworkSkipped++; continue; } // skip completed by default
+        const title = String(hw.title || '').trim();
+        const dueDate = normalizeSchoolImportDate(hw.dueDate);
+        if (!title || !dueDate) { result.homeworkSkipped++; continue; }
+        const key = schoolImportHomeworkKey(title, dueDate);
+        if (existingKeys.has(key) || seenThisRun.has(key)) { result.homeworkSkipped++; continue; }
+        seenThisRun.add(key);
+
+        try {
+          await window.auth.addHomework({
+            kidId,
+            title,
+            subject: hw.subject || '',
+            dueDate,
+            source: 'school-portal',
+            notes: hw.setDate ? `Set ${hw.setDate}` : '',
+          });
+          result.homeworkAdded++;
+        } catch (e) {
+          result.homeworkSkipped++;
+        }
+      }
+    }
+
+    /* ---------- Timetable -> calendar events (current Mon-Fri) ---------- */
+    const ttList = (payload && Array.isArray(payload.timetable)) ? payload.timetable : [];
+    if (ttList.length) {
+      const monday = mondayOf(new Date());
+      const events = getEvents();
+      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title)));
+
+      for (const lesson of ttList) {
+        if (!lesson) continue;
+        const offset = schoolImportDayOffset(lesson.day);
+        if (offset === null) continue;
+        const title = String(lesson.subject || '').trim();
+        const time = String(lesson.time || '').trim();
+        if (!title || !time) continue;
+        const date = isoDate(new Date(+monday + offset * 86400000));
+        const key = schoolImportEventKey(date, time, title);
+        if (existingKeys.has(key)) continue;
+        existingKeys.add(key);
+
+        events.push({
+          id: uid(),
+          userId: sessionUser.id,
+          kidId,
+          title,
+          date,
+          time,
+          endTime: '',
+          category: 'school',
+          notes: 'Timetable',
+          source: 'timetable-import',
+        });
+        result.eventsAdded++;
+      }
+
+      if (result.eventsAdded > 0) {
+        saveEvents(events);
+        renderCalendar();
+        renderMiniCal();
+      }
+    }
+
+    toast(`🎓 Imported: ${result.homeworkAdded} homework, ${result.eventsAdded} timetable events` +
+      (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped)` : ''));
+    return result;
+  } catch (e) {
+    toast(`❌ Import failed: ${(e && e.message) || 'unknown error'}`);
+    return result;
+  }
+}
+
+// Homework dates from Moodle look like "Thu 18 June" (no year) — infer the
+// academic year: Aug-Dec = the earlier calendar year of the current
+// Aug-Jul school year, Jan-Jul = the later one. Already-ISO dates pass
+// through unchanged. Returns null if unparseable.
+function normalizeSchoolImportDate(raw, now) {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const m = s.match(/(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?/);
+  if (!m) return null;
+  const dayNum = parseInt(m[1], 10);
+  const monthIdx = MONTHS.indexOf(m[2].toLowerCase());
+  if (monthIdx === -1 || !dayNum) return null;
+
+  let year;
+  if (m[3]) {
+    year = parseInt(m[3], 10);
+  } else {
+    const today = now || new Date();
+    const curYear = today.getFullYear();
+    const curMonth = today.getMonth(); // 0-11
+    // Academic year runs Aug (7) -> Jul (6). If we're currently in the
+    // Aug-Dec half, that half's calendar year is curYear; the Jan-Jul half
+    // that follows is curYear+1. If we're in the Jan-Jul half, that half is
+    // curYear and the preceding Aug-Dec half was curYear-1.
+    const academicStartYear = curMonth >= 7 ? curYear : curYear - 1;
+    year = monthIdx >= 7 ? academicStartYear : academicStartYear + 1;
+  }
+  return isoDate(new Date(year, monthIdx, dayNum));
+}
+
+// Reachable via postMessage too, so the extension can inject a tiny script
+// that posts to the tab instead of calling the function directly (both
+// paths are supported; executeScript-into-tab calling the function directly
+// is the primary path — see chrome-extension/popup.js).
+window.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'fam-etc-school-import') return;
+  famImportSchoolData(event.data.payload || {}).then((result) => {
+    if (event.source && typeof event.source.postMessage === 'function') {
+      event.source.postMessage({ type: 'fam-etc-school-import-result', result }, event.origin);
+    }
+  });
+});
+
+window.famImportSchoolData = famImportSchoolData;
+
+/* ============================================================
    INIT
 ============================================================ */
 async function init() {
