@@ -900,6 +900,12 @@ body {
   border-radius: 16px; box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.15));
   z-index: 20; overflow: hidden;
 }
+/* The popovers set display:grid/flex (below), which overrides the plain
+   [hidden] { display:none } — so hidden=true never actually hid them and the
+   picker couldn't close. This higher-specificity rule restores hide-on-hidden. */
+.chat-popover[hidden],
+.chat-emoji-popover[hidden],
+.chat-gif-popover[hidden] { display: none; }
 .chat-emoji-popover {
   max-height: 220px; overflow-y: auto; padding: 10px;
   display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;
