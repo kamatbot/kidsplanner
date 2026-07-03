@@ -343,6 +343,11 @@ function applyRoleScopingToUI() {
   // Adding school calendars is a parent action — hide the sidebar shortcut for kids.
   const addSchoolCal = document.getElementById('sidebar-add-school-cal');
   if (addSchoolCal) addSchoolCal.style.display = kid ? 'none' : '';
+
+  // "Import from school" (Moodle) is a parent-only action — the button is
+  // hidden by default in the HTML and only shown here for parent sessions.
+  const schoolImportBtn = document.getElementById('school-import-btn');
+  if (schoolImportBtn) schoolImportBtn.style.display = kid ? 'none' : '';
 }
 
 function showFirstRunPanel() {
@@ -2193,6 +2198,220 @@ function celebrateHomeworkDone() {
     }
   }
   requestAnimationFrame(step);
+}
+
+/* ============================================================
+   SCHOOL ACCOUNT (Moodle) IMPORT — parent-only.
+   Modal flow: connect credentials -> map kid to Moodle user id -> Import
+   (server returns a PREVIEW, nothing saved yet) -> "Add to Fam ETC" confirms.
+   Homework confirms into the server-side homework hub (see loadHomework()).
+   Timetable rows come back from the preview/confirm response and are added
+   here as normal calendar events (localStorage `fam_events`, same shape as
+   saveEvent() above: {id,userId,kidId,title,date,time,endTime,category,notes})
+   tagged category:'school' and kidId — see confirmTimetableAsEvents().
+============================================================ */
+let schoolStatusCache = null;      // last GET /api/school/status result
+let schoolImportPreview = null;    // { homework:[...], timetable:[...] } from POST /api/school/import
+
+function showSchoolStep(step) {
+  const steps = { connect: 'school-step-connect', connected: 'school-step-connected', preview: 'school-step-preview' };
+  Object.values(steps).forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const target = document.getElementById(steps[step]);
+  if (target) target.style.display = '';
+}
+
+async function openSchoolAccountModal() {
+  document.getElementById('school-connect-error').textContent = '';
+  document.getElementById('school-import-error').textContent = '';
+  document.getElementById('school-preview-error').textContent = '';
+  document.getElementById('school-username').value = '';
+  document.getElementById('school-password').value = '';
+  openModal('school-account-modal');
+  try {
+    schoolStatusCache = await window.auth.getSchoolStatus();
+  } catch (e) {
+    schoolStatusCache = null;
+  }
+  if (!schoolStatusCache || !schoolStatusCache.encryptionAvailable) {
+    showSchoolStep('connect');
+    document.getElementById('school-connect-error').textContent = schoolStatusCache
+      ? 'School account connection is not available on this server yet.'
+      : 'Could not check school account status. Please try again.';
+    document.getElementById('school-connect-submit-btn').disabled = true;
+    return;
+  }
+  document.getElementById('school-connect-submit-btn').disabled = false;
+  if (schoolStatusCache.connected) {
+    showSchoolStep('connected');
+    populateSchoolImportKidSelect();
+  } else {
+    showSchoolStep('connect');
+  }
+}
+
+async function handleConnectSchoolAccount(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('school-connect-error');
+  errEl.textContent = '';
+  const username = document.getElementById('school-username').value.trim();
+  const password = document.getElementById('school-password').value;
+  const btn = document.getElementById('school-connect-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  try {
+    await window.auth.connectSchoolAccount(username, password);
+    document.getElementById('school-password').value = ''; // never keep it in the DOM longer than needed
+    toast('School account connected! 🔗');
+    schoolStatusCache = await window.auth.getSchoolStatus();
+    showSchoolStep('connected');
+    populateSchoolImportKidSelect();
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not connect. Please check your username and password.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Connect 🔗';
+  }
+}
+
+function populateSchoolImportKidSelect() {
+  const sel = document.getElementById('school-import-kid');
+  const kids = (currentFamily && currentFamily.kids) || [];
+  sel.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">No kids yet</option>';
+  renderSchoolKidMapping();
+}
+
+function renderSchoolKidMapping() {
+  const kidId = document.getElementById('school-import-kid').value;
+  const mapping = (schoolStatusCache && schoolStatusCache.kidMappings || []).find((m) => m.kidId === kidId);
+  document.getElementById('school-moodle-userid').value = mapping ? mapping.moodleUserId : '';
+}
+
+async function handleImportSchoolData() {
+  const errEl = document.getElementById('school-import-error');
+  errEl.textContent = '';
+  const kidId = document.getElementById('school-import-kid').value;
+  const moodleUserId = document.getElementById('school-moodle-userid').value.trim();
+  if (!kidId) { errEl.textContent = 'Add a kid profile first.'; return; }
+  if (!/^\d+$/.test(moodleUserId)) { errEl.textContent = 'Enter a numeric Moodle user id.'; return; }
+
+  const btn = document.getElementById('school-import-btn-2');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  try {
+    await window.auth.mapSchoolKid(kidId, moodleUserId);
+    schoolImportPreview = await window.auth.importSchoolData(kidId);
+    schoolImportPreview.kidId = kidId;
+    renderSchoolPreview();
+    showSchoolStep('preview');
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not import from the school portal.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Import 📥';
+  }
+}
+
+function renderSchoolPreview() {
+  const hwEl = document.getElementById('school-preview-homework');
+  const ttEl = document.getElementById('school-preview-timetable');
+  const hw = (schoolImportPreview && schoolImportPreview.homework) || [];
+  const tt = (schoolImportPreview && schoolImportPreview.timetable) || [];
+
+  const pending = hw.filter((h) => !h.completed);
+  hwEl.innerHTML = pending.length
+    ? pending.map((h) => `
+        <div class="homework-row">
+          <div class="hw-row-main">
+            <div class="hw-row-title-line"><span class="hw-row-title">${esc(h.title)}</span></div>
+            <div class="hw-row-meta">
+              ${h.subject ? `<span class="hw-chip hw-subject-chip">${esc(h.subject)}</span>` : ''}
+              <span class="hw-due-label">${esc(h.dueDate || 'No date')}</span>
+            </div>
+          </div>
+        </div>`).join('')
+    : '<p class="text-muted">No pending homework found.</p>';
+  const skipped = hw.length - pending.length;
+  if (skipped > 0) {
+    hwEl.innerHTML += `<p class="text-muted">${skipped} completed item${skipped === 1 ? '' : 's'} not imported.</p>`;
+  }
+
+  ttEl.innerHTML = tt.length
+    ? tt.map((t) => `<div class="homework-row"><div class="hw-row-main"><div class="hw-row-title-line"><span class="hw-row-title">${esc(t.day)} ${esc(t.time || '')} — ${esc(t.subject)}</span></div></div></div>`).join('')
+    : '<p class="text-muted">No timetable found.</p>';
+}
+
+async function handleConfirmSchoolImport() {
+  const errEl = document.getElementById('school-preview-error');
+  errEl.textContent = '';
+  if (!schoolImportPreview) return;
+  try {
+    const result = await window.auth.confirmSchoolImport(schoolImportPreview.kidId, schoolImportPreview.homework, schoolImportPreview.timetable);
+    confirmTimetableAsEvents(result.timetable || [], schoolImportPreview.kidId);
+    await loadHomework();
+    renderHomeworkHub();
+    renderCalendar();
+    renderMiniCal();
+    closeModal('school-account-modal');
+    toast(`Imported ${result.homeworkCreated} homework item${result.homeworkCreated === 1 ? '' : 's'} 🎓`);
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not save the import.';
+  }
+}
+
+// Adds imported timetable rows as normal calendar events, same shape as
+// saveEvent() — tagged category:'school' and the imported kidId. Dedups
+// against existing events by title+date+time+kidId so re-importing the same
+// week doesn't create duplicates.
+function confirmTimetableAsEvents(timetableRows, kidId) {
+  if (!timetableRows.length) return;
+  const events = getEvents();
+  const todayIso = isoDate(new Date());
+  const dowIndex = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+  const base = new Date();
+  let added = 0;
+  timetableRows.forEach((row) => {
+    const dow = dowIndex[String(row.day || '').toLowerCase()];
+    let dateStr = todayIso;
+    if (dow !== undefined) {
+      const d = new Date(base);
+      const diff = (dow - d.getDay() + 7) % 7;
+      d.setDate(d.getDate() + diff);
+      dateStr = isoDate(d);
+    }
+    const title = row.subject || row.period || 'Class';
+    const exists = events.some((e) => e.kidId === kidId && e.title === title && e.date === dateStr && e.time === (row.time || ''));
+    if (exists) return;
+    events.push({
+      id: uid(),
+      userId: sessionUser.id,
+      kidId,
+      title,
+      date: dateStr,
+      time: row.time || '',
+      endTime: '',
+      category: 'school',
+      notes: [row.teacher, row.room].filter(Boolean).join(' · '),
+    });
+    added++;
+  });
+  if (added) saveEvents(events);
+}
+
+async function handleDisconnectSchoolAccount() {
+  try {
+    await window.auth.disconnectSchoolAccount();
+    schoolStatusCache = null;
+    schoolImportPreview = null;
+    toast('School account disconnected.');
+    showSchoolStep('connect');
+    document.getElementById('school-username').value = '';
+    document.getElementById('school-password').value = '';
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
 }
 
 /* ---------- Calendar fusion: homework "due" chips ----------

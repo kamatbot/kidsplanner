@@ -368,6 +368,43 @@
     return api("/api/homework/" + encodeURIComponent(id), { method: "DELETE" });
   }
 
+  /* ---------- school account (Moodle) import ---------- */
+  async function getSchoolStatus() {
+    return api("/api/school/status", { method: "GET" });
+  }
+
+  async function connectSchoolAccount(username, password) {
+    return api("/api/school/connect", {
+      method: "POST",
+      body: JSON.stringify({ username: username || "", password: password || "" }),
+    });
+  }
+
+  async function mapSchoolKid(kidId, moodleUserId) {
+    return api("/api/school/map", {
+      method: "POST",
+      body: JSON.stringify({ kidId: kidId || "", moodleUserId: moodleUserId || "" }),
+    });
+  }
+
+  async function importSchoolData(kidId) {
+    return api("/api/school/import", {
+      method: "POST",
+      body: JSON.stringify({ kidId: kidId || "" }),
+    });
+  }
+
+  async function confirmSchoolImport(kidId, homeworkList, timetableList) {
+    return api("/api/school/import/confirm", {
+      method: "POST",
+      body: JSON.stringify({ kidId: kidId || "", homework: homeworkList || [], timetable: timetableList || [] }),
+    });
+  }
+
+  async function disconnectSchoolAccount() {
+    return api("/api/school/disconnect", { method: "POST" });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -409,5 +446,11 @@
     addHomework,
     updateHomework,
     deleteHomework,
+    getSchoolStatus,
+    connectSchoolAccount,
+    mapSchoolKid,
+    importSchoolData,
+    confirmSchoolImport,
+    disconnectSchoolAccount,
   };
 })();
