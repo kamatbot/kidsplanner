@@ -208,6 +208,17 @@
                 <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
               </div>
 
+              <!-- School Stats (house points / attendance / canteen) — parent-only,
+                   populated by the Chrome extension's Moodle home-dashboard scrape.
+                   Hidden entirely until there's data (see renderSchoolStatsWidget). -->
+              <div class="widget card widget-school-stats" id="widget-school-stats" style="display:none">
+                <div class="widget-header">
+                  <span class="widget-icon">🏫</span>
+                  <span class="widget-label">School</span>
+                </div>
+                <div id="school-stats-rows"></div>
+              </div>
+
             </section>
           </div>
 
@@ -868,6 +879,7 @@
 <canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
 
 <script src="/js/auth.js"></script>
+<script src="/js/school-stats.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

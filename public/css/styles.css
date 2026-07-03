@@ -468,6 +468,17 @@ body {
 .news-headline { font-size: 15px; font-weight: 900; color: var(--text); line-height: 1.4; margin-bottom: 8px; }
 .news-summary { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
 
+.widget-school-stats { border-top: 4px solid var(--green); }
+.school-stats-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.school-stats-row:last-child { border-bottom: none; }
+.school-stats-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.school-stats-name { font-size: 14px; font-weight: 800; color: var(--text); min-width: 70px; }
+.school-stats-metric { font-size: 13px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+.school-stats-balance.low { color: var(--red); font-weight: 900; }
+
 .widget-quiz { border-top: 4px solid var(--secondary); grid-column: 1 / -1; max-width: 680px; }
 .quiz-question { font-size: 16px; font-weight: 800; color: var(--text); line-height: 1.4; margin-bottom: 16px; }
 .quiz-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

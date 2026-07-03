@@ -473,6 +473,7 @@ function setActiveKid(kidId) {
   renderKidSwitcher();
   renderCalendar();
   renderMiniCal();
+  renderSchoolStatsWidget();
 }
 
 function renderManageFamily() {
@@ -639,6 +640,11 @@ function showDashboard() {
   // the other Settings sections above — cheap GET, no need to gate the rest
   // of the dashboard on it.
   loadSchoolKidMappings().then(() => renderMoodleIdsSettings());
+
+  // School stats (house points/attendance/canteen) — purely localStorage-
+  // sourced (populated by the extension's famImportSchoolData bridge calls),
+  // so this just renders whatever's already stored; no network round-trip.
+  renderSchoolStatsWidget();
 
   // Chat is a core part of the dashboard (not a separate tab) — load + poll
   // it as soon as the dashboard is shown. switchNavTab() takes over the
@@ -1411,6 +1417,52 @@ function renderWidgets() {
   const offset  = load(`fam_qoffset_${sessionUser.id}`) || 0;
   quizIndex     = (baseIdx + offset) % QUIZ.length;
   renderQuiz();
+}
+
+/* ============================================================
+   SCHOOL STATS WIDGET (house points / attendance / canteen)
+   Parent-only (mirrors the Moodle IDs Settings card gating). Reads
+   famGetSchoolStats() — purely local, populated by the extension's
+   famImportSchoolData bridge calls (see PART B above). Respects the kid
+   switcher (activeKidId) when one is selected, else shows every kid with
+   stored stats.
+============================================================ */
+function renderSchoolStatsWidget() {
+  const widget = document.getElementById('widget-school-stats');
+  const rowsEl = document.getElementById('school-stats-rows');
+  if (!widget || !rowsEl) return;
+
+  if (isKidSession() || !currentFamily) {
+    widget.style.display = 'none';
+    return;
+  }
+
+  const stats = famGetSchoolStats();
+  const kids = (currentFamily.kids || []).filter((k) => stats[k.id]);
+  const visible = activeKidId ? kids.filter((k) => k.id === activeKidId) : kids;
+
+  if (!visible.length) {
+    widget.style.display = 'none';
+    return;
+  }
+
+  widget.style.display = '';
+  rowsEl.innerHTML = visible.map((k) => {
+    const s = stats[k.id] || {};
+    const points = (s.housePoints === null || s.housePoints === undefined) ? '—' : s.housePoints;
+    const attend = (s.attendance === null || s.attendance === undefined) ? '—' : `${s.attendance}%`;
+    const punctual = (s.punctual === null || s.punctual === undefined) ? '' : ` (${s.punctual}% on time)`;
+    const hasBalance = s.canteenBalance !== null && s.canteenBalance !== undefined;
+    const lowBalance = hasBalance && s.canteenBalance < LOW_BALANCE_THRESHOLD;
+    const balance = hasBalance ? `฿${s.canteenBalance}` : '—';
+    return `<div class="school-stats-row">
+      <span class="school-stats-swatch" style="background:${k.color || '#ccc'}"></span>
+      <span class="school-stats-name">${esc(k.name)}</span>
+      <span class="school-stats-metric" title="House points">🏆 ${points}</span>
+      <span class="school-stats-metric" title="Attendance (punctuality)">✅ ${attend}${esc(punctual)}</span>
+      <span class="school-stats-metric school-stats-balance${lowBalance ? ' low' : ''}" title="Canteen balance">🍽️ ${balance}</span>
+    </div>`;
+  }).join('');
 }
 
 /* ============================================================
@@ -2936,6 +2988,82 @@ function schoolImportDayOffset(day) {
   return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
 }
 
+/* ============================================================
+   SCHOOL STATS (house points / attendance / canteen balance) — Part B
+   Stored per-kid in localStorage `fam_school_stats`, keyed by Fam ETC kid
+   id: { [kidId]: { housePoints, attendance, punctual, canteenBalance,
+   updatedAt, lastLowBalanceNotifiedAt } }. Matched from the extension's
+   family-wide payload.schoolStats (array of { name, housePoints,
+   attendance, punctual, canteenBalance }) by first-name, case-insensitive,
+   against currentFamily.kids.
+
+   The pure change-detection comparator (compareSchoolStats) and the kid
+   name-matcher (matchKidByFirstName) live in public/js/school-stats.js —
+   dependency-free so they're independently unit-testable from node --test
+   (see tests/school-stats.test.js) without dragging in this whole
+   DOM/localStorage-heavy file.
+============================================================ */
+const SCHOOL_STATS_KEY = 'fam_school_stats';
+const { LOW_BALANCE_THRESHOLD, compareSchoolStats, matchKidByFirstName } = window.famSchoolStats;
+
+function getSchoolStats() {
+  return load(SCHOOL_STATS_KEY) || {};
+}
+function saveSchoolStats(stats) {
+  save(SCHOOL_STATS_KEY, stats);
+}
+
+// STABLE global read by the dashboard widget (and, in principle, anything
+// else that wants the latest school stats without re-deriving storage
+// details) — mirrors the famGetSchoolMappings() pattern above.
+function famGetSchoolStats() {
+  return getSchoolStats();
+}
+window.famGetSchoolStats = famGetSchoolStats;
+
+// Processes payload.schoolStats: matches each row to a kid, runs the pure
+// comparator against the previously-stored value, persists the new
+// records, and delivers any fired notifications both as an in-app toast
+// and (best-effort, fire-and-forget) a real web push via /api/notify/self
+// so it reaches the parent even if the tab is backgrounded.
+async function processSchoolStats(kids, statsList) {
+  if (!Array.isArray(statsList) || !statsList.length) return;
+  const stored = getSchoolStats();
+  const now = Date.now();
+  let anyMatched = false;
+
+  for (const stat of statsList) {
+    if (!stat) continue;
+    const kid = matchKidByFirstName(kids, stat.name);
+    if (!kid) continue;
+    anyMatched = true;
+
+    const prev = stored[kid.id] || null;
+    const { record, notifications: fired } = compareSchoolStats(kid.name || stat.name, prev, {
+      housePoints: stat.housePoints ?? null,
+      attendance: stat.attendance ?? null,
+      punctual: stat.punctual ?? null,
+      canteenBalance: stat.canteenBalance ?? null,
+    }, now);
+    stored[kid.id] = record;
+
+    for (const n of fired) {
+      toast(`🏫 ${n.title}: ${n.body}`);
+      try {
+        await window.auth.notifySelf(n.title, n.body, n.tag);
+      } catch (e) {
+        // Best-effort — push not configured/subscribed, or offline. The
+        // toast above already surfaced it in-app.
+      }
+    }
+  }
+
+  if (anyMatched) {
+    saveSchoolStats(stored);
+    renderSchoolStatsWidget();
+  }
+}
+
 async function famImportSchoolData(payload) {
   const result = { homeworkAdded: 0, eventsAdded: 0, homeworkSkipped: 0 };
   try {
@@ -3041,6 +3169,20 @@ async function famImportSchoolData(payload) {
         saveEvents(events);
         renderCalendar();
         renderMiniCal();
+      }
+    }
+
+    /* ---------- School stats (house points/attendance/canteen) ----------
+       Family-wide, not scoped to the single `kid` resolved above — each row
+       is matched independently by first name against every kid in the
+       family (see processSchoolStats/matchKidByFirstName). ---------- */
+    const statsList = (payload && Array.isArray(payload.schoolStats)) ? payload.schoolStats : [];
+    if (statsList.length) {
+      try {
+        await processSchoolStats(kids, statsList);
+      } catch (e) {
+        // Best-effort — never let a stats hiccup block the homework/timetable
+        // import result the parent is waiting on.
       }
     }
 
