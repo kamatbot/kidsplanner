@@ -390,7 +390,18 @@ function setActiveKid(kidId) {
 }
 
 function renderManageFamily() {
-  if (!currentFamily) return;
+  const parentsEl0 = document.getElementById('manage-family-parents');
+  const inviteEl0  = document.getElementById('co-parent-invite');
+  const kidsEl0    = document.getElementById('manage-family-kids');
+  if (!currentFamily) {
+    // No family loaded yet — guide the user instead of showing blank sections.
+    const msg = `<p class="text-muted">You're not in a family yet. Create or join one from the
+      <a href="#" onclick="showFirstRunPanel();switchNavTab('today');return false" style="color:var(--primary);font-weight:700">dashboard</a> to add parents and kids.</p>`;
+    if (parentsEl0) parentsEl0.innerHTML = msg;
+    if (inviteEl0)  inviteEl0.innerHTML = '';
+    if (kidsEl0)    kidsEl0.innerHTML = '';
+    return;
+  }
 
   // --- Parents ---
   const parentsEl = document.getElementById('manage-family-parents');
@@ -1231,6 +1242,8 @@ function switchNavTab(tab) {
   document.querySelectorAll('.tab-panel').forEach((p) => {
     p.classList.toggle('active', p.id === `tab-${tab}`);
   });
+  // Re-render dynamic panels each time they're opened so they reflect current state.
+  if (tab === 'settings') renderManageFamily();
 }
 
 /* ============================================================
