@@ -387,6 +387,10 @@
     });
   }
 
+  // Alias — same endpoint as mapSchoolKid, named to match the Settings "School
+  // (Moodle) IDs" card's mental model (kid -> their Moodle numeric id).
+  const setKidMoodleId = mapSchoolKid;
+
   async function importSchoolData(kidId) {
     return api("/api/school/import", {
       method: "POST",
@@ -449,6 +453,7 @@
     getSchoolStatus,
     connectSchoolAccount,
     mapSchoolKid,
+    setKidMoodleId,
     importSchoolData,
     confirmSchoolImport,
     disconnectSchoolAccount,

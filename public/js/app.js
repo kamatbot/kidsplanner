@@ -214,6 +214,13 @@ let schoolEvents     = [];    // windowed, deduped, tagged events from last sync
 let schoolSyncErrors = [];    // [{ subscriptionId, label, error }] from the last sync
 const SCHOOL_AUTO_SYNC_MIN_MS = 60 * 60 * 1000; // mirrors server-side throttle
 
+/* Kid -> Moodle numeric user id mappings (Settings "School (Moodle) IDs"
+   card). Cached from GET /api/school/status (kidMappings) so the Chrome
+   extension's background worker can read them via window.famGetSchoolMappings()
+   without re-hitting the server on every check. Kept in sync whenever a
+   parent saves a mapping — see handleSaveMoodleId(). */
+let schoolKidMappings = []; // [{ kidId, moodleUserId }] as returned by the server
+
 /* ============================================================
    UTILITIES
 ============================================================ */
@@ -339,6 +346,11 @@ function applyRoleScopingToUI() {
   const schoolNotice = document.getElementById('kid-school-notice');
   if (schoolParentOnly) schoolParentOnly.style.display = kid ? 'none' : '';
   if (schoolNotice) schoolNotice.style.display = kid ? '' : 'none';
+
+  const moodleIdsParentOnly = document.getElementById('settings-parent-only-moodle-ids');
+  const moodleIdsNotice = document.getElementById('kid-moodle-ids-notice');
+  if (moodleIdsParentOnly) moodleIdsParentOnly.style.display = kid ? 'none' : '';
+  if (moodleIdsNotice) moodleIdsNotice.style.display = kid ? '' : 'none';
 
   // Adding school calendars is a parent action — hide the sidebar shortcut for kids.
   const addSchoolCal = document.getElementById('sidebar-add-school-cal');
@@ -470,6 +482,7 @@ function renderManageFamily() {
   // backend independently rejects any parent-only call a kid might still
   // trigger (e.g. via devtools), so this is defense in depth, not the gate.
   if (isKidSession()) return;
+  renderMoodleIdsSettings(); // kid list may have changed (add/remove)
 
   const parentsEl0 = document.getElementById('manage-family-parents');
   const inviteEl0  = document.getElementById('co-parent-invite');
@@ -621,6 +634,11 @@ function showDashboard() {
     renderSchoolSettings();
     syncSchoolCalendar({ silent: false, showToast: false });
   });
+
+  // Moodle IDs (extension auto-sync): load once up front, same lifecycle as
+  // the other Settings sections above — cheap GET, no need to gate the rest
+  // of the dashboard on it.
+  loadSchoolKidMappings().then(() => renderMoodleIdsSettings());
 
   // Chat is a core part of the dashboard (not a separate tab) — load + poll
   // it as soon as the dashboard is shown. switchNavTab() takes over the
@@ -819,6 +837,85 @@ function renderMonthView() {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+/* ============================================================
+   MOODLE IDs (Settings "School (Moodle) IDs" card)
+   Lets a parent store each kid's Moodle numeric user id. This is what
+   drives the Chrome extension's auto-sync: the extension's background
+   service worker injects window.famGetSchoolMappings() into an open
+   fametc.com tab to learn which kids to import homework/timetable for —
+   see chrome-extension/background.js and content.js.
+============================================================ */
+async function loadSchoolKidMappings() {
+  if (isKidSession()) { schoolKidMappings = []; return schoolKidMappings; }
+  try {
+    const status = await window.auth.getSchoolStatus();
+    schoolKidMappings = (status && status.kidMappings) || [];
+  } catch (e) {
+    schoolKidMappings = [];
+  }
+  return schoolKidMappings;
+}
+
+function renderMoodleIdsSettings() {
+  const el = document.getElementById('moodle-ids-list');
+  if (!el || isKidSession()) return;
+
+  const kids = (currentFamily && currentFamily.kids) || [];
+  if (!kids.length) {
+    el.innerHTML = '<p class="text-muted">Add a kid profile first (below) to set up Moodle sync.</p>';
+    return;
+  }
+
+  el.innerHTML = kids.map((k) => {
+    const mapping = schoolKidMappings.find((m) => m.kidId === k.id);
+    const value = mapping ? esc(mapping.moodleUserId) : '';
+    return `<div class="kid-row" id="moodle-id-row-${k.id}">
+      <span class="kid-row-swatch" style="background:${k.color}"></span>
+      <span class="kid-row-name">${esc(k.name)}</span>
+      <input type="text" inputmode="numeric" placeholder="Moodle id, e.g. 14197"
+        id="moodle-id-input-${k.id}" value="${value}" style="width:140px;margin:0 8px">
+      <button type="button" class="btn-secondary" onclick="handleSaveMoodleId('${k.id}')">Save</button>
+    </div>`;
+  }).join('');
+}
+
+async function handleSaveMoodleId(kidId) {
+  const input = document.getElementById(`moodle-id-input-${kidId}`);
+  if (!input) return;
+  const value = input.value.trim();
+  if (!/^\d+$/.test(value)) {
+    toast('❌ Enter a numeric Moodle user id.');
+    return;
+  }
+  try {
+    await window.auth.setKidMoodleId(kidId, value);
+    const idx = schoolKidMappings.findIndex((m) => m.kidId === kidId);
+    if (idx >= 0) schoolKidMappings[idx].moodleUserId = value;
+    else schoolKidMappings.push({ kidId, moodleUserId: value });
+    toast('Moodle id saved! 🆔');
+  } catch (err) {
+    toast(`❌ ${(err && err.message) || 'Could not save Moodle id.'}`);
+  }
+}
+
+// STABLE global read by the Chrome extension (background.js) via
+// chrome.scripting.executeScript world:"MAIN" — returns which kids have a
+// Moodle id set, so auto-sync knows who to import for. Kid sessions never
+// expose mappings (they can't see/edit them either — see applyRoleScopingToUI).
+function famGetSchoolMappings() {
+  if (isKidSession() || !currentFamily) return [];
+  const kids = currentFamily.kids || [];
+  const out = [];
+  for (const m of schoolKidMappings) {
+    if (!m || !m.moodleUserId) continue;
+    const kid = kids.find((k) => k.id === m.kidId);
+    if (!kid) continue;
+    out.push({ kidId: m.kidId, kidName: kid.name || '', moodleUserId: m.moodleUserId });
+  }
+  return out;
+}
+window.famGetSchoolMappings = famGetSchoolMappings;
 
 /* ============================================================
    SCHOOL CALENDAR SYNC (Phase 2)

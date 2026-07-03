@@ -283,6 +283,28 @@
           </div>
         </section>
 
+        <!-- School (Moodle) IDs — lets a parent set each kid's Moodle numeric
+             user id so the Chrome extension's auto-sync (content script +
+             background worker) knows which kids to import homework/timetable
+             for. Parent-only, same scoping as Manage Family below. This is
+             independent of the credential-based "Import from school" modal
+             (#school-account-modal) — that flow logs into Moodle server-side;
+             this one just stores the id(s) the extension reads client-side
+             via window.famGetSchoolMappings(). -->
+        <section class="card" id="school-moodle-ids-card">
+          <h3>🆔 School (Moodle) IDs</h3>
+          <p id="kid-moodle-ids-notice" class="text-muted" style="display:none">
+            Moodle IDs are managed by a parent — ask them to set these up to enable auto-sync.
+          </p>
+          <div id="settings-parent-only-moodle-ids">
+            <p class="text-muted" style="margin-bottom:12px">
+              Set each kid's Moodle numeric user id so the Fam ETC School Import Chrome extension
+              can auto-sync their homework and timetable whenever you're signed into Moodle.
+            </p>
+            <div id="moodle-ids-list"></div>
+          </div>
+        </section>
+
         <!-- School calendars (Phase 2) — per-kid feed subscriptions + custom
              iCal import. Parent-only mutation (subscribe/unsubscribe), same
              scoping as Manage Family below. -->
