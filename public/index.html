@@ -124,6 +124,10 @@
     <!-- Main -->
     <main class="main-content">
 
+      <!-- Pending kid sign-in requests (parents only) — a kid asked to join on a
+           device; a parent approves/denies here. Populated by renderKidAccessRequests(). -->
+      <div id="kid-requests-banner" class="kid-requests-banner" hidden></div>
+
       <!-- Calendar Tab = the DASHBOARD. Chat is a persistent, core part of this
            surface (not a separate tab) — see dashboard-body two-column layout:
            dashboard-primary (calendar + widgets) and the docked chat column.

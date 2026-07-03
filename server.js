@@ -31,6 +31,7 @@ const backupCodes = require("./lib/backup-codes");
 const analytics = require("./lib/analytics");
 const family = require("./lib/family");
 const chat = require("./lib/chat");
+const kidAccess = require("./lib/kid-access");
 const gifs = require("./lib/gifs");
 const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
@@ -314,6 +315,21 @@ function isIOSClient(req) {
   }
   if ((req.get("x-fametc-client") || "").toLowerCase() === "ios") return true;
   return /FamETC-?iOS/i.test(req.get("user-agent") || "");
+}
+
+// A short, human-friendly device label for a kid access request, so the parent
+// sees "an iPad" / "an iPhone" rather than a raw user-agent string. Best-effort.
+function deviceLabelFromUA(req) {
+  const ua = req.get("user-agent") || "";
+  if (/FamETC-?iOS/i.test(ua)) return "the Fam ETC app";
+  if (/iPad/i.test(ua)) return "an iPad";
+  if (/iPhone/i.test(ua)) return "an iPhone";
+  if (/Android/i.test(ua)) return "an Android device";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "a Mac";
+  if (/Windows/i.test(ua)) return "a Windows PC";
+  if (/Chrome/i.test(ua)) return "a Chrome browser";
+  if (/Safari/i.test(ua)) return "a Safari browser";
+  return "a device";
 }
 
 function publicProfile(user) {
@@ -746,7 +762,14 @@ function parentName(id) {
 const pubFam = (fam) => family.publicFamily(fam, parentName);
 
 app.get("/api/family", requireAuth, (req, res) => {
-  const fams = family.familiesForUser(req.user.id);
+  let fams = family.familiesForUser(req.user.id);
+  // Kids aren't in parentIds, so familiesForUser() misses them — resolve their
+  // family via the kid linkage instead so a signed-in kid lands in the app
+  // (chat/calendar/etc.) rather than a "no family" dead end.
+  if (!fams.length && userRole(req.user) === "kid") {
+    const kidFam = family.familyForKidUser(req.user);
+    if (kidFam) fams = [kidFam];
+  }
   res.json({ families: fams.map(pubFam) });
 });
 app.post("/api/family", requireAuth, requireParent, (req, res) => {
@@ -786,49 +809,83 @@ app.delete("/api/family/members/:userId", requireAuth, requireParent, requireFam
   res.json({ family: pubFam(result.family) });
 });
 
-// ----- Kid device provisioning (parent-provisioned passkey per device) -----
-// Runs on the KID's device while the PARENT is authenticated on it. Mirrors
-// the signup/options+verify pattern but binds the new credential to a kid
-// USER record (find-or-create) instead of creating a new parent. The parent's
-// own session.uid is left untouched throughout — this never signs the parent
-// out or switches the session to the kid.
-app.post("/api/family/kids/:kidId/device/options", requireAuth, requireParent, requireFamily, async (req, res) => {
-  if (!family.kidBelongsToFamily(req.family.id, req.params.kidId)) {
-    return res.status(404).json({ error: "Kid not found in this family." });
-  }
-  const kidProfile = req.family.kids.find((k) => k.id === req.params.kidId);
-  const kidUser = store.findOrCreateKidUser(req.family.id, req.params.kidId, kidProfile.name);
+// ===== Kid sign-in: request → parent approves → kid registers a passkey =====
+// Replaces the old "parent signs in on the kid's device and provisions" path.
+// The kid drives this on their OWN device; a parent approves remotely from
+// theirs. See lib/kid-access.js for the model and the pollToken gate.
+
+// --- Parent side (authenticated) ---
+app.get("/api/family/access-requests", requireAuth, requireParent, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ requests: kidAccess.listPendingForFamily(req.family.id) });
+});
+app.post("/api/family/access-requests/:id/approve", requireAuth, requireParent, requireFamily, (req, res) => {
+  const result = kidAccess.approve(req.family.id, req.user.id, req.params.id);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ family: pubFam(result.family), kid: result.kid });
+});
+app.post("/api/family/access-requests/:id/deny", requireAuth, requireParent, requireFamily, (req, res) => {
+  const result = kidAccess.deny(req.family.id, req.user.id, req.params.id);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+// --- Kid side (public — the kid has no session yet; pollToken gates everything) ---
+app.post("/api/kid/access-request", authLimiter, async (req, res) => {
+  const { inviteCode, name, deviceLabel } = req.body || {};
+  const label = String(deviceLabel || "").trim() || deviceLabelFromUA(req);
+  const result = kidAccess.createRequest(inviteCode, name, label);
+  if (result.error) return res.status(400).json({ error: result.error });
+  // Ping every parent so they can approve — never block the kid's response on it.
+  notifications
+    .notifyKidAccessRequest({
+      familyParentIds: result.family.parentIds,
+      name: result.request.name,
+      deviceLabel: result.request.deviceLabel,
+      familyId: result.family.id,
+    })
+    .catch((e) => console.error("[kid-access] notify error:", e.message));
+  res.json({ requestId: result.request.id, pollToken: result.request.pollToken, name: result.request.name });
+});
+app.get("/api/kid/access-request/:id", apiLimiter, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(kidAccess.statusForKid(req.params.id, String(req.query.token || "")));
+});
+app.post("/api/kid/access-request/:id/register/options", authLimiter, async (req, res) => {
+  const token = String((req.body || {}).token || "");
+  const request = kidAccess.getApproved(req.params.id, token);
+  if (!request) return res.status(400).json({ error: "This request isn't approved yet (or has expired)." });
+  const fam = family.getFamily(request.familyId);
+  const kidProfile = fam && fam.kids.find((k) => k.id === request.kidId);
+  if (!kidProfile) return res.status(400).json({ error: "That kid profile is no longer available." });
+  const kidUser = store.findOrCreateKidUser(request.familyId, request.kidId, kidProfile.name);
   const { rpID, rpName } = rpForRequest(req);
   const existing = store.listCredentials(kidUser.id);
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
     userID: new TextEncoder().encode(kidUser.id),
-    userName: kidUser.data.profile.name || "kid-" + kidUser.id.slice(2, 8),
-    userDisplayName: kidUser.data.profile.name || "Fam ETC kid",
+    userName: kidProfile.name || "kid-" + kidUser.id.slice(2, 8),
+    userDisplayName: kidProfile.name || "Fam ETC kid",
     attestationType: "none",
     excludeCredentials: existing.map((c) => ({ id: c.id, transports: c.transports })),
     authenticatorSelection: { residentKey: "required", userVerification: "required" },
   });
-  // Keyed by kidId (not a single shared session slot) so provisioning two
-  // kids' devices back-to-back from the same parent session can't collide.
-  if (!req.session.waKidReg) req.session.waKidReg = {};
-  req.session.waKidReg[req.params.kidId] = { challenge: options.challenge, kidUserId: kidUser.id };
+  kidAccess.setRegistration(req.params.id, token, options.challenge, kidUser.id);
   res.json(options);
 });
-app.post("/api/family/kids/:kidId/device/verify", requireAuth, requireParent, requireFamily, async (req, res) => {
-  if (!family.kidBelongsToFamily(req.family.id, req.params.kidId)) {
-    return res.status(404).json({ error: "Kid not found in this family." });
+app.post("/api/kid/access-request/:id/register/verify", authLimiter, async (req, res) => {
+  const token = String((req.body || {}).token || "");
+  const request = kidAccess.getApproved(req.params.id, token);
+  if (!request || !request.regChallenge || !request.kidUserId) {
+    return res.status(400).json({ error: "Device setup expired — start again." });
   }
-  const pending = req.session.waKidReg && req.session.waKidReg[req.params.kidId];
-  if (req.session.waKidReg) delete req.session.waKidReg[req.params.kidId];
-  if (!pending) return res.status(400).json({ error: "Device setup session expired — try again." });
   const { rpID, origins } = rpForRequest(req);
   let verification;
   try {
     verification = await verifyRegistrationResponse({
-      response: req.body,
-      expectedChallenge: pending.challenge,
+      response: req.body.response || req.body,
+      expectedChallenge: request.regChallenge,
       expectedOrigin: origins,
       expectedRPID: rpID,
       requireUserVerification: true,
@@ -843,7 +900,7 @@ app.post("/api/family/kids/:kidId/device/verify", requireAuth, requireParent, re
   if (store.findByCredentialId(credential.id)) {
     return res.status(409).json({ error: "That passkey is already registered." });
   }
-  store.addCredential(pending.kidUserId, {
+  store.addCredential(request.kidUserId, {
     id: credential.id,
     publicKey: toB64url(credential.publicKey),
     counter: credential.counter || 0,
@@ -853,8 +910,11 @@ app.post("/api/family/kids/:kidId/device/verify", requireAuth, requireParent, re
     name: "This device",
     createdAt: new Date().toISOString(),
   });
-  // The PARENT stays logged in — session.uid is never touched here.
-  res.json({ ok: true });
+  kidAccess.complete(req.params.id, token);
+  // Sign the kid in on THIS device — the whole point: no parent session needed.
+  req.session.uid = request.kidUserId;
+  const kidUser = store.getUser(request.kidUserId);
+  res.json({ user: publicProfile(kidUser) });
 });
 
 // ===================== CHAT =====================

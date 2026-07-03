@@ -216,29 +216,57 @@
     });
   }
 
-  /* ---------- parent-provisioned kid device passkey (Settings kid rows) ----------
-     Run on the KID's device while the PARENT is signed in on it. Registers a
-     device-bound passkey for the kid's own user record without touching the
-     parent's session — see APP-BRIEF.md "Kid sign-in". */
-  async function provisionKidDeviceOptions(kidId) {
-    return api("/api/family/kids/" + encodeURIComponent(kidId) + "/device/options", { method: "POST" });
+  /* ---------- kid sign-in: request → parent approves → register passkey ----------
+     Runs on the KID's OWN device — no parent session needed there. The kid
+     submits the family invite code + name, a parent approves remotely, then the
+     kid registers a device passkey and is signed straight in. See lib/kid-access.js
+     and APP-BRIEF.md "Kid sign-in". */
+  function guessDeviceLabel() {
+    const ua = navigator.userAgent || "";
+    if (/iPad/i.test(ua)) return "an iPad";
+    if (/iPhone/i.test(ua)) return "an iPhone";
+    if (/Android/i.test(ua)) return "an Android device";
+    if (/Macintosh/i.test(ua)) return "a Mac";
+    if (/Windows/i.test(ua)) return "a Windows PC";
+    return "a device";
   }
-
-  async function provisionKidDeviceVerify(kidId, payload) {
-    return api("/api/family/kids/" + encodeURIComponent(kidId) + "/device/verify", {
+  async function requestKidAccess(inviteCode, name) {
+    return api("/api/kid/access-request", {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ inviteCode: inviteCode || "", name: name || "", deviceLabel: guessDeviceLabel() }),
     });
   }
-
-  async function provisionKidDevice(kidId) {
+  async function kidAccessStatus(requestId, pollToken) {
+    return api(
+      "/api/kid/access-request/" + encodeURIComponent(requestId) + "?token=" + encodeURIComponent(pollToken),
+      { method: "GET" }
+    );
+  }
+  // After a parent approves, register a passkey on this device and get signed in.
+  async function registerKidPasskey(requestId, pollToken) {
     if (!window.PublicKeyCredential) throw new Error("Passkeys are not supported in this browser.");
-    const options = await provisionKidDeviceOptions(kidId);
+    const options = await api(
+      "/api/kid/access-request/" + encodeURIComponent(requestId) + "/register/options",
+      { method: "POST", body: JSON.stringify({ token: pollToken }) }
+    );
     const publicKey = convertCreationOptions(options);
     const credential = await navigator.credentials.create({ publicKey });
-    if (!credential) throw new Error("Device setup was cancelled.");
-    const payload = credentialToJSON(credential);
-    return provisionKidDeviceVerify(kidId, payload);
+    if (!credential) throw new Error("Passkey setup was cancelled.");
+    return api("/api/kid/access-request/" + encodeURIComponent(requestId) + "/register/verify", {
+      method: "POST",
+      body: JSON.stringify({ token: pollToken, response: credentialToJSON(credential) }),
+    });
+  }
+  // Parent side: pending kid access requests + approve/deny.
+  async function getKidAccessRequests() {
+    const data = await api("/api/family/access-requests", { method: "GET" });
+    return (data && data.requests) || [];
+  }
+  async function approveKidAccess(requestId) {
+    return api("/api/family/access-requests/" + encodeURIComponent(requestId) + "/approve", { method: "POST" });
+  }
+  async function denyKidAccess(requestId) {
+    return api("/api/family/access-requests/" + encodeURIComponent(requestId) + "/deny", { method: "POST" });
   }
 
   async function issueBackupCodes() {
@@ -456,9 +484,12 @@
     renameCredential,
     removeCredential,
     registerAdditionalPasskey,
-    provisionKidDeviceOptions,
-    provisionKidDeviceVerify,
-    provisionKidDevice,
+    requestKidAccess,
+    kidAccessStatus,
+    registerKidPasskey,
+    getKidAccessRequests,
+    approveKidAccess,
+    denyKidAccess,
     issueBackupCodes,
     regenerateBackupCodes,
     getBillingStatus,

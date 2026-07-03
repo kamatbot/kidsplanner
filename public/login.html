@@ -20,29 +20,70 @@
   <div class="auth-hero">
     <div class="auth-logo">🗂️</div>
     <h1 class="auth-title">Fam ETC</h1>
-    <p class="auth-subtitle">Welcome back!</p>
+    <p class="auth-subtitle" id="auth-subtitle">Who's signing in?</p>
   </div>
   <div class="auth-card">
 
-    <!-- Passkey sign-in -->
-    <form id="login-form">
-      <div id="login-error" class="error-msg"></div>
-      <button type="submit" class="btn-primary full-width" id="login-submit">Sign in with passkey 🔑</button>
-    </form>
+    <!-- Step 0: choose Parent or Kid -->
+    <div id="role-choice">
+      <button type="button" class="btn-primary full-width role-btn" onclick="chooseRole('parent')">👨‍👩‍👧 &nbsp;I'm a parent</button>
+      <button type="button" class="btn-secondary full-width role-btn" style="margin-top:12px" onclick="chooseRole('kid')">🧒 &nbsp;I'm a kid</button>
+      <p class="demo-hint">New here? <a href="/signup" style="color:var(--primary);font-weight:800">Create a family</a></p>
+    </div>
 
-    <button type="button" class="btn-secondary full-width" style="margin-top:12px" onclick="toggleBackup()">Use a backup code instead</button>
+    <!-- Parent: passkey + backup code (unchanged flow) -->
+    <div id="parent-pane" style="display:none">
+      <form id="login-form">
+        <div id="login-error" class="error-msg"></div>
+        <button type="submit" class="btn-primary full-width" id="login-submit">Sign in with passkey 🔑</button>
+      </form>
+      <button type="button" class="btn-secondary full-width" style="margin-top:12px" onclick="toggleBackup()">Use a backup code instead</button>
+      <form id="backup-form" style="display:none;margin-top:16px">
+        <div class="form-group">
+          <label>Backup code</label>
+          <input type="text" id="backup-code" placeholder="xxxx-xxxx-xxxx" required autocomplete="one-time-code">
+        </div>
+        <div id="backup-error" class="error-msg"></div>
+        <button type="submit" class="btn-primary full-width">Sign in with backup code</button>
+      </form>
+      <button type="button" class="link-back" onclick="resetToChoice()">← Back</button>
+    </div>
 
-    <!-- Backup code recovery -->
-    <form id="backup-form" style="display:none;margin-top:16px">
-      <div class="form-group">
-        <label>Backup code</label>
-        <input type="text" id="backup-code" placeholder="xxxx-xxxx-xxxx" required autocomplete="one-time-code">
-      </div>
-      <div id="backup-error" class="error-msg"></div>
-      <button type="submit" class="btn-primary full-width">Sign in with backup code</button>
-    </form>
+    <!-- Kid step 1: enter family code + name -->
+    <div id="kid-pane" style="display:none">
+      <form id="kid-form">
+        <div class="form-group">
+          <label>Family ID</label>
+          <input type="text" id="kid-code" placeholder="e.g. ABC123" required autocomplete="off"
+                 autocapitalize="characters" spellcheck="false" maxlength="6" style="text-transform:uppercase;letter-spacing:2px">
+        </div>
+        <div class="form-group">
+          <label>Your name</label>
+          <input type="text" id="kid-name" placeholder="e.g. Arya" required autocomplete="off" maxlength="60">
+        </div>
+        <div id="kid-error" class="error-msg"></div>
+        <button type="submit" class="btn-primary full-width" id="kid-submit">Ask a parent to let me in 🙋</button>
+      </form>
+      <button type="button" class="link-back" onclick="resetToChoice()">← Back</button>
+    </div>
 
-    <p class="demo-hint">Don't have an account? <a href="/signup" style="color:var(--primary);font-weight:800">Sign up</a></p>
+    <!-- Kid step 2: waiting for approval -->
+    <div id="kid-waiting" style="display:none;text-align:center">
+      <div class="waiting-spinner">⏳</div>
+      <p class="waiting-text">Waiting for a parent to approve <strong id="kid-waiting-name"></strong>…</p>
+      <p class="text-muted" style="font-size:13px">Ask them to open Fam ETC and tap <strong>Approve</strong>. Keep this screen open.</p>
+      <button type="button" class="btn-secondary full-width" style="margin-top:8px" onclick="cancelKidRequest()">Cancel</button>
+    </div>
+
+    <!-- Kid step 3: approved → set up passkey -->
+    <div id="kid-approved" style="display:none;text-align:center">
+      <div class="waiting-spinner">✅</div>
+      <p class="waiting-text">You're approved, <strong id="kid-approved-name"></strong>!</p>
+      <p class="text-muted" style="font-size:13px">Set up this device so you can sign in with Face ID / Touch ID.</p>
+      <div id="kid-reg-error" class="error-msg"></div>
+      <button type="button" class="btn-primary full-width" id="kid-register-btn" onclick="finishKidSetup()">Set up this device 🔑</button>
+    </div>
+
   </div>
 </div>
 
@@ -57,12 +98,32 @@ function toast(msg) {
   clearTimeout(el._timer);
   el._timer = setTimeout(() => el.classList.remove('show'), 2800);
 }
+function show(id) { document.getElementById(id).style.display = ''; }
+function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+const PANES = ['role-choice', 'parent-pane', 'kid-pane', 'kid-waiting', 'kid-approved'];
+function only(paneId, subtitle) {
+  PANES.forEach((p) => (document.getElementById(p).style.display = p === paneId ? '' : 'none'));
+  if (subtitle) document.getElementById('auth-subtitle').textContent = subtitle;
+}
+
+function chooseRole(role) {
+  if (role === 'parent') only('parent-pane', 'Welcome back!');
+  else {
+    // Resume a pending request if the kid reloaded while waiting.
+    const saved = loadKidReq();
+    if (saved) { startPolling(saved); return; }
+    only('kid-pane', 'Let’s get you in');
+  }
+}
+function resetToChoice() { stopPolling(); only('role-choice', 'Who’s signing in?'); }
 
 function toggleBackup() {
   const form = document.getElementById('backup-form');
   form.style.display = form.style.display === 'none' ? '' : 'none';
 }
 
+/* ---------- parent flows (unchanged) ---------- */
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errEl = document.getElementById('login-error');
@@ -78,7 +139,6 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     btn.disabled = false;
   }
 });
-
 document.getElementById('backup-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const errEl = document.getElementById('backup-error');
@@ -92,12 +152,90 @@ document.getElementById('backup-form').addEventListener('submit', async (e) => {
   }
 });
 
+/* ---------- kid flow: request → wait → register ---------- */
+const KID_REQ_KEY = 'fam_kid_req';
+function saveKidReq(o) { try { localStorage.setItem(KID_REQ_KEY, JSON.stringify(o)); } catch (e) {} }
+function loadKidReq() { try { return JSON.parse(localStorage.getItem(KID_REQ_KEY) || 'null'); } catch (e) { return null; } }
+function clearKidReq() { try { localStorage.removeItem(KID_REQ_KEY); } catch (e) {} }
+
+let pollTimer = null;
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+document.getElementById('kid-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('kid-error');
+  const btn = document.getElementById('kid-submit');
+  const code = document.getElementById('kid-code').value.trim().toUpperCase();
+  const name = document.getElementById('kid-name').value.trim();
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    const res = await window.auth.requestKidAccess(code, name);
+    const req = { requestId: res.requestId, pollToken: res.pollToken, name: res.name || name };
+    saveKidReq(req);
+    startPolling(req);
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not send your request. Try again.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function startPolling(req) {
+  document.getElementById('kid-waiting-name').textContent = req.name || '';
+  only('kid-waiting', 'Almost there');
+  stopPolling();
+  const check = async () => {
+    let s;
+    try { s = await window.auth.kidAccessStatus(req.requestId, req.pollToken); }
+    catch (e) { return; } // transient — keep polling
+    if (!s) return;
+    if (s.status === 'approved') {
+      stopPolling();
+      document.getElementById('kid-approved-name').textContent = req.name || s.name || '';
+      only('kid-approved', 'You’re in!');
+    } else if (s.status === 'denied') {
+      stopPolling(); clearKidReq();
+      only('kid-pane', 'Let’s get you in');
+      document.getElementById('kid-error').textContent = 'A parent declined this request. Check with them and try again.';
+    } else if (s.status === 'expired' || s.status === 'not_found') {
+      stopPolling(); clearKidReq();
+      only('kid-pane', 'Let’s get you in');
+      document.getElementById('kid-error').textContent = 'That request expired. Please ask again.';
+    }
+  };
+  check();
+  pollTimer = setInterval(check, 3000);
+}
+
+function cancelKidRequest() { stopPolling(); clearKidReq(); resetToChoice(); }
+
+async function finishKidSetup() {
+  const req = loadKidReq();
+  const errEl = document.getElementById('kid-reg-error');
+  const btn = document.getElementById('kid-register-btn');
+  errEl.textContent = '';
+  if (!req) { resetToChoice(); return; }
+  btn.disabled = true;
+  try {
+    await window.auth.registerKidPasskey(req.requestId, req.pollToken);
+    clearKidReq();
+    window.location.href = '/';
+  } catch (err) {
+    errEl.textContent = err.message || 'Could not set up this device. Try again.';
+    btn.disabled = false;
+  }
+}
+
 // If already signed in, skip straight to the app.
 (async () => {
   try {
     const me = await window.auth.getMe();
-    if (me && me.user) window.location.href = '/';
-  } catch (e) { /* not signed in — stay on this page */ }
+    if (me && me.user) { window.location.href = '/'; return; }
+  } catch (e) { /* not signed in — stay */ }
+  // Resume a waiting kid request across reloads.
+  const saved = loadKidReq();
+  if (saved) startPolling(saved);
 })();
 </script>
 </body>

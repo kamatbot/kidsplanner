@@ -562,28 +562,16 @@ function renderManageFamily() {
         <span class="kid-row-swatch" style="background:${k.color}"></span>
         <span class="kid-row-name">${esc(k.name)}</span>
         <span class="kid-row-grade">${esc(k.grade || '')}</span>
-        <button class="kid-row-device" onclick="handleProvisionKidDevice('${k.id}','${esc(k.name).replace(/'/g,"\\'")}')" title="Set up this device for ${esc(k.name)}">📱 Set up this device</button>
         <button class="kid-row-remove" onclick="handleRemoveKid('${k.id}')" title="Remove kid">×</button>
       </div>`
     ).join('') || '<p class="text-muted">No kids added yet.</p>';
   }
 }
 
-/* Parent-provisioned kid device passkey — run on the KID's device while the
-   PARENT is signed in on it (Settings > Kids). Never touches the parent's
-   own session. See APP-BRIEF.md "Kid sign-in". */
-async function handleProvisionKidDevice(kidId, kidName) {
-  if (!window.PublicKeyCredential) {
-    toast('❌ Passkeys are not supported in this browser.');
-    return;
-  }
-  try {
-    await window.auth.provisionKidDevice(kidId);
-    toast(`${kidName || 'Kid'}'s device is set up! They can now sign in here with Face ID / Touch ID. 🎉`);
-  } catch (err) {
-    toast(`❌ ${err.message}`);
-  }
-}
+/* Kids now sign in from the login screen themselves: they enter the family
+   invite code + name, a parent approves the request (Today banner / push), then
+   the kid registers a passkey on their own device. The old "parent provisions
+   on the kid's device" button was removed — see lib/kid-access.js. */
 
 function copyInviteCode() {
   const code = currentFamily && currentFamily.inviteCode;
@@ -1986,6 +1974,86 @@ function setupChatRealtimeNudges() {
   if (chatNudgesReady) return;
   chatNudgesReady = true;
   const nudge = () => { if (chatPollTimer) pollChatMessages(); };
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'fam-push') nudge();
+    });
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) nudge(); });
+  window.addEventListener('focus', nudge);
+}
+
+/* ============================================================
+   KID SIGN-IN REQUESTS (parent approval)
+   A kid asked to join on their device; the family's parents see a banner here
+   and Approve/Deny. Approving creates the kid profile and unlocks passkey setup
+   on the kid's device. Parents-only; kids never poll or see this. Backed by
+   /api/family/access-requests (see lib/kid-access.js).
+============================================================ */
+const KID_REQ_POLL_MS = 12000;
+let kidReqPollTimer = null;
+let kidNudgesReady = false;
+
+async function renderKidAccessRequests() {
+  const banner = document.getElementById('kid-requests-banner');
+  if (!banner) return;
+  if (isKidSession() || !currentFamily) { banner.hidden = true; banner.innerHTML = ''; return; }
+  let reqs = [];
+  try { reqs = await window.auth.getKidAccessRequests(); }
+  catch (e) { return; } // transient — keep whatever's shown
+  if (!reqs.length) { banner.hidden = true; banner.innerHTML = ''; return; }
+  banner.innerHTML = reqs.map((r) => `
+    <div class="kid-request-card">
+      <div class="kid-request-info">
+        <span class="kid-request-emoji">🙋</span>
+        <div>
+          <div class="kid-request-title"><strong>${esc(r.name)}</strong> wants to sign in</div>
+          <div class="kid-request-sub">on ${esc(r.deviceLabel || 'a device')}</div>
+        </div>
+      </div>
+      <div class="kid-request-actions">
+        <button class="btn-primary kid-approve" onclick="handleApproveKid('${esc(r.id)}')">Approve</button>
+        <button class="btn-secondary kid-deny" onclick="handleDenyKid('${esc(r.id)}')">Deny</button>
+      </div>
+    </div>`).join('');
+  banner.hidden = false;
+}
+
+async function handleApproveKid(id) {
+  try {
+    const res = await window.auth.approveKidAccess(id);
+    if (res && res.family) {
+      currentFamily = res.family;
+      save('fam_family', currentFamily);
+      renderKidSwitcher();
+    }
+    toast('Approved! They can finish setting up on their device. ✅');
+  } catch (err) { toast(`❌ ${err.message}`); }
+  renderKidAccessRequests();
+}
+
+async function handleDenyKid(id) {
+  try { await window.auth.denyKidAccess(id); toast('Request denied.'); }
+  catch (err) { toast(`❌ ${err.message}`); }
+  renderKidAccessRequests();
+}
+
+function startKidRequestPolling() {
+  if (isKidSession()) return; // kids don't approve anyone
+  stopKidRequestPolling();
+  renderKidAccessRequests();
+  kidReqPollTimer = setInterval(renderKidAccessRequests, KID_REQ_POLL_MS);
+  setupKidRequestNudges();
+}
+function stopKidRequestPolling() {
+  if (kidReqPollTimer) { clearInterval(kidReqPollTimer); kidReqPollTimer = null; }
+}
+// Instant refresh when a kid-access push lands or the tab regains focus, so a
+// waiting kid isn't stuck on the 12s tick. Registered once.
+function setupKidRequestNudges() {
+  if (kidNudgesReady) return;
+  kidNudgesReady = true;
+  const nudge = () => { if (kidReqPollTimer) renderKidAccessRequests(); };
   if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'fam-push') nudge();
@@ -3465,6 +3533,7 @@ async function init() {
   const ok = await bootstrapSession();
   if (!ok) return; // redirected to /login
   showDashboard();
+  startKidRequestPolling(); // parents: surface pending kid sign-in requests
   registerServiceWorker().then(renderNotificationsControl);
 }
 

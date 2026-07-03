@@ -1,19 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {
-      "name": "fametc-dev",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["server.js"],
-      "port": 4100,
-      "env": {
-        "PORT": "4100",
-        "NODE_ENV": "development",
-        "SESSION_SECRET": "",
-        "FAM_DATA_DIR": ".dev-data",
-        "RP_ID": "localhost",
-        "RP_ORIGIN": "http://localhost:4100"
-      }
-    }
+    { "name": "fametc", "runtimeExecutable": "npm", "runtimeArgs": ["start"], "port": 3000 }
   ]
 }
