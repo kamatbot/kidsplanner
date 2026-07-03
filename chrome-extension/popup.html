@@ -64,11 +64,24 @@
       font-size: 11px;
       color: #888;
     }
+    #mappings-hint {
+      margin: 4px 0 0;
+      font-size: 11px;
+      color: #6C63FF;
+    }
+    #mappings-hint a {
+      color: #6C63FF;
+      font-weight: 600;
+      text-decoration: none;
+      margin-right: 4px;
+    }
   </style>
 </head>
 <body>
   <h1>Fam ETC School Import</h1>
-  <p class="sub">Pulls homework &amp; timetable from your logged-in Moodle session into Fam ETC.</p>
+  <p class="sub">Auto-syncs while you're signed in — this is the manual fallback. Pulls homework &amp; timetable from your logged-in Moodle session into Fam ETC.</p>
+
+  <p id="mappings-hint" class="text-muted"></p>
 
   <label for="moodle-user-id">Child's Moodle user id</label>
   <input type="text" id="moodle-user-id" placeholder="e.g. 14197" inputmode="numeric" />
@@ -80,8 +93,9 @@
 
   <div id="status" class="info"></div>
 
-  <p class="hint">Requires both a Moodle tab (logged in) and a fametc.com tab (logged in) open.</p>
+  <p class="hint">Requires both a Moodle tab (logged in) and a fametc.com tab (logged in) open. Auto-sync runs automatically on Moodle pages every ~10 minutes once your kids' Moodle IDs are set in Fam ETC → Settings.</p>
 
+  <script src="parse.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
