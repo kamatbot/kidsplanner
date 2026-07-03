@@ -875,11 +875,14 @@ body {
   border-top: 1px solid var(--border); background: white;
 }
 .chat-input {
-  flex: 1; border: 2px solid var(--border); border-radius: 999px;
+  /* min-width:0 lets the input shrink below its intrinsic width — without it,
+     the emoji + GIF + input + Send row overflows and the Send button gets
+     clipped by the card's overflow:hidden. */
+  flex: 1; min-width: 0; border: 2px solid var(--border); border-radius: 999px;
   padding: 10px 18px; font-family: 'Nunito',sans-serif; font-size: 14px;
 }
 .chat-input:focus { outline: none; border-color: var(--primary); }
-.chat-send-btn { border-radius: 999px; padding: 10px 22px; }
+.chat-send-btn { flex-shrink: 0; border-radius: 999px; padding: 10px 22px; }
 
 /* Chat: emoji + GIF picker buttons */
 .chat-picker-btn {
