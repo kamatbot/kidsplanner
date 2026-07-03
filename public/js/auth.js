@@ -285,6 +285,17 @@
     });
   }
 
+  // "Notify myself" — used by the school stats change/threshold detection
+  // (see app.js famImportSchoolData) to push a real notification to this
+  // user's own subscribed devices even if the tab is backgrounded. Best-
+  // effort: callers should not treat a rejection as fatal.
+  async function notifySelf(title, body, tag) {
+    return api("/api/notify/self", {
+      method: "POST",
+      body: JSON.stringify({ title: title || "", body: body || "", tag: tag || undefined }),
+    });
+  }
+
   /* ---------- chat ---------- */
   async function getMessages(since) {
     const qs = since ? ("?since=" + encodeURIComponent(since)) : "";
@@ -442,6 +453,7 @@
     getVapidPublicKey,
     subscribeWebPush,
     unsubscribeWebPush,
+    notifySelf,
     getMessages,
     sendChatMessage,
     deleteChatMessage,

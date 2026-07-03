@@ -1204,6 +1204,34 @@ app.post("/api/push/web/unsubscribe", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ===================== PUSH: notify self =====================
+// "Notify myself" path for client-side change/threshold detection (school
+// stats: attendance change, low canteen balance) that can't wait for a
+// server-side cron — the browser tab that ran the detection asks the server
+// to push to ITS OWN user's stored web subscriptions. requireParent because
+// today only the parent-facing school stats widget calls this; requireAuth
+// alone would also be safe (sendWebToUser is always scoped to req.user.id —
+// there is no way to target another user's subscriptions via this route).
+const notifySelfLimiter = rateLimit({ windowMs: 60 * 1000, max: envNum("RL_NOTIFY_SELF_MAX", 30), message: "Too many notifications requested — please wait a moment." });
+app.post("/api/notify/self", requireAuth, requireParent, notifySelfLimiter, async (req, res) => {
+  const { title, body, tag } = req.body || {};
+  if (!title || !String(title).trim()) return res.status(400).json({ error: "Missing title." });
+  if (!notifications.webEnabled()) return res.json({ sent: 0 });
+  try {
+    const payload = {
+      title: String(title).slice(0, 200),
+      body: body ? String(body).slice(0, 500) : "",
+      data: { url: "/", famType: "self_notify", tag: tag || undefined },
+    };
+    const result = await notifications.sendWebToUser(req.user.id, payload, { urgency: "normal" });
+    res.json({ sent: result.sent || 0 });
+  } catch (e) {
+    // Never let a push-delivery hiccup surface as a hard error to the caller
+    // — this is a best-effort notify path.
+    res.json({ sent: 0 });
+  }
+});
+
 // ===================== UPLOADS =====================
 // Timetable/homework photo uploads (JPG/PNG/PDF). Parsing itself happens
 // client-side via the existing Claude pipeline (see app.js) — this endpoint
@@ -1309,8 +1337,13 @@ app.get(["/app", "/app/*", "/goals", "/activities", "/settings"], requireAuth, (
 });
 
 const listenTarget = process.env.SOCKET_PATH || PORT;
-app.listen(listenTarget, () => {
+const server = app.listen(listenTarget, () => {
   console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD})`);
 });
 
+// Tests require this module directly and need the bound `server` (e.g. to
+// read its ephemeral port when PORT=0, and to close() it when done) — `app`
+// alone doesn't expose the listening socket. Production entry (`npm start`)
+// only ever uses the side effect of app.listen() above.
 module.exports = app;
+module.exports.server = server;
