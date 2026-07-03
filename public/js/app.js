@@ -1857,11 +1857,25 @@ function renderChatCard(card) {
   </div>`;
 }
 
+function scrollChatToBottom() {
+  const el = document.getElementById('chat-messages');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+// A chat GIF grows the list height AFTER render (it loads async). Re-scroll to
+// the bottom on load, but only if the user is already near it — so we don't
+// yank them away while they're scrolled up reading history.
+function chatMediaMaybeScroll(img) {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const imgH = (img && img.offsetHeight) || 0;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < imgH + 120) el.scrollTop = el.scrollHeight;
+}
+
 function renderChatMedia(media) {
   if (!media || media.type !== 'gif' || !media.previewUrl) return '';
   const full = media.url || media.previewUrl;
   return `<a href="${esc(full)}" target="_blank" rel="noopener noreferrer" class="chat-msg-gif-link">
-    <img src="${esc(media.previewUrl)}" alt="GIF" class="chat-msg-gif" loading="lazy">
+    <img src="${esc(media.previewUrl)}" alt="GIF" class="chat-msg-gif" loading="lazy" onload="chatMediaMaybeScroll(this)">
   </a>`;
 }
 
@@ -1908,6 +1922,7 @@ async function loadChatMessages() {
     chatMessages = msgs;
     chatLastAt = msgs.length ? msgs[msgs.length - 1].createdAt : null;
     renderChatMessages();
+    scrollChatToBottom(); // always land on the latest message when (re)loading
   } catch (err) {
     toast(`❌ ${err.message}`);
   }
@@ -1971,6 +1986,7 @@ async function handleSendChatMessage(e) {
     } else {
       await pollChatMessages();
     }
+    scrollChatToBottom(); // your own message: always jump to the bottom
   } catch (err) {
     toast(`❌ ${err.message}`);
   }
@@ -2111,6 +2127,7 @@ async function handleSendGif(url, previewUrl, width, height) {
     } else {
       await pollChatMessages();
     }
+    scrollChatToBottom(); // your own GIF: always jump to the bottom
   } catch (err) {
     toast(`❌ ${err.message}`);
   }

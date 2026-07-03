@@ -871,7 +871,7 @@ body {
 .chat-card-label { font-size: 10px; font-weight: 800; text-transform: uppercase; opacity: .8; letter-spacing: .5px; }
 .chat-card-title { font-size: 13px; font-weight: 700; }
 .chat-send-row {
-  display: flex; align-items: center; gap: 8px; padding: 14px 20px;
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px;
   border-top: 1px solid var(--border); background: white;
 }
 .chat-input {
@@ -879,19 +879,26 @@ body {
      the emoji + GIF + input + Send row overflows and the Send button gets
      clipped by the card's overflow:hidden. */
   flex: 1; min-width: 0; border: 2px solid var(--border); border-radius: 999px;
-  padding: 10px 18px; font-family: 'Nunito',sans-serif; font-size: 14px;
+  padding: 10px 16px; font-family: 'Nunito',sans-serif; font-size: 14px;
 }
 .chat-input:focus { outline: none; border-color: var(--primary); }
-.chat-send-btn { flex-shrink: 0; border-radius: 999px; padding: 10px 22px; }
+/* Facebook-style composer: input dominates, Send is a compact circular icon
+   so it doesn't eat width on the narrow docked chat column (~340px). */
+.chat-send-btn {
+  flex-shrink: 0; width: 40px; height: 40px; padding: 0; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 
-/* Chat: emoji + GIF picker buttons */
+/* Chat: emoji + GIF picker buttons — compact circular icons (FB-style) */
 .chat-picker-btn {
   flex-shrink: 0; border: 2px solid var(--border); background: white;
-  border-radius: 999px; cursor: pointer; font-size: 17px; line-height: 1;
-  padding: 7px 10px; transition: border-color .15s, background .15s;
+  border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1;
+  width: 36px; height: 36px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: border-color .15s, background .15s;
 }
 .chat-picker-btn:hover { border-color: var(--primary); background: var(--primary-light); }
-.chat-gif-btn { font-size: 11px; font-weight: 900; letter-spacing: .3px; padding: 8px 10px; }
+.chat-gif-btn { font-size: 10px; font-weight: 900; letter-spacing: .2px; }
 
 /* Chat: popover anchor + shared popover shell, matching the purple/pink
    chat design (gradient accents, rounded, soft shadow). Positioned to sit
