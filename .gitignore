@@ -7,3 +7,18 @@ config.js
 # Editor
 .vscode/
 .idea/
+.gstack/
+
+# Node / server
+node_modules/
+.env
+.env.*
+!.env.example
+data/*.json
+npm-debug.log*
+
+# Build artifacts
+*.zip
+ios/build/
+ios/DerivedData/
+
