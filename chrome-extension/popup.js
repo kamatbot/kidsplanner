@@ -18,7 +18,7 @@
    (this happens in background.js, which the popup delegates to).
 ============================================================ */
 
-const { MOODLE_BASE, looksLikeMoodleLoginPage, parseHomeworkHtml, parseTimetableHtml, moodleHomeworkUrl, moodleTimetableUrl } = window.famParse;
+const { MOODLE_BASE, looksLikeMoodleLoginPage, parseHomeworkHtml, parseTimetableHtml, parseSchoolStatsHtml, moodleHomeworkUrl, moodleTimetableUrl, moodleHomeUrl } = window.famParse;
 
 const el = {
   moodleUserId: document.getElementById("moodle-user-id"),
@@ -91,6 +91,18 @@ async function fetchMoodlePage(url) {
   return text;
 }
 
+/* ---------- family-wide school stats (house points/attendance/canteen),
+   fetched once from the HOME dashboard — best-effort, never blocks the
+   homework/timetable import if it fails. ---------- */
+async function fetchSchoolStats() {
+  try {
+    const html = await fetchMoodlePage(moodleHomeUrl());
+    return parseSchoolStatsHtml(html);
+  } catch (e) {
+    return [];
+  }
+}
+
 /* ---------- main flow ---------- */
 async function handleImport() {
   const moodleUserId = el.moodleUserId.value.trim();
@@ -144,6 +156,8 @@ async function handleImport() {
       "info"
     );
 
+    const schoolStats = await fetchSchoolStats();
+
     const response = await chrome.runtime.sendMessage({
       type: "IMPORT",
       kidId: null,
@@ -151,6 +165,7 @@ async function handleImport() {
       moodleUserId,
       homework,
       timetable,
+      schoolStats,
     });
 
     if (!response || response.error === "NO_FAMETC_TAB") {

@@ -75,6 +75,7 @@ async function handleImport(msg) {
     moodleUserId: msg.moodleUserId,
     homework: msg.homework || [],
     timetable: msg.timetable || [],
+    schoolStats: msg.schoolStats || [],
   };
   try {
     const result = await importIntoTab(tab.id, payload);

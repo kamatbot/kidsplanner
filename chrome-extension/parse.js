@@ -119,6 +119,59 @@ function parseTimetableHtml(html) {
   return { lessons, twoWeek };
 }
 
+/* ---------- school stats parsing (house points / attendance / canteen) ----------
+   GET / (the school HOME dashboard, site root). Lists each child as a
+   `<td class="cell c1 lastcol">Ryshi 10a</td>` heading followed by tiles
+   whose text (document.body.innerText) contains, per kid, in order:
+     - house points: /(\d+)\s*points/i
+     - attendance:   /(\d+)%\s*Attend/i
+     - punctual:     /(\d+)%\s*Punctual/i
+     - canteen:      /Balance\s*฿?\s*(\d+)/i
+   Kid FIRST names come from the td.cell.c1.lastcol headings (e.g.
+   "Ryshi 10a" -> "Ryshi"). Family-wide (not per-mapped-kid) — fetched ONCE
+   per sync from the site root, not per kid. Verified live 2026-07-03:
+   Ryshi {points:108, attend:99, punctual:98, balance:201}; Arya
+   {points:0, attend:100, punctual:100, balance:180}. */
+function parseSchoolStatsHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const headings = Array.from(doc.querySelectorAll("td.cell.c1.lastcol"));
+  const bodyText = (doc.body && doc.body.textContent) || "";
+
+  // Kid name -> first occurrence index of that name in the body text, so we
+  // can slice the text into per-kid blocks in document order.
+  const names = headings
+    .map((td) => (td.textContent || "").trim())
+    .filter(Boolean)
+    .map((full) => full.split(/\s+/)[0]) // first name only, e.g. "Ryshi 10a" -> "Ryshi"
+    .filter((name, i, arr) => arr.indexOf(name) === i); // dedupe
+
+  const positions = names
+    .map((name) => ({ name, idx: bodyText.indexOf(name) }))
+    .filter((p) => p.idx !== -1)
+    .sort((a, b) => a.idx - b.idx);
+
+  const results = positions.map((p, i) => {
+    const start = p.idx;
+    const end = i + 1 < positions.length ? positions[i + 1].idx : bodyText.length;
+    const block = bodyText.slice(start, end);
+
+    const pointsMatch = block.match(/(\d+)\s*points/i);
+    const attendMatch = block.match(/(\d+)%\s*Attend/i);
+    const punctualMatch = block.match(/(\d+)%\s*Punctual/i);
+    const balanceMatch = block.match(/Balance\s*฿?\s*(\d+)/i);
+
+    return {
+      name: p.name,
+      housePoints: pointsMatch ? Number(pointsMatch[1]) : null,
+      attendance: attendMatch ? Number(attendMatch[1]) : null,
+      punctual: punctualMatch ? Number(punctualMatch[1]) : null,
+      canteenBalance: balanceMatch ? Number(balanceMatch[1]) : null,
+    };
+  });
+
+  return results;
+}
+
 /* ---------- Moodle page URLs ---------- */
 const MOODLE_BASE = "https://bangkok.learn.nae.school";
 function moodleHomeworkUrl(moodleUserId) {
@@ -126,6 +179,9 @@ function moodleHomeworkUrl(moodleUserId) {
 }
 function moodleTimetableUrl(moodleUserId) {
   return `${MOODLE_BASE}/local/sta/pages/timetable.php?id=${encodeURIComponent(moodleUserId)}`;
+}
+function moodleHomeUrl() {
+  return `${MOODLE_BASE}/`;
 }
 
 /* Exposed as plain globals — loaded via a <script> tag (popup.html) or as an
@@ -136,7 +192,9 @@ if (typeof window !== "undefined") {
     looksLikeMoodleLoginPage,
     parseHomeworkHtml,
     parseTimetableHtml,
+    parseSchoolStatsHtml,
     moodleHomeworkUrl,
     moodleTimetableUrl,
+    moodleHomeUrl,
   };
 }

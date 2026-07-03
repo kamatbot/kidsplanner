@@ -134,11 +134,30 @@ async function fetchAndParseForKid(moodleUserId) {
   return { homework, timetable };
 }
 
+/* ---------- fetch + parse the family-wide school stats (house points,
+   attendance, canteen balance) from the HOME dashboard. Fetched ONCE per
+   sync (not per kid) — best-effort: any failure just means no schoolStats
+   this round, homework/timetable sync still proceeds. ---------- */
+async function fetchSchoolStats() {
+  const { moodleHomeUrl, looksLikeMoodleLoginPage, parseSchoolStatsHtml } = window.famParse;
+  try {
+    const res = await fetch(moodleHomeUrl(), { credentials: "include" });
+    const html = await res.text();
+    if (looksLikeMoodleLoginPage(html)) return [];
+    return parseSchoolStatsHtml(html);
+  } catch (e) {
+    console.warn("[Fam ETC] school stats fetch failed", e && e.message);
+    return [];
+  }
+}
+
 /* ---------- main auto-sync flow ---------- */
 async function runAutoSync(mappings) {
   let totalHw = 0;
   let totalEvents = 0;
   let anySynced = false;
+
+  const schoolStats = await fetchSchoolStats();
 
   for (const mapping of mappings) {
     if (!mapping || !mapping.moodleUserId) continue;
@@ -150,6 +169,7 @@ async function runAutoSync(mappings) {
         moodleUserId: mapping.moodleUserId,
         homework,
         timetable,
+        schoolStats,
       });
       if (response && response.result) {
         totalHw += response.result.homeworkAdded || 0;
