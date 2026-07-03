@@ -944,6 +944,14 @@ app.get(/^\/js\/([\w.-]+\.js)$/, (req, res, next) => {
   res.setHeader("Cache-Control", "no-cache"); // revalidate — app.js changes every deploy
   res.send(body);
 });
+// Service worker MUST be served at root scope ("/sw.js", not "/js/sw.js")
+// so its registration (navigator.serviceWorker.register('/sw.js')) covers
+// the whole app. no-cache (not immutable) so a redeploy's changes reach
+// clients on their next visit rather than being pinned by a stale SW.
+app.get("/sw.js", (req, res) => {
+  res.type("application/javascript; charset=utf-8").setHeader("Cache-Control", "no-cache");
+  res.sendFile(path.join(PUBLIC, "sw.js"));
+});
 app.get("/robots.txt", (req, res) => {
   res.type("text/plain").setHeader("Cache-Control", "public, max-age=86400");
   res.send(`User-agent: *\nAllow: /\n\nSitemap: ${CANONICAL_HOST}/sitemap.xml\n`);
