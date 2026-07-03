@@ -10,11 +10,19 @@
       Apple verifies this by fetching /.well-known/apple-app-site-association
       from the apex, which server.js serves with this app's
       "B4F73U5RGR.com.fametc.app" id (set via the IOS_APP_IDS env var).
+
+      NOTE: "?mode=developer" makes the DEVICE fetch the AASA directly from the
+      domain, bypassing Apple's CDN (which caches results — including failures —
+      for a while, and had cached a failure from when fametc.com was first set
+      up with a redirect loop). Requires Developer Mode enabled on the device
+      (Settings > Privacy & Security > Developer Mode) and a development-signed
+      build. REMOVE the "?mode=developer" suffix before App Store / production
+      TestFlight release so it uses the CDN path.
     -->
     <key>com.apple.developer.associated-domains</key>
     <array>
-        <string>webcredentials:fametc.com</string>
-        <string>applinks:www.fametc.com</string>
+        <string>webcredentials:fametc.com?mode=developer</string>
+        <string>applinks:www.fametc.com?mode=developer</string>
     </array>
 </dict>
 </plist>
