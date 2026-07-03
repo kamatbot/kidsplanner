@@ -1,0 +1,58 @@
+name: FamETC
+options:
+  bundleIdPrefix: com.fametc
+  deploymentTarget:
+    # "latest major minus 1" per APP-BRIEF.md. RetireOdds (built ~mid-2026)
+    # targeted 17.0; picking 18.0 here as the "N-1" floor. Confirm/adjust
+    # against whatever iOS major is actually current when Xcode is opened —
+    # this is a placeholder judgment call, not a hard requirement.
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Apple Developer Team ID — matches IOS_APP_IDS on the server
+    # (B4F73U5RGR.com.fametc.app, see .env.example). Same Apple account as
+    # RetireOdds, unchanged per APP-BRIEF.md.
+    DEVELOPMENT_TEAM: "B4F73U5RGR"
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    # Shared secret that identifies the native app to the server's iOS free-tier
+    # gate (must equal the server's IOS_CLIENT_SECRET env var). Surfaced to the
+    # app via the FAMIOSClientKey Info.plist entry. Empty default = legacy
+    # behavior (works while the server's IOS_CLIENT_SECRET is unset). Set the
+    # real value locally — do NOT commit it (e.g. override in a gitignored
+    # xcconfig or your build environment). Use only UA-safe chars (hex / base64url).
+    FAM_IOS_CLIENT_KEY: ""
+
+targets:
+  FamETC:
+    type: application
+    platform: iOS
+    sources:
+      - path: FamETC
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app
+        PRODUCT_NAME: FamETC
+        INFOPLIST_FILE: FamETC/Info.plist
+        CODE_SIGN_ENTITLEMENTS: FamETC/FamETC.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+  FamETCTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: FamETCTests
+    dependencies:
+      - target: FamETC
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.tests
+        GENERATE_INFOPLIST_FILE: YES

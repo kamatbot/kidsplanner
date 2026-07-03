@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      Associated Domains links this app to the website so:
+        * webcredentials: passkeys registered on fametc.com work in-app
+          (RP ID is the apex, per lib/webauthn.js + server.js).
+        * applinks: https://www.fametc.com universal links open the app.
+      Apple verifies this by fetching /.well-known/apple-app-site-association
+      from the apex, which server.js serves with this app's
+      "B4F73U5RGR.com.fametc.app" id (set via the IOS_APP_IDS env var).
+    -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>webcredentials:fametc.com</string>
+        <string>applinks:www.fametc.com</string>
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,80 @@
+import Foundation
+
+// MARK: - Domain models
+//
+// Mirrors server.js's lib/family.js and lib/chat.js response shapes exactly.
+// Kept intentionally small — this is the whole Fam ETC domain model.
+
+struct User: Codable, Identifiable {
+    let id: String
+    let email: String
+    var name: String?
+}
+
+struct Kid: Codable, Identifiable {
+    let id: String
+    var name: String
+    var grade: String
+    var color: String
+    let createdAt: String
+    // NOTE: no `email` field — kids never get one, per privacy requirement.
+}
+
+struct Family: Codable, Identifiable {
+    let id: String
+    var name: String
+    let inviteCode: String
+    var parentIds: [String]
+    var kids: [Kid]
+    let createdAt: String
+}
+
+/// A homework|event reference attached to a chat message.
+struct ChatCard: Codable {
+    let type: String   // "homework" | "event"
+    let id: String
+    var title: String?
+}
+
+struct ChatMessage: Codable, Identifiable {
+    let id: String
+    let familyId: String
+    let senderType: String   // "parent" | "kid"
+    let senderId: String
+    var postedByUserId: String?
+    var text: String
+    var card: ChatCard?
+    let createdAt: String
+    var deleted: Bool
+    var deletedBy: String?
+    var flagged: Bool
+    var flagReason: String?
+    var flaggedBy: String?
+}
+
+// MARK: - Response wrappers (thin, match server.js route shapes)
+
+struct FamiliesResponse: Codable { var families: [Family] }
+struct FamilyResponse: Codable { var family: Family }
+struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
+struct MessagesResponse: Codable { var messages: [ChatMessage] }
+struct MessageResponse: Codable { var message: ChatMessage }
+struct OKResponse: Codable { var ok: Bool }
+
+struct UploadResponse: Codable {
+    var ok: Bool
+    var filename: String
+    var size: Int
+    var mimetype: String
+}
+
+struct BillingStatusResponse: Codable {
+    var status: String?
+    var plan: String?
+    var currentPeriodEnd: String?
+}
+struct BillingCheckoutResponse: Codable { var url: String? }
+struct BillingPortalResponse: Codable { var url: String? }
+
+struct HealthResponse: Codable { var ok: Bool?; var status: String? }
+struct MeResponse: Codable { var user: User? }
