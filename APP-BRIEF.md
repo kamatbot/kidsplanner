@@ -75,6 +75,15 @@
 | Voice | decided: none (add on-device SFSpeechRecognizer later if younger kids need it) | — |
 | Push | **at launch** (⚠ net-new work — no copy-ready code): chat messages + reminders. Needs APNs setup + server-side push sender. | net-new APNsService + server sender |
 
+## Kids' privacy & compliance (decided 2026-07-03)
+| Decision | Value |
+|---|---|
+| Who is the customer | **Parents' app.** The parent is the account owner, customer, and billing relationship. The trial/subscription belongs to a parent. All App Store listing, onboarding copy, and marketing address parents. |
+| Kid accounts | **No direct kid signup — ever.** Kid profiles/logins are created only by a parent from inside the family and joined via family invite. This doubles as the verifiable-parental-consent mechanism (COPPA / GDPR-K / Thailand PDPA): the parent consents by creating the kid's profile. |
+| App Store category | Standard family/productivity app rated 4+ (parent-facing) — NOT the Kids Category (avoids its ad/analytics/link restrictions, honest because parents are the target customer). Revisit only if marketing ever targets kids directly. |
+| UGC compliance (Apple 1.2) | Chat ships with parent-admin controls framed as parental controls: parents can delete any message in the family, a report/flag path exists, and members can be removed from the family (block equivalent). Required for App Review of any chat app. |
+| Kid data minimization | Collect the minimum for kid profiles (name, grade, color); no kid emails required; no per-user analytics (already decided: aggregate counters only); kids' data encrypted at rest (already decided). |
+
 ## Rename map (derived — apply mechanically)
 | RetireOdds | Fam ETC |
 |---|---|
