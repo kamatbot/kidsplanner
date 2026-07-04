@@ -24,5 +24,17 @@
         <string>webcredentials:fametc.com?mode=developer</string>
         <string>applinks:www.fametc.com?mode=developer</string>
     </array>
+
+    <!--
+      Push Notifications (APNs). "development" targets the APNs sandbox, which is
+      what a dev-signed build (Xcode run on device / Simulator) uses. Xcode
+      automatically rewrites this to "production" when archiving for TestFlight /
+      the App Store, so it does not need to be changed by hand. Requires the Push
+      Notifications capability to be enabled on the App ID (com.fametc.app) — with
+      Automatic signing, Xcode registers it on the App ID at build time.
+      The server side is gated separately on the APNS_* env vars + a .p8 key.
+    -->
+    <key>aps-environment</key>
+    <string>development</string>
 </dict>
 </plist>

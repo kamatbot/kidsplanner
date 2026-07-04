@@ -76,7 +76,15 @@ struct RootView: View {
         }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
-        .task { await store.load() }
+        .task {
+            await store.load()
+            // Now that we know there's an authenticated session, ask for push
+            // permission (prompts once) and register/refresh the APNs token. Gated
+            // on !needsAuth so the token POST to /api/push/register has a session.
+            if !store.needsAuth {
+                PushRegistrationService.shared.requestAuthorizationAndRegister()
+            }
+        }
         .overlay { if store.needsAuth { ReauthOverlay() } }
         .onAppear {
             #if DEBUG
@@ -317,6 +325,7 @@ struct ReauthOverlay: View {
                 showBackupSignIn = false
                 store.needsAuth = false
                 Task { await store.refresh() }
+                PushRegistrationService.shared.requestAuthorizationAndRegister()
             }
             .presentationDetents([.large])
         }
@@ -333,6 +342,8 @@ struct ReauthOverlay: View {
             try await AuthService.shared.signInWithPasskey()
             store.needsAuth = false
             await store.refresh()
+            // Fresh session — (re)register for push so the token is attached to it.
+            PushRegistrationService.shared.requestAuthorizationAndRegister()
         } catch {
             self.error = error.localizedDescription
         }

@@ -6,9 +6,10 @@ import UserNotifications
 /// to the generic/app-specific push split (`PushRegistrationService` /
 /// `NotificationHandler`) — this file owns no push logic of its own.
 ///
-/// TODO: call `PushRegistrationService.shared.requestAuthorizationAndRegister()`
-/// at the appropriate trigger point (e.g. after a successful sign-in, or from
-/// `RootView`'s `.task`) — not wired automatically by this scaffold.
+/// The registration trigger lives in `RootView` (and `ReauthOverlay`): once the
+/// store confirms an authenticated session, it calls
+/// `PushRegistrationService.shared.requestAuthorizationAndRegister()`, so the
+/// device token is only requested/uploaded when there's a session to attach it to.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                       didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {

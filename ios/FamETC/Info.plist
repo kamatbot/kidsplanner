@@ -33,6 +33,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Fam ETC uses the camera to scan timetables and homework so they can be added to your family's calendar — photos are processed on your device.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

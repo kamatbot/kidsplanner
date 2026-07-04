@@ -14,6 +14,11 @@ extension Notification.Name {
     /// Posted when a `homework_reminder` push is received/tapped.
     /// `userInfo["homeworkId"]` carries the homework item to deep-link into.
     static let famDeepLinkToHomework = Notification.Name("famDeepLinkToHomework")
+    /// Posted when a `kid_access_request` push is received/tapped — a kid asked to
+    /// sign in on a device and a parent needs to approve. `userInfo["familyId"]`
+    /// carries the family. (Approval UI is currently a web surface; the push at
+    /// least brings the parent into the app.)
+    static let famDeepLinkToKidApproval = Notification.Name("famDeepLinkToKidApproval")
 }
 
 /// Reference payload shapes (lib/fam-notifications.js):
@@ -45,6 +50,9 @@ final class NotificationHandler {
         case "homework_reminder":
             guard let homeworkId = userInfo["homeworkId"] as? String else { return }
             NotificationCenter.default.post(name: .famDeepLinkToHomework, object: nil, userInfo: ["homeworkId": homeworkId])
+        case "kid_access_request":
+            let familyId = (userInfo["familyId"] as? String) ?? ""
+            NotificationCenter.default.post(name: .famDeepLinkToKidApproval, object: nil, userInfo: ["familyId": familyId])
         default:
             break
         }
