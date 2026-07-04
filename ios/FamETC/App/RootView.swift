@@ -55,23 +55,19 @@ struct RootView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selection: Tab = .today
     @State private var showChatSlideOver = false
-    // iPad size classes are regular×regular in BOTH orientations, so they can't
-    // tell landscape from portrait — we detect it from the actual geometry.
-    @State private var isLandscape = true
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         Group {
-            if isPad && isLandscape {
-                iPadLandscapeLayout   // nav rail | dashboard | docked chat
-            } else if isPad {
-                iPadPortraitLayout    // nav rail | dashboard, chat via slide-over
+            if isPad {
+                // Full-width dashboard with a nav rail; chat via the slide-over
+                // button (a docked chat column crowded out the widgets).
+                iPadPortraitLayout
             } else {
                 iPhoneLayout
             }
         }
-        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
         // Parents: kids waiting to be let in appear as a banner above everything.
@@ -130,29 +126,7 @@ struct RootView: View {
         .onChange(of: selection) { _, _ in Haptics.selection() }
     }
 
-    // MARK: iPad landscape — 3-column split: nav rail | content | docked chat
-
-    private var iPadLandscapeLayout: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            NavRailList(selection: $selection)
-                .navigationSplitViewColumnWidth(min: 90, ideal: 110, max: 140)
-        } content: {
-            mainContent(for: selection)
-                .navigationSplitViewColumnWidth(min: 360, ideal: 480)
-        } detail: {
-            // Chat stays docked on the trailing edge regardless of the selected
-            // tab, except when Chat itself is selected — the content column
-            // already shows it, so the detail column offers a friendly stand-in.
-            if selection == .chat {
-                ComingSoonDockedNote()
-            } else {
-                ChatScreen()
-            }
-        }
-        .navigationSplitViewStyle(.balanced)
-    }
-
-    // MARK: iPad portrait — full-width content, chat via trailing slide-over
+    // MARK: iPad — nav rail + full-width content, chat via trailing slide-over
 
     private var iPadPortraitLayout: some View {
         HStack(spacing: 0) {
@@ -195,24 +169,9 @@ struct RootView: View {
     }
 }
 
-/// Friendly filler for the iPad-landscape detail column when Chat is already
-/// the selected tab (so the content column covers it) — avoids showing the same
-/// screen twice side by side.
-private struct ComingSoonDockedNote: View {
-    var body: some View {
-        ZStack {
-            ScreenBackground()
-            Text("Chat is open in the main column.")
-                .font(Typography.label)
-                .foregroundStyle(Palette.textSecond)
-                .padding(Space.lg)
-        }
-    }
-}
-
 // MARK: - iPad nav rail
 
-/// Simple List-based nav rail shared by both iPad layouts: icon + label rows,
+/// Simple List-based nav rail for the iPad layout: icon + label rows,
 /// selection bound to `Tab`.
 private struct NavRailList: View {
     @Binding var selection: Tab
