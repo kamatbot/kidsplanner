@@ -235,6 +235,451 @@ const SCHOOL_AUTO_SYNC_MIN_MS = 60 * 60 * 1000; // mirrors server-side throttle
 let schoolKidMappings = []; // [{ kidId, moodleUserId }] as returned by the server
 
 /* ============================================================
+   ENRICHMENT + NOTES (Notes tab, quote/mood/news reflections,
+   SAT word activity + word bank + pop quiz, brain teaser, gating).
+   See /private/tmp .../enrichment-spec.md section 4 for the contract.
+============================================================ */
+let notesItems      = [];    // last-loaded list from GET /api/notes
+let currentQuote    = null;  // today's { text, author }
+let currentNews     = null;  // today's { cat, headline, summary }
+let currentSatWord  = null;  // today's { word, pos, def, example }
+let wordBankState   = { words: [], stats: { learning: 0, mastered: 0, known: 0 } };
+let wordQuizState   = { questions: [], index: 0 };
+let satPlacementDone = false; // tracked via localStorage per-user, see satPlacementKey()
+
+const MOOD_OPTIONS = [
+  { emoji: '😄', label: 'Great' },
+  { emoji: '🙂', label: 'Good' },
+  { emoji: '😐', label: 'Okay' },
+  { emoji: '😔', label: 'Down' },
+  { emoji: '😣', label: 'Stressed' },
+  { emoji: '😡', label: 'Angry' },
+];
+let selectedMood = null;
+
+function satPlacementKey() {
+  return `fam_sat_placement_done_${sessionUser ? sessionUser.id : 'anon'}`;
+}
+
+/* ---------- gating: homework due today > 3 disables enrichment cards ---------- */
+function homeworkDueTodayCount() {
+  const today = isoDate(new Date());
+  return homeworkItems.filter((h) => h.dueDate === today && h.status !== 'done').length;
+}
+
+function applyEnrichmentGating() {
+  const dueCount = homeworkDueTodayCount();
+  const locked = dueCount > 3;
+  const lockIds = ['lock-quote', 'lock-sat', 'lock-mood', 'lock-news', 'lock-quiz'];
+  const cardIds = ['widget-quote', 'widget-word', 'widget-mood', 'widget-news', 'widget-quiz'];
+  lockIds.forEach((id, i) => {
+    const overlay = document.getElementById(id);
+    const card = document.getElementById(cardIds[i]);
+    if (!overlay || !card) return;
+    if (locked) {
+      overlay.hidden = false;
+      overlay.textContent = `Finish your homework first 📚 — ${dueCount} due today`;
+      card.classList.add('fam-locked');
+    } else {
+      overlay.hidden = true;
+      card.classList.remove('fam-locked');
+    }
+  });
+}
+
+/* ---------- Notes tab ---------- */
+function noteSourceChip(source) {
+  const map = {
+    quote:  { icon: '📌', label: 'Quote' },
+    sat:    { icon: '🔤', label: 'SAT word' },
+    chat:   { icon: '💬', label: 'Chat' },
+    social: { icon: '💗', label: 'Feelings' },
+    news:   { icon: '📰', label: 'News' },
+    manual: { icon: '📝', label: 'Note' },
+  };
+  return map[source] || map.manual;
+}
+
+function friendlyNoteDate(dateStr) {
+  const d = parseIso(dateStr);
+  const today = isoDate(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (dateStr === today) return 'Today';
+  if (dateStr === isoDate(yesterday)) return 'Yesterday';
+  return formatLong(d);
+}
+
+async function loadNotes() {
+  try {
+    notesItems = await window.auth.getNotes(isKidSession() ? {} : {});
+  } catch (e) {
+    notesItems = [];
+  }
+  renderNotesTimeline();
+  return notesItems;
+}
+
+function renderNotesTimeline() {
+  const el = document.getElementById('notes-timeline');
+  if (!el) return;
+  if (!notesItems.length) {
+    el.innerHTML = '<p class="text-muted">No notes yet — reflections you save from Quote, SAT, News, feelings check-ins, and pinned chat messages will show up here.</p>';
+    return;
+  }
+  // Group by date, preserving the already-desc-by-date-then-createdAt server order.
+  const groups = [];
+  let lastDate = null;
+  notesItems.forEach((n) => {
+    if (n.date !== lastDate) {
+      groups.push({ date: n.date, notes: [] });
+      lastDate = n.date;
+    }
+    groups[groups.length - 1].notes.push(n);
+  });
+
+  el.innerHTML = groups.map((g) => {
+    const rows = g.notes.map((n) => {
+      const chip = noteSourceChip(n.source);
+      const ref = (n.ref && n.ref.context) ? `<div class="note-ref-context">${esc(n.ref.context)}</div>` : '';
+      const canEdit = sessionUser && n.authorId === sessionUser.id;
+      const del = canEdit ? `<button class="btn-link-danger note-delete-btn" onclick="handleDeleteNote('${n.id}')" title="Delete note">🗑️</button>` : '';
+      return `<div class="note-item">
+        <div class="note-item-header">
+          <span class="note-source-chip note-source-${esc(n.source || 'manual')}">${chip.icon} ${chip.label}</span>
+          ${del}
+        </div>
+        <div class="note-body">${esc(n.body)}</div>
+        ${ref}
+      </div>`;
+    }).join('');
+    return `<div class="notes-day-group">
+      <div class="notes-day-header">${esc(friendlyNoteDate(g.date))}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function openAddNoteComposer() {
+  const composer = document.getElementById('notes-composer');
+  if (composer) { composer.hidden = false; document.getElementById('notes-composer-text').focus(); }
+}
+
+function closeAddNoteComposer() {
+  const composer = document.getElementById('notes-composer');
+  if (composer) { composer.hidden = true; document.getElementById('notes-composer-text').value = ''; }
+}
+
+async function handleSaveManualNote() {
+  const textEl = document.getElementById('notes-composer-text');
+  const body = textEl ? textEl.value.trim() : '';
+  if (!body) return;
+  try {
+    const res = await window.auth.addNote({ body, source: 'manual' });
+    if (res && res.note) notesItems.unshift(res.note);
+    closeAddNoteComposer();
+    renderNotesTimeline();
+    toast('📝 Note saved');
+  } catch (err) { toast(`❌ ${err.message}`); }
+}
+
+async function handleDeleteNote(id) {
+  try {
+    await window.auth.deleteNote(id);
+    notesItems = notesItems.filter((n) => n.id !== id);
+    renderNotesTimeline();
+    toast('Note deleted.');
+  } catch (err) { toast(`❌ ${err.message}`); }
+}
+
+async function saveNoteFromWidget(body, source, ref) {
+  try {
+    const res = await window.auth.addNote({ body, source, ref });
+    if (res && res.note) {
+      notesItems.unshift(res.note);
+      renderNotesTimeline();
+    }
+    toast('📝 Saved to Notes');
+    return res && res.note;
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+    return null;
+  }
+}
+
+/* ---------- Quote widget: flip + reflection ---------- */
+function flipQuoteCard(showBack) {
+  const inner = document.getElementById('quote-flip-inner');
+  if (!inner) return;
+  inner.classList.toggle('flipped', !!showBack);
+}
+
+async function saveQuoteReflection() {
+  const textEl = document.getElementById('quote-reflect-text');
+  const body = textEl ? textEl.value.trim() : '';
+  if (!body) { toast('Write a few words first 🙂'); return; }
+  const note = await saveNoteFromWidget(body, 'quote', { kind: 'quote', id: '', context: currentQuote ? currentQuote.text : '' });
+  if (note) {
+    textEl.value = '';
+    flipQuoteCard(false);
+  }
+}
+
+async function handlePinQuote() {
+  if (!currentQuote) return;
+  await saveNoteFromWidget(`"${currentQuote.text}" — ${currentQuote.author}`, 'quote', { kind: 'quote', id: '', context: currentQuote.text });
+}
+
+/* ---------- Social-emotional check-in widget ---------- */
+function renderMoodWidget() {
+  selectedMood = null;
+  const row = document.getElementById('mood-row');
+  if (!row) return;
+  row.innerHTML = MOOD_OPTIONS.map((m, i) =>
+    `<button type="button" class="fam-mood-opt" data-i="${i}" onclick="selectMood(${i})" title="${esc(m.label)}">${m.emoji}</button>`
+  ).join('');
+  const textEl = document.getElementById('mood-text');
+  if (textEl) textEl.value = '';
+}
+
+function selectMood(i) {
+  selectedMood = i;
+  document.querySelectorAll('#mood-row .fam-mood-opt').forEach((btn, idx) => {
+    btn.classList.toggle('selected', idx === i);
+  });
+}
+
+async function saveMoodCheckIn() {
+  if (selectedMood === null) { toast('Pick a feeling first 🙂'); return; }
+  const m = MOOD_OPTIONS[selectedMood];
+  const textEl = document.getElementById('mood-text');
+  const extra = textEl ? textEl.value.trim() : '';
+  const body = `Feeling ${m.emoji} ${m.label}.${extra ? ' ' + extra : ''}`;
+  const note = await saveNoteFromWidget(body, 'social');
+  if (note) renderMoodWidget();
+}
+
+/* ---------- News widget: reflection ---------- */
+async function saveNewsReflection() {
+  const textEl = document.getElementById('news-reflect-text');
+  const body = textEl ? textEl.value.trim() : '';
+  if (!body) { toast('Write a few words first 🙂'); return; }
+  const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: currentNews ? currentNews.headline : '' });
+  if (note) textEl.value = '';
+}
+
+/* ---------- SAT word widget: daily activity + word bank + pop quiz ---------- */
+function renderSatActivity() {
+  const w = currentSatWord;
+  const container = document.getElementById('sat-activity');
+  if (!w || !container) return;
+
+  // First-run placement step: "do you already know these?"
+  const placementEl = document.getElementById('sat-placement');
+  if (placementEl && !load(satPlacementKey())) {
+    const sample = SAT_WORDS.slice(0, 6);
+    placementEl.hidden = false;
+    placementEl.innerHTML = `
+      <div class="fam-sat-placement-title">Do you already know these words?</div>
+      <div class="fam-sat-placement-list">
+        ${sample.map((s, i) => `<label class="fam-sat-placement-item"><input type="checkbox" data-word="${esc(s.word)}"> ${esc(s.word)}</label>`).join('')}
+      </div>
+      <button type="button" class="btn-secondary" onclick="submitSatPlacement()">Continue</button>`;
+  } else if (placementEl) {
+    placementEl.hidden = true;
+  }
+
+  // Rotate today's activity by day-of-year % 3.
+  const task = dayOfYear(new Date()) % 3;
+  if (task === 0) {
+    // (1) pick the sentence using the word correctly
+    const wrongWord = SAT_WORDS[(SAT_WORDS.indexOf(w) + 5) % SAT_WORDS.length];
+    const correctSentence = w.example;
+    const wrongSentence = wrongWord.example.replace(new RegExp(wrongWord.word, 'i'), w.word);
+    const options = Math.random() < 0.5 ? [correctSentence, wrongSentence] : [wrongSentence, correctSentence];
+    container.innerHTML = `
+      <div class="fam-sat-task-title">Which sentence uses "${esc(w.word)}" correctly?</div>
+      <div class="fam-sat-options">
+        ${options.map((s, i) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${s === correctSentence})">${esc(s)}</button>`).join('')}
+      </div>
+      <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
+  } else if (task === 1) {
+    // (2) fill-in-the-blank — choose the word
+    const others = SAT_WORDS.filter((s) => s.word !== w.word).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.word);
+    const options = [w.word, ...others].sort(() => Math.random() - 0.5);
+    const blanked = w.example.replace(new RegExp(w.word, 'i'), '_____');
+    container.innerHTML = `
+      <div class="fam-sat-task-title">Fill in the blank: ${esc(blanked)}</div>
+      <div class="fam-sat-options">
+        ${options.map((opt) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${opt === w.word})">${esc(opt)}</button>`).join('')}
+      </div>
+      <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
+  } else {
+    // (3) choose the correct definition
+    const others = SAT_WORDS.filter((s) => s.word !== w.word).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.def);
+    const options = [w.def, ...others].sort(() => Math.random() - 0.5);
+    container.innerHTML = `
+      <div class="fam-sat-task-title">Which is the definition of "${esc(w.word)}"?</div>
+      <div class="fam-sat-options">
+        ${options.map((opt) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${opt === w.def})">${esc(opt)}</button>`).join('')}
+      </div>
+      <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
+  }
+}
+
+function submitSatPlacement() {
+  const checked = Array.from(document.querySelectorAll('#sat-placement input[type=checkbox]:checked')).map((el) => el.dataset.word);
+  save(satPlacementKey(), true);
+  const placementEl = document.getElementById('sat-placement');
+  if (placementEl) placementEl.hidden = true;
+  if (checked.length) {
+    window.auth.wordBankPlacement(checked).then(() => loadWordBank()).catch(() => {});
+  }
+}
+
+async function answerSatActivity(correct) {
+  const btns = document.querySelectorAll('#sat-activity .fam-sat-opt');
+  btns.forEach((b) => { b.disabled = true; });
+  const fb = document.getElementById('sat-activity-feedback');
+  if (fb) {
+    fb.textContent = correct ? '✅ Nice work!' : '❌ Not quite — try tomorrow\'s activity!';
+    fb.className = 'fam-sat-feedback ' + (correct ? 'correct' : 'wrong');
+  }
+  if (currentSatWord) {
+    try {
+      const res = await window.auth.wordBankInteract(currentSatWord.word, correct);
+      if (res && res.entry) mergeWordBankEntry(res.entry);
+    } catch (e) { /* best effort */ }
+  }
+}
+
+function mergeWordBankEntry(entry) {
+  const idx = wordBankState.words.findIndex((w) => w.word === entry.word);
+  if (idx >= 0) wordBankState.words[idx] = entry;
+  else wordBankState.words.push(entry);
+  renderWordBankPanel();
+  updateQuizButtonState();
+}
+
+async function loadWordBank() {
+  try {
+    const res = await window.auth.getWordBank();
+    wordBankState = { words: (res && res.words) || [], stats: (res && res.stats) || { learning: 0, mastered: 0, known: 0 } };
+  } catch (e) {
+    wordBankState = { words: [], stats: { learning: 0, mastered: 0, known: 0 } };
+  }
+  renderWordBankPanel();
+  updateQuizButtonState();
+}
+
+function toggleWordBank() {
+  const panel = document.getElementById('sat-wordbank-panel');
+  if (!panel) return;
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) renderWordBankPanel();
+}
+
+function renderWordBankPanel() {
+  const panel = document.getElementById('sat-wordbank-panel');
+  if (!panel) return;
+  const s = wordBankState.stats || {};
+  const header = `<div class="fam-wb-stats">Learning: ${s.learning || 0} · Mastered: ${s.mastered || 0} · Known: ${s.known || 0}</div>`;
+  if (!wordBankState.words.length) {
+    panel.innerHTML = header + '<p class="text-muted">No words banked yet — answer today\'s activity to get started!</p>';
+    return;
+  }
+  const rows = wordBankState.words.map((w) => {
+    const stateLabel = w.state === 'mastered' ? '⭐ Mastered' : w.state === 'known' ? '✅ Known' : `📖 Learning (${w.correctCount || 0}/3)`;
+    return `<div class="fam-wb-row"><span class="fam-wb-word">${esc(w.word)}</span><span class="fam-wb-state">${stateLabel}</span></div>`;
+  }).join('');
+  panel.innerHTML = header + rows;
+}
+
+function updateQuizButtonState() {
+  const btn = document.getElementById('sat-quiz-btn');
+  if (!btn) return;
+  const quizzable = wordBankState.words.filter((w) => w.state === 'mastered' || w.state === 'known' || w.seenCount).length;
+  btn.disabled = quizzable < 2;
+}
+
+async function startWordQuiz() {
+  const panel = document.getElementById('sat-quiz-panel');
+  if (!panel) return;
+  try {
+    const res = await window.auth.wordBankQuiz(5);
+    wordQuizState = { questions: (res && res.questions) || [], index: 0 };
+    if (res && res.needMore) {
+      panel.hidden = false;
+      panel.innerHTML = '<p class="text-muted">Answer a few more activities first to unlock the pop quiz!</p>';
+      return;
+    }
+  } catch (e) {
+    wordQuizState = { questions: [], index: 0 };
+    panel.hidden = false;
+    panel.innerHTML = '<p class="text-muted">Pop quiz isn\'t available right now — try again soon.</p>';
+    return;
+  }
+  panel.hidden = false;
+  renderWordQuizQuestion();
+}
+
+function renderWordQuizQuestion() {
+  const panel = document.getElementById('sat-quiz-panel');
+  if (!panel) return;
+  const { questions, index } = wordQuizState;
+  if (!questions.length) {
+    panel.innerHTML = '<p class="text-muted">No quiz questions yet — keep working on the daily activity!</p>';
+    return;
+  }
+  if (index >= questions.length) {
+    panel.innerHTML = '<p class="fam-wb-quiz-done">🎉 Pop quiz complete — great work!</p>';
+    return;
+  }
+  const q = questions[index];
+  panel.innerHTML = `
+    <div class="fam-wb-quiz-progress">${index + 1}/${questions.length}</div>
+    <div class="fam-wb-quiz-prompt">${esc(q.prompt)}</div>
+    <div class="fam-sat-options">
+      ${q.options.map((opt, i) => `<button type="button" class="fam-sat-opt" onclick="answerWordQuiz(${i})">${esc(opt)}</button>`).join('')}
+    </div>
+    <div class="fam-sat-feedback" id="word-quiz-feedback"></div>`;
+}
+
+async function answerWordQuiz(chosenIndex) {
+  const { questions, index } = wordQuizState;
+  const q = questions[index];
+  const correct = chosenIndex === q.answerIndex;
+  const btns = document.querySelectorAll('#sat-quiz-panel .fam-sat-opt');
+  btns.forEach((b, i) => {
+    b.disabled = true;
+    if (i === q.answerIndex) b.classList.add('correct');
+    else if (i === chosenIndex) b.classList.add('wrong');
+  });
+  const fb = document.getElementById('word-quiz-feedback');
+  if (fb) { fb.textContent = correct ? '✅ Correct!' : '❌ Not quite.'; fb.className = 'fam-sat-feedback ' + (correct ? 'correct' : 'wrong'); }
+  try {
+    const res = await window.auth.wordBankInteract(q.word, correct);
+    if (res && res.entry) mergeWordBankEntry(res.entry);
+  } catch (e) { /* best effort */ }
+  setTimeout(() => {
+    wordQuizState.index++;
+    renderWordQuizQuestion();
+  }, 1000);
+}
+
+async function handlePinSatWord() {
+  if (!currentSatWord) return;
+  await saveNoteFromWidget(`${currentSatWord.word} — ${currentSatWord.def}`, 'sat', { kind: 'sat', id: currentSatWord.word, context: currentSatWord.example });
+}
+
+/* ---------- chat: pin a message to notes ---------- */
+async function handlePinChatMessage(id) {
+  const msg = chatMessages.find((m) => m.id === id);
+  if (!msg || !msg.text) return;
+  await saveNoteFromWidget(msg.text, 'chat', { kind: 'chat', id: msg.id, context: msg.text });
+}
+
+/* ============================================================
    UTILITIES
 ============================================================ */
 function dayOfYear(d) {
@@ -628,7 +1073,11 @@ function showDashboard() {
 
   // Homework (Phase 3): load once up front so calendar "due" chips render on
   // first paint; the Homework tab reloads on its own each time it's opened.
-  loadHomework().then(() => renderCalendar());
+  loadHomework().then(() => { renderCalendar(); applyEnrichmentGating(); });
+
+  // Notes: load once up front so the Notes tab is ready and pin affordances
+  // elsewhere have fresh state; the Notes tab reloads on its own when opened.
+  loadNotes();
 
   // School calendar: load subscriptions then auto-sync (throttled ~1/hour
   // both client- and server-side) — fire-and-forget so the dashboard never
@@ -1418,15 +1867,22 @@ function renderWidgets() {
 
   // Quote
   const q = dailyPick(QUOTES, now);
+  currentQuote = q;
   document.getElementById('quote-text').textContent   = q.text;
   document.getElementById('quote-author').textContent = `— ${q.author}`;
+  flipQuoteCard(false);
+  document.getElementById('quote-reflect-prompt').textContent = 'What does this quote mean to you today?';
+  document.getElementById('quote-reflect-text').value = '';
 
   // SAT Word
   const w = dailyPick(SAT_WORDS, now);
+  currentSatWord = w;
   document.getElementById('sat-word').textContent    = w.word;
   document.getElementById('sat-pos').textContent     = w.pos;
   document.getElementById('sat-def').textContent     = w.def;
   document.getElementById('sat-example').textContent = `"${w.example}"`;
+  renderSatActivity();
+  loadWordBank();
 
   // Fact
   const f = dailyPick(FACTS, now);
@@ -1436,15 +1892,20 @@ function renderWidgets() {
 
   // News
   const n = dailyPick(NEWS_ITEMS, now);
+  currentNews = n;
   document.getElementById('news-badge').textContent    = n.cat;
   document.getElementById('news-headline').textContent = n.headline;
   document.getElementById('news-summary').textContent  = n.summary;
+  document.getElementById('news-reflect-prompt').textContent = 'Why do you think this matters, and how does it make you feel?';
+  document.getElementById('news-reflect-text').value = '';
 
-  // Quiz
-  const baseIdx = dayOfYear(now) % QUIZ.length;
-  const offset  = load(`fam_qoffset_${sessionUser.id}`) || 0;
-  quizIndex     = (baseIdx + offset) % QUIZ.length;
-  renderQuiz();
+  // Mood check-in
+  renderMoodWidget();
+
+  // Brain teaser (server-backed, day-ramped)
+  loadBrainTeaser();
+
+  applyEnrichmentGating();
 }
 
 /* ============================================================
@@ -1494,46 +1955,99 @@ function renderSchoolStatsWidget() {
 }
 
 /* ============================================================
-   QUIZ
+   BRAIN TEASER (server-backed — GET /api/brainteaser/today,
+   POST /api/brainteaser/answer). Day-ramped question count (Mon1..Fri5,
+   weekend 3), resurfacing previously-wrong questions with shuffled options.
+   Falls back to the local QUIZ bank if the server route isn't reachable yet.
 ============================================================ */
-function renderQuiz() {
-  const q = QUIZ[quizIndex];
-  document.getElementById('quiz-question').textContent = q.q;
-  document.getElementById('quiz-options').innerHTML = q.opts.map((opt, i) =>
-    `<button class="quiz-opt" onclick="answerQuiz(${i})">${esc(opt)}</button>`
+let brainTeaserQuestions = []; // [{qid,q,options,answerIndex,resurfaced}]
+let brainTeaserIndex     = 0;
+let brainTeaserAnswered  = false;
+
+async function loadBrainTeaser() {
+  try {
+    const res = await window.auth.getBrainTeaserToday();
+    brainTeaserQuestions = (res && res.questions) || [];
+  } catch (e) {
+    // Contract mismatch / route not up yet — fall back to the local bank so
+    // the widget still works, using the same weekday ramp.
+    const now = new Date();
+    const day = now.getDay(); // 0=Sun..6=Sat
+    const count = (day === 0 || day === 6) ? 3 : [0,1,2,3,4,5][day] || 1;
+    const baseIdx = dayOfYear(now) % QUIZ.length;
+    brainTeaserQuestions = [];
+    for (let i = 0; i < count; i++) {
+      const q = QUIZ[(baseIdx + i) % QUIZ.length];
+      brainTeaserQuestions.push({ qid: `local_${(baseIdx + i) % QUIZ.length}`, q: q.q, options: q.opts, answerIndex: q.ans, resurfaced: false, _exp: q.exp });
+    }
+  }
+  brainTeaserIndex = 0;
+  renderBrainTeaser();
+}
+
+function renderBrainTeaser() {
+  const progressEl = document.getElementById('bt-progress');
+  const total = brainTeaserQuestions.length;
+  if (!total) {
+    document.getElementById('quiz-question').textContent = 'No brain teasers to show right now — check back tomorrow!';
+    document.getElementById('quiz-options').innerHTML = '';
+    document.getElementById('quiz-feedback').textContent = '';
+    document.getElementById('btn-next-q').style.display = 'none';
+    if (progressEl) progressEl.textContent = '';
+    return;
+  }
+  brainTeaserAnswered = false;
+  const q = brainTeaserQuestions[brainTeaserIndex];
+  if (progressEl) progressEl.textContent = `${brainTeaserIndex + 1}/${total}`;
+  document.getElementById('quiz-question').innerHTML =
+    (q.resurfaced ? '<span class="fam-bt-hint">👀 seen before</span> ' : '') + esc(q.q);
+  document.getElementById('quiz-options').innerHTML = q.options.map((opt, i) =>
+    `<button class="quiz-opt" onclick="answerBrainTeaserQ(${i})">${esc(opt)}</button>`
   ).join('');
   document.getElementById('quiz-feedback').textContent = '';
   document.getElementById('quiz-feedback').className   = 'quiz-feedback';
   document.getElementById('btn-next-q').style.display  = 'none';
 }
 
-function answerQuiz(chosen) {
-  const q    = QUIZ[quizIndex];
+async function answerBrainTeaserQ(chosen) {
+  if (brainTeaserAnswered) return;
+  brainTeaserAnswered = true;
+  const q = brainTeaserQuestions[brainTeaserIndex];
+  const correct = chosen === q.answerIndex;
   const btns = document.querySelectorAll('.quiz-opt');
   btns.forEach((btn, i) => {
     btn.disabled = true;
-    if (i === q.ans) btn.classList.add('correct');
+    if (i === q.answerIndex) btn.classList.add('correct');
     else if (i === chosen) btn.classList.add('wrong');
   });
 
   const fb = document.getElementById('quiz-feedback');
-  if (chosen === q.ans) {
-    fb.textContent = `✅ Correct! ${q.exp}`;
+  const exp = q.exp || q._exp || '';
+  if (correct) {
+    fb.textContent = `✅ Correct! ${exp}`;
     fb.className   = 'quiz-feedback correct';
     incrementStreak();
   } else {
-    fb.textContent = `❌ Not quite. ${q.exp}`;
+    fb.textContent = `❌ Not quite. ${exp}`;
     fb.className   = 'quiz-feedback wrong';
   }
   document.getElementById('btn-next-q').style.display = '';
+
+  if (!String(q.qid || '').startsWith('local_')) {
+    try { await window.auth.answerBrainTeaser(q.qid, correct); } catch (e) { /* best effort */ }
+  }
 }
 
 function nextQuestion() {
-  const key    = `fam_qoffset_${sessionUser.id}`;
-  const offset = (load(key) || 0) + 1;
-  save(key, offset);
-  quizIndex = (quizIndex + 1) % QUIZ.length;
-  renderQuiz();
+  if (brainTeaserIndex < brainTeaserQuestions.length - 1) {
+    brainTeaserIndex++;
+    renderBrainTeaser();
+  } else {
+    document.getElementById('quiz-question').textContent = "🎉 That's today's brain teasers done — nice work!";
+    document.getElementById('quiz-options').innerHTML = '';
+    document.getElementById('quiz-feedback').textContent = '';
+    document.getElementById('btn-next-q').style.display = 'none';
+  }
 }
 
 /* ============================================================
@@ -1906,12 +2420,15 @@ function renderChatMessages() {
     const own = isOwnMessage(m);
     const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--primary)') : 'var(--primary)';
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    const pinBtn = (!m.deleted && m.text) ? `<button class="chat-msg-ctrl" onclick="handlePinChatMessage('${m.id}')" title="Pin to notes">📌</button>` : '';
     const controls = !isKidSession() ? `
       <div class="chat-msg-controls">
+        ${pinBtn}
         <button class="chat-msg-ctrl" onclick="handleDeleteChatMessage('${m.id}')" title="Delete message">🗑️</button>
         <button class="chat-msg-ctrl" onclick="handleFlagChatMessage('${m.id}')" title="Report / flag message">🚩</button>
       </div>` : `
       <div class="chat-msg-controls">
+        ${pinBtn}
         <button class="chat-msg-ctrl" onclick="handleFlagChatMessage('${m.id}')" title="Report / flag message">🚩</button>
       </div>`;
     return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
@@ -3093,7 +3610,8 @@ function switchNavTab(tab) {
   });
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
-  if (tab === 'homework') { loadHomework().then(renderHomeworkHub); }
+  if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); applyEnrichmentGating(); }); }
+  if (tab === 'notes') { loadNotes(); }
   if (tab === 'calendar') {
     loadChatMessages();
     startChatPolling();

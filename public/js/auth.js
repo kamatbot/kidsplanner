@@ -462,6 +462,69 @@
     return api("/api/school/disconnect", { method: "POST" });
   }
 
+  /* ---------- notes (enrichment) ---------- */
+  async function getNotes(opts) {
+    const params = new URLSearchParams();
+    if (opts && opts.authorId) params.set("authorId", opts.authorId);
+    if (opts && opts.from) params.set("from", opts.from);
+    if (opts && opts.to) params.set("to", opts.to);
+    const qs = params.toString() ? ("?" + params.toString()) : "";
+    const data = await api("/api/notes" + qs, { method: "GET" });
+    return (data && data.notes) || [];
+  }
+
+  async function addNote(payload) {
+    return api("/api/notes", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function updateNote(id, patch) {
+    return api("/api/notes/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteNote(id) {
+    return api("/api/notes/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  /* ---------- word bank (enrichment) ---------- */
+  async function getWordBank(kidId) {
+    const qs = kidId ? ("?kidId=" + encodeURIComponent(kidId)) : "";
+    return api("/api/wordbank" + qs, { method: "GET" });
+  }
+
+  async function wordBankInteract(word, correct) {
+    return api("/api/wordbank/interact", {
+      method: "POST",
+      body: JSON.stringify({ word: word || "", correct: !!correct }),
+    });
+  }
+
+  async function wordBankPlacement(known) {
+    return api("/api/wordbank/placement", {
+      method: "POST",
+      body: JSON.stringify({ known: known || [] }),
+    });
+  }
+
+  async function wordBankQuiz(n) {
+    const qs = n ? ("?n=" + encodeURIComponent(n)) : "";
+    return api("/api/wordbank/quiz" + qs, { method: "GET" });
+  }
+
+  /* ---------- brain teaser (enrichment) ---------- */
+  async function getBrainTeaserToday() {
+    return api("/api/brainteaser/today", { method: "GET" });
+  }
+
+  async function answerBrainTeaser(qid, correct) {
+    return api("/api/brainteaser/answer", {
+      method: "POST",
+      body: JSON.stringify({ qid: qid || "", correct: !!correct }),
+    });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -516,5 +579,15 @@
     importSchoolData,
     confirmSchoolImport,
     disconnectSchoolAccount,
+    getNotes,
+    addNote,
+    updateNote,
+    deleteNote,
+    getWordBank,
+    wordBankInteract,
+    wordBankPlacement,
+    wordBankQuiz,
+    getBrainTeaserToday,
+    answerBrainTeaser,
   };
 })();

@@ -8,6 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
+  <!-- Enrichment + Notes styles (Notes tab, feelings check-in, SAT activity,
+       brain teaser, gating overlay). Kept separate from styles.css so this
+       feature's CSS is easy to find/own. -->
+  <link rel="stylesheet" href="/css/app.css">
   <!-- PDF.js for rendering PDF uploads to images for AI parsing -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <!-- Developer API key config — never shown to users. See app.js TODO(security)
@@ -81,6 +85,7 @@
   <nav class="nav-tabs">
     <button class="nav-tab active" data-tab="calendar" onclick="switchNavTab('calendar')">📅 Calendar</button>
     <button class="nav-tab" data-tab="homework" onclick="switchNavTab('homework')">📚 Homework</button>
+    <button class="nav-tab" data-tab="notes" onclick="switchNavTab('notes')">📝 Notes</button>
     <button class="nav-tab" data-tab="goals" onclick="switchNavTab('goals')">🎯 Goals</button>
     <button class="nav-tab" data-tab="activities" onclick="switchNavTab('activities')">⚽ Activities</button>
     <button class="nav-tab" data-tab="settings" onclick="switchNavTab('settings')">⚙️ Settings</button>
@@ -158,26 +163,54 @@
             <!-- Widgets Grid -->
             <section class="widgets-grid">
 
-              <!-- Quote of the Day -->
-              <div class="widget card widget-quote">
-                <div class="widget-header">
-                  <span class="widget-icon">💬</span>
-                  <span class="widget-label">Quote of the Day</span>
+              <!-- Quote of the Day — flips to a reflection composer that saves
+                   as a note (source:"quote"). See renderWidgets/flipQuoteCard. -->
+              <div class="widget card widget-quote fam-enrich-card" id="widget-quote">
+                <div class="fam-enrich-lock" id="lock-quote" hidden></div>
+                <div class="widget-flip-inner" id="quote-flip-inner">
+                  <div class="widget-flip-front">
+                    <div class="widget-header">
+                      <span class="widget-icon">💬</span>
+                      <span class="widget-label">Quote of the Day</span>
+                      <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinQuote()">📌</button>
+                    </div>
+                    <blockquote class="quote-text" id="quote-text"></blockquote>
+                    <cite class="quote-author" id="quote-author"></cite>
+                    <button type="button" class="btn-link fam-reflect-btn" onclick="flipQuoteCard(true)">✍️ Write a reflection</button>
+                  </div>
+                  <div class="widget-flip-back">
+                    <div class="widget-header">
+                      <span class="widget-icon">💬</span>
+                      <span class="widget-label">Your reflection</span>
+                      <button type="button" class="fam-pin-btn" title="Back to quote" onclick="flipQuoteCard(false)">↩️</button>
+                    </div>
+                    <p class="fam-reflect-prompt" id="quote-reflect-prompt"></p>
+                    <textarea id="quote-reflect-text" class="fam-reflect-textarea" rows="3" placeholder="What does this quote mean to you today?"></textarea>
+                    <button type="button" class="btn-primary fam-save-btn" onclick="saveQuoteReflection()">Save reflection</button>
+                  </div>
                 </div>
-                <blockquote class="quote-text" id="quote-text"></blockquote>
-                <cite class="quote-author" id="quote-author"></cite>
               </div>
 
-              <!-- SAT Word -->
-              <div class="widget card widget-word">
+              <!-- SAT Word — interactive daily activity + word bank + pop quiz. -->
+              <div class="widget card widget-word fam-enrich-card" id="widget-word">
+                <div class="fam-enrich-lock" id="lock-sat" hidden></div>
                 <div class="widget-header">
                   <span class="widget-icon">📖</span>
                   <span class="widget-label">SAT Word of the Day</span>
+                  <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinSatWord()">📌</button>
                 </div>
                 <div class="sat-word" id="sat-word"></div>
                 <div class="sat-pos" id="sat-pos"></div>
                 <div class="sat-def" id="sat-def"></div>
                 <div class="sat-example" id="sat-example"></div>
+                <div id="sat-placement" class="fam-sat-placement" hidden></div>
+                <div id="sat-activity" class="fam-sat-activity"></div>
+                <div class="fam-sat-footer">
+                  <button type="button" class="btn-link" onclick="toggleWordBank()">🔤 Word bank</button>
+                  <button type="button" class="btn-secondary" id="sat-quiz-btn" onclick="startWordQuiz()" disabled>🎯 Pop quiz</button>
+                </div>
+                <div id="sat-wordbank-panel" class="fam-sat-wordbank" hidden></div>
+                <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
               </div>
 
               <!-- Science/History Fact -->
@@ -189,8 +222,21 @@
                 <div class="fact-text" id="fact-text"></div>
               </div>
 
-              <!-- Interesting News -->
-              <div class="widget card widget-news">
+              <!-- Social-emotional check-in -->
+              <div class="widget card widget-mood fam-enrich-card" id="widget-mood">
+                <div class="fam-enrich-lock" id="lock-mood" hidden></div>
+                <div class="widget-header">
+                  <span class="widget-icon">💗</span>
+                  <span class="widget-label">How are you feeling?</span>
+                </div>
+                <div class="fam-mood-row" id="mood-row"></div>
+                <textarea id="mood-text" class="fam-reflect-textarea" rows="2" placeholder="Anything big you felt today?"></textarea>
+                <button type="button" class="btn-primary fam-save-btn" onclick="saveMoodCheckIn()">Save check-in</button>
+              </div>
+
+              <!-- Interesting News — reflection question + response. -->
+              <div class="widget card widget-news fam-enrich-card" id="widget-news">
+                <div class="fam-enrich-lock" id="lock-news" hidden></div>
                 <div class="widget-header">
                   <span class="widget-icon">📰</span>
                   <span class="widget-label">Interesting News</span>
@@ -198,13 +244,19 @@
                 <span class="news-badge" id="news-badge"></span>
                 <div class="news-headline" id="news-headline"></div>
                 <div class="news-summary" id="news-summary"></div>
+                <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
+                <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…"></textarea>
+                <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>
               </div>
 
-              <!-- General Knowledge Quiz -->
-              <div class="widget card widget-quiz">
+              <!-- Daily Brain Teaser — day-ramped question count from the
+                   brainteaser API, resurfacing previously-wrong questions. -->
+              <div class="widget card widget-quiz fam-enrich-card" id="widget-quiz">
+                <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
                 <div class="widget-header">
                   <span class="widget-icon">🧠</span>
                   <span class="widget-label">Daily Brain Teaser</span>
+                  <span class="fam-bt-progress" id="bt-progress"></span>
                 </div>
                 <div class="quiz-question" id="quiz-question"></div>
                 <div class="quiz-options" id="quiz-options"></div>
@@ -276,6 +328,26 @@
             </div>
           </div>
           <div id="homework-list" class="homework-list"></div>
+        </section>
+      </div>
+
+      <!-- Notes Tab — day-grouped timeline of notes (quotes reflections,
+           social-emotional check-ins, news responses, SAT + chat pins, manual
+           entries), only showing days that have a note. -->
+      <div class="tab-panel" id="tab-notes">
+        <section class="card notes-hub">
+          <div class="notes-hub-header">
+            <h3>📝 Notes</h3>
+            <button type="button" class="btn-primary" onclick="openAddNoteComposer()">+ Add a note</button>
+          </div>
+          <div id="notes-composer" class="notes-composer" hidden>
+            <textarea id="notes-composer-text" class="fam-reflect-textarea" rows="3" placeholder="Write a note…"></textarea>
+            <div class="notes-composer-actions">
+              <button type="button" class="btn-secondary" onclick="closeAddNoteComposer()">Cancel</button>
+              <button type="button" class="btn-primary" onclick="handleSaveManualNote()">Save note</button>
+            </div>
+          </div>
+          <div id="notes-timeline" class="notes-timeline"></div>
         </section>
       </div>
 
