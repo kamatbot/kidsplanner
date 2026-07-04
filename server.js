@@ -32,6 +32,7 @@ const analytics = require("./lib/analytics");
 const family = require("./lib/family");
 const chat = require("./lib/chat");
 const kidAccess = require("./lib/kid-access");
+const events = require("./lib/events");
 const gifs = require("./lib/gifs");
 const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
@@ -1053,6 +1054,43 @@ app.post("/api/calendar/sync", requireAuth, requireFamily, async (req, res) => {
     console.error("[calendar] sync error:", e.message);
     res.status(502).json({ error: "Could not sync school calendars right now. Please try again." });
   }
+});
+
+// ----- Family calendar events (manual appointments, server-synced) -----
+// Post a family-chat note (with a tappable card) when an event is added.
+function postEventChat(req, ev) {
+  try {
+    const isKid = userRole(req.user) === "kid";
+    const when = ev.time ? `${friendlyDate(ev.date)} at ${ev.time}` : friendlyDate(ev.date);
+    chat.sendMessage(req.family.id, {
+      senderType: isKid ? "kid" : "parent",
+      senderId: isKid ? req.user.data.kid.kidId : req.user.id,
+      postedByUserId: req.user.id,
+      text: `📅 New event: ${ev.title} — ${when}`,
+      card: { type: "event", id: ev.id, title: ev.title },
+    });
+  } catch (e) { /* never block on a chat error */ }
+}
+
+app.get("/api/calendar/events", requireAuth, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ events: events.listEvents(req.family.id, { from: req.query.from, to: req.query.to }) });
+});
+app.post("/api/calendar/events", requireAuth, requireFamily, (req, res) => {
+  const b = req.body || {};
+  const kidId = userRole(req.user) === "kid" ? kidIdForUser(req) : b.kidId;
+  const result = events.addEvent(req.family.id, {
+    title: b.title, date: b.date, time: b.time, endTime: b.endTime,
+    notes: b.notes, category: b.category, kidId,
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  postEventChat(req, result.event);
+  res.json({ event: result.event });
+});
+app.delete("/api/calendar/events/:id", requireAuth, requireParent, requireFamily, (req, res) => {
+  const result = events.removeEvent(req.family.id, req.params.id);
+  if (result.error) return res.status(404).json({ error: result.error });
+  res.json({ ok: true });
 });
 
 // ===================== HOMEWORK (Phase 3) =====================
