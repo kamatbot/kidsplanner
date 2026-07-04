@@ -35,9 +35,11 @@ struct SystemCardRow: View {
     var onTapCard: (ChatCard) -> Void
     @State private var appeared = false
 
-    private var isDone: Bool { message.text.hasPrefix("✅") }
+    private var isEvent: Bool { message.card?.type == "event" }
+    private var isDone: Bool { !isEvent && message.text.hasPrefix("✅") }
     private var tint: Color { isDone ? Palette.green : Palette.accent }
-    private var emoji: String { isDone ? "✅" : "📚" }
+    private var emoji: String { isEvent ? "📅" : (isDone ? "✅" : "📚") }
+    private var subLabel: String { isEvent ? "Event · tap to view" : "Homework · tap to view" }
 
     var body: some View {
         Button { if let c = message.card { onTapCard(c) } } label: {
@@ -49,7 +51,7 @@ struct SystemCardRow: View {
                         .foregroundStyle(Palette.text)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
-                    Text("Homework · tap to view")
+                    Text(subLabel)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(tint)
                 }
@@ -95,13 +97,11 @@ struct GifPickerSheet: View {
                             Haptics.selection()
                             onPick(gif); dismiss()
                         } label: {
-                            AsyncImage(url: URL(string: gif.previewUrl)) { phase in
-                                if let img = phase.image { img.resizable().scaledToFill() }
-                                else { Rectangle().fill(Palette.border) }
-                            }
-                            .frame(height: 110)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            AnimatedGIFView(url: URL(string: gif.url.isEmpty ? gif.previewUrl : gif.url))
+                                .frame(height: 110)
+                                .frame(maxWidth: .infinity)
+                                .background(Palette.border)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }

@@ -275,13 +275,12 @@ struct ChatMessageRow: View {
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
                 .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
-        } else if let media = message.media, media.type == "gif", let preview = media.previewUrl, let url = URL(string: preview) {
-            AsyncImage(url: url) { phase in
-                if let img = phase.image { img.resizable().scaledToFit() }
-                else { RoundedRectangle(cornerRadius: 18).fill(Palette.panel).frame(width: 160, height: 120).overlay(ProgressView()) }
-            }
-            .frame(maxWidth: 240, maxHeight: 240)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        } else if let media = message.media, media.type == "gif",
+                  let url = URL(string: media.url ?? media.previewUrl ?? "") {
+            AnimatedGIFView(url: url)
+                .frame(maxWidth: 240, maxHeight: 240)
+                .background(Palette.panel)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         } else {
             Text(message.text)
                 .font(.system(size: 17, weight: .medium))
