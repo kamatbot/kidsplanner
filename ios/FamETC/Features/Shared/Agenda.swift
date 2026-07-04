@@ -1,0 +1,100 @@
+import Foundation
+
+/// A unified row for the Today / Calendar surfaces — a school-feed event, a
+/// school "deadline", or a homework item — so both screens can render one list.
+enum AgendaKind { case event, deadline, homework }
+
+struct AgendaItem: Identifiable {
+    let id: String
+    let kind: AgendaKind
+    let title: String
+    let dayKey: String       // yyyy-MM-dd (local)
+    let time: String?        // display time ("5:00 PM"); nil = all-day / no time
+    let sortKey: String      // 24h "HH:mm" for intra-day ordering
+    let subtitle: String?    // subject / feed / location
+    let homework: HomeworkItem?  // set when kind == .homework (enables the done toggle)
+}
+
+/// Builds/labels agenda data. Formatters are shared (see DateFmt) — allocating
+/// them per row is a real scrolling cost.
+enum Agenda {
+    private static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+    private static let time12: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm a"; return f }()
+    private static let time24: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm"; return f }()
+    private static let weekday: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE, MMM d"; return f }()
+
+    static func parseISO(_ s: String) -> Date? { isoFrac.date(from: s) ?? isoPlain.date(from: s) }
+    static func todayKey() -> String { DateFmt.ymd.string(from: Date()) }
+    static func dayKey(offset days: Int) -> String {
+        DateFmt.ymd.string(from: Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date())
+    }
+
+    /// A friendly section header for a yyyy-MM-dd key: Today / Tomorrow / "Wed, Jul 9".
+    static func dayLabel(_ key: String) -> String {
+        if key == todayKey() { return "Today" }
+        if key == dayKey(offset: 1) { return "Tomorrow" }
+        if let d = DateFmt.ymd.date(from: key) { return weekday.string(from: d) }
+        return key
+    }
+
+    /// Convert a stored "HH:mm" to a display "h:mm a" (falls back to the raw value).
+    private static func display(hhmm: String) -> String {
+        if let d = time24.date(from: hhmm) { return time12.string(from: d) }
+        return hhmm
+    }
+
+    private static func fromEvent(_ e: CalendarEvent) -> AgendaItem {
+        let raw = e.start ?? ""
+        let allDay = (e.allDay ?? false) || raw.count <= 10
+        var dayKey = String(raw.prefix(10))
+        var time: String? = nil
+        var sort = "00:00"
+        if !allDay, let d = parseISO(raw) {
+            dayKey = DateFmt.ymd.string(from: d)
+            time = time12.string(from: d)
+            sort = time24.string(from: d)
+        }
+        let kind: AgendaKind = (e.isDeadline ?? false) || e.type == "deadline" ? .deadline : .event
+        return AgendaItem(id: "ev-\(e.id)", kind: kind, title: e.title, dayKey: dayKey,
+                          time: time, sortKey: sort, subtitle: e.feedLabel ?? e.location, homework: nil)
+    }
+
+    private static func fromHomework(_ h: HomeworkItem) -> AgendaItem {
+        AgendaItem(id: "hw-\(h.id)", kind: .homework, title: h.title, dayKey: h.dueDate,
+                   time: h.dueTime.map(display(hhmm:)),
+                   sortKey: h.dueTime ?? "23:59",
+                   subtitle: (h.subject?.isEmpty == false) ? h.subject : "Homework",
+                   homework: h)
+    }
+
+    /// All agenda items for a day key, sorted by time.
+    static func items(on key: String, events: [CalendarEvent], homework: [HomeworkItem]) -> [AgendaItem] {
+        let all = events.map(fromEvent) + homework.map(fromHomework)
+        return all.filter { $0.dayKey == key }.sorted { $0.sortKey < $1.sortKey }
+    }
+
+    /// Grouped agenda sections from today forward, limited to `days` ahead.
+    static func upcomingSections(events: [CalendarEvent], homework: [HomeworkItem], days: Int) -> [(day: String, items: [AgendaItem])] {
+        let today = todayKey()
+        let limit = dayKey(offset: days)
+        let all = (events.map(fromEvent) + homework.map(fromHomework))
+            .filter { $0.dayKey >= today && $0.dayKey <= limit }
+        let byDay = Dictionary(grouping: all) { $0.dayKey }
+        return byDay.keys.sorted().map { day in
+            (day, byDay[day]!.sorted { $0.sortKey < $1.sortKey })
+        }
+    }
+
+    /// Map homework items to agenda rows (for the "due soon" list).
+    static func rows(homework: [HomeworkItem]) -> [AgendaItem] { homework.map(fromHomework) }
+
+    /// Homework due within the next `days` days (inclusive of today), not done.
+    static func homeworkDueSoon(_ homework: [HomeworkItem], days: Int) -> [HomeworkItem] {
+        let today = todayKey(); let limit = dayKey(offset: days)
+        return homework.filter { !$0.isDone && $0.dueDate >= today && $0.dueDate <= limit }
+            .sorted { $0.dueDate < $1.dueDate }
+    }
+}

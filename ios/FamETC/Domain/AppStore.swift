@@ -15,6 +15,8 @@ final class AppStore {
     var family: Family?
     var messages: [ChatMessage] = []
     var kidRequests: [KidAccessRequest] = []   // pending kid sign-ins (parents approve)
+    var events: [CalendarEvent] = []           // school-feed events (Today / Calendar)
+    var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
@@ -70,6 +72,7 @@ final class AppStore {
             if family != nil {
                 messages = try await api.chatMessages(limit: 50)
                 await refreshKidRequests()
+                await loadCalendarAndHomework()
             }
             syncError = nil
             needsAuth = false
@@ -211,6 +214,36 @@ final class AppStore {
             try await api.denyKidAccess(id)
             kidRequests.removeAll { $0.id == id }
         } catch { handle(error) }
+    }
+
+    // MARK: Calendar + Homework (Today / Calendar tabs)
+
+    /// Load school-feed events + homework. Best-effort: a failure in one leaves
+    /// the other (and the rest of the app) intact.
+    func loadCalendarAndHomework(force: Bool = false) async {
+        guard family != nil else { events = []; homework = []; return }
+        if let ev = try? await api.calendarEvents(force: force) { events = ev }
+        if let hw = try? await api.homework() { homework = hw }
+    }
+
+    /// Pull-to-refresh on the Today / Calendar screens — forces a fresh feed sync.
+    func refreshDashboard() async {
+        await loadCalendarAndHomework(force: true)
+    }
+
+    /// Toggle a homework item done/undone (optimistic, reverts on failure).
+    func toggleHomeworkDone(_ item: HomeworkItem) async {
+        let next = item.isDone ? "todo" : "done"
+        guard let idx = homework.firstIndex(where: { $0.id == item.id }) else { return }
+        let previous = homework[idx].status
+        homework[idx].status = next
+        do {
+            let updated = try await api.setHomeworkStatus(item.id, status: next)
+            if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i] = updated }
+        } catch {
+            if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i].status = previous }
+            handle(error)
+        }
     }
 
     func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String) async {

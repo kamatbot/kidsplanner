@@ -83,6 +83,25 @@ final class APIClient {
         let _: OKResponse = try await request("/api/family/access-requests/\(id)/deny", method: "POST", body: [:])
     }
 
+    // MARK: Calendar + Homework (Today / Calendar tabs)
+
+    /// Sync + fetch school-feed events. The server throttles the actual remote
+    /// fetch, so calling this on load is cheap; pass force from a manual refresh.
+    func calendarEvents(force: Bool = false) async throws -> [CalendarEvent] {
+        let r: CalendarSyncResponse = try await request("/api/calendar/sync", method: "POST", body: ["force": force])
+        return r.events ?? []
+    }
+    func homework(kidId: String? = nil) async throws -> [HomeworkItem] {
+        var path = "/api/homework"
+        if let kidId { path += "?kidId=" + kidId }
+        let r: HomeworkResponse = try await request(path)
+        return r.homework
+    }
+    func setHomeworkStatus(_ id: String, status: String) async throws -> HomeworkItem {
+        let r: HomeworkItemResponse = try await request("/api/homework/\(id)", method: "PATCH", body: ["status": status])
+        return r.homework
+    }
+
     // MARK: Chat
 
     func chatMessages(since: String? = nil, limit: Int? = nil) async throws -> [ChatMessage] {

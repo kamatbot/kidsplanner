@@ -28,19 +28,9 @@ private struct ComingSoonScreen: View {
     }
 }
 
-struct TodayScreen: View {
-    var body: some View {
-        ComingSoonScreen(title: "Today", systemImage: "sun.max.fill")
-    }
-}
-
-// ChatScreen has a full native implementation — see Features/Chat/ChatView.swift.
-
-struct CalendarScreen: View {
-    var body: some View {
-        ComingSoonScreen(title: "Calendar", systemImage: "calendar")
-    }
-}
+// TodayScreen  → Features/Today/TodayView.swift
+// ChatScreen   → Features/Chat/ChatView.swift
+// CalendarScreen → Features/Calendar/CalendarView.swift
 
 struct HomeworkScreen: View {
     var body: some View {

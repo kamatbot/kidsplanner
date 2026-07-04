@@ -84,9 +84,43 @@ struct KidAccessRequest: Codable, Identifiable {
     let createdAt: String
 }
 
+/// A calendar event from a subscribed school feed (read-only). Mirrors the
+/// objects returned by `/api/calendar/sync` (lib/school-feeds.collectFromCache).
+struct CalendarEvent: Codable, Identifiable {
+    var uid: String?
+    var title: String
+    var start: String?     // ISO-8601 (or all-day date)
+    var end: String?
+    var allDay: Bool?
+    var location: String?
+    var feedLabel: String?
+    var kidId: String?
+    var isDeadline: Bool?
+    var type: String?      // "event" | "deadline"
+
+    var id: String { uid ?? "\(feedLabel ?? "")|\(title)|\(start ?? "")" }
+}
+
+/// A homework item (`/api/homework`). Kids see their own; parents see the family's.
+struct HomeworkItem: Codable, Identifiable {
+    let id: String
+    var kidId: String?
+    var title: String
+    var subject: String?
+    var dueDate: String    // YYYY-MM-DD
+    var dueTime: String?   // HH:mm
+    var status: String     // "todo" | "in_progress" | "done"
+    var effortMin: Int?
+
+    var isDone: Bool { status == "done" }
+}
+
 // MARK: - Response wrappers (thin, match server.js route shapes)
 
 struct FamiliesResponse: Codable { var families: [Family] }
+struct CalendarSyncResponse: Codable { var events: [CalendarEvent]?; var lastSyncAt: String?; var throttled: Bool? }
+struct HomeworkResponse: Codable { var homework: [HomeworkItem] }
+struct HomeworkItemResponse: Codable { var homework: HomeworkItem }
 struct FamilyResponse: Codable { var family: Family }
 struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
 struct KidAccessRequestsResponse: Codable { var requests: [KidAccessRequest] }
