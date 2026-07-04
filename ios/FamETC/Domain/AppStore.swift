@@ -15,8 +15,10 @@ final class AppStore {
     var family: Family?
     var messages: [ChatMessage] = []
     var kidRequests: [KidAccessRequest] = []   // pending kid sign-ins (parents approve)
-    var events: [CalendarEvent] = []           // school-feed events (Today / Calendar)
+    var events: [CalendarEvent] = []           // school-feed events (read-only)
+    var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
     var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
+    var lastSeenChatId: String?                // for the Chat-tab unread badge
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
@@ -54,6 +56,7 @@ final class AppStore {
     /// Render from cache immediately (if present), then refresh from the network.
     func load() async {
         loadTheme()
+        lastSeenChatId = UserDefaults.standard.string(forKey: lastSeenChatKey)
         if family == nil, let cached = cache.load() {
             me = cached.me
             family = cached.family
@@ -71,6 +74,7 @@ final class AppStore {
             family = fams.first
             if family != nil {
                 messages = try await api.chatMessages(limit: 50)
+                updateChatSeen()
                 await refreshKidRequests()
                 await loadCalendarAndHomework()
             }
@@ -188,6 +192,7 @@ final class AppStore {
                 persist()
             }
         }
+        updateChatSeen()
         await refreshKidRequests() // surface new kid sign-in requests app-wide
         scheduleChatPoll()
     }
@@ -221,9 +226,18 @@ final class AppStore {
     /// Load school-feed events + homework. Best-effort: a failure in one leaves
     /// the other (and the rest of the app) intact.
     func loadCalendarAndHomework(force: Bool = false) async {
-        guard family != nil else { events = []; homework = []; return }
+        guard family != nil else { events = []; familyEvents = []; homework = []; return }
         if let ev = try? await api.calendarEvents(force: force) { events = ev }
+        if let fe = try? await api.familyEvents() { familyEvents = fe }
         if let hw = try? await api.homework() { homework = hw }
+    }
+
+    /// Add a family appointment (server posts a chat card; chat updates on poll).
+    func addEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?) async {
+        do {
+            let ev = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId)
+            familyEvents.append(ev)
+        } catch { handle(error) }
     }
 
     /// Pull-to-refresh on the Today / Calendar screens — forces a fresh feed sync.
@@ -303,6 +317,31 @@ final class AppStore {
             messages = fresh
             persist()
         }
+        updateChatSeen()
+    }
+
+    // MARK: Unread chat badge
+
+    private let lastSeenChatKey = "fam_last_seen_chat"
+
+    /// Messages after the last-seen one that someone else sent (drives the Chat
+    /// tab badge). Zero while the Chat tab is open (we keep marking it read).
+    var unreadChatCount: Int {
+        guard let seen = lastSeenChatId,
+              let idx = messages.firstIndex(where: { $0.id == seen }),
+              idx + 1 < messages.count else { return 0 }
+        return messages[(idx + 1)...].filter { !isMine($0) }.count
+    }
+
+    func markChatRead() {
+        lastSeenChatId = messages.last?.id
+        if let id = lastSeenChatId { UserDefaults.standard.set(id, forKey: lastSeenChatKey) }
+    }
+
+    /// Keep the badge at 0 while chat is on-screen; establish a baseline on the
+    /// very first load so existing history doesn't show as unread.
+    private func updateChatSeen() {
+        if chatActive || lastSeenChatId == nil { markChatRead() }
     }
     func deleteMessage(_ id: String) async {
         do {

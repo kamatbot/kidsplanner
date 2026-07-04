@@ -8,6 +8,7 @@ import SwiftUI
 struct MonthCalendarView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
+    var onAdd: () -> Void
     @State private var monthAnchor = MonthCalendarView.firstOfMonth(Date())
 
     private let cal = Calendar.current
@@ -43,6 +44,11 @@ struct MonthCalendarView: View {
             Text(monthAnchor.formatted(.dateTime.month(.wide).year()))
                 .font(Typography.title).foregroundStyle(Palette.text)
             Spacer()
+            Button(action: onAdd) {
+                Image(systemName: "plus").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.onAccent)
+                    .frame(width: 36, height: 36).background(Palette.accent, in: Circle())
+            }
+            .accessibilityLabel("New event")
             Button { shift(-1) } label: { chevron("chevron.left") }
             Button { monthAnchor = Self.firstOfMonth(Date()) } label: {
                 Text("Today").font(Typography.caption.weight(.bold)).foregroundStyle(Palette.accent)
@@ -101,7 +107,7 @@ private struct DayCell: View {
     let dayNumber: Int
     @State private var targeted = false
 
-    private var items: [AgendaItem] { Agenda.items(on: key, events: store.events, homework: store.homework) }
+    private var items: [AgendaItem] { Agenda.items(on: key, events: store.events, familyEvents: store.familyEvents, homework: store.homework) }
     private var isToday: Bool { key == Agenda.todayKey() }
 
     var body: some View {

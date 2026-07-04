@@ -82,7 +82,7 @@ struct TodayScreen: View {
 private struct TodayPlanWidget: View {
     @Environment(AppStore.self) private var store
     var body: some View {
-        let items = Agenda.items(on: Agenda.todayKey(), events: store.events, homework: store.homework)
+        let items = Agenda.items(on: Agenda.todayKey(), events: store.events, familyEvents: store.familyEvents, homework: store.homework)
         return DashCard("☀️", "Today", tint: Palette.amber) {
             if items.isEmpty {
                 Text("Nothing scheduled today — enjoy! 🎉")

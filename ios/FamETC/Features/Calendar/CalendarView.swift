@@ -5,29 +5,40 @@ import SwiftUI
 struct CalendarScreen: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.verticalSizeClass) private var vSize
+    @State private var showAddEvent = false
 
     private var useGrid: Bool { hSize == .regular || vSize == .compact }
 
     var body: some View {
-        if useGrid {
-            MonthCalendarView()
-        } else {
-            CalendarAgendaList()
+        Group {
+            if useGrid {
+                MonthCalendarView(onAdd: { showAddEvent = true })
+            } else {
+                CalendarAgendaList(onAdd: { showAddEvent = true })
+            }
         }
+        .sheet(isPresented: $showAddEvent) { AddEventSheet() }
     }
 }
 
 /// Agenda list — upcoming events + homework grouped by day (iPhone portrait).
 private struct CalendarAgendaList: View {
     @Environment(AppStore.self) private var store
+    var onAdd: () -> Void
 
     private var sections: [(day: String, items: [AgendaItem])] {
-        Agenda.upcomingSections(events: store.events, homework: store.homework, days: 45)
+        Agenda.upcomingSections(events: store.events, familyEvents: store.familyEvents, homework: store.homework, days: 45)
     }
     private var monthLabel: String { Date().formatted(.dateTime.month(.wide).year()) }
 
     var body: some View {
-        SurfaceScaffold(title: "Calendar", subtitle: monthLabel) {
+        SurfaceScaffold(title: "Calendar", subtitle: monthLabel, trailing: {
+            Button(action: onAdd) {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.onAccent)
+                    .frame(width: 38, height: 38).background(Palette.accent, in: Circle())
+            }
+        }) {
             if sections.isEmpty {
                 emptyState
             } else {

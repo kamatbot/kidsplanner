@@ -101,6 +101,19 @@ struct CalendarEvent: Codable, Identifiable {
     var id: String { uid ?? "\(feedLabel ?? "")|\(title)|\(start ?? "")" }
 }
 
+/// A manually-added family appointment (`/api/calendar/events`), server-synced
+/// across the family. Distinct from read-only school-feed `CalendarEvent`s.
+struct FamilyEvent: Codable, Identifiable {
+    let id: String
+    var title: String
+    var date: String      // YYYY-MM-DD
+    var time: String?     // HH:mm
+    var endTime: String?
+    var notes: String?
+    var category: String?
+    var kidId: String?
+}
+
 /// A homework item (`/api/homework`). Kids see their own; parents see the family's.
 struct HomeworkItem: Codable, Identifiable {
     let id: String
@@ -129,6 +142,8 @@ struct GifResult: Codable, Identifiable {
 struct FamiliesResponse: Codable { var families: [Family] }
 struct GifsResponse: Codable { var gifs: [GifResult] }
 struct CalendarSyncResponse: Codable { var events: [CalendarEvent]?; var lastSyncAt: String?; var throttled: Bool? }
+struct FamilyEventsResponse: Codable { var events: [FamilyEvent] }
+struct FamilyEventResponse: Codable { var event: FamilyEvent }
 struct HomeworkResponse: Codable { var homework: [HomeworkItem] }
 struct HomeworkItemResponse: Codable { var homework: HomeworkItem }
 struct FamilyResponse: Codable { var family: Family }

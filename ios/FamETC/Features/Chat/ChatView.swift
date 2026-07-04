@@ -18,6 +18,7 @@ struct ChatScreen: View {
     @State private var keyboardVisible = false
     @State private var showGifPicker = false
     @State private var hwRef: HWRef?
+    @State private var eventRef: EVRef?
     @FocusState private var composerFocused: Bool
 
     private let bottomAnchorID = "chat-bottom-anchor"
@@ -48,6 +49,7 @@ struct ChatScreen: View {
             GifPickerSheet { gif in Task { await store.sendGif(gif) } }
         }
         .sheet(item: $hwRef) { ref in HomeworkDetailSheet(homeworkId: ref.id) }
+        .sheet(item: $eventRef) { ref in EventDetailSheet(eventId: ref.id) }
     }
 
     // MARK: Header
@@ -61,10 +63,6 @@ struct ChatScreen: View {
                 }
             }
             Spacer()
-            if composerFocused {
-                Button("Done") { composerFocused = false }
-                    .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.accent)
-            }
         }
         .padding(.horizontal, Space.lg).padding(.top, Space.md).padding(.bottom, Space.sm)
     }
@@ -90,6 +88,9 @@ struct ChatScreen: View {
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
+            // Tapping the chat body dismisses the keyboard (fires alongside any
+            // card/button tap without blocking it).
+            .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
             .overlay { emptyOrLoading }
             .onChange(of: store.messages.last?.id) { _, _ in scrollToBottom(proxy) }
             .onChange(of: keyboardVisible) { _, v in if v { scrollToBottom(proxy) } }
@@ -108,6 +109,7 @@ struct ChatScreen: View {
 
     private func handleCardTap(_ card: ChatCard) {
         if card.type == "homework" { hwRef = HWRef(id: card.id) }
+        else if card.type == "event" { eventRef = EVRef(id: card.id) }
     }
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         DispatchQueue.main.async {
@@ -173,8 +175,9 @@ struct ChatScreen: View {
     }
 }
 
-/// Wrapper so a homework id can drive a `.sheet(item:)`.
+/// Wrappers so an id can drive a `.sheet(item:)`.
 struct HWRef: Identifiable { let id: String }
+struct EVRef: Identifiable { let id: String }
 
 // MARK: - One message row (fun bubbles + avatar, or a system card)
 
@@ -210,11 +213,11 @@ struct ChatMessageRow: View {
     }
 
     private var avatar: some View {
-        Text(famInitials(senderName))
-            .font(.system(size: 13, weight: .heavy))
-            .foregroundStyle(.white)
-            .frame(width: 36, height: 36)
-            .background(senderColor, in: Circle())
+        Text(famAvatar(senderType: message.senderType, id: message.senderId))
+            .font(.system(size: 22))
+            .frame(width: 38, height: 38)
+            .background(senderColor.opacity(0.22), in: Circle())
+            .overlay(Circle().strokeBorder(senderColor.opacity(0.4), lineWidth: 1))
     }
 
     private var bubbleShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }

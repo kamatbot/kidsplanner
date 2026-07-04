@@ -19,6 +19,15 @@ func famInitials(_ name: String) -> String {
     return (first + second).uppercased()
 }
 
+/// A friendly character avatar per family member (grown-ups get parent faces,
+/// kids get kid faces), assigned deterministically so each person keeps theirs.
+func famAvatar(senderType: String, id: String) -> String {
+    let grownups = ["👩", "👨", "🧑", "🧔", "👩‍🦰", "👨‍🦱", "👱‍♀️"]
+    let kids = ["🧒", "👦", "👧", "🧑‍🎓", "🧑‍🚀", "👶"]
+    let set = senderType == "kid" ? kids : grownups
+    return set[abs(stableHash(id)) % set.count]
+}
+
 // MARK: - System card message (homework / event) — distinct + animated + tappable
 
 struct SystemCardRow: View {

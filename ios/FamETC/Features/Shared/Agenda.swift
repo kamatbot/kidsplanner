@@ -62,6 +62,14 @@ enum Agenda {
                           time: time, sortKey: sort, subtitle: e.feedLabel ?? e.location, homework: nil)
     }
 
+    private static func fromFamilyEvent(_ e: FamilyEvent) -> AgendaItem {
+        let hasTime = (e.time?.isEmpty == false)
+        return AgendaItem(id: "fe-\(e.id)", kind: .event, title: e.title, dayKey: e.date,
+                          time: hasTime ? display(hhmm: e.time!) : nil,
+                          sortKey: hasTime ? e.time! : "00:00",
+                          subtitle: (e.notes?.isEmpty == false) ? e.notes : nil, homework: nil)
+    }
+
     private static func fromHomework(_ h: HomeworkItem) -> AgendaItem {
         AgendaItem(id: "hw-\(h.id)", kind: .homework, title: h.title, dayKey: h.dueDate,
                    time: h.dueTime.map(display(hhmm:)),
@@ -71,16 +79,16 @@ enum Agenda {
     }
 
     /// All agenda items for a day key, sorted by time.
-    static func items(on key: String, events: [CalendarEvent], homework: [HomeworkItem]) -> [AgendaItem] {
-        let all = events.map(fromEvent) + homework.map(fromHomework)
+    static func items(on key: String, events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem]) -> [AgendaItem] {
+        let all = events.map(fromEvent) + familyEvents.map(fromFamilyEvent) + homework.map(fromHomework)
         return all.filter { $0.dayKey == key }.sorted { $0.sortKey < $1.sortKey }
     }
 
     /// Grouped agenda sections from today forward, limited to `days` ahead.
-    static func upcomingSections(events: [CalendarEvent], homework: [HomeworkItem], days: Int) -> [(day: String, items: [AgendaItem])] {
+    static func upcomingSections(events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem], days: Int) -> [(day: String, items: [AgendaItem])] {
         let today = todayKey()
         let limit = dayKey(offset: days)
-        let all = (events.map(fromEvent) + homework.map(fromHomework))
+        let all = (events.map(fromEvent) + familyEvents.map(fromFamilyEvent) + homework.map(fromHomework))
             .filter { $0.dayKey >= today && $0.dayKey <= limit }
         let byDay = Dictionary(grouping: all) { $0.dayKey }
         return byDay.keys.sorted().map { day in

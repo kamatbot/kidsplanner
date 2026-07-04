@@ -91,6 +91,24 @@ final class APIClient {
         let r: CalendarSyncResponse = try await request("/api/calendar/sync", method: "POST", body: ["force": force])
         return r.events ?? []
     }
+    func familyEvents(from: String? = nil, to: String? = nil) async throws -> [FamilyEvent] {
+        var path = "/api/calendar/events"
+        var q: [String] = []
+        if let from { q.append("from=\(from)") }
+        if let to { q.append("to=\(to)") }
+        if !q.isEmpty { path += "?" + q.joined(separator: "&") }
+        let r: FamilyEventsResponse = try await request(path)
+        return r.events
+    }
+    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?) async throws -> FamilyEvent {
+        var body: [String: Any] = ["title": title, "date": date]
+        if let time, !time.isEmpty { body["time"] = time }
+        if let notes, !notes.isEmpty { body["notes"] = notes }
+        if let category { body["category"] = category }
+        if let kidId { body["kidId"] = kidId }
+        let r: FamilyEventResponse = try await request("/api/calendar/events", method: "POST", body: body)
+        return r.event
+    }
     func homework(kidId: String? = nil) async throws -> [HomeworkItem] {
         var path = "/api/homework"
         if let kidId { path += "?kidId=" + kidId }

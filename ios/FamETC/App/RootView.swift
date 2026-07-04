@@ -175,6 +175,7 @@ struct RootView: View {
 /// selection bound to `Tab`.
 private struct NavRailList: View {
     @Binding var selection: Tab
+    @Environment(AppStore.self) private var store
 
     /// `List(selection:)` requires an Optional binding; `Tab` itself is never
     /// nil here, so this just bridges the two without ever going nil.
@@ -187,6 +188,7 @@ private struct NavRailList: View {
             ForEach(Tab.allCases) { tab in
                 Label(tab.label, systemImage: tab.icon)
                     .tag(tab)
+                    .badge(tab == .chat && store.unreadChatCount > 0 ? store.unreadChatCount : 0)
             }
         }
         .listStyle(.sidebar)
@@ -200,6 +202,7 @@ private struct NavRailList: View {
 /// (matchedGeometryEffect). Icon-only; VoiceOver reads the full labels.
 struct FloatingTabBar: View {
     @Binding var selection: Tab
+    @Environment(AppStore.self) private var store
     @Namespace private var pillNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -216,6 +219,9 @@ struct FloatingTabBar: View {
                     VStack(spacing: 3) {
                         Image(systemName: tab.icon)
                             .font(.system(size: 17, weight: .semibold))
+                            .overlay(alignment: .topTrailing) {
+                                if tab == .chat && store.unreadChatCount > 0 { unreadBadge(store.unreadChatCount) }
+                            }
                         Text(tab.label)
                             .font(.system(size: 10, weight: .semibold))
                             .lineLimit(1)
@@ -247,6 +253,15 @@ struct FloatingTabBar: View {
         .padding(.horizontal, Space.lg)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tab bar")
+    }
+
+    private func unreadBadge(_ count: Int) -> some View {
+        Text(count > 9 ? "9+" : "\(count)")
+            .font(.system(size: 10, weight: .heavy))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Palette.coral, in: Capsule())
+            .offset(x: 10, y: -7)
     }
 }
 
