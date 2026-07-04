@@ -11,6 +11,7 @@ import Observation
 @Observable
 final class AppStore {
     // State
+    var me: User?
     var family: Family?
     var messages: [ChatMessage] = []
     var isRefreshing = false
@@ -18,6 +19,25 @@ final class AppStore {
     var syncError: String?
 
     var kids: [Kid] { family?.kids ?? [] }
+
+    // MARK: Chat identity helpers
+
+    /// True if the signed-in user posted this message. `postedByUserId` is set for
+    /// both parent and kid sessions (server always stamps it), so it's the reliable
+    /// "mine" signal; fall back to senderId for any legacy message without it.
+    func isMine(_ m: ChatMessage) -> Bool {
+        if let posted = m.postedByUserId { return posted == me?.id }
+        return m.senderId == me?.id
+    }
+
+    /// Display name for a message's sender, resolved from the family (messages
+    /// carry only ids). Kids resolve via kid profiles; parents via `family.parents`.
+    func senderName(for m: ChatMessage) -> String {
+        if m.senderType == "kid" {
+            return family?.kids.first { $0.id == m.senderId }?.name ?? "Kid"
+        }
+        return family?.parents?.first { $0.id == m.senderId }?.name ?? "Parent"
+    }
 
     // Collaborators
     private let api = APIClient.shared
@@ -30,6 +50,7 @@ final class AppStore {
     func load() async {
         loadTheme()
         if family == nil, let cached = cache.load() {
+            me = cached.me
             family = cached.family
             messages = cached.messages
         }
@@ -40,6 +61,7 @@ final class AppStore {
         isRefreshing = true
         defer { isRefreshing = false }
         do {
+            me = try await api.me().user
             let fams = try await api.families()
             family = fams.first
             if family != nil {
@@ -59,6 +81,7 @@ final class AppStore {
     func signedOut() {
         pollTask?.cancel()
         cache.clear()
+        me = nil
         family = nil
         messages = []
         needsAuth = true
@@ -132,20 +155,31 @@ final class AppStore {
 
     /// Debounced re-poll after sending a message or on a timer (mirrors web
     /// long-poll behavior). Cancels any in-flight poll before scheduling a new one.
+    /// When the Chat surface is on-screen we poll faster (near-live, matching the
+    /// web's ~2s cadence); in the background we back off to save battery.
+    var chatActive = false {
+        didSet { if chatActive != oldValue { scheduleChatPoll() } }
+    }
+
     func scheduleChatPoll() {
         pollTask?.cancel()
+        let interval: Duration = chatActive ? .seconds(3) : .seconds(8)
         pollTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: interval)
             guard !Task.isCancelled else { return }
             await self?.pollChat()
         }
     }
 
     private func pollChat() async {
-        guard family != nil else { return }
+        guard family != nil else { scheduleChatPoll(); return }
         if let fresh = try? await api.chatMessages(limit: 50) {
-            messages = fresh
-            persist()
+            // Only reassign when the thread actually changed, so an unchanged
+            // poll doesn't churn the list / interrupt scrolling.
+            if fresh.map(\.id) != messages.map(\.id) || fresh.last?.text != messages.last?.text {
+                messages = fresh
+                persist()
+            }
         }
         scheduleChatPoll()
     }
@@ -156,6 +190,25 @@ final class AppStore {
             messages.append(msg)
             persist()
         } catch { handle(error) }
+    }
+
+    /// Convenience used by the native Chat screen — sends as the signed-in user.
+    /// (The server derives the real sender from the session; these are for the
+    /// API shape only.)
+    func send(text: String) async {
+        let sType = me?.role == "kid" ? "kid" : "parent"
+        let sId = (me?.role == "kid" ? me?.kidId : me?.id) ?? me?.id ?? ""
+        await sendMessage(text: text, senderType: sType, senderId: sId)
+    }
+
+    /// Immediate one-shot chat refresh (e.g. when the Chat tab appears or the app
+    /// returns to the foreground) so new cross-device messages show without waiting.
+    func refreshChatNow() async {
+        guard family != nil else { return }
+        if let fresh = try? await api.chatMessages(limit: 50) {
+            messages = fresh
+            persist()
+        }
     }
     func deleteMessage(_ id: String) async {
         do {
@@ -175,7 +228,7 @@ final class AppStore {
     // MARK: Persistence / errors
 
     private func persist() {
-        cache.save(CachedAppData(family: family, messages: messages))
+        cache.save(CachedAppData(family: family, messages: messages, me: me))
     }
 
     private func handle(_ error: Error) {

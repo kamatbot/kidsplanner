@@ -9,6 +9,15 @@ struct User: Codable, Identifiable {
     let id: String
     let email: String
     var name: String?
+    var role: String? = nil    // "parent" | "kid" (matches server publicProfile)
+    var kidId: String? = nil   // set when role == "kid" — the kid profile id
+}
+
+/// A parent member of a family, with a display name resolved server-side.
+/// Mirrors `publicFamily().parents` (server lib/family.js).
+struct Parent: Codable, Identifiable {
+    let id: String
+    var name: String?
 }
 
 struct Kid: Codable, Identifiable {
@@ -25,6 +34,7 @@ struct Family: Codable, Identifiable {
     var name: String
     let inviteCode: String
     var parentIds: [String]
+    var parents: [Parent]? = nil   // id + display name for each parent (optional for cache back-compat)
     var kids: [Kid]
     let createdAt: String
 }
@@ -36,6 +46,16 @@ struct ChatCard: Codable {
     var title: String?
 }
 
+/// A GIF attached to a chat message (Giphy). Mirrors the server's `media` shape
+/// so a GIF sent from the web renders in the native app too.
+struct ChatMedia: Codable {
+    let type: String       // "gif"
+    var url: String?
+    var previewUrl: String?
+    var width: Int?
+    var height: Int?
+}
+
 struct ChatMessage: Codable, Identifiable {
     let id: String
     let familyId: String
@@ -44,6 +64,7 @@ struct ChatMessage: Codable, Identifiable {
     var postedByUserId: String?
     var text: String
     var card: ChatCard?
+    var media: ChatMedia? = nil
     let createdAt: String
     var deleted: Bool
     var deletedBy: String?

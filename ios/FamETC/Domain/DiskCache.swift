@@ -1,9 +1,11 @@
 import Foundation
 
-/// Cache-first cold start payload: the family + a recent slice of chat.
+/// Cache-first cold start payload: the signed-in user, their family, and a
+/// recent slice of chat.
 struct CachedAppData: Codable {
     var family: Family?
     var messages: [ChatMessage]
+    var me: User?   // optional for back-compat with caches written before this field
 }
 
 /// Persists the last-known family/chat data so the app renders instantly on cold

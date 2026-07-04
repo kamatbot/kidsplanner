@@ -34,11 +34,7 @@ struct TodayScreen: View {
     }
 }
 
-struct ChatScreen: View {
-    var body: some View {
-        ComingSoonScreen(title: "Chat", systemImage: "bubble.left.and.bubble.right.fill")
-    }
-}
+// ChatScreen has a full native implementation — see Features/Chat/ChatView.swift.
 
 struct CalendarScreen: View {
     var body: some View {

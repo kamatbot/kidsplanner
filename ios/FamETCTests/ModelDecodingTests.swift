@@ -77,6 +77,50 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(decoded.card?.title, original.card?.title)
     }
 
+    func testDecodesMessageWithGifMedia() throws {
+        let payload = """
+        {
+          "message": {
+            "id": "m_3", "familyId": "f_1", "senderType": "parent", "senderId": "u_1",
+            "postedByUserId": "u_1", "text": "", "card": null,
+            "media": { "type": "gif", "url": "https://giphy.com/x.gif", "previewUrl": "https://giphy.com/x-preview.gif", "width": 200, "height": 150 },
+            "createdAt": "2026-07-04T09:00:00.000Z",
+            "deleted": false, "deletedBy": null, "flagged": false, "flagReason": null, "flaggedBy": null
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(MessageResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.message.media?.type, "gif")
+        XCTAssertEqual(r.message.media?.previewUrl, "https://giphy.com/x-preview.gif")
+        XCTAssertEqual(r.message.media?.width, 200)
+    }
+
+    func testDecodesFamilyWithParentsNames() throws {
+        let payload = """
+        {
+          "family": {
+            "id": "f_1", "name": "The Smiths", "inviteCode": "ABC123",
+            "parentIds": ["u_1", "u_2"],
+            "parents": [ { "id": "u_1", "name": "Mona" }, { "id": "u_2", "name": null } ],
+            "kids": [], "createdAt": "2026-07-01T00:00:00.000Z"
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(FamilyResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.family.parents?.count, 2)
+        XCTAssertEqual(r.family.parents?.first?.name, "Mona")
+        XCTAssertNil(r.family.parents?[1].name)
+    }
+
+    func testDecodesMeWithRoleAndKidId() throws {
+        let payload = """
+        { "user": { "id": "u_kid", "email": "", "name": "Arya", "role": "kid", "kidId": "k_9" } }
+        """
+        let r = try JSONDecoder().decode(MeResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.user?.role, "kid")
+        XCTAssertEqual(r.user?.kidId, "k_9")
+    }
+
     func testDecodesFamilyResponseWithKidsNoEmailField() throws {
         let payload = """
         {
