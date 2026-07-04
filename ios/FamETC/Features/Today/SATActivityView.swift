@@ -48,7 +48,7 @@ struct SATActivityView: View {
             }
             Button {
                 Haptics.selection()
-                let body = "\(word.word) — \(word.def)"
+                let body = "\(word.word) (\(word.pos)) — \(word.def)\n\nExample: \(word.example)"
                 Task {
                     _ = await store.addNote(body: body, source: "sat",
                                             ref: ["kind": "sat", "id": word.word, "context": body])
