@@ -20,9 +20,12 @@ struct ChatScreen: View {
     @State private var keyboardHeight: CGFloat = 0
     @FocusState private var composerFocused: Bool
 
-    private var baseInset: CGFloat {
-        hSize == .compact ? Layout.tabBarClearance : Space.lg
-    }
+    private let bottomAnchorID = "chat-bottom-anchor"
+
+    // With the keyboard up we lift the whole column by its height (the ancestor
+    // TabView ignores the keyboard safe area, so SwiftUI won't do it for us);
+    // otherwise we clear the floating tab bar on iPhone.
+    private var baseInset: CGFloat { hSize == .compact ? Layout.tabBarClearance : Space.lg }
     private var bottomInset: CGFloat { keyboardHeight > 0 ? keyboardHeight : baseInset }
 
     var body: some View {
@@ -31,9 +34,13 @@ struct ChatScreen: View {
             VStack(spacing: 0) {
                 header
                 Divider().overlay(Palette.border)
-                messageList
+                messages
                 composer
             }
+            // Fill the whole screen so the message area expands and the composer
+            // is pinned to the bottom (without this the column collapses to its
+            // content height and centers in the ZStack).
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.bottom, bottomInset)
             .animation(.easeOut(duration: 0.25), value: bottomInset)
         }
@@ -55,7 +62,7 @@ struct ChatScreen: View {
         }
     }
 
-    // MARK: Header
+    // MARK: Header (with a Done button to dismiss the keyboard)
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -66,50 +73,59 @@ struct ChatScreen: View {
                 }
             }
             Spacer()
+            if composerFocused {
+                Button("Done") { composerFocused = false }
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+            }
         }
         .padding(.horizontal, Space.lg)
         .padding(.top, Space.md)
         .padding(.bottom, Space.sm)
     }
 
-    // MARK: Messages
+    // MARK: Messages — fills the space between header and composer, sticks to bottom
+
+    private var messages: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: Space.sm) {
+                    ForEach(store.messages) { m in
+                        ChatMessageRow(message: m,
+                                       isMine: store.isMine(m),
+                                       senderName: store.senderName(for: m))
+                            .id(m.id)
+                    }
+                    Color.clear.frame(height: 1).id(bottomAnchorID)
+                }
+                .padding(.horizontal, Space.lg)
+                .padding(.vertical, Space.md)
+                .frame(maxWidth: .infinity)
+            }
+            // Start at (and stick to) the newest message.
+            .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
+            .overlay { emptyOrLoading }
+            .onChange(of: store.messages.last?.id) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: keyboardHeight) { _, h in if h > 0 { scrollToBottom(proxy) } }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
     @ViewBuilder
-    private var messageList: some View {
+    private var emptyOrLoading: some View {
         if store.family == nil {
             emptyState(icon: "person.2.slash", title: "No family yet",
                        detail: "Join or create a family to start chatting.")
         } else if store.messages.isEmpty {
             if store.isRefreshing {
-                Spacer(); ProgressView().tint(Palette.accent); Spacer()
+                ProgressView().tint(Palette.accent)
             } else {
                 emptyState(icon: "bubble.left.and.bubble.right",
                            title: "No messages yet", detail: "Say hi to the family! 👋")
             }
-        } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: Space.sm) {
-                        ForEach(store.messages) { m in
-                            ChatMessageRow(message: m,
-                                           isMine: store.isMine(m),
-                                           senderName: store.senderName(for: m))
-                                .id(m.id)
-                        }
-                        Color.clear.frame(height: 1).id(bottomAnchorID)
-                    }
-                    .padding(.horizontal, Space.lg)
-                    .padding(.vertical, Space.md)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: store.messages.last?.id) { _, _ in scrollToBottom(proxy) }
-                .onChange(of: keyboardHeight) { _, h in if h > 0 { scrollToBottom(proxy) } }
-                .onAppear { scrollToBottom(proxy, animated: false) }
-            }
         }
     }
-
-    private let bottomAnchorID = "chat-bottom-anchor"
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         // Deferred a tick so a just-inserted row / image is laid out first.
@@ -172,16 +188,13 @@ struct ChatScreen: View {
 
     private func emptyState(icon: String, title: String, detail: String) -> some View {
         VStack(spacing: Space.md) {
-            Spacer()
             Image(systemName: icon)
                 .font(.system(size: 34, weight: .semibold))
                 .foregroundStyle(Palette.accent)
             Text(title).font(Typography.cardTitle).foregroundStyle(Palette.text)
             Text(detail).font(Typography.body).foregroundStyle(Palette.textSecond)
                 .multilineTextAlignment(.center)
-            Spacer()
         }
-        .frame(maxWidth: .infinity)
         .padding(Space.xl)
     }
 }
