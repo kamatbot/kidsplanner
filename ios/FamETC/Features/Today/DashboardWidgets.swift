@@ -133,10 +133,19 @@ struct QuizWidget: View {
                 if picked != nil {
                     Text(q.exp).font(Typography.caption).foregroundStyle(Palette.textSecond)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Next question →") {
+                    Button {
+                        Haptics.selection()
                         withAnimation { index = (index + 1) % Daily.quiz.count; picked = nil }
+                    } label: {
+                        Text("Next question →")
+                            .font(Typography.body.weight(.bold))
+                            .foregroundStyle(Palette.violet)
+                            .padding(.vertical, Space.sm + 2)
+                            .padding(.horizontal, Space.md)
+                            .frame(minHeight: 44)
+                            .background(Palette.violet.opacity(0.15), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                     }
-                    .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.violet)
+                    .buttonStyle(.plain)
                 }
             }
         }
