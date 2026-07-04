@@ -54,15 +54,15 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selection: Tab = .today
-    @State private var showChatSlideOver = false
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
 
     var body: some View {
         Group {
             if isPad {
-                // Full-width dashboard with a nav rail; chat via the slide-over
-                // button (a docked chat column crowded out the widgets).
+                // Full-width dashboard with a nav rail; Chat is reached as a
+                // full tab through the rail (a docked chat column crowded
+                // out the widgets).
                 iPadPortraitLayout
             } else {
                 iPhoneLayout
@@ -126,7 +126,7 @@ struct RootView: View {
         .onChange(of: selection) { _, _ in Haptics.selection() }
     }
 
-    // MARK: iPad — nav rail + full-width content, chat via trailing slide-over
+    // MARK: iPad — nav rail + full-width content, chat is a full tab
 
     private var iPadPortraitLayout: some View {
         HStack(spacing: 0) {
@@ -135,26 +135,6 @@ struct RootView: View {
             Divider()
             mainContent(for: selection)
                 .frame(maxWidth: .infinity)
-                .safeAreaInset(edge: .top) {
-                    HStack {
-                        Spacer()
-                        Button {
-                            showChatSlideOver = true
-                        } label: {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Palette.accent)
-                                .padding(Space.sm)
-                                .background(Palette.accentSoft, in: Circle())
-                        }
-                        .padding(.trailing, Space.lg)
-                        .padding(.top, Space.sm)
-                    }
-                }
-        }
-        .sheet(isPresented: $showChatSlideOver) {
-            ChatScreen()
-                .presentationDetents([.large])
         }
     }
 
@@ -171,27 +151,63 @@ struct RootView: View {
 
 // MARK: - iPad nav rail
 
-/// Simple List-based nav rail for the iPad layout: icon + label rows,
-/// selection bound to `Tab`.
+/// Vertical nav rail for the iPad layout: icon + label rows stacked down the
+/// rail, selection driven by direct taps (not `List(selection:)`, which only
+/// updates selection via edit mode / NavigationSplitView row selection and
+/// otherwise leaves taps outside a split view inert).
 private struct NavRailList: View {
     @Binding var selection: Tab
     @Environment(AppStore.self) private var store
 
-    /// `List(selection:)` requires an Optional binding; `Tab` itself is never
-    /// nil here, so this just bridges the two without ever going nil.
-    private var optionalSelection: Binding<Tab?> {
-        Binding(get: { selection }, set: { if let v = $0 { selection = v } })
+    var body: some View {
+        VStack(spacing: Space.xs) {
+            ForEach(Tab.allCases) { tab in
+                let isOn = tab == selection
+                VStack(spacing: 4) {
+                    Image(systemName: tab.icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .overlay(alignment: .topTrailing) {
+                            if tab == .chat && store.unreadChatCount > 0 {
+                                unreadBadge(store.unreadChatCount)
+                            }
+                        }
+                    Text(tab.label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .foregroundStyle(isOn ? Palette.text : Palette.textSecond)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Space.sm)
+                .background {
+                    if isOn {
+                        RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                            .fill(Palette.accentSoft)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard selection != tab else { return }
+                    Haptics.selection()
+                    selection = tab
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(tab.label)
+                .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+            }
+            Spacer()
+        }
+        .padding(.top, Space.md)
+        .padding(.horizontal, Space.xs)
     }
 
-    var body: some View {
-        List(selection: optionalSelection) {
-            ForEach(Tab.allCases) { tab in
-                Label(tab.label, systemImage: tab.icon)
-                    .tag(tab)
-                    .badge(tab == .chat && store.unreadChatCount > 0 ? store.unreadChatCount : 0)
-            }
-        }
-        .listStyle(.sidebar)
+    private func unreadBadge(_ count: Int) -> some View {
+        Text(count > 9 ? "9+" : "\(count)")
+            .font(.system(size: 10, weight: .heavy))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Palette.coral, in: Capsule())
+            .offset(x: 10, y: -7)
     }
 }
 
