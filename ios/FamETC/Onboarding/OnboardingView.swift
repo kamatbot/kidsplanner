@@ -48,7 +48,8 @@ struct OnboardingView: View {
     /// Called when onboarding finishes (family created/joined) or is skipped.
     let onFinish: (String?) -> Void
 
-    @State private var step = 0
+    private enum Screen { case role, parentWelcome, family, kid }
+    @State private var screen: Screen = .role
     @State private var signingUp = false
     @State private var authError: String?
     @State private var showBackupSignIn = false
@@ -64,12 +65,15 @@ struct OnboardingView: View {
         ZStack {
             FamTokens.background.ignoresSafeArea()
             Group {
-                switch step {
-                case 0: welcome
-                default: familySetup
+                switch screen {
+                case .role: roleChoice
+                case .parentWelcome: welcome
+                case .family: familySetup
+                case .kid:
+                    KidSignInView(onFinish: onFinish, onBack: { withAnimation { screen = .role } })
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, screen == .kid ? 0 : 24)
         }
         .foregroundColor(FamTokens.textPrimary)
         .fullScreenCover(isPresented: $showRecoveryCodes) {
@@ -93,11 +97,86 @@ struct OnboardingView: View {
         return error.localizedDescription
     }
 
-    // MARK: 1 · Welcome + passkey signup (PARENT ONLY — no kid signup path exists)
+    // MARK: 0 · Who's signing in — parent or kid
+
+    private var roleChoice: some View {
+        VStack(spacing: 0) {
+            Brand().frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("The etcetera hub for your family.")
+                    .font(.system(size: 32, weight: .bold)).lineSpacing(2)
+                Text("School calendars, homework, activities, goals, and family chat in one place.")
+                    .font(.system(size: 15)).foregroundColor(FamTokens.textSub)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 30)
+
+            Spacer()
+
+            PrimaryButton(title: "I'm a parent") { withAnimation { screen = .parentWelcome } }
+
+            Button {
+                withAnimation { screen = .kid }
+            } label: {
+                Text("I'm a kid 🧒")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(FamTokens.accent)
+                    .frame(maxWidth: .infinity).frame(height: 56)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(FamTokens.accent, lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 12)
+
+            (Text("Already have an account? ") + Text("Sign in").foregroundColor(FamTokens.accent).bold())
+                .font(.system(size: 14)).foregroundColor(FamTokens.textSub)
+                .padding(.top, 16)
+                .padding(.vertical, 10).padding(.horizontal, 28)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard !signingUp else { return }
+                    signingUp = true; authError = nil
+                    Task {
+                        do {
+                            try await AuthService.shared.signInWithPasskey()
+                            await MainActor.run { signingUp = false; onFinish(nil) }
+                        } catch {
+                            await MainActor.run {
+                                signingUp = false
+                                if let e = error as? AuthError, e.isCancellation { return }
+                                authError = friendlyError(error)
+                            }
+                        }
+                    }
+                }
+
+            if let authError {
+                Text(authError).font(.system(size: 13)).foregroundColor(FamTokens.danger)
+                    .multilineTextAlignment(.center).padding(.top, 8)
+            }
+
+            Text("Kids sign in with their name + your family code — a parent approves on their phone.")
+                .font(.system(size: 12)).foregroundColor(FamTokens.textSub)
+                .multilineTextAlignment(.center)
+                .padding(.top, 14).padding(.bottom, 24)
+        }
+        .padding(.top, 34)
+    }
+
+    // MARK: 1 · Welcome + passkey signup (PARENT ONLY — kids use the kid flow)
 
     private var welcome: some View {
         VStack(spacing: 0) {
-            Brand().frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+            HStack {
+                Brand()
+                Spacer()
+                Button { withAnimation { screen = .role } } label: {
+                    Text("← Back").font(.system(size: 14, weight: .semibold)).foregroundColor(FamTokens.textSub)
+                }
+                .buttonStyle(.plain)
+                .disabled(signingUp)
+            }
+            .padding(.top, 8)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("The etcetera hub for your family.")
@@ -121,7 +200,7 @@ struct OnboardingView: View {
                 Task {
                     do {
                         try await AuthService.shared.signUpWithPasskey()
-                        await MainActor.run { signingUp = false; withAnimation { step = 1 } }
+                        await MainActor.run { signingUp = false; withAnimation { screen = .family } }
                     } catch {
                         await MainActor.run {
                             signingUp = false

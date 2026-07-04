@@ -158,6 +158,90 @@ final class AuthService: NSObject {
         await syncCookiesToWebView()
     }
 
+    // MARK: - Kid sign-in (request → parent approves → passkey)
+    // The kid drives this on their OWN device with no parent session present.
+    // Mirrors the web flow (public/js/auth.js) against the same server routes:
+    // POST /api/kid/access-request → poll GET /api/kid/access-request/:id →
+    // POST …/register/options → ASAuthorization passkey → POST …/register/verify,
+    // which sets fam_sess for the kid. pollToken gates every call.
+
+    struct KidRequest { let id: String; let pollToken: String; let name: String }
+
+    /// A short human-friendly device label for the parent's approval card,
+    /// mirroring the web's guessDeviceLabel().
+    private var deviceLabel: String {
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad: return "an iPad"
+        case .phone: return "an iPhone"
+        default: return "a device"
+        }
+    }
+
+    /// Step 1: create a pending access request. Returns the id + pollToken the
+    /// kid's device holds to drive the rest of the flow.
+    func requestKidAccess(inviteCode: String, name: String) async throws -> KidRequest {
+        let json = try await postJSON("/api/kid/access-request", body: [
+            "inviteCode": inviteCode.trimmingCharacters(in: .whitespacesAndNewlines),
+            "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
+            "deviceLabel": deviceLabel,
+        ])
+        guard let id = json["requestId"] as? String, let token = json["pollToken"] as? String else {
+            throw AuthError.options
+        }
+        return KidRequest(id: id, pollToken: token, name: (json["name"] as? String) ?? name)
+    }
+
+    /// Step 2 (polled): the current status —
+    /// "pending" | "approved" | "denied" | "expired" | "not_found".
+    func kidAccessStatus(requestId: String, pollToken: String) async throws -> String {
+        let path = "/api/kid/access-request/\(requestId)?token=\(pollToken)"
+        let json = try await getJSON(path)
+        return (json["status"] as? String) ?? "not_found"
+    }
+
+    /// Step 3: once approved, register a device passkey and get signed in.
+    /// Establishes fam_sess and syncs it into the WebView, exactly like parent
+    /// sign-in — so the shell loads authenticated as the kid.
+    func completeKidPasskey(requestId: String, pollToken: String) async throws {
+        // 1) registration options (server creates/looks up the kid user)
+        let options = try await postJSON("/api/kid/access-request/\(requestId)/register/options",
+                                         body: ["token": pollToken])
+        guard
+            let challengeB64 = options["challenge"] as? String,
+            let challenge = Data(base64URLEncoded: challengeB64),
+            let user = options["user"] as? [String: Any],
+            let userIdB64 = user["id"] as? String,
+            let userID = Data(base64URLEncoded: userIdB64)
+        else { throw AuthError.options }
+        let userName = (user["name"] as? String) ?? "Fam ETC kid"
+
+        // 2) platform passkey registration (Face ID / Touch ID / device PIN)
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
+        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userID)
+        let auth = try await perform(request)
+        guard let reg = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
+              let attestation = reg.rawAttestationObject else { throw AuthError.registration }
+
+        // 3) verify → server registers the credential and sets fam_sess.uid to the kid
+        let body: [String: Any] = [
+            "token": pollToken,
+            "response": [
+                "id": reg.credentialID.base64URLEncodedString(),
+                "rawId": reg.credentialID.base64URLEncodedString(),
+                "type": "public-key",
+                "response": [
+                    "clientDataJSON": reg.rawClientDataJSON.base64URLEncodedString(),
+                    "attestationObject": attestation.base64URLEncodedString(),
+                ],
+                "clientExtensionResults": [String: Any](),
+            ],
+        ]
+        _ = try await postJSON("/api/kid/access-request/\(requestId)/register/verify", body: body)
+
+        // 4) hand the kid session cookie to the WebView
+        await syncCookiesToWebView()
+    }
+
     // MARK: - Family onboarding (authenticated after sign-up)
     // Fam ETC has no financial onboarding — a brand-new parent either creates a
     // family or joins one via invite code, then optionally adds kid profiles.
@@ -196,6 +280,18 @@ final class AuthService: NSObject {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await session.data(for: req)
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw AuthError.verify((json["error"] as? String) ?? "Request failed")
+        }
+        return json
+    }
+
+    private func getJSON(_ path: String) async throws -> [String: Any] {
+        guard let url = URL(string: apiBase + path) else { throw AuthError.options }
+        var req = URLRequest(url: url)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, resp) = try await session.data(for: req)
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
