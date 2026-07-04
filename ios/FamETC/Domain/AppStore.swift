@@ -170,7 +170,7 @@ final class AppStore {
 
     func scheduleChatPoll() {
         pollTask?.cancel()
-        let interval: Duration = chatActive ? .seconds(3) : .seconds(8)
+        let interval: Duration = chatActive ? .seconds(2) : .seconds(8)
         pollTask = Task { [weak self] in
             try? await Task.sleep(for: interval)
             guard !Task.isCancelled else { return }
@@ -278,6 +278,21 @@ final class AppStore {
         let sType = me?.role == "kid" ? "kid" : "parent"
         let sId = (me?.role == "kid" ? me?.kidId : me?.id) ?? me?.id ?? ""
         await sendMessage(text: text, senderType: sType, senderId: sId)
+    }
+
+    /// Send a GIF (Giphy) to the family chat.
+    func sendGif(_ gif: GifResult) async {
+        let sType = me?.role == "kid" ? "kid" : "parent"
+        let sId = (me?.role == "kid" ? me?.kidId : me?.id) ?? me?.id ?? ""
+        let media: [String: Any] = [
+            "type": "gif", "url": gif.url, "previewUrl": gif.previewUrl,
+            "width": gif.width ?? 0, "height": gif.height ?? 0,
+        ]
+        do {
+            let msg = try await api.sendChatMessage(text: "", card: nil, media: media, senderType: sType, senderId: sId)
+            messages.append(msg)
+            persist()
+        } catch { handle(error) }
     }
 
     /// Immediate one-shot chat refresh (e.g. when the Chat tab appears or the app

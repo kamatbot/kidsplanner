@@ -115,9 +115,19 @@ struct HomeworkItem: Codable, Identifiable {
     var isDone: Bool { status == "done" }
 }
 
+/// A GIF result from the Giphy proxy (`/api/gifs/*`).
+struct GifResult: Codable, Identifiable {
+    let id: String
+    var previewUrl: String
+    var url: String
+    var width: Int?
+    var height: Int?
+}
+
 // MARK: - Response wrappers (thin, match server.js route shapes)
 
 struct FamiliesResponse: Codable { var families: [Family] }
+struct GifsResponse: Codable { var gifs: [GifResult] }
 struct CalendarSyncResponse: Codable { var events: [CalendarEvent]?; var lastSyncAt: String?; var throttled: Bool? }
 struct HomeworkResponse: Codable { var homework: [HomeworkItem] }
 struct HomeworkItemResponse: Codable { var homework: HomeworkItem }

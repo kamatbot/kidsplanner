@@ -119,11 +119,21 @@ final class APIClient {
         let r: MessagesResponse = try await request(path)
         return r.messages
     }
-    func sendChatMessage(text: String, card: [String: Any]? = nil, senderType: String, senderId: String) async throws -> ChatMessage {
+    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String) async throws -> ChatMessage {
         var body: [String: Any] = ["text": text, "senderType": senderType, "senderId": senderId]
         if let card { body["card"] = card }
+        if let media { body["media"] = media }
         let r: MessageResponse = try await request("/api/chat/messages", method: "POST", body: body)
         return r.message
+    }
+    func trendingGifs(limit: Int = 24) async throws -> [GifResult] {
+        let r: GifsResponse = try await request("/api/gifs/trending?limit=\(limit)")
+        return r.gifs
+    }
+    func searchGifs(_ query: String, limit: Int = 24) async throws -> [GifResult] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let r: GifsResponse = try await request("/api/gifs/search?q=\(q)&limit=\(limit)")
+        return r.gifs
     }
     func deleteChatMessage(_ id: String) async throws -> ChatMessage {
         let r: MessageResponse = try await request("/api/chat/messages/\(id)", method: "DELETE")
