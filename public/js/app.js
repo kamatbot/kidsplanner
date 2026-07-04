@@ -341,22 +341,34 @@ function renderNotesTimeline() {
   el.innerHTML = groups.map((g) => {
     const rows = g.notes.map((n) => {
       const chip = noteSourceChip(n.source);
-      // The actual content the note was made on (quote / message / word) is the
-      // prominent subject; the person's own words (reflection) come after it.
-      const context = (n.ref && n.ref.context) ? n.ref.context : '';
-      const contentBlock = context ? `<div class="note-content">${esc(context)}</div>` : '';
-      const showBody = n.body && n.body !== context;
-      const bodyBlock = showBody ? `<div class="note-body">${context ? '💭 ' : ''}${esc(n.body)}</div>` : '';
+      const context = (n.ref && n.ref.context) ? n.ref.context : '';       // the original content
+      const reflection = (n.body && n.body !== context) ? n.body : '';     // the person's own words
       const canEdit = sessionUser && n.authorId === sessionUser.id;
       const del = canEdit ? `<button class="btn-link-danger note-delete-btn" onclick="handleDeleteNote('${n.id}')" title="Delete note">🗑️</button>` : '';
-      return `<div class="note-item">
-        <div class="note-item-header">
+      const header = `<div class="note-item-header">
           <span class="note-source-chip note-source-${esc(n.source || 'manual')}">${chip.icon} ${chip.label}</span>
           ${del}
-        </div>
-        ${contentBlock}
-        ${bodyBlock}
-      </div>`;
+        </div>`;
+      // When there's both a reflection AND a saved original, the card flips: the
+      // front shows the person's note, the back reveals the original content.
+      if (context && reflection) {
+        return `<div class="note-item note-flippable" onclick="toggleNoteFlip(this, event)">
+          ${header}
+          <div class="note-face note-front">
+            <div class="note-body">💭 ${esc(reflection)}</div>
+            <div class="note-flip-hint">↻ Tap to see the original</div>
+          </div>
+          <div class="note-face note-back" style="display:none">
+            <div class="note-content">${esc(context)}</div>
+            <div class="note-flip-hint">↩︎ Tap to flip back</div>
+          </div>
+        </div>`;
+      }
+      // Otherwise show whatever's present: the original as the prominent block
+      // (pins) or a plain manual/feelings note.
+      const contentBlock = context ? `<div class="note-content">${esc(context)}</div>` : '';
+      const bodyBlock = reflection ? `<div class="note-body">${context ? '💭 ' : ''}${esc(reflection)}</div>` : '';
+      return `<div class="note-item">${header}${contentBlock}${bodyBlock}</div>`;
     }).join('');
     return `<div class="notes-day-group">
       <div class="notes-day-header">${esc(friendlyNoteDate(g.date))}</div>
@@ -396,6 +408,19 @@ async function handleDeleteNote(id) {
     toast('Note deleted.');
   } catch (err) { toast(`❌ ${err.message}`); }
 }
+
+// Flip a note card between the reflection (front) and the original content (back).
+function toggleNoteFlip(card, event) {
+  if (event && event.target.closest('.note-delete-btn')) return; // don't flip on delete
+  const front = card.querySelector('.note-front');
+  const back = card.querySelector('.note-back');
+  if (!front || !back) return;
+  const showingBack = back.style.display !== 'none';
+  front.style.display = showingBack ? '' : 'none';
+  back.style.display = showingBack ? 'none' : '';
+  card.classList.toggle('flipped', !showingBack);
+}
+window.toggleNoteFlip = toggleNoteFlip;
 
 async function saveNoteFromWidget(body, source, ref) {
   try {
@@ -470,7 +495,8 @@ async function saveNewsReflection() {
   const textEl = document.getElementById('news-reflect-text');
   const body = textEl ? textEl.value.trim() : '';
   if (!body) { toast('Write a few words first 🙂'); return; }
-  const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: currentNews ? currentNews.headline : '' });
+  const newsFull = currentNews ? `${currentNews.headline}\n\n${currentNews.summary}` : '';
+  const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: newsFull });
   if (note) textEl.value = '';
 }
 
@@ -675,8 +701,9 @@ async function answerWordQuiz(chosenIndex) {
 
 async function handlePinSatWord() {
   if (!currentSatWord) return;
-  const full = `${currentSatWord.word} — ${currentSatWord.def}`;
-  await saveNoteFromWidget(full, 'sat', { kind: 'sat', id: currentSatWord.word, context: full });
+  const w = currentSatWord;
+  const full = `${w.word} (${w.pos}) — ${w.def}\n\nExample: ${w.example}`;
+  await saveNoteFromWidget(full, 'sat', { kind: 'sat', id: w.word, context: full });
 }
 
 /* ---------- chat: pin a message to notes ---------- */
