@@ -76,6 +76,11 @@ struct RootView: View {
         }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
+        // Parents: kids waiting to be let in appear as a banner above everything.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            KidApprovalBanner()
+                .animation(Motion.snappy, value: store.kidRequests.map(\.id))
+        }
         .task {
             await store.load()
             // Now that we know there's an authenticated session, ask for push
@@ -84,6 +89,14 @@ struct RootView: View {
             if !store.needsAuth {
                 PushRegistrationService.shared.requestAuthorizationAndRegister()
             }
+        }
+        // A kid_access_request push (or returning to the foreground) refreshes the
+        // pending list so the approval banner is current without waiting for a poll.
+        .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToKidApproval)) { _ in
+            Task { await store.refreshKidRequests() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await store.refreshKidRequests() }
         }
         .overlay { if store.needsAuth { ReauthOverlay() } }
         .onAppear {

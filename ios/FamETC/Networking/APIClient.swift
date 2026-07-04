@@ -69,6 +69,20 @@ final class APIClient {
         return r.family
     }
 
+    // MARK: Kid access requests (parent approval)
+
+    func kidAccessRequests() async throws -> [KidAccessRequest] {
+        let r: KidAccessRequestsResponse = try await request("/api/family/access-requests")
+        return r.requests
+    }
+    func approveKidAccess(_ id: String) async throws -> Family {
+        let r: FamilyKidResponse = try await request("/api/family/access-requests/\(id)/approve", method: "POST", body: [:])
+        return r.family
+    }
+    func denyKidAccess(_ id: String) async throws {
+        let _: OKResponse = try await request("/api/family/access-requests/\(id)/deny", method: "POST", body: [:])
+    }
+
     // MARK: Chat
 
     func chatMessages(since: String? = nil, limit: Int? = nil) async throws -> [ChatMessage] {

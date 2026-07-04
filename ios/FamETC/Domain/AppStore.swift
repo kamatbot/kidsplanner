@@ -14,11 +14,14 @@ final class AppStore {
     var me: User?
     var family: Family?
     var messages: [ChatMessage] = []
+    var kidRequests: [KidAccessRequest] = []   // pending kid sign-ins (parents approve)
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
 
     var kids: [Kid] { family?.kids ?? [] }
+    /// Kids never approve anyone; only parents see/act on access requests.
+    var isParent: Bool { me?.role != "kid" }
 
     // MARK: Chat identity helpers
 
@@ -66,6 +69,7 @@ final class AppStore {
             family = fams.first
             if family != nil {
                 messages = try await api.chatMessages(limit: 50)
+                await refreshKidRequests()
             }
             syncError = nil
             needsAuth = false
@@ -181,7 +185,32 @@ final class AppStore {
                 persist()
             }
         }
+        await refreshKidRequests() // surface new kid sign-in requests app-wide
         scheduleChatPoll()
+    }
+
+    // MARK: Kid access requests
+
+    func refreshKidRequests() async {
+        guard isParent, family != nil else { kidRequests = []; return }
+        if let fresh = try? await api.kidAccessRequests() {
+            if fresh.map(\.id) != kidRequests.map(\.id) { kidRequests = fresh }
+        }
+    }
+
+    func approveKid(_ id: String) async {
+        do {
+            family = try await api.approveKidAccess(id)
+            kidRequests.removeAll { $0.id == id }
+            persist()
+        } catch { handle(error) }
+    }
+
+    func denyKid(_ id: String) async {
+        do {
+            try await api.denyKidAccess(id)
+            kidRequests.removeAll { $0.id == id }
+        } catch { handle(error) }
     }
 
     func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String) async {

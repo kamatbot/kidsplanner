@@ -73,11 +73,23 @@ struct ChatMessage: Codable, Identifiable {
     var flaggedBy: String?
 }
 
+/// A pending kid sign-in request awaiting a parent's approval. Mirrors the
+/// server's publicForParent shape (lib/kid-access.js): a kid entered the family
+/// invite code + a name on their device; approving creates the kid profile and
+/// lets them register a passkey.
+struct KidAccessRequest: Codable, Identifiable {
+    let id: String
+    var name: String
+    var deviceLabel: String?
+    let createdAt: String
+}
+
 // MARK: - Response wrappers (thin, match server.js route shapes)
 
 struct FamiliesResponse: Codable { var families: [Family] }
 struct FamilyResponse: Codable { var family: Family }
 struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
+struct KidAccessRequestsResponse: Codable { var requests: [KidAccessRequest] }
 struct MessagesResponse: Codable { var messages: [ChatMessage] }
 struct MessageResponse: Codable { var message: ChatMessage }
 struct OKResponse: Codable { var ok: Bool }
