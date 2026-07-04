@@ -239,6 +239,27 @@ final class AppStore {
         }
     }
 
+    /// Delete a note the signed-in member authored. Optimistic removal; reloads
+    /// from the server on failure so a rejected delete reappears.
+    func deleteNote(_ id: String) async {
+        let backup = notes
+        notes.removeAll { $0.id == id }
+        do {
+            try await api.deleteNote(id)
+        } catch {
+            notes = backup
+            handle(error)
+        }
+    }
+
+    /// True when the current session authored this note (kid → matches kidId,
+    /// parent → matches user id) and may therefore delete it.
+    func canDeleteNote(_ note: Note) -> Bool {
+        if let kidId = me?.kidId, note.authorId == kidId { return true }
+        if let uid = me?.id, note.authorId == uid { return true }
+        return false
+    }
+
     // MARK: Kid access requests
 
     func refreshKidRequests() async {

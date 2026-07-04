@@ -343,7 +343,7 @@ function renderNotesTimeline() {
       const chip = noteSourceChip(n.source);
       const context = (n.ref && n.ref.context) ? n.ref.context : '';       // the original content
       const reflection = (n.body && n.body !== context) ? n.body : '';     // the person's own words
-      const canEdit = sessionUser && n.authorId === sessionUser.id;
+      const canEdit = sessionUser && (n.authorId === sessionUser.id || n.authorId === sessionUser.kidId);
       const del = canEdit ? `<button class="btn-link-danger note-delete-btn" onclick="handleDeleteNote('${n.id}')" title="Delete note">🗑️</button>` : '';
       const header = `<div class="note-item-header">
           <span class="note-source-chip note-source-${esc(n.source || 'manual')}">${chip.icon} ${chip.label}</span>
