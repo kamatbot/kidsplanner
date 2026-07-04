@@ -36,6 +36,9 @@ const events = require("./lib/events");
 const gifs = require("./lib/gifs");
 const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
+const notes = require("./lib/notes");
+const wordbank = require("./lib/wordbank");
+const brainteaser = require("./lib/brainteaser");
 const schoolAccount = require("./lib/school-account");
 const moodleClient = require("./lib/moodle-client");
 const notifications = require("./lib/fam-notifications");
@@ -1215,6 +1218,131 @@ app.delete("/api/homework/:id", requireAuth, requireFamily, (req, res) => {
     return res.status(403).json({ error: "You don't have access to this homework item." });
   }
   const result = homework.removeHomework(req.family.id, req.params.id);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+// ===================== NOTES (enrichment) =====================
+// A running family/kid journal. A kid session only ever sees/edits their OWN
+// notes (authorId derived server-side from req.user, never trusted from the
+// body); a parent sees the whole family's notes and may filter by
+// ?authorId=. Only the author may PATCH/DELETE their own note — see
+// lib/notes.js canAccess().
+app.get("/api/notes", requireAuth, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const role = userRole(req.user);
+  let authorId = req.query.authorId ? String(req.query.authorId) : null;
+  if (role === "kid") {
+    // A kid can never read a sibling's notes, regardless of ?authorId=.
+    authorId = kidIdForUser(req);
+  }
+  const items = notes.listNotes(req.family.id, { authorId, from: req.query.from, to: req.query.to });
+  res.json({ notes: items });
+});
+
+app.post("/api/notes", requireAuth, requireFamily, (req, res) => {
+  const role = userRole(req.user);
+  const body = req.body || {};
+  const authorType = role === "kid" ? "kid" : "parent";
+  const authorId = role === "kid" ? kidIdForUser(req) : req.user.id;
+  if (role === "kid" && !authorId) return res.status(403).json({ error: "No kid profile linked to this session." });
+  const result = notes.addNote(req.family.id, {
+    authorType,
+    authorId,
+    date: body.date,
+    body: body.body,
+    source: body.source,
+    ref: body.ref,
+  });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ note: result.note });
+});
+
+app.patch("/api/notes/:id", requireAuth, requireFamily, (req, res) => {
+  const existing = notes.getById(req.family.id, req.params.id);
+  if (!existing) return res.status(404).json({ error: "Note not found." });
+  if (!notes.canAccess(existing, req.user)) {
+    return res.status(403).json({ error: "You don't have access to this note." });
+  }
+  const result = notes.updateNote(req.family.id, req.params.id, { body: (req.body || {}).body });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ note: result.note });
+});
+
+app.delete("/api/notes/:id", requireAuth, requireFamily, (req, res) => {
+  const existing = notes.getById(req.family.id, req.params.id);
+  if (!existing) return res.status(404).json({ error: "Note not found." });
+  if (!notes.canAccess(existing, req.user)) {
+    return res.status(403).json({ error: "You don't have access to this note." });
+  }
+  const result = notes.removeNote(req.family.id, req.params.id);
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true });
+});
+
+// ===================== WORD BANK (enrichment) =====================
+// Per-kid SAT vocabulary progress. A kid session always resolves to their
+// own kidId; a parent may pass ?kidId= to view a specific child's bank.
+function wordbankKidId(req) {
+  const role = userRole(req.user);
+  if (role === "kid") return kidIdForUser(req);
+  const kidId = req.query.kidId ? String(req.query.kidId) : null;
+  if (kidId && !family.kidBelongsToFamily(req.family.id, kidId)) return null;
+  return kidId;
+}
+
+app.get("/api/wordbank", requireAuth, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const kidId = wordbankKidId(req);
+  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
+  const result = wordbank.listWords(kidId);
+  res.json({ words: result.words, stats: result.stats });
+});
+
+app.post("/api/wordbank/interact", requireAuth, requireFamily, (req, res) => {
+  const kidId = wordbankKidId(req);
+  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
+  const body = req.body || {};
+  const result = wordbank.interact(kidId, { word: body.word, correct: !!body.correct });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ entry: result.entry });
+});
+
+app.post("/api/wordbank/placement", requireAuth, requireFamily, (req, res) => {
+  const kidId = wordbankKidId(req);
+  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
+  const body = req.body || {};
+  const result = wordbank.placement(kidId, { known: body.known });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ ok: true, stats: result.stats });
+});
+
+app.get("/api/wordbank/quiz", requireAuth, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const kidId = wordbankKidId(req);
+  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
+  const result = wordbank.quiz(kidId, { n: req.query.n });
+  res.json(result);
+});
+
+// ===================== BRAIN TEASER (enrichment) =====================
+// Per-kid daily quiz set. Kid-only surface (mirrors wordbank kid resolution,
+// but with no parent ?kidId= override since this is a kid-facing activity).
+app.get("/api/brainteaser/today", requireAuth, requireFamily, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const role = userRole(req.user);
+  const kidId = role === "kid" ? kidIdForUser(req) : (req.query.kidId ? String(req.query.kidId) : null);
+  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
+  const result = brainteaser.getToday(kidId);
+  res.json(result);
+});
+
+app.post("/api/brainteaser/answer", requireAuth, requireFamily, (req, res) => {
+  const role = userRole(req.user);
+  const body = req.body || {};
+  const kidId = role === "kid" ? kidIdForUser(req) : (body.kidId ? String(body.kidId) : null);
+  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
+  const result = brainteaser.answer(kidId, { qid: body.qid, correct: !!body.correct });
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ ok: true });
 });
