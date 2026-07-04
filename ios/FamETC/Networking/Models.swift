@@ -137,6 +137,78 @@ struct GifResult: Codable, Identifiable {
     var height: Int?
 }
 
+/// A ref pointer attached to a note back to the thing it was pinned from
+/// (a quote, a chat message, a news item, etc). Mirrors `lib/notes.js`.
+struct NoteRef: Codable {
+    var kind: String
+    var id: String
+    var context: String?
+}
+
+/// A parent/kid reflection or pinned snippet (`/api/notes`). Mirrors
+/// `lib/notes.js`'s note shape.
+struct Note: Codable, Identifiable {
+    let id: String
+    var authorType: String   // "kid" | "parent"
+    var authorId: String
+    var date: String         // YYYY-MM-DD
+    var body: String
+    var source: String       // "manual" | "quote" | "sat" | "chat" | "social" | "news"
+    var ref: NoteRef?
+}
+
+struct NotesResponse: Codable { var notes: [Note] }
+struct NoteResponse: Codable { var note: Note }
+
+/// A single word bank entry (`/api/wordbank`). Mirrors `lib/wordbank.js`.
+struct WordBankEntry: Codable, Identifiable {
+    var word: String
+    var state: String   // "learning" | "mastered" | "known"
+    var seenCount: Int
+    var correctCount: Int
+
+    var id: String { word }
+}
+
+struct WordStats: Codable {
+    var learning: Int
+    var mastered: Int
+    var known: Int
+}
+
+struct WordBankResponse: Codable { var words: [WordBankEntry]; var stats: WordStats }
+struct WordEntryResponse: Codable { var entry: WordBankEntry }
+
+struct WordQuizQuestion: Codable {
+    var word: String
+    var prompt: String
+    var options: [String]
+    var answerIndex: Int
+}
+
+struct WordQuizResponse: Codable {
+    var questions: [WordQuizQuestion]
+    var needMore: Bool? = nil
+}
+
+/// A single brain teaser question served for the day (`/api/brainteaser/today`).
+/// Mirrors `lib/brainteaser.js`.
+struct BrainTeaserQ: Codable, Identifiable {
+    var qid: String
+    var q: String
+    var options: [String]
+    var answerIndex: Int
+    var resurfaced: Bool? = nil
+
+    var id: String { qid }
+}
+
+struct BrainTeaserTodayResponse: Codable {
+    var date: String
+    var count: Int
+    var questions: [BrainTeaserQ]
+}
+
 // MARK: - Response wrappers (thin, match server.js route shapes)
 
 struct FamiliesResponse: Codable { var families: [Family] }

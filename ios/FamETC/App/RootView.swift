@@ -28,7 +28,7 @@ import SwiftUI
 // entry inside Today, hosted by `HybridWebView`. That "More" sheet/menu is out
 // of scope for this scaffold; only the 4-tab native surface is wired here.
 enum Tab: String, CaseIterable, Identifiable {
-    case today, chat, calendar, homework
+    case today, chat, calendar, homework, notes
     var id: String { rawValue }
 
     var label: String {
@@ -37,6 +37,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .chat: return "Chat"
         case .calendar: return "Calendar"
         case .homework: return "Homework"
+        case .notes: return "Notes"
         }
     }
     var icon: String {
@@ -45,6 +46,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .chat: return "bubble.left.and.bubble.right.fill"
         case .calendar: return "calendar"
         case .homework: return "book.closed.fill"
+        case .notes: return "note.text"
         }
     }
 }
@@ -117,6 +119,7 @@ struct RootView: View {
             ChatScreen().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
             CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
             HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
+            NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FloatingTabBar(selection: $selection)
@@ -145,6 +148,7 @@ struct RootView: View {
         case .chat: ChatScreen()
         case .calendar: CalendarScreen()
         case .homework: HomeworkScreen()
+        case .notes: NotesScreen()
         }
     }
 }

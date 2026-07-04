@@ -33,38 +33,206 @@ struct DashCard<Content: View>: View {
     }
 }
 
+// MARK: - Enrichment gating
+
+/// Wraps an enrichment widget so that when homework is piling up, the widget
+/// shows a locked overlay ("Finish your homework first") instead of its normal
+/// interactive content, and disables interaction underneath.
+private struct EnrichmentGateModifier: ViewModifier {
+    let locked: Bool
+    let dueCount: Int
+
+    func body(content: Content) -> some View {
+        content
+            .allowsHitTesting(!locked)
+            .overlay {
+                if locked {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                        VStack(spacing: 4) {
+                            Text("🔒 Finish your homework first")
+                                .font(Typography.body.weight(.bold))
+                                .foregroundStyle(Palette.text)
+                                .multilineTextAlignment(.center)
+                            Text("\(dueCount) due today")
+                                .font(Typography.caption)
+                                .foregroundStyle(Palette.textSecond)
+                        }
+                        .padding(Space.md)
+                    }
+                    .transition(.opacity)
+                }
+            }
+    }
+}
+
+private extension View {
+    /// Apply the enrichment lock overlay to a widget when `store.enrichmentLocked`.
+    func enrichmentGated(locked: Bool, dueCount: Int) -> some View {
+        modifier(EnrichmentGateModifier(locked: locked, dueCount: dueCount))
+    }
+}
+
 // MARK: - Daily content widgets (ported from the web widgets grid)
 
 struct QuoteWidget: View {
+    @Environment(AppStore.self) private var store
+    @State private var flipped = false
+    @State private var reflection = ""
+    @State private var saved = false
+
     var body: some View {
         let q = Daily.quote
         return DashCard("💬", "Quote of the Day", tint: Palette.coral) {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Text("“\(q.text)”")
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("— \(q.author)").font(Typography.caption).foregroundStyle(Palette.textSecond)
+            ZStack {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    Text("“\(q.text)”")
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("— \(q.author)").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    Text("Tap to reflect ✏️").font(Typography.caption).foregroundStyle(Palette.coral)
+                }
+                .opacity(flipped ? 0 : 1)
+                .rotation3DEffect(.degrees(flipped ? 90 : 0), axis: (x: 0, y: 1, z: 0))
+
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    Text("Your reflection…").font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.textSecond)
+                    TextField("What did this quote make you think of?", text: $reflection, axis: .vertical)
+                        .lineLimit(2...4)
+                        .padding(Space.sm)
+                        .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    HStack {
+                        Button {
+                            Haptics.selection()
+                            withAnimation(.easeInOut(duration: 0.3)) { flipped = false }
+                        } label: {
+                            Text("Cancel").font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.textSecond)
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                        if saved {
+                            Label("Saved", systemImage: "checkmark.circle.fill")
+                                .font(Typography.caption.weight(.bold))
+                                .foregroundStyle(Palette.green)
+                        } else {
+                            Button {
+                                Haptics.selection()
+                                let text = reflection
+                                Task {
+                                    _ = await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": "", "context": q.text])
+                                    saved = true
+                                    try? await Task.sleep(nanoseconds: 700_000_000)
+                                    withAnimation(.easeInOut(duration: 0.3)) { flipped = false }
+                                    reflection = ""
+                                    saved = false
+                                }
+                            } label: {
+                                Text("Save reflection")
+                                    .font(Typography.caption.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+                                    .background(Palette.coral, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                }
+                .opacity(flipped ? 1 : 0)
+                .rotation3DEffect(.degrees(flipped ? 0 : -90), axis: (x: 0, y: 1, z: 0))
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !flipped else { return }
+            Haptics.selection()
+            withAnimation(.easeInOut(duration: 0.3)) { flipped = true }
+        }
+        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
+    }
+}
+
+/// New social-emotional check-in widget: pick a feeling emoji + optional note.
+struct MoodWidget: View {
+    @Environment(AppStore.self) private var store
+    private let feelings = ["😀", "🙂", "😐", "😢", "😡", "😰"]
+    @State private var picked: String? = nil
+    @State private var text = ""
+    @State private var saved = false
+
+    var body: some View {
+        DashCard("💗", "How are you feeling?", tint: Palette.coral) {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                HStack(spacing: Space.sm) {
+                    ForEach(feelings, id: \.self) { emoji in
+                        Button {
+                            Haptics.selection()
+                            picked = emoji
+                        } label: {
+                            Text(emoji)
+                                .font(.system(size: 24))
+                                .padding(6)
+                                .background(
+                                    picked == emoji ? Palette.coral.opacity(0.22) : Color.clear,
+                                    in: Circle()
+                                )
+                                .overlay(
+                                    Circle().strokeBorder(picked == emoji ? Palette.coral : .clear, lineWidth: 1.5)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                TextField("Anything big you felt today?", text: $text, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(Typography.body)
+                    .padding(Space.sm)
+                    .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                HStack {
+                    Spacer()
+                    if saved {
+                        Label("Saved", systemImage: "checkmark.circle.fill")
+                            .font(Typography.caption.weight(.bold))
+                            .foregroundStyle(Palette.green)
+                    } else {
+                        Button {
+                            Haptics.selection()
+                            let emoji = picked ?? "🙂"
+                            let body = "Feeling \(emoji). \(text)"
+                            Task {
+                                _ = await store.addNote(body: body, source: "social")
+                                saved = true
+                                try? await Task.sleep(nanoseconds: 900_000_000)
+                                saved = false
+                                text = ""
+                                picked = nil
+                            }
+                        } label: {
+                            Text("Save")
+                                .font(Typography.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+                                .background(Palette.coral, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(picked == nil)
+                    }
+                }
+            }
+        }
+        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 
 struct WordWidget: View {
+    @Environment(AppStore.self) private var store
     var body: some View {
-        let w = Daily.word
-        return DashCard("📖", "SAT Word of the Day", tint: Palette.teal) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(w.word).font(Typography.title).foregroundStyle(Palette.text)
-                    Text(w.pos).font(Typography.caption.italic()).foregroundStyle(Palette.textSecond)
-                }
-                Text(w.def).font(Typography.body).foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("“\(w.example)”").font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        DashCard("📖", "SAT Word of the Day", tint: Palette.teal) {
+            SATActivityView()
         }
+        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 
@@ -79,6 +247,10 @@ struct FactWidget: View {
 }
 
 struct NewsWidget: View {
+    @Environment(AppStore.self) private var store
+    @State private var reflection = ""
+    @State private var saved = false
+
     var body: some View {
         let n = Daily.news
         return DashCard("📰", "Interesting News", tint: Palette.green) {
@@ -92,69 +264,57 @@ struct NewsWidget: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(n.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Divider().overlay(Palette.border)
+
+                Text("What do you think about this?")
+                    .font(Typography.caption.weight(.semibold))
+                    .foregroundStyle(Palette.textSecond)
+                TextField("Share your thoughts…", text: $reflection, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(Typography.body)
+                    .padding(Space.sm)
+                    .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                HStack {
+                    Spacer()
+                    if saved {
+                        Label("Saved", systemImage: "checkmark.circle.fill")
+                            .font(Typography.caption.weight(.bold))
+                            .foregroundStyle(Palette.green)
+                    } else {
+                        Button {
+                            Haptics.selection()
+                            let text = reflection
+                            Task {
+                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": n.headline])
+                                saved = true
+                                try? await Task.sleep(nanoseconds: 900_000_000)
+                                saved = false
+                                reflection = ""
+                            }
+                        } label: {
+                            Text("Save")
+                                .font(Typography.caption.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+                                .background(Palette.green, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
             }
         }
+        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 
 struct QuizWidget: View {
-    @State private var index = Daily.quizStartIndex
-    @State private var picked: Int? = nil
-
-    private var q: QuizQuestion { Daily.quiz[index % Daily.quiz.count] }
-
+    @Environment(AppStore.self) private var store
     var body: some View {
         DashCard("🧠", "Daily Brain Teaser", tint: Palette.violet) {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Text(q.q).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(q.opts.indices, id: \.self) { i in
-                    Button {
-                        guard picked == nil else { return }
-                        Haptics.selection()
-                        withAnimation(.easeOut(duration: 0.2)) { picked = i }
-                    } label: {
-                        HStack {
-                            Text(q.opts[i]).font(Typography.body).foregroundStyle(Palette.text)
-                            Spacer(minLength: Space.sm)
-                            if picked != nil && i == q.ans {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.green)
-                            } else if picked == i {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.red)
-                            }
-                        }
-                        .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(optionBackground(i), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(picked != nil)
-                }
-                if picked != nil {
-                    Text(q.exp).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        Haptics.selection()
-                        withAnimation { index = (index + 1) % Daily.quiz.count; picked = nil }
-                    } label: {
-                        Text("Next question →")
-                            .font(Typography.body.weight(.bold))
-                            .foregroundStyle(Palette.violet)
-                            .padding(.vertical, Space.sm + 2)
-                            .padding(.horizontal, Space.md)
-                            .frame(minHeight: 44)
-                            .background(Palette.violet.opacity(0.15), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            BrainTeaserView()
         }
-    }
-
-    private func optionBackground(_ i: Int) -> Color {
-        guard picked != nil else { return Palette.panel }
-        if i == q.ans { return Palette.green.opacity(0.18) }
-        if i == picked { return Palette.red.opacity(0.15) }
-        return Palette.panel
+        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }

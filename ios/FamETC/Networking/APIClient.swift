@@ -126,6 +126,60 @@ final class APIClient {
         return r.homework
     }
 
+    // MARK: Notes
+
+    func notes(authorId: String? = nil, from: String? = nil, to: String? = nil) async throws -> [Note] {
+        var path = "/api/notes"
+        var q: [String] = []
+        if let authorId { q.append("authorId=\(authorId)") }
+        if let from { q.append("from=\(from)") }
+        if let to { q.append("to=\(to)") }
+        if !q.isEmpty { path += "?" + q.joined(separator: "&") }
+        let r: NotesResponse = try await request(path)
+        return r.notes
+    }
+    func addNote(body: String, date: String? = nil, source: String = "manual", ref: [String: Any]? = nil) async throws -> Note {
+        var payload: [String: Any] = ["body": body, "source": source]
+        if let date { payload["date"] = date }
+        if let ref { payload["ref"] = ref }
+        let r: NoteResponse = try await request("/api/notes", method: "POST", body: payload)
+        return r.note
+    }
+    func updateNote(_ id: String, body: String) async throws -> Note {
+        let r: NoteResponse = try await request("/api/notes/\(id)", method: "PATCH", body: ["body": body])
+        return r.note
+    }
+    func deleteNote(_ id: String) async throws {
+        let _: OKResponse = try await request("/api/notes/\(id)", method: "DELETE")
+    }
+
+    // MARK: Word bank
+
+    func wordBank(kidId: String? = nil) async throws -> WordBankResponse {
+        var path = "/api/wordbank"
+        if let kidId { path += "?kidId=" + kidId }
+        return try await request(path)
+    }
+    func wordInteract(word: String, correct: Bool) async throws -> WordBankEntry {
+        let r: WordEntryResponse = try await request("/api/wordbank/interact", method: "POST", body: ["word": word, "correct": correct])
+        return r.entry
+    }
+    func wordPlacement(known: [String]) async throws {
+        let _: OKResponse = try await request("/api/wordbank/placement", method: "POST", body: ["known": known])
+    }
+    func wordQuiz(n: Int = 5) async throws -> WordQuizResponse {
+        try await request("/api/wordbank/quiz?n=\(n)")
+    }
+
+    // MARK: Brain teaser
+
+    func brainTeaserToday() async throws -> BrainTeaserTodayResponse {
+        try await request("/api/brainteaser/today")
+    }
+    func brainTeaserAnswer(qid: String, correct: Bool) async throws {
+        let _: OKResponse = try await request("/api/brainteaser/answer", method: "POST", body: ["qid": qid, "correct": correct])
+    }
+
     // MARK: Chat
 
     func chatMessages(since: String? = nil, limit: Int? = nil) async throws -> [ChatMessage] {

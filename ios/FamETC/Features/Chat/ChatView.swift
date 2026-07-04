@@ -80,7 +80,8 @@ struct ChatScreen: View {
                                        isMine: store.isMine(m),
                                        senderName: store.senderName(for: m),
                                        onTapCard: handleCardTap,
-                                       onAddToCalendar: handleAddToCalendar)
+                                       onAddToCalendar: handleAddToCalendar,
+                                       onPinToNotes: handlePinToNotes)
                             .id(m.id)
                     }
                     Color.clear.frame(height: 1).id(bottomAnchorID)
@@ -116,6 +117,14 @@ struct ChatScreen: View {
     }
     private func handleAddToCalendar(_ text: String) {
         newEventReq = NewEventReq(title: text, time: parseTime(from: text))
+    }
+    private func handlePinToNotes(_ message: ChatMessage) {
+        Haptics.selection()
+        Task {
+            await store.addNote(body: message.text,
+                                 source: "chat",
+                                 ref: ["kind": "chat", "id": message.id, "context": message.text])
+        }
     }
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         DispatchQueue.main.async {
@@ -232,6 +241,7 @@ struct ChatMessageRow: View {
     let senderName: String
     var onTapCard: (ChatCard) -> Void
     var onAddToCalendar: (String) -> Void = { _ in }
+    var onPinToNotes: (ChatMessage) -> Void = { _ in }
 
     private var senderColor: Color { isMine ? Palette.accent : famSenderColor(message.senderId) }
 
@@ -294,6 +304,11 @@ struct ChatMessageRow: View {
                         onAddToCalendar(message.text)
                     } label: {
                         Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                    }
+                    Button {
+                        onPinToNotes(message)
+                    } label: {
+                        Label("Pin to Notes", systemImage: "pin")
                     }
                 }
         }

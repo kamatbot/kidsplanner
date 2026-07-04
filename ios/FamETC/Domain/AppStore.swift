@@ -18,6 +18,7 @@ final class AppStore {
     var events: [CalendarEvent] = []           // school-feed events (read-only)
     var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
     var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
+    var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
     var lastSeenChatId: String?                // for the Chat-tab unread badge
     var isRefreshing = false
     var needsAuth = false
@@ -26,6 +27,22 @@ final class AppStore {
     var kids: [Kid] { family?.kids ?? [] }
     /// Kids never approve anyone; only parents see/act on access requests.
     var isParent: Bool { me?.role != "kid" }
+
+    // MARK: Enrichment gating (Notes / Today widgets)
+
+    /// "yyyy-MM-dd" for today, local time. Reuses `Agenda.todayKey()` (the
+    /// existing day-key helper in Features/Shared/Agenda.swift) so every
+    /// surface agrees on what day it is.
+    var todayYMD: String { Agenda.todayKey() }
+
+    /// Homework due today that isn't finished yet — drives the enrichment lock.
+    var homeworkDueTodayCount: Int {
+        homework.filter { $0.dueDate == todayYMD && $0.status != "done" }.count
+    }
+
+    /// When a kid has more than 3 homework items due today, the enrichment
+    /// widgets (quote/mood/news/SAT/brain teaser) lock until they catch up.
+    var enrichmentLocked: Bool { homeworkDueTodayCount > 3 }
 
     // MARK: Chat identity helpers
 
@@ -77,6 +94,7 @@ final class AppStore {
                 updateChatSeen()
                 await refreshKidRequests()
                 await loadCalendarAndHomework()
+                await loadNotes()
             }
             syncError = nil
             needsAuth = false
@@ -195,6 +213,30 @@ final class AppStore {
         updateChatSeen()
         await refreshKidRequests() // surface new kid sign-in requests app-wide
         scheduleChatPoll()
+    }
+
+    // MARK: Notes
+
+    /// Load the signed-in user's notes (kids see only their own; parents see
+    /// the whole family — the server scopes it from the session).
+    func loadNotes() async {
+        guard family != nil else { notes = []; return }
+        if let ns = try? await api.notes() { notes = ns }
+    }
+
+    /// Add a note (optimistic append, then reload to pick up the server id /
+    /// timestamps). Returns the optimistic note on success, `nil` on failure.
+    @discardableResult
+    func addNote(body: String, source: String = "manual", ref: [String: Any]? = nil, date: String? = nil) async -> Note? {
+        do {
+            let note = try await api.addNote(body: body, date: date, source: source, ref: ref)
+            notes.insert(note, at: 0)
+            await loadNotes()
+            return note
+        } catch {
+            handle(error)
+            return nil
+        }
     }
 
     // MARK: Kid access requests
