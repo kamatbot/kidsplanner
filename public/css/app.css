@@ -27,13 +27,17 @@
 /* ---------- gating overlay ---------- */
 .fam-enrich-card { position: relative; }
 .fam-enrich-card.fam-locked > *:not(.fam-enrich-lock) { filter: blur(2px); pointer-events: none; user-select: none; }
+/* The lock overlay is hidden by default and only covers the card when the card
+   is actually locked (>3 homework due). It must default to display:none so it
+   doesn't wash out every enrichment card — a plain `display:flex` here would beat
+   the [hidden] attribute and show the overlay permanently. */
 .fam-enrich-lock {
   position: absolute;
   inset: 0;
   z-index: 5;
   background: rgba(255,255,255,.88);
   border-radius: var(--radius);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   text-align: center;
@@ -42,6 +46,7 @@
   color: var(--primary-dark);
   font-size: 14px;
 }
+.fam-enrich-card.fam-locked > .fam-enrich-lock { display: flex; }
 
 /* ---------- quote flip card ---------- */
 .widget-quote { perspective: 1200px; }
