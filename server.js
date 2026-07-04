@@ -1281,68 +1281,70 @@ app.delete("/api/notes/:id", requireAuth, requireFamily, (req, res) => {
 });
 
 // ===================== WORD BANK (enrichment) =====================
-// Per-kid SAT vocabulary progress. A kid session always resolves to their
-// own kidId; a parent may pass ?kidId= to view a specific child's bank.
-function wordbankKidId(req) {
+// Enrichment progress (word bank + brain teaser) is tracked per PLAYER. A kid
+// session always resolves to their own kidId. A parent can play too — they
+// track against their OWN user id — or pass ?kidId= to view/help a specific
+// child. Returns null only when a parent names a kid that isn't in the family.
+function enrichmentPlayerId(req, explicitKidId) {
   const role = userRole(req.user);
   if (role === "kid") return kidIdForUser(req);
-  const kidId = req.query.kidId ? String(req.query.kidId) : null;
-  if (kidId && !family.kidBelongsToFamily(req.family.id, kidId)) return null;
-  return kidId;
+  if (explicitKidId) {
+    return family.kidBelongsToFamily(req.family.id, String(explicitKidId)) ? String(explicitKidId) : null;
+  }
+  return req.user.id; // parent plays as themselves
 }
+const NOT_IN_FAMILY = "That kid isn't in your family.";
 
 app.get("/api/wordbank", requireAuth, requireFamily, (req, res) => {
   res.set("Cache-Control", "no-store");
-  const kidId = wordbankKidId(req);
-  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
-  const result = wordbank.listWords(kidId);
+  const playerId = enrichmentPlayerId(req, req.query.kidId);
+  if (!playerId) return res.status(400).json({ error: NOT_IN_FAMILY });
+  const result = wordbank.listWords(playerId);
   res.json({ words: result.words, stats: result.stats });
 });
 
 app.post("/api/wordbank/interact", requireAuth, requireFamily, (req, res) => {
-  const kidId = wordbankKidId(req);
-  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
   const body = req.body || {};
-  const result = wordbank.interact(kidId, { word: body.word, correct: !!body.correct });
+  const playerId = enrichmentPlayerId(req, body.kidId);
+  if (!playerId) return res.status(400).json({ error: NOT_IN_FAMILY });
+  const result = wordbank.interact(playerId, { word: body.word, correct: !!body.correct });
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ entry: result.entry });
 });
 
 app.post("/api/wordbank/placement", requireAuth, requireFamily, (req, res) => {
-  const kidId = wordbankKidId(req);
-  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
   const body = req.body || {};
-  const result = wordbank.placement(kidId, { known: body.known });
+  const playerId = enrichmentPlayerId(req, body.kidId);
+  if (!playerId) return res.status(400).json({ error: NOT_IN_FAMILY });
+  const result = wordbank.placement(playerId, { known: body.known });
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ ok: true, stats: result.stats });
 });
 
 app.get("/api/wordbank/quiz", requireAuth, requireFamily, (req, res) => {
   res.set("Cache-Control", "no-store");
-  const kidId = wordbankKidId(req);
-  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
-  const result = wordbank.quiz(kidId, { n: req.query.n });
+  const playerId = enrichmentPlayerId(req, req.query.kidId);
+  if (!playerId) return res.status(400).json({ error: NOT_IN_FAMILY });
+  const result = wordbank.quiz(playerId, { n: req.query.n });
   res.json(result);
 });
 
 // ===================== BRAIN TEASER (enrichment) =====================
-// Per-kid daily quiz set. Kid-only surface (mirrors wordbank kid resolution,
-// but with no parent ?kidId= override since this is a kid-facing activity).
+// Daily quiz set per player. Parents can play too (tracked against their own
+// user id); a parent may pass kidId to play/track on a child's behalf.
 app.get("/api/brainteaser/today", requireAuth, requireFamily, (req, res) => {
   res.set("Cache-Control", "no-store");
-  const role = userRole(req.user);
-  const kidId = role === "kid" ? kidIdForUser(req) : (req.query.kidId ? String(req.query.kidId) : null);
-  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
-  const result = brainteaser.getToday(kidId);
+  const playerId = enrichmentPlayerId(req, req.query.kidId);
+  if (!playerId) return res.status(400).json({ error: NOT_IN_FAMILY });
+  const result = brainteaser.getToday(playerId);
   res.json(result);
 });
 
 app.post("/api/brainteaser/answer", requireAuth, requireFamily, (req, res) => {
-  const role = userRole(req.user);
   const body = req.body || {};
-  const kidId = role === "kid" ? kidIdForUser(req) : (body.kidId ? String(body.kidId) : null);
-  if (!kidId) return res.status(400).json({ error: "A kid must be specified." });
-  const result = brainteaser.answer(kidId, { qid: body.qid, correct: !!body.correct });
+  const playerId = enrichmentPlayerId(req, body.kidId);
+  if (!playerId) return res.status(400).json({ error: NOT_IN_FAMILY });
+  const result = brainteaser.answer(playerId, { qid: body.qid, correct: !!body.correct });
   if (result.error) return res.status(400).json({ error: result.error });
   res.json({ ok: true });
 });
