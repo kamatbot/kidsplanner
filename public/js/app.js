@@ -956,6 +956,7 @@ async function syncSchoolCalendar(opts) {
     renderCalendar();
     renderMiniCal();
     renderSchoolSettings();
+    scheduleReminders();
     if (schoolSyncErrors.length && !silent) {
       const names = schoolSyncErrors.map(e => e.label).join(', ');
       toast(`⚠️ Couldn't sync: ${names}`);
@@ -1202,6 +1203,7 @@ function saveEvent(e) {
   closeModal('add-event-modal');
   renderCalendar();
   renderMiniCal();
+  scheduleReminders();
   toast('Event added! 🎯');
 }
 
@@ -2257,6 +2259,7 @@ async function loadHomework() {
   } catch (e) {
     homeworkItems = [];
   }
+  if (typeof scheduleReminders === 'function') scheduleReminders();
   return homeworkItems;
 }
 
@@ -2367,6 +2370,7 @@ async function toggleHomeworkDone(id) {
     const idx = homeworkItems.findIndex((h) => h.id === id);
     if (idx >= 0) homeworkItems[idx] = res.homework;
     renderHomeworkHub();
+    scheduleReminders();
     if (nextStatus === 'done') {
       toast('Nice work! ✅');
       if (isKidSession()) celebrateHomeworkDone();
@@ -2482,6 +2486,7 @@ async function saveHomeworkForm(e) {
     closeModal('add-homework-modal');
     renderHomeworkHub();
     renderCalendar();
+    scheduleReminders();
   } catch (err) {
     errEl.textContent = err.message;
   }
@@ -3233,6 +3238,106 @@ async function handleToggleNotifications() {
 }
 
 /* ============================================================
+   LOCAL REMINDERS (web) — mirrors the iOS NotificationScheduler.
+   Fires a browser notification 10 min before a calendar event and 8 hrs
+   before a homework due time (addressed to the right kid).
+
+   Web constraint (be honest about it): a browser can only fire these while
+   Fam ETC is open in a tab or as an installed PWA — there's no OS-level
+   pre-scheduling like iOS local notifications. So we set precise in-app
+   timers for anything firing within the next window, and roll the window
+   forward every 20 min (and whenever the tab regains focus or data changes).
+   Closed-tab reminders remain an iOS-only capability (would need Web Push +
+   a server-side scheduler).
+============================================================ */
+const FAM_REMINDER_WINDOW_MS = 12 * 60 * 60 * 1000; // schedule timers up to 12h out
+const FAM_REMINDER_MAX = 30;                        // cap concurrent timers
+let famReminderTimers = [];
+
+function clearReminderTimers() {
+  famReminderTimers.forEach((t) => clearTimeout(t));
+  famReminderTimers = [];
+}
+
+// Build a local Date from "YYYY-MM-DD" + "HH:mm" in the device timezone.
+// Returns null on malformed input so a bad row is skipped, not thrown on.
+function famLocalDate(dateStr, timeStr) {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  const t = /^(\d{1,2}):(\d{2})/.exec(String(timeStr || ''));
+  if (!d || !t) return null;
+  const hh = +t[1], mm = +t[2];
+  if (hh > 23 || mm > 59) return null;
+  return new Date(+d[1], +d[2] - 1, +d[3], hh, mm, 0, 0);
+}
+
+function fireReminder(title, body, url) {
+  const opts = { body, tag: title + '|' + body, data: { url: url || '/' } };
+  try {
+    if (swRegistration && swRegistration.showNotification) {
+      swRegistration.showNotification(title, opts);
+    } else if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then((reg) => reg.showNotification(title, opts)).catch(() => {});
+    } else {
+      new Notification(title, opts);
+    }
+  } catch (_) { /* a single failed reminder must never break the loop */ }
+}
+
+// Recompute and (re)arm reminder timers. Idempotent: safe to call often.
+function scheduleReminders() {
+  clearReminderTimers();
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const now = Date.now();
+  const horizon = now + FAM_REMINDER_WINDOW_MS;
+  const candidates = [];
+
+  // Calendar events: remind 10 min before start. Use the full family set
+  // (unfiltered by active kid) so no one's event is missed.
+  const events = getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+  events.forEach((ev) => {
+    if (!ev || !ev.time) return;
+    const start = famLocalDate(ev.date, ev.time);
+    if (!start) return;
+    const fireAt = start.getTime() - 10 * 60 * 1000;
+    if (fireAt <= now || fireAt > horizon) return;
+    let body = 'Starts at ' + fmt12(ev.time);
+    if (ev.notes) body += ' — ' + (ev.notes.length > 80 ? ev.notes.slice(0, 80) + '…' : ev.notes);
+    candidates.push({ fireAt, title: '📅 Upcoming: ' + ev.title, body, url: '/#calendar' });
+  });
+
+  // Homework: remind 8 hrs before the due moment, addressed to the kid.
+  homeworkItems.forEach((hw) => {
+    if (!hw || hw.status === 'done') return;
+    const due = famLocalDate(hw.dueDate, hw.dueTime || '08:00');
+    if (!due) return;
+    const fireAt = due.getTime() - 8 * 60 * 60 * 1000;
+    if (fireAt <= now || fireAt > horizon) return;
+    const kidName = hw.kidId ? kidNameFor(hw.kidId) : '';
+    const title = '📚 ' + (kidName ? kidName + "'s homework due soon!" : 'Homework due soon!');
+    candidates.push({ fireAt, title, body: hw.title + ' — due ' + hw.dueDate, url: '/#homework' });
+  });
+
+  candidates.sort((a, b) => a.fireAt - b.fireAt);
+  candidates.slice(0, FAM_REMINDER_MAX).forEach((c) => {
+    const delay = c.fireAt - Date.now();
+    famReminderTimers.push(setTimeout(() => fireReminder(c.title, c.body, c.url), Math.max(0, delay)));
+  });
+}
+
+// Roll the 12h window forward periodically and when the tab regains focus,
+// so a reminder that was beyond the window at load time gets armed in time.
+let famReminderInterval = null;
+function startReminderLoop() {
+  if (famReminderInterval) return;
+  scheduleReminders();
+  famReminderInterval = setInterval(scheduleReminders, 20 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleReminders();
+  });
+}
+
+/* ============================================================
    SCHOOL IMPORT BRIDGE (Chrome extension) — Part A
    Stable global entry point the Fam ETC Chrome extension calls after it
    scrapes homework + timetable from an already-logged-in Moodle tab (see
@@ -3534,7 +3639,7 @@ async function init() {
   if (!ok) return; // redirected to /login
   showDashboard();
   startKidRequestPolling(); // parents: surface pending kid sign-in requests
-  registerServiceWorker().then(renderNotificationsControl);
+  registerServiceWorker().then(renderNotificationsControl).then(startReminderLoop);
 }
 
 document.addEventListener('DOMContentLoaded', init);
