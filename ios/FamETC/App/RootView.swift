@@ -137,19 +137,18 @@ struct RootView: View {
             NavRailList(selection: $selection)
                 .frame(width: 90)
             Divider()
-            mainContent(for: selection)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    @ViewBuilder
-    private func mainContent(for tab: Tab) -> some View {
-        switch tab {
-        case .today: TodayScreen()
-        case .chat: ChatScreen()
-        case .calendar: CalendarScreen()
-        case .homework: HomeworkScreen()
-        case .notes: NotesScreen()
+            // A TabView (with its own tab bar hidden) keeps all five screens alive
+            // like the iPhone layout, so switching tabs is instant and each screen's
+            // loaded data + scroll state persist instead of being rebuilt (and
+            // reloaded from the network) on every tap.
+            TabView(selection: $selection) {
+                TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
+                ChatScreen().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
+                CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
+                HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
+                NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 }

@@ -90,11 +90,15 @@ final class AppStore {
             let fams = try await api.families()
             family = fams.first
             if family != nil {
-                messages = try await api.chatMessages(limit: 50)
+                // These loads are independent — run them concurrently so the
+                // initial sync takes as long as the slowest call, not the sum.
+                async let msgs = api.chatMessages(limit: 50)
+                async let kids: Void = refreshKidRequests()
+                async let calHw: Void = loadCalendarAndHomework()
+                async let notesLoad: Void = loadNotes()
+                messages = try await msgs
                 updateChatSeen()
-                await refreshKidRequests()
-                await loadCalendarAndHomework()
-                await loadNotes()
+                _ = await (kids, calHw, notesLoad)
             }
             syncError = nil
             needsAuth = false
