@@ -1076,6 +1076,36 @@ app.get("/api/homework", requireAuth, requireFamily, (req, res) => {
   res.json({ homework: items });
 });
 
+// Keep the calendar / homework hub / chat in sync: post a family-chat note when
+// homework is added or finished. Done SERVER-SIDE so it works identically on web
+// and iOS (both hit this API). Attributed to the acting user; a chat hiccup must
+// never fail the homework action.
+function friendlyDate(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ""));
+  if (!m) return String(ymd || "");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${months[Number(m[2]) - 1]} ${Number(m[3])}`;
+}
+function postHomeworkChat(req, kind, item) {
+  try {
+    const isKid = userRole(req.user) === "kid";
+    const kid = (req.family.kids || []).find((k) => k.id === item.kidId);
+    const forWho = kid && kid.name ? ` for ${kid.name}` : "";
+    const text =
+      kind === "added"
+        ? `📚 New homework${forWho}: ${item.title} — due ${friendlyDate(item.dueDate)}`
+        : `✅ Finished: ${item.title}`;
+    chat.sendMessage(req.family.id, {
+      senderType: isKid ? "kid" : "parent",
+      senderId: isKid ? req.user.data.kid.kidId : req.user.id,
+      postedByUserId: req.user.id,
+      text,
+    });
+  } catch (e) {
+    /* never block the homework op on a chat error */
+  }
+}
+
 app.post("/api/homework", requireAuth, requireFamily, (req, res) => {
   const role = userRole(req.user);
   const body = req.body || {};
@@ -1097,6 +1127,7 @@ app.post("/api/homework", requireAuth, requireFamily, (req, res) => {
     checklist: body.checklist,
   });
   if (result.error) return res.status(400).json({ error: result.error });
+  postHomeworkChat(req, "added", result.homework);
   res.json({ homework: result.homework });
 });
 
@@ -1107,6 +1138,9 @@ app.patch("/api/homework/:id", requireAuth, requireFamily, (req, res) => {
   if (!homework.canAccess(req.user, role, req.family.id, existing)) {
     return res.status(403).json({ error: "You don't have access to this homework item." });
   }
+  // Capture BEFORE updating — updateHomework mutates `existing` in place (same
+  // object), so reading existing.status after would already show the new value.
+  const prevStatus = existing.status;
   const body = req.body || {};
   const patch = {
     status: body.status,
@@ -1125,6 +1159,10 @@ app.patch("/api/homework/:id", requireAuth, requireFamily, (req, res) => {
   }
   const result = homework.updateHomework(req.family.id, req.params.id, patch);
   if (result.error) return res.status(400).json({ error: result.error });
+  // Only when it transitions INTO done (not on every edit, not on un-checking).
+  if (prevStatus !== "done" && result.homework.status === "done") {
+    postHomeworkChat(req, "done", result.homework);
+  }
   res.json({ homework: result.homework });
 });
 
