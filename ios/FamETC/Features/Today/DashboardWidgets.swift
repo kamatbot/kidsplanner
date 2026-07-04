@@ -1,4 +1,24 @@
 import SwiftUI
+import UIKit
+
+/// Puts the keyboard away. The dashboard's free-text fields use `axis: .vertical`
+/// (so Return inserts a newline instead of dismissing) and live inside a
+/// ScrollView — without an explicit dismiss there is no way to close the keyboard.
+func famDismissKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+extension View {
+    /// Adds a "Done" button above the keyboard that dismisses it.
+    func keyboardDoneToolbar() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { famDismissKeyboard() }
+            }
+        }
+    }
+}
 
 /// A colorful tinted widget card — the building block of the Today dashboard,
 /// matching the web app's widgets grid. Each widget picks a distinct tint.
@@ -103,6 +123,7 @@ struct QuoteWidget: View {
                         .lineLimit(2...4)
                         .padding(Space.sm)
                         .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                        .keyboardDoneToolbar()
                     HStack {
                         Button {
                             Haptics.selection()
@@ -121,7 +142,7 @@ struct QuoteWidget: View {
                                 Haptics.selection()
                                 let text = reflection
                                 Task {
-                                    _ = await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": "", "context": q.text])
+                                    _ = await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": "", "context": "\u{201C}\(q.text)\u{201D} — \(q.author)"])
                                     saved = true
                                     try? await Task.sleep(nanoseconds: 700_000_000)
                                     withAnimation(.easeInOut(duration: 0.3)) { flipped = false }
@@ -190,6 +211,7 @@ struct MoodWidget: View {
                     .font(Typography.body)
                     .padding(Space.sm)
                     .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    .keyboardDoneToolbar()
                 HStack {
                     Spacer()
                     if saved {
@@ -275,6 +297,7 @@ struct NewsWidget: View {
                     .font(Typography.body)
                     .padding(Space.sm)
                     .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    .keyboardDoneToolbar()
                 HStack {
                     Spacer()
                     if saved {
@@ -286,7 +309,7 @@ struct NewsWidget: View {
                             Haptics.selection()
                             let text = reflection
                             Task {
-                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": n.headline])
+                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": "\(n.headline)\n\n\(n.summary)"])
                                 saved = true
                                 try? await Task.sleep(nanoseconds: 900_000_000)
                                 saved = false

@@ -45,6 +45,7 @@ struct TodayScreen: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         }
         .background(ScreenBackground())
+        .scrollDismissesKeyboard(.interactively)
         .refreshable { await store.refreshDashboard() }
     }
 

@@ -95,34 +95,84 @@ struct NotesScreen: View {
 
 private struct NoteRow: View {
     let note: Note
+    @State private var flipped = false
+
+    // The actual content the note was made on (quote / message / word / news).
+    private var original: String { note.ref?.context ?? "" }
+    // The person's own words (empty for pure pins where body == the content).
+    private var reflection: String { note.body != original ? note.body : "" }
+    // A note can flip only when there's both a reflection AND a saved original.
+    private var canFlip: Bool { !original.isEmpty && !reflection.isEmpty }
 
     var body: some View {
+        Group {
+            if canFlip {
+                ZStack {
+                    face(front: true).opacity(flipped ? 0 : 1)
+                    face(front: false).opacity(flipped ? 1 : 0)
+                        .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                }
+                .rotation3DEffect(.degrees(flipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    Haptics.selection()
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { flipped.toggle() }
+                }
+            } else {
+                staticContent
+            }
+        }
+        .padding(.vertical, Space.sm)
+    }
+
+    // Flippable note: front = the person's reflection, back = the original content.
+    @ViewBuilder
+    private func face(front: Bool) -> some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(spacing: Space.sm) {
                 SourceChip(source: note.source)
                 Spacer()
+                Label(front ? "See original" : "Back", systemImage: front ? "arrow.uturn.backward" : "arrow.uturn.forward")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Palette.accent)
             }
-            // The actual content this note was made on (quote / message / word)
-            // is the prominent subject; the person's own words come after it.
-            let context = note.ref?.context ?? ""
-            if !context.isEmpty {
-                Text(context)
-                    .font(Typography.body.weight(.semibold))
+            if front {
+                Text(reflection)
+                    .font(Typography.body)
                     .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(Space.sm)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    .overlay(alignment: .leading) { Rectangle().fill(Palette.accent).frame(width: 3) }
+            } else {
+                originalBlock(original)
             }
-            if !note.body.isEmpty, note.body != context {
-                Text(context.isEmpty ? note.body : "💭 \(note.body)")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // Non-flippable note: show whatever is present (original block and/or body).
+    @ViewBuilder
+    private var staticContent: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(spacing: Space.sm) { SourceChip(source: note.source); Spacer() }
+            if !original.isEmpty { originalBlock(original) }
+            if !reflection.isEmpty {
+                Text(original.isEmpty ? reflection : "💭 \(reflection)")
                     .font(Typography.body)
-                    .foregroundStyle(context.isEmpty ? Palette.text : Palette.textSecond)
+                    .foregroundStyle(original.isEmpty ? Palette.text : Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, Space.sm)
+    }
+
+    private func originalBlock(_ text: String) -> some View {
+        Text(text)
+            .font(Typography.body.weight(.semibold))
+            .foregroundStyle(Palette.text)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(Space.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .overlay(alignment: .leading) { Rectangle().fill(Palette.accent).frame(width: 3) }
     }
 }
 
@@ -195,6 +245,7 @@ private struct AddNoteSheet: View {
                         .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
                         .focused($focused)
+                        .keyboardDoneToolbar()
 
                     Spacer()
                 }
