@@ -120,7 +120,7 @@ struct RootView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FloatingTabBar(selection: $selection)
-                .padding(.bottom, Space.md)
+                .padding(.bottom, 2) // sit a little lower (was Space.md)
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .onChange(of: selection) { _, _ in Haptics.selection() }

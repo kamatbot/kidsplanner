@@ -19,6 +19,7 @@ struct ChatScreen: View {
     @State private var showGifPicker = false
     @State private var hwRef: HWRef?
     @State private var eventRef: EVRef?
+    @State private var newEventReq: NewEventReq?
     @FocusState private var composerFocused: Bool
 
     private let bottomAnchorID = "chat-bottom-anchor"
@@ -50,6 +51,7 @@ struct ChatScreen: View {
         }
         .sheet(item: $hwRef) { ref in HomeworkDetailSheet(homeworkId: ref.id) }
         .sheet(item: $eventRef) { ref in EventDetailSheet(eventId: ref.id) }
+        .sheet(item: $newEventReq) { req in AddEventSheet(initialTitle: req.title, initialTime: req.time) }
     }
 
     // MARK: Header
@@ -77,7 +79,8 @@ struct ChatScreen: View {
                         ChatMessageRow(message: m,
                                        isMine: store.isMine(m),
                                        senderName: store.senderName(for: m),
-                                       onTapCard: handleCardTap)
+                                       onTapCard: handleCardTap,
+                                       onAddToCalendar: handleAddToCalendar)
                             .id(m.id)
                     }
                     Color.clear.frame(height: 1).id(bottomAnchorID)
@@ -110,6 +113,9 @@ struct ChatScreen: View {
     private func handleCardTap(_ card: ChatCard) {
         if card.type == "homework" { hwRef = HWRef(id: card.id) }
         else if card.type == "event" { eventRef = EVRef(id: card.id) }
+    }
+    private func handleAddToCalendar(_ text: String) {
+        newEventReq = NewEventReq(title: text, time: parseTime(from: text))
     }
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         DispatchQueue.main.async {
@@ -178,6 +184,45 @@ struct ChatScreen: View {
 /// Wrappers so an id can drive a `.sheet(item:)`.
 struct HWRef: Identifiable { let id: String }
 struct EVRef: Identifiable { let id: String }
+struct NewEventReq: Identifiable { let id = UUID(); let title: String; let time: String? }
+
+/// Best-effort time-of-day parser for message text, e.g. "pick up kids at 5pm"
+/// → "17:00". Returns nil when no recognizable time is found.
+func parseTime(from text: String) -> String? {
+    let pattern = #"(?i)\b(1[0-2]|0?[1-9])(?::([0-5][0-9]))?\s*(am|pm)?\b"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+    let ns = text as NSString
+    let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    for match in matches {
+        // Require either an explicit am/pm or a "HH:mm"-style hour:minute to
+        // avoid matching stray numbers with no time context.
+        let hasMinute = match.range(at: 2).location != NSNotFound
+        let hasMeridiem = match.range(at: 3).location != NSNotFound
+        guard hasMinute || hasMeridiem else { continue }
+
+        var hour = Int(ns.substring(with: match.range(at: 1))) ?? 0
+        let minute = hasMinute ? (Int(ns.substring(with: match.range(at: 2))) ?? 0) : 0
+        if hasMeridiem {
+            let meridiem = ns.substring(with: match.range(at: 3)).lowercased()
+            if meridiem == "am" {
+                if hour == 12 { hour = 0 }
+            } else {
+                if hour != 12 { hour += 12 }
+            }
+        }
+        guard hour >= 0, hour <= 23, minute >= 0, minute <= 59 else { continue }
+        return String(format: "%02d:%02d", hour, minute)
+    }
+    // Fall back to a strict 24h "HH:mm" match, e.g. "17:00".
+    let hm = #"\b([01][0-9]|2[0-3]):([0-5][0-9])\b"#
+    if let regex24 = try? NSRegularExpression(pattern: hm),
+       let match = regex24.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) {
+        let hour = Int(ns.substring(with: match.range(at: 1))) ?? 0
+        let minute = Int(ns.substring(with: match.range(at: 2))) ?? 0
+        return String(format: "%02d:%02d", hour, minute)
+    }
+    return nil
+}
 
 // MARK: - One message row (fun bubbles + avatar, or a system card)
 
@@ -186,6 +231,7 @@ struct ChatMessageRow: View {
     let isMine: Bool
     let senderName: String
     var onTapCard: (ChatCard) -> Void
+    var onAddToCalendar: (String) -> Void = { _ in }
 
     private var senderColor: Color { isMine ? Palette.accent : famSenderColor(message.senderId) }
 
@@ -244,6 +290,13 @@ struct ChatMessageRow: View {
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(isMine ? AnyShapeStyle(Signal.gradient(.topLeading, .bottomTrailing)) : AnyShapeStyle(senderColor.opacity(0.16))))
                 .overlay(isMine ? nil : bubbleShape.strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
+                .contextMenu {
+                    Button {
+                        onAddToCalendar(message.text)
+                    } label: {
+                        Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                    }
+                }
         }
     }
 }

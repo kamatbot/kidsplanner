@@ -230,6 +230,7 @@ final class AppStore {
         if let ev = try? await api.calendarEvents(force: force) { events = ev }
         if let fe = try? await api.familyEvents() { familyEvents = fe }
         if let hw = try? await api.homework() { homework = hw }
+        Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
     }
 
     /// Add a family appointment (server posts a chat card; chat updates on poll).

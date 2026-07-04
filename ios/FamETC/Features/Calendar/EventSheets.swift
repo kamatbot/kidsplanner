@@ -6,6 +6,8 @@ struct AddEventSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     var initialDate: Date = Date()
+    var initialTitle: String = ""
+    var initialTime: String? = nil
 
     @State private var title = ""
     @State private var date = Date()
@@ -49,7 +51,17 @@ struct AddEventSheet: View {
                 }
             }
         }
-        .onAppear { date = initialDate }
+        .onAppear {
+            date = initialDate
+            if !initialTitle.isEmpty { title = initialTitle }
+            if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
+                if let combined = Calendar.current.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: 0, of: Date()) {
+                    hasTime = true
+                    time = combined
+                }
+            }
+        }
     }
 
     private func save() {
