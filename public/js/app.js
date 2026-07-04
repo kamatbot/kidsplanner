@@ -341,7 +341,12 @@ function renderNotesTimeline() {
   el.innerHTML = groups.map((g) => {
     const rows = g.notes.map((n) => {
       const chip = noteSourceChip(n.source);
-      const ref = (n.ref && n.ref.context) ? `<div class="note-ref-context">${esc(n.ref.context)}</div>` : '';
+      // The actual content the note was made on (quote / message / word) is the
+      // prominent subject; the person's own words (reflection) come after it.
+      const context = (n.ref && n.ref.context) ? n.ref.context : '';
+      const contentBlock = context ? `<div class="note-content">${esc(context)}</div>` : '';
+      const showBody = n.body && n.body !== context;
+      const bodyBlock = showBody ? `<div class="note-body">${context ? '💭 ' : ''}${esc(n.body)}</div>` : '';
       const canEdit = sessionUser && n.authorId === sessionUser.id;
       const del = canEdit ? `<button class="btn-link-danger note-delete-btn" onclick="handleDeleteNote('${n.id}')" title="Delete note">🗑️</button>` : '';
       return `<div class="note-item">
@@ -349,8 +354,8 @@ function renderNotesTimeline() {
           <span class="note-source-chip note-source-${esc(n.source || 'manual')}">${chip.icon} ${chip.label}</span>
           ${del}
         </div>
-        <div class="note-body">${esc(n.body)}</div>
-        ${ref}
+        ${contentBlock}
+        ${bodyBlock}
       </div>`;
     }).join('');
     return `<div class="notes-day-group">
@@ -427,7 +432,8 @@ async function saveQuoteReflection() {
 
 async function handlePinQuote() {
   if (!currentQuote) return;
-  await saveNoteFromWidget(`"${currentQuote.text}" — ${currentQuote.author}`, 'quote', { kind: 'quote', id: '', context: currentQuote.text });
+  const full = `"${currentQuote.text}" — ${currentQuote.author}`;
+  await saveNoteFromWidget(full, 'quote', { kind: 'quote', id: '', context: full });
 }
 
 /* ---------- Social-emotional check-in widget ---------- */
@@ -669,7 +675,8 @@ async function answerWordQuiz(chosenIndex) {
 
 async function handlePinSatWord() {
   if (!currentSatWord) return;
-  await saveNoteFromWidget(`${currentSatWord.word} — ${currentSatWord.def}`, 'sat', { kind: 'sat', id: currentSatWord.word, context: currentSatWord.example });
+  const full = `${currentSatWord.word} — ${currentSatWord.def}`;
+  await saveNoteFromWidget(full, 'sat', { kind: 'sat', id: currentSatWord.word, context: full });
 }
 
 /* ---------- chat: pin a message to notes ---------- */

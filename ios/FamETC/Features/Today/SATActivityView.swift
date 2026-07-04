@@ -6,12 +6,14 @@ import SwiftUI
 /// bank browser + pop quiz + one-time placement step. Self-contained — talks to
 /// `APIClient.shared` directly (no `AppStore` dependency).
 struct SATActivityView: View {
+    @Environment(AppStore.self) private var store
     @AppStorage("fam_sat_placement_done") private var placementDone = false
 
     @State private var entry: WordBankEntry? = nil
     @State private var showWordBank = false
     @State private var showQuiz = false
     @State private var showPlacement = false
+    @State private var savedToNotes = false
 
     private let word = Daily.word
 
@@ -44,6 +46,21 @@ struct SATActivityView: View {
             if entry?.state == "mastered" {
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(Palette.green)
             }
+            Button {
+                Haptics.selection()
+                let body = "\(word.word) — \(word.def)"
+                Task {
+                    _ = await store.addNote(body: body, source: "sat",
+                                            ref: ["kind": "sat", "id": word.word, "context": body])
+                    savedToNotes = true
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    savedToNotes = false
+                }
+            } label: {
+                Image(systemName: savedToNotes ? "checkmark.circle.fill" : "pin")
+                    .foregroundStyle(savedToNotes ? Palette.green : Palette.teal)
+            }
+            .accessibilityLabel("Save word to Notes")
         }
     }
 

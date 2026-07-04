@@ -102,18 +102,24 @@ private struct NoteRow: View {
                 SourceChip(source: note.source)
                 Spacer()
             }
-            Text(note.body)
-                .font(Typography.body)
-                .foregroundStyle(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
-            if let context = note.ref?.context, !context.isEmpty {
+            // The actual content this note was made on (quote / message / word)
+            // is the prominent subject; the person's own words come after it.
+            let context = note.ref?.context ?? ""
+            if !context.isEmpty {
                 Text(context)
-                    .font(Typography.caption.italic())
-                    .foregroundStyle(Palette.textSecond)
-                    .padding(.leading, Space.md)
-                    .overlay(alignment: .leading) {
-                        Rectangle().fill(Palette.border).frame(width: 2)
-                    }
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(Space.sm)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    .overlay(alignment: .leading) { Rectangle().fill(Palette.accent).frame(width: 3) }
+            }
+            if !note.body.isEmpty, note.body != context {
+                Text(context.isEmpty ? note.body : "💭 \(note.body)")
+                    .font(Typography.body)
+                    .foregroundStyle(context.isEmpty ? Palette.text : Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.vertical, Space.sm)

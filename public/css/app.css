@@ -173,7 +173,9 @@
 .note-source-social { color: #DB2777; }
 .note-source-news   { color: #059669; }
 .note-source-manual { color: var(--text-muted); }
-.note-body { font-size: 14px; white-space: pre-wrap; }
+/* The actual content the note was made on — the prominent subject. */
+.note-content { font-size: 15px; font-weight: 600; white-space: pre-wrap; padding: 10px 12px; border-radius: 10px; background: var(--primary-soft, rgba(124,92,255,0.10)); border-left: 3px solid var(--primary, #7c5cff); }
+.note-body { font-size: 14px; white-space: pre-wrap; color: var(--text-muted); margin-top: 6px; }
 .note-ref-context { margin-top: 6px; font-size: 12px; color: var(--text-muted); font-style: italic; border-left: 3px solid var(--border); padding-left: 8px; }
 .note-delete-btn { font-size: 12px; padding: 0; }
 
