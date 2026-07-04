@@ -534,23 +534,24 @@ function renderManageFamily() {
   if (inviteEl) {
     const max = currentFamily.maxParents || 2;
     const count = (currentFamily.parentIds || []).length;
-    if (count >= max) {
-      inviteEl.innerHTML = `<p class="text-muted">Both parents are set up. 🎉</p>`;
-    } else {
-      const code = esc(currentFamily.inviteCode || '');
-      inviteEl.innerHTML =
-        `<div class="invite-box">
-          <p style="margin:0 0 6px;font-weight:700">Invite the other parent</p>
-          <p class="text-muted" style="margin:0 0 12px">
-            Ask them to sign up at <strong>fametc.com</strong> and enter this family code.
-            They'll get their own passkey on their own device.
-          </p>
-          <div class="invite-code-row">
-            <code id="invite-code-value" class="invite-code">${code}</code>
-            <button type="button" class="btn-secondary" onclick="copyInviteCode()">Copy code</button>
-          </div>
-        </div>`;
-    }
+    const code = esc(currentFamily.inviteCode || '');
+    // Same code invites the co-parent AND kids, so always show it — just
+    // reframe once both parent slots are full.
+    const heading = count >= max ? 'Family code' : 'Invite the other parent';
+    const blurb = count >= max
+      ? `Share this code with your kids. They sign up at <strong>fametc.com</strong>
+         (or in the app), enter the code, and you approve them from Today.`
+      : `Ask them to sign up at <strong>fametc.com</strong> and enter this family code.
+         They'll get their own passkey on their own device.`;
+    inviteEl.innerHTML =
+      `<div class="invite-box">
+        <p style="margin:0 0 6px;font-weight:700">${heading}</p>
+        <p class="text-muted" style="margin:0 0 12px">${blurb}</p>
+        <div class="invite-code-row">
+          <code id="invite-code-value" class="invite-code">${code}</code>
+          <button type="button" class="btn-secondary" onclick="copyInviteCode()">Copy code</button>
+        </div>
+      </div>`;
   }
 
   // --- Kids ---
