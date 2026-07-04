@@ -9,24 +9,29 @@ import SwiftUI
 // with no separate account or sync layer. State + polling live in AppStore; this
 // screen is the presentation.
 //
-// Keyboard note: RootView's iPhone TabView sets `.ignoresSafeArea(.keyboard)` to
-// keep the floating tab bar still, which also stops SwiftUI from lifting the
-// composer. We therefore track the keyboard height ourselves and pad the column
-// up by it (falling back to the tab-bar clearance when the keyboard is closed).
+// Keyboard note: SwiftUI's automatic keyboard avoidance lifts the whole column
+// so the composer rides flush on top of the keyboard, animated in sync with it.
+// We deliberately do NOT add our own lift (doing both double-shifted the composer
+// toward the top of the screen). We only drop the floating-tab-bar clearance to
+// zero while the keyboard is up so the composer can sit flush against it.
 struct ChatScreen: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var draft = ""
-    @State private var keyboardHeight: CGFloat = 0
+    @State private var keyboardVisible = false
     @FocusState private var composerFocused: Bool
 
     private let bottomAnchorID = "chat-bottom-anchor"
 
-    // With the keyboard up we lift the whole column by its height (the ancestor
-    // TabView ignores the keyboard safe area, so SwiftUI won't do it for us);
-    // otherwise we clear the floating tab bar on iPhone.
+    // SwiftUI's automatic keyboard avoidance already lifts the column so the
+    // composer sits flush on top of the keyboard — and it animates in sync with
+    // the keyboard, so the motion is smooth. We must NOT add our own lift on top
+    // (that double-shift threw the composer toward the top of the screen). We
+    // only manage the *tab-bar* clearance: 88pt above the floating tab bar when
+    // the keyboard is down, 0 when it's up (the tab bar is behind the keyboard
+    // then, so the composer can sit flush against it).
     private var baseInset: CGFloat { hSize == .compact ? Layout.tabBarClearance : Space.lg }
-    private var bottomInset: CGFloat { keyboardHeight > 0 ? keyboardHeight : baseInset }
+    private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
 
     var body: some View {
         ZStack {
@@ -42,7 +47,7 @@ struct ChatScreen: View {
             // content height and centers in the ZStack).
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.bottom, bottomInset)
-            .animation(.easeOut(duration: 0.25), value: bottomInset)
+            .animation(.easeOut(duration: 0.25), value: keyboardVisible)
         }
         .onAppear {
             store.chatActive = true
@@ -52,13 +57,11 @@ struct ChatScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await store.refreshChatNow() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-            if let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
-                keyboardHeight = frame.height
-            }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardVisible = true
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboardHeight = 0
+            keyboardVisible = false
         }
     }
 
@@ -107,7 +110,7 @@ struct ChatScreen: View {
             .scrollDismissesKeyboard(.interactively)
             .overlay { emptyOrLoading }
             .onChange(of: store.messages.last?.id) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: keyboardHeight) { _, h in if h > 0 { scrollToBottom(proxy) } }
+            .onChange(of: keyboardVisible) { _, visible in if visible { scrollToBottom(proxy) } }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
