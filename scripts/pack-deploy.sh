@@ -22,16 +22,18 @@ cd "$(dirname "$0")/.."
 OUT="${1:-fametc-deploy.zip}"
 
 # --- 1. Guarantee an env source, then refuse if there is genuinely none. ------
-if [ ! -f .env.hostinger ]; then
-  if [ -f .env ]; then
-    cp .env .env.hostinger
-    echo "note: created .env.hostinger from .env (deploy env fallback)"
-  else
-    echo "REFUSING TO PACK: no .env or .env.hostinger — the archive would boot-fail" >&2
-    echo "  (missing SESSION_SECRET with NODE_ENV=production => 503). See memory:" >&2
-    echo "  deploy-env-hpanel. Provide env, then re-run." >&2
-    exit 1
-  fi
+# `.env` is the source of truth: always refresh the deploy copy from it so a
+# change to `.env` (a new key, a rotated secret) can never ship stale. Only fall
+# back to an existing `.env.hostinger` when there's no local `.env` at all (e.g.
+# a deploy-only machine).
+if [ -f .env ]; then
+  cp .env .env.hostinger
+  echo "note: refreshed .env.hostinger from .env"
+elif [ ! -f .env.hostinger ]; then
+  echo "REFUSING TO PACK: no .env or .env.hostinger — the archive would boot-fail" >&2
+  echo "  (missing SESSION_SECRET with NODE_ENV=production => 503). See memory:" >&2
+  echo "  deploy-env-hpanel. Provide env, then re-run." >&2
+  exit 1
 fi
 if ! grep -q '^[[:space:]]*SESSION_SECRET=' .env.hostinger; then
   echo "REFUSING TO PACK: .env.hostinger has no SESSION_SECRET — would 503 on boot" >&2
@@ -44,13 +46,18 @@ BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 COMMIT="$(git rev-parse HEAD)"
 printf '{"label":"%s","builtAt":"%s","commit":"%s"}\n' "$LABEL" "$BUILT_AT" "$COMMIT" > build-info.json
 
-# --- 3. Build: tracked files (working-tree contents) + stamp + env. -----------
+# --- 3. Build: tracked files (working-tree contents) + stamp + env + APNs key. -
+# Extras ride alongside the tracked files: the build stamp, the env fallback, and
+# any APNs .p8 auth key in the repo root (gitignored — carried in the deploy so
+# APNS_KEY_PATH can point at it, since a multi-line PEM can't live in .env).
+EXTRAS=(build-info.json .env.hostinger)
+for f in ./*.p8; do [ -f "$f" ] && EXTRAS+=("${f#./}"); done
 rm -f "$OUT"
 case "$OUT" in
   *.zip)
-    { git ls-files; echo build-info.json; echo .env.hostinger; } | zip -q "$OUT" -@ ;;
+    { git ls-files; printf '%s\n' "${EXTRAS[@]}"; } | zip -q "$OUT" -@ ;;
   *.tar.gz|*.tgz)
-    { git ls-files -z; printf 'build-info.json\0.env.hostinger\0'; } | tar --null -czf "$OUT" -T - ;;
+    { git ls-files -z; printf '%s\0' "${EXTRAS[@]}"; } | tar --null -czf "$OUT" -T - ;;
   *)
     echo "unsupported output extension: $OUT (use .zip or .tar.gz)" >&2; exit 1 ;;
 esac

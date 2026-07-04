@@ -14,6 +14,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+*.p8
+AuthKey_*.p8
 data/*.json
 npm-debug.log*
 .dev-data/
