@@ -48,10 +48,12 @@ printf '{"label":"%s","builtAt":"%s","commit":"%s"}\n' "$LABEL" "$BUILT_AT" "$CO
 
 # --- 3. Build: tracked files (working-tree contents) + stamp + env + APNs key. -
 # Extras ride alongside the tracked files: the build stamp, the env fallback, and
-# any APNs .p8 auth key in the repo root (gitignored — carried in the deploy so
-# APNS_KEY_PATH can point at it, since a multi-line PEM can't live in .env).
+# ONLY the APNs key named by APNS_KEY_PATH — never a blind *.p8 glob, so an
+# unrelated key that happens to be in the repo (e.g. an App Store Connect API
+# key) can't leak into a server deploy.
 EXTRAS=(build-info.json .env.hostinger)
-for f in ./*.p8; do [ -f "$f" ] && EXTRAS+=("${f#./}"); done
+APNS_P8="$(grep -E '^APNS_KEY_PATH=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "[:space:]")"
+if [ -n "$APNS_P8" ] && [ -f "$APNS_P8" ]; then EXTRAS+=("$APNS_P8"); fi
 rm -f "$OUT"
 case "$OUT" in
   *.zip)
