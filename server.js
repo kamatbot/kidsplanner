@@ -475,7 +475,12 @@ app.get("/api/health", (req, res) => {
       hasPriceId: !!(process.env.STRIPE_PRICE_ID || "").trim(),
       hasWebhookSecret: !!(process.env.STRIPE_WEBHOOK_SECRET || "").trim(),
     },
-    push: { enabled: notifications.enabled(), webEnabled: notifications.webEnabled() },
+    push: {
+      enabled: notifications.enabled(),
+      webEnabled: notifications.webEnabled(),
+      // Present only when a key was supplied but failed to load (bad .p8 / path).
+      configError: notifications.configError() || undefined,
+    },
   });
 });
 
