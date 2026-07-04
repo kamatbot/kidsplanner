@@ -87,7 +87,11 @@ struct RootView: View {
             // permission (prompts once) and register/refresh the APNs token. Gated
             // on !needsAuth so the token POST to /api/push/register has a session.
             if !store.needsAuth {
+                #if DEBUG
+                if !DebugLaunch.skipPush { PushRegistrationService.shared.requestAuthorizationAndRegister() }
+                #else
                 PushRegistrationService.shared.requestAuthorizationAndRegister()
+                #endif
             }
         }
         // A kid_access_request push (or returning to the foreground) refreshes the

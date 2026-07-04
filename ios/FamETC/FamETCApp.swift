@@ -52,6 +52,10 @@ enum DebugLaunch {
     /// The deep-link target screen for this launch (read by RootView).
     static var screen: String? { env["FAM_SCREEN"] }
 
+    /// Suppress the push-permission prompt during seeded QA screenshots (a dev
+    /// cookie is injected only in that flow), so it doesn't block the UI.
+    static var skipPush: Bool { env["FAM_DEV_COOKIE"] != nil }
+
     static func bootstrap() {
         let e = env
         if e["FAM_ONBOARDED"] == "1" {
