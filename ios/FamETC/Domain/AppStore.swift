@@ -231,6 +231,23 @@ final class AppStore {
         await loadCalendarAndHomework(force: true)
     }
 
+    /// Drag-to-reschedule a homework item to a new due date (yyyy-MM-dd).
+    /// Optimistic; reverts on failure. Parent-only (the server ignores a kid's
+    /// dueDate change), so callers gate the drag on isParent.
+    func rescheduleHomework(_ id: String, to dayKey: String) async {
+        guard let idx = homework.firstIndex(where: { $0.id == id }) else { return }
+        let previous = homework[idx].dueDate
+        guard previous != dayKey else { return }
+        homework[idx].dueDate = dayKey
+        do {
+            let updated = try await api.setHomeworkDueDate(id, dueDate: dayKey)
+            if let i = homework.firstIndex(where: { $0.id == id }) { homework[i] = updated }
+        } catch {
+            if let i = homework.firstIndex(where: { $0.id == id }) { homework[i].dueDate = previous }
+            handle(error)
+        }
+    }
+
     /// Toggle a homework item done/undone (optimistic, reverts on failure).
     func toggleHomeworkDone(_ item: HomeworkItem) async {
         let next = item.isDone ? "todo" : "done"

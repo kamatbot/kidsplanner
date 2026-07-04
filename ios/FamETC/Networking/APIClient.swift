@@ -101,6 +101,12 @@ final class APIClient {
         let r: HomeworkItemResponse = try await request("/api/homework/\(id)", method: "PATCH", body: ["status": status])
         return r.homework
     }
+    /// Reschedule homework to a new due date (parent-only server-side; a kid's
+    /// dueDate patch is ignored by the server).
+    func setHomeworkDueDate(_ id: String, dueDate: String) async throws -> HomeworkItem {
+        let r: HomeworkItemResponse = try await request("/api/homework/\(id)", method: "PATCH", body: ["dueDate": dueDate])
+        return r.homework
+    }
 
     // MARK: Chat
 

@@ -1,9 +1,24 @@
 import SwiftUI
 
-/// An agenda of what's ahead — school-feed events, deadlines, and homework —
-/// grouped by day. Read-only for events; homework rows can be checked off.
-/// Pull to refresh forces a fresh feed sync.
+/// Calendar tab. A full month GRID on iPad and iPhone-landscape (like the web),
+/// and a compact AGENDA LIST on iPhone-portrait where a grid would be cramped.
 struct CalendarScreen: View {
+    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.verticalSizeClass) private var vSize
+
+    private var useGrid: Bool { hSize == .regular || vSize == .compact }
+
+    var body: some View {
+        if useGrid {
+            MonthCalendarView()
+        } else {
+            CalendarAgendaList()
+        }
+    }
+}
+
+/// Agenda list — upcoming events + homework grouped by day (iPhone portrait).
+private struct CalendarAgendaList: View {
     @Environment(AppStore.self) private var store
 
     private var sections: [(day: String, items: [AgendaItem])] {
