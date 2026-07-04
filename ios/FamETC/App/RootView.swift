@@ -105,6 +105,7 @@ struct RootView: View {
             case "chat": selection = .chat
             case "calendar": selection = .calendar
             case "homework": selection = .homework
+            case "notes": selection = .notes
             default: break   // today starts on the today tab
             }
             #endif

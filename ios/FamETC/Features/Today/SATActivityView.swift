@@ -25,9 +25,6 @@ struct SATActivityView: View {
             actionRow
         }
         .task { await loadEntry() }
-        .onAppear {
-            if !placementDone { showPlacement = true }
-        }
         .sheet(isPresented: $showWordBank) { WordBankSheet() }
         .sheet(isPresented: $showQuiz) { WordQuizSheet() }
         .sheet(isPresented: $showPlacement) {
@@ -86,6 +83,19 @@ struct SATActivityView: View {
                     .font(Typography.caption.weight(.semibold))
             }
             .buttonStyle(PillButtonStyle(tint: Palette.violet))
+
+            // Opt-in placement — shown inline in the SAT card (not auto-presented
+            // globally on launch, which would cover other tabs).
+            if !placementDone {
+                Button {
+                    Haptics.selection()
+                    showPlacement = true
+                } label: {
+                    Label("Words I know", systemImage: "sparkles")
+                        .font(Typography.caption.weight(.semibold))
+                }
+                .buttonStyle(PillButtonStyle(tint: Palette.amber))
+            }
         }
     }
 
