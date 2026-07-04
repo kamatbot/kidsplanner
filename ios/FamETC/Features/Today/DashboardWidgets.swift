@@ -71,7 +71,7 @@ struct WordWidget: View {
 struct FactWidget: View {
     var body: some View {
         let f = Daily.fact
-        return DashCard(f.icon, "\(f.type) Fact", tint: Palette.amber) {
+        return DashCard(f.icon, "\(f.type) Fact", tint: Palette.orange) {
             Text(f.text).font(Typography.body).foregroundStyle(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
         }

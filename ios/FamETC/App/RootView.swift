@@ -55,25 +55,23 @@ struct RootView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selection: Tab = .today
     @State private var showChatSlideOver = false
+    // iPad size classes are regular×regular in BOTH orientations, so they can't
+    // tell landscape from portrait — we detect it from the actual geometry.
+    @State private var isLandscape = true
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
-    private var isRegularRegular: Bool {
-        horizontalSizeClass == .regular && verticalSizeClass == .regular
-    }
-    private var isPadLandscape: Bool {
-        isPad && horizontalSizeClass == .regular && verticalSizeClass == .compact
-    }
 
     var body: some View {
         Group {
-            if isPad && isPadLandscape {
-                iPadLandscapeLayout
-            } else if isPad && isRegularRegular {
-                iPadPortraitLayout
+            if isPad && isLandscape {
+                iPadLandscapeLayout   // nav rail | dashboard | docked chat
+            } else if isPad {
+                iPadPortraitLayout    // nav rail | dashboard, chat via slide-over
             } else {
                 iPhoneLayout
             }
         }
+        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
         // Parents: kids waiting to be let in appear as a banner above everything.

@@ -62,9 +62,11 @@ struct TodayScreen: View {
     /// column packs down independently (no center-float gaps).
     private var masonry: some View {
         let cols = columnCount
-        return HStack(alignment: .top, spacing: Space.md) {
+        // A bit more breathing room: wider gutters between columns (iPad) and
+        // between stacked widgets (both platforms).
+        return HStack(alignment: .top, spacing: Space.xl) {
             ForEach(0..<cols, id: \.self) { col in
-                VStack(spacing: Space.md) {
+                VStack(spacing: Space.lg + 4) {
                     ForEach(Array(widgets.enumerated()).filter { $0.offset % cols == col }, id: \.offset) { entry in
                         entry.element
                     }
@@ -81,7 +83,7 @@ private struct TodayPlanWidget: View {
     @Environment(AppStore.self) private var store
     var body: some View {
         let items = Agenda.items(on: Agenda.todayKey(), events: store.events, homework: store.homework)
-        return DashCard("☀️", "Today", tint: Palette.accent) {
+        return DashCard("☀️", "Today", tint: Palette.amber) {
             if items.isEmpty {
                 Text("Nothing scheduled today — enjoy! 🎉")
                     .font(Typography.body).foregroundStyle(Palette.textSecond)
