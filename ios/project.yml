@@ -13,7 +13,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "3"
     # Apple Developer Team ID — matches IOS_APP_IDS on the server
     # (B4F73U5RGR.com.fametc.app, see .env.example). Same Apple account as
     # RetireOdds, unchanged per APP-BRIEF.md.
