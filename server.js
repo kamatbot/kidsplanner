@@ -1100,6 +1100,9 @@ function postHomeworkChat(req, kind, item) {
       senderId: isKid ? req.user.data.kid.kidId : req.user.id,
       postedByUserId: req.user.id,
       text,
+      // A tappable reference so clients can render this as a distinct card that
+      // deep-links to the assignment (see the iOS chat card UI).
+      card: { type: "homework", id: item.id, title: item.title },
     });
   } catch (e) {
     /* never block the homework op on a chat error */
