@@ -95,7 +95,24 @@ struct NotesScreen: View {
 
 private struct NoteRow: View {
     let note: Note
+    @Environment(AppStore.self) private var store
     @State private var flipped = false
+    @State private var confirmingDelete = false
+
+    private var canDelete: Bool { store.canDeleteNote(note) }
+
+    private var trashButton: some View {
+        Button(role: .destructive) {
+            Haptics.selection()
+            confirmingDelete = true
+        } label: {
+            Image(systemName: "trash")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.textSecond)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Delete note")
+    }
 
     // The actual content the note was made on (quote / message / word / news).
     private var original: String { note.ref?.context ?? "" }
@@ -123,6 +140,10 @@ private struct NoteRow: View {
             }
         }
         .padding(.vertical, Space.sm)
+        .confirmationDialog("Delete this note?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await store.deleteNote(note.id) } }
+            Button("Cancel", role: .cancel) { }
+        }
     }
 
     // Flippable note: front = the person's reflection, back = the original content.
@@ -136,6 +157,7 @@ private struct NoteRow: View {
                     .labelStyle(.titleAndIcon)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Palette.accent)
+                if canDelete { trashButton }
             }
             if front {
                 Text(reflection)
@@ -153,7 +175,11 @@ private struct NoteRow: View {
     @ViewBuilder
     private var staticContent: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            HStack(spacing: Space.sm) { SourceChip(source: note.source); Spacer() }
+            HStack(spacing: Space.sm) {
+                SourceChip(source: note.source)
+                Spacer()
+                if canDelete { trashButton }
+            }
             if !original.isEmpty { originalBlock(original) }
             if !reflection.isEmpty {
                 Text(original.isEmpty ? reflection : "💭 \(reflection)")
@@ -245,7 +271,6 @@ private struct AddNoteSheet: View {
                         .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
                         .focused($focused)
-                        .keyboardDoneToolbar()
 
                     Spacer()
                 }

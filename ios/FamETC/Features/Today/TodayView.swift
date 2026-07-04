@@ -43,6 +43,10 @@ struct TodayScreen: View {
             .padding(Space.lg)
             .padding(.bottom, hSize == .compact ? Layout.tabBarClearance : Space.xl)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+            // Chat-style: tapping anywhere that isn't a field/button/card control
+            // puts the keyboard away. (Controls consume their own taps first.)
+            .contentShape(Rectangle())
+            .onTapGesture { famDismissKeyboard() }
         }
         .background(ScreenBackground())
         .scrollDismissesKeyboard(.interactively)

@@ -3,21 +3,9 @@ import UIKit
 
 /// Puts the keyboard away. The dashboard's free-text fields use `axis: .vertical`
 /// (so Return inserts a newline instead of dismissing) and live inside a
-/// ScrollView — without an explicit dismiss there is no way to close the keyboard.
+/// ScrollView; the dashboard dismisses on a background tap (chat-style) using this.
 func famDismissKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-}
-
-extension View {
-    /// Adds a "Done" button above the keyboard that dismisses it.
-    func keyboardDoneToolbar() -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { famDismissKeyboard() }
-            }
-        }
-    }
 }
 
 /// A colorful tinted widget card — the building block of the Today dashboard,
@@ -123,7 +111,6 @@ struct QuoteWidget: View {
                         .lineLimit(2...4)
                         .padding(Space.sm)
                         .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                        .keyboardDoneToolbar()
                     HStack {
                         Button {
                             Haptics.selection()
@@ -211,7 +198,6 @@ struct MoodWidget: View {
                     .font(Typography.body)
                     .padding(Space.sm)
                     .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    .keyboardDoneToolbar()
                 HStack {
                     Spacer()
                     if saved {
@@ -297,7 +283,6 @@ struct NewsWidget: View {
                     .font(Typography.body)
                     .padding(Space.sm)
                     .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    .keyboardDoneToolbar()
                 HStack {
                     Spacer()
                     if saved {
