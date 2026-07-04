@@ -68,39 +68,6 @@ const SAT_WORDS = [
   { word: "Wary",        pos: "adjective", def: "Feeling or showing caution about possible dangers or problems.",                  example: "Be wary of anyone who promises easy success without hard work." },
 ];
 
-const FACTS = [
-  { icon: "🍯", type: "Science",  text: "Honey never spoils. Archaeologists have found 3,000-year-old honey in Egyptian tombs that was still perfectly edible!" },
-  { icon: "🌊", type: "Science",  text: "Oceans cover about 71% of Earth's surface, yet more than 80% of the world's oceans remain unmapped and unexplored by humans." },
-  { icon: "🦋", type: "Science",  text: "A caterpillar dissolves almost completely into liquid inside its chrysalis before reorganizing into a butterfly — it rebuilds itself from scratch!" },
-  { icon: "🏛️", type: "History", text: "Cleopatra lived closer in time to the Moon landing than to the construction of the Great Pyramid. The pyramids are that ancient!" },
-  { icon: "⚡", type: "Science",  text: "Lightning strikes Earth about 100 times every second — that's 8 million lightning bolts per day!" },
-  { icon: "🐙", type: "Science",  text: "Octopuses have three hearts, blue blood, and can change the color and texture of their skin in less than a second." },
-  { icon: "🌙", type: "Science",  text: "The Moon is slowly drifting away from Earth at about 3.8 cm per year — the same rate your fingernails grow!" },
-  { icon: "🦴", type: "Science",  text: "You're born with about 270 bones, but by adulthood you have 206 because many fuse together as you grow." },
-  { icon: "📜", type: "History", text: "In medieval Europe, pepper was so valuable it was used as currency. Some merchants paid their rent in peppercorns!" },
-  { icon: "🧠", type: "Science",  text: "Your brain uses about 20% of your body's total energy, even though it only makes up about 2% of your body weight." },
-  { icon: "🌳", type: "Science",  text: "There are more trees on Earth than stars in the Milky Way galaxy — approximately 3 trillion trees versus 200–400 billion stars." },
-  { icon: "🐘", type: "Science",  text: "Elephants are the only animals known to hold memorial gatherings for their dead — they mourn and revisit the bones of lost family members." },
-  { icon: "⚗️", type: "Science",  text: "Water is the only substance on Earth that naturally exists in all three states — solid (ice), liquid, and gas (steam) — at normal temperatures." },
-  { icon: "🗺️", type: "History", text: "The first map of the world was drawn by Greek philosopher Anaximander around 550 BC. It showed the world as a flat disk surrounded by ocean." },
-  { icon: "🎭", type: "History", text: "In ancient Greece, all actors were male and wore large masks so audiences could see expressions from far away. This is the origin of the theater comedy/tragedy symbols!" },
-  { icon: "🔭", type: "Science",  text: "When you look at a star, you see it as it was years, decades, or even millions of years ago. Some stars we can see may no longer exist!" },
-  { icon: "🏹", type: "History", text: "The shortest war in history lasted only 38–45 minutes. It was between Britain and Zanzibar on August 27, 1896." },
-  { icon: "🐬", type: "Science",  text: "Dolphins sleep with one eye open. They rest half their brain at a time so they can continue breathing and watching for danger." },
-  { icon: "🌞", type: "Science",  text: "The Sun makes up 99.86% of the mass of our entire Solar System. Everything else — planets, moons, asteroids — is just 0.14%!" },
-  { icon: "🦠", type: "Science",  text: "There are more bacteria in your mouth right now than there are people on Earth — about 20 billion bacteria call your mouth home!" },
-  { icon: "🎵", type: "Science",  text: "Music triggers the same pleasure centers in the brain as food and hugs. That's why your favorite song can give you chills!" },
-  { icon: "🌈", type: "Science",  text: "Rainbows are actually full circles — you can only see half from the ground. Pilots in planes sometimes see complete circular rainbows!" },
-  { icon: "⚔️", type: "History", text: "The word 'berserk' comes from 'berserkers' — elite Norse Viking warriors who would fight in a fierce, trance-like fury." },
-  { icon: "🌿", type: "Science",  text: "Bamboo is the fastest-growing plant on Earth. Some species can grow up to 91 cm (3 feet) in a single day!" },
-  { icon: "🏺", type: "History", text: "The ancient Romans used urine to whiten their teeth and clean clothes. Urine collectors would stand on street corners with buckets!" },
-  { icon: "💎", type: "Science",  text: "Tooth enamel is the hardest substance in the human body — harder than bone! But unlike bone, it cannot repair itself once damaged." },
-  { icon: "🌋", type: "Science",  text: "There are more volcanoes under the ocean than on land. Most of Earth's volcanic activity happens along the 40,000-mile-long mid-ocean ridge." },
-  { icon: "🐝", type: "Science",  text: "A single honeybee will produce only 1/12 teaspoon of honey in its entire lifetime. It takes about 60,000 bees to fill one jar of honey!" },
-  { icon: "📚", type: "History", text: "The Library of Alexandria contained an estimated 400,000–700,000 scrolls, making it the largest library in the ancient world." },
-  { icon: "🪐", type: "Science",  text: "Saturn's rings are mostly made of ice and rock particles ranging in size from grains of sand to boulders as large as a house." },
-];
-
 const NEWS_ITEMS = [
   { cat: "🚀 Space",       headline: "Webb Telescope Discovers Ancient Galaxies",          summary: "Scientists using the James Webb Space Telescope have identified thousands of previously unknown galaxies, revealing what the universe looked like just 500 million years after the Big Bang." },
   { cat: "🐾 Animals",     headline: "Rare White Giraffe Spotted in Kenya",                summary: "Conservationists spotted a leucistic giraffe in Kenya's national park. These animals lack pigmentation and appear white, making them extraordinarily rare in the wild." },
@@ -247,16 +214,6 @@ let wordBankState   = { words: [], stats: { learning: 0, mastered: 0, known: 0 }
 let wordQuizState   = { questions: [], index: 0 };
 let satPlacementDone = false; // tracked via localStorage per-user, see satPlacementKey()
 
-const MOOD_OPTIONS = [
-  { emoji: '😄', label: 'Great' },
-  { emoji: '🙂', label: 'Good' },
-  { emoji: '😐', label: 'Okay' },
-  { emoji: '😔', label: 'Down' },
-  { emoji: '😣', label: 'Stressed' },
-  { emoji: '😡', label: 'Angry' },
-];
-let selectedMood = null;
-
 function satPlacementKey() {
   return `fam_sat_placement_done_${sessionUser ? sessionUser.id : 'anon'}`;
 }
@@ -270,8 +227,8 @@ function homeworkDueTodayCount() {
 function applyEnrichmentGating() {
   const dueCount = homeworkDueTodayCount();
   const locked = dueCount > 3;
-  const lockIds = ['lock-quote', 'lock-sat', 'lock-mood', 'lock-news', 'lock-quiz'];
-  const cardIds = ['widget-quote', 'widget-word', 'widget-mood', 'widget-news', 'widget-quiz'];
+  const lockIds = ['lock-quote', 'lock-sat', 'lock-news', 'lock-quiz'];
+  const cardIds = ['widget-quote', 'widget-word', 'widget-news', 'widget-quiz'];
   lockIds.forEach((id, i) => {
     const overlay = document.getElementById(id);
     const card = document.getElementById(cardIds[i]);
@@ -461,41 +418,21 @@ async function handlePinQuote() {
   await saveNoteFromWidget(full, 'quote', { kind: 'quote', id: '', context: full });
 }
 
-/* ---------- Social-emotional check-in widget ---------- */
-function renderMoodWidget() {
-  selectedMood = null;
-  const row = document.getElementById('mood-row');
-  if (!row) return;
-  row.innerHTML = MOOD_OPTIONS.map((m, i) =>
-    `<button type="button" class="fam-mood-opt" data-i="${i}" onclick="selectMood(${i})" title="${esc(m.label)}">${m.emoji}</button>`
-  ).join('');
-  const textEl = document.getElementById('mood-text');
-  if (textEl) textEl.value = '';
-}
-
-function selectMood(i) {
-  selectedMood = i;
-  document.querySelectorAll('#mood-row .fam-mood-opt').forEach((btn, idx) => {
-    btn.classList.toggle('selected', idx === i);
-  });
-}
-
-async function saveMoodCheckIn() {
-  if (selectedMood === null) { toast('Pick a feeling first 🙂'); return; }
-  const m = MOOD_OPTIONS[selectedMood];
-  const textEl = document.getElementById('mood-text');
-  const extra = textEl ? textEl.value.trim() : '';
-  const body = `Feeling ${m.emoji} ${m.label}.${extra ? ' ' + extra : ''}`;
-  const note = await saveNoteFromWidget(body, 'social');
-  if (note) renderMoodWidget();
-}
-
 /* ---------- News widget: reflection ---------- */
+// The article link: an explicit url if the item has one, else a Google News
+// search for the headline, which reliably surfaces real coverage of the story.
+function newsArticleLink(n) {
+  if (!n) return '';
+  if (n.url) return n.url;
+  return 'https://news.google.com/search?q=' + encodeURIComponent(n.headline);
+}
+
 async function saveNewsReflection() {
   const textEl = document.getElementById('news-reflect-text');
   const body = textEl ? textEl.value.trim() : '';
   if (!body) { toast('Write a few words first 🙂'); return; }
-  const newsFull = currentNews ? `${currentNews.headline}\n\n${currentNews.summary}` : '';
+  const link = newsArticleLink(currentNews);
+  const newsFull = currentNews ? `${currentNews.headline}\n\n${currentNews.summary}\n\n${link}` : '';
   const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: newsFull });
   if (note) textEl.value = '';
 }
@@ -1918,23 +1855,16 @@ function renderWidgets() {
   renderSatActivity();
   loadWordBank();
 
-  // Fact
-  const f = dailyPick(FACTS, now);
-  document.getElementById('fact-icon').textContent  = f.icon;
-  document.getElementById('fact-label').textContent = `${f.type} Fact`;
-  document.getElementById('fact-text').textContent  = f.text;
-
   // News
   const n = dailyPick(NEWS_ITEMS, now);
   currentNews = n;
   document.getElementById('news-badge').textContent    = n.cat;
   document.getElementById('news-headline').textContent = n.headline;
   document.getElementById('news-summary').textContent  = n.summary;
+  const newsLink = document.getElementById('news-link');
+  if (newsLink) newsLink.href = newsArticleLink(n);
   document.getElementById('news-reflect-prompt').textContent = 'Why do you think this matters, and how does it make you feel?';
   document.getElementById('news-reflect-text').value = '';
-
-  // Mood check-in
-  renderMoodWidget();
 
   // Brain teaser (server-backed, day-ramped)
   loadBrainTeaser();

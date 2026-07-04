@@ -213,27 +213,6 @@
                 <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
               </div>
 
-              <!-- Science/History Fact -->
-              <div class="widget card widget-fact">
-                <div class="widget-header">
-                  <span class="widget-icon" id="fact-icon">🔬</span>
-                  <span class="widget-label" id="fact-label">Science Fact</span>
-                </div>
-                <div class="fact-text" id="fact-text"></div>
-              </div>
-
-              <!-- Social-emotional check-in -->
-              <div class="widget card widget-mood fam-enrich-card" id="widget-mood">
-                <div class="fam-enrich-lock" id="lock-mood" hidden></div>
-                <div class="widget-header">
-                  <span class="widget-icon">💗</span>
-                  <span class="widget-label">How are you feeling?</span>
-                </div>
-                <div class="fam-mood-row" id="mood-row"></div>
-                <textarea id="mood-text" class="fam-reflect-textarea" rows="2" placeholder="Anything big you felt today?"></textarea>
-                <button type="button" class="btn-primary fam-save-btn" onclick="saveMoodCheckIn()">Save check-in</button>
-              </div>
-
               <!-- Interesting News — reflection question + response. -->
               <div class="widget card widget-news fam-enrich-card" id="widget-news">
                 <div class="fam-enrich-lock" id="lock-news" hidden></div>
@@ -244,6 +223,7 @@
                 <span class="news-badge" id="news-badge"></span>
                 <div class="news-headline" id="news-headline"></div>
                 <div class="news-summary" id="news-summary"></div>
+                <a class="news-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Read the full story</a>
                 <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
                 <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…"></textarea>
                 <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>

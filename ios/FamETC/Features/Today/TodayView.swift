@@ -30,8 +30,7 @@ struct TodayScreen: View {
     }
     private var widgets: [AnyView] {
         [AnyView(TodayPlanWidget()), AnyView(HomeworkWeekWidget()), AnyView(QuoteWidget()),
-         AnyView(MoodWidget()), AnyView(WordWidget()), AnyView(FactWidget()), AnyView(NewsWidget()),
-         AnyView(QuizWidget())]
+         AnyView(WordWidget()), AnyView(NewsWidget()), AnyView(QuizWidget())]
     }
 
     var body: some View {

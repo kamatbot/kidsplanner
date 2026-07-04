@@ -162,78 +162,6 @@ struct QuoteWidget: View {
     }
 }
 
-/// New social-emotional check-in widget: pick a feeling emoji + optional note.
-struct MoodWidget: View {
-    @Environment(AppStore.self) private var store
-    private let feelings = ["😀", "🙂", "😐", "😢", "😡", "😰"]
-    @State private var picked: String? = nil
-    @State private var text = ""
-    @State private var saved = false
-
-    var body: some View {
-        DashCard("💗", "How are you feeling?", tint: Palette.coral) {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                HStack(spacing: Space.sm) {
-                    ForEach(feelings, id: \.self) { emoji in
-                        Button {
-                            Haptics.selection()
-                            picked = emoji
-                        } label: {
-                            Text(emoji)
-                                .font(.system(size: 24))
-                                .padding(6)
-                                .background(
-                                    picked == emoji ? Palette.coral.opacity(0.22) : Color.clear,
-                                    in: Circle()
-                                )
-                                .overlay(
-                                    Circle().strokeBorder(picked == emoji ? Palette.coral : .clear, lineWidth: 1.5)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                TextField("Anything big you felt today?", text: $text, axis: .vertical)
-                    .lineLimit(2...4)
-                    .font(Typography.body)
-                    .padding(Space.sm)
-                    .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                HStack {
-                    Spacer()
-                    if saved {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .font(Typography.caption.weight(.bold))
-                            .foregroundStyle(Palette.green)
-                    } else {
-                        Button {
-                            Haptics.selection()
-                            let emoji = picked ?? "🙂"
-                            let body = "Feeling \(emoji). \(text)"
-                            Task {
-                                _ = await store.addNote(body: body, source: "social")
-                                saved = true
-                                try? await Task.sleep(nanoseconds: 900_000_000)
-                                saved = false
-                                text = ""
-                                picked = nil
-                            }
-                        } label: {
-                            Text("Save")
-                                .font(Typography.caption.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                                .background(Palette.coral, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(picked == nil)
-                    }
-                }
-            }
-        }
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
-    }
-}
-
 struct WordWidget: View {
     @Environment(AppStore.self) private var store
     var body: some View {
@@ -241,16 +169,6 @@ struct WordWidget: View {
             SATActivityView()
         }
         .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
-    }
-}
-
-struct FactWidget: View {
-    var body: some View {
-        let f = Daily.fact
-        return DashCard(f.icon, "\(f.type) Fact", tint: Palette.orange) {
-            Text(f.text).font(Typography.body).foregroundStyle(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 
@@ -273,6 +191,14 @@ struct NewsWidget: View {
                 Text(n.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
 
+                if let url = URL(string: n.articleLink) {
+                    Link(destination: url) {
+                        Label("Read the full story", systemImage: "arrow.up.right.square")
+                            .font(Typography.caption.weight(.bold))
+                            .foregroundStyle(Palette.green)
+                    }
+                }
+
                 Divider().overlay(Palette.border)
 
                 Text("What do you think about this?")
@@ -294,7 +220,7 @@ struct NewsWidget: View {
                             Haptics.selection()
                             let text = reflection
                             Task {
-                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": "\(n.headline)\n\n\(n.summary)"])
+                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": "\(n.headline)\n\n\(n.summary)\n\n\(n.articleLink)"])
                                 saved = true
                                 try? await Task.sleep(nanoseconds: 900_000_000)
                                 saved = false

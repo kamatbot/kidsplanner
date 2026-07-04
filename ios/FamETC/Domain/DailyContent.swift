@@ -8,7 +8,17 @@ import Foundation
 struct DailyQuote { let text: String; let author: String }
 struct SATWord { let word: String; let pos: String; let def: String; let example: String }
 struct FunFact { let icon: String; let type: String; let text: String }
-struct NewsItem { let cat: String; let headline: String; let summary: String }
+struct NewsItem {
+    let cat: String; let headline: String; let summary: String
+    var url: String? = nil
+    /// The article link. When an item has no explicit `url`, this opens a Google
+    /// News search for the headline, which reliably surfaces real coverage of it.
+    var articleLink: String {
+        if let url, !url.isEmpty { return url }
+        let q = headline.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return "https://news.google.com/search?q=\(q)"
+    }
+}
 struct QuizQuestion { let q: String; let opts: [String]; let ans: Int; let exp: String }
 
 enum Daily {
