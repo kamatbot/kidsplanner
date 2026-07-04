@@ -21,8 +21,8 @@
     -->
     <key>com.apple.developer.associated-domains</key>
     <array>
-        <string>webcredentials:fametc.com?mode=developer</string>
-        <string>applinks:www.fametc.com?mode=developer</string>
+        <string>webcredentials:fametc.com</string>
+        <string>applinks:www.fametc.com</string>
     </array>
 
     <!--
