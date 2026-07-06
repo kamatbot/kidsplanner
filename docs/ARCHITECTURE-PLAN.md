@@ -27,6 +27,12 @@ _Assessed 2026-07-06. Scope: whole repo (Node/Express backend, iOS SwiftUI hybri
 
 Pragmatic, deletion-first. No rewrites, no new dependencies. Each task is sized for one agent session, with a runnable acceptance check. Run from repo root `/Users/kamatbot/Documents/Claude/Planner`.
 
+> **Implementation status (updated 2026-07-06).** Phases 1 (web), 2, and 3 are **done** on `main`, 176/176 tests passing throughout:
+> - Phase 1 web — root `app.js`/`index.html`/`styles.css` deleted; `chrome-extension/` documented + kept (it's the live MV3 Moodle importer); secrets confirmed already untracked/gitignored.
+> - Phase 2 — `server.js` 1673 → **593 lines**; routes extracted into `lib/routes/{homework,calendar,chat,family,learning,school,push,billing,auth}.js` via a shared `routeDeps` object. Stripe webhook intentionally left in `server.js` before `express.json()`. Boot-smoke + handler-body checks verified.
+> - Phase 3 — `public/js/app.js` 4128 → **2986 lines**; helpers/notes/SAT/school split into `public/js/{util,notes,sat,school}.js`, loaded before `app.js`. `client-bundle.test.js` green.
+> - **Phase 1 iOS — NOT done (deliberately deferred, owner decision 2026-07-06).** Two corrections to this plan's assessment: (1) `PlaceholderScreens.swift` is **live**, not dead — it defines `HomeworkScreen`, used by `RootView` for the Homework tab; do not delete. (2) The genuine dead island is `WebShellView → WebShellController → Bridge`, unwired since `HybridWebView` replaced it — but `WebShellController` is the sole path to `Bridge → ScannerService → DocumentScannerViewController`, so the **native document scanner is currently unreachable in the shipping app** and deleting the island would remove the only scanner integration. Left in place pending a decision on whether to re-wire the scanner into `HybridWebView`.
+
 ### Phase 1 — Delete dead weight (highest ROI, lowest risk)
 
 - [ ] **Verify secrets are ignored, then confirm the `.p8` is untracked.**

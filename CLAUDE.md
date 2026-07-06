@@ -17,8 +17,12 @@ explicit confirmation first.
 - **iOS app** (com.fametc.app, Apple team B4F73U5RGR): native SwiftUI shell,
   native tabs for Today/Chat/Calendar/Homework, HybridWebView for Settings/Goals/
   Activities, iPhone + iPad adaptive layouts, shared cookie session (one passkey
-  login across native + web). Native document scanner (Vision OCR) + APNs push at
-  launch.
+  login across native + web). APNs push at launch. Native document scanner
+  (Vision OCR) exists (`ScannerService`/`DocumentScannerViewController` + the
+  `Bridge` JS⇄native router) but is currently **unwired**: its only host,
+  `WebShellController`, was superseded by the plain-WKWebView `HybridWebView`
+  (no bridge). Re-wire the bridge into `HybridWebView` before relying on the
+  scanner — see the iOS note in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
 - **`chrome-extension/`** (MV3, "Fam ETC School Import"): auto-syncs a child's
