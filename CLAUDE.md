@@ -21,6 +21,12 @@ explicit confirmation first.
   launch.
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
+- **`chrome-extension/`** (MV3, "Fam ETC School Import"): auto-syncs a child's
+  Moodle homework + timetable from `bangkok.learn.nae.school` into FamETC using
+  the parent's already-logged-in browser sessions (no credentials handled). It's
+  the zero-server-credentials path complementing the stored-credential scrape;
+  the web app references it (`public/js/app.js`). Keep — load unpacked per
+  `chrome-extension/README.md`.
 
 ## Deploy pipeline (standing authorization granted 2026-07-03)
 Every web change: **test → commit → deploy → verify on live fametc.com.**
