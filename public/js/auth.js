@@ -396,6 +396,13 @@
     });
   }
 
+  async function hideSchoolEvent(subscriptionId, uid) {
+    return api("/api/calendar/school-events/hide", {
+      method: "POST",
+      body: JSON.stringify({ subscriptionId: subscriptionId || "", uid: uid || "" }),
+    });
+  }
+
   /* ---------- homework (Phase 3) ---------- */
   async function getHomework(opts) {
     const params = new URLSearchParams();
@@ -542,6 +549,7 @@
     subscribeCalendarFeed,
     unsubscribeCalendarFeed,
     syncCalendar,
+    hideSchoolEvent,
     backupCodeSignIn,
     getCredentials,
     renameCredential,

@@ -44,6 +44,20 @@ const moodleClient = require("./lib/moodle-client");
 const notifications = require("./lib/fam-notifications");
 const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
 
+// One-time cleanup (2026-07-11): wipe all synced school-calendar
+// subscriptions + cached events so families start fresh; guarded by a
+// flag in the db so it never re-runs. ponytail: delete this block after
+// one production deploy has run it.
+{
+  const r = db.load();
+  if (!r.schoolCalendarClearedAt) {
+    r.schoolCalendar = {};
+    r.schoolCalendarClearedAt = new Date().toISOString();
+    db.persist();
+    console.log("[migrate] cleared all synced school calendars");
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 const PUBLIC = path.join(__dirname, "public");

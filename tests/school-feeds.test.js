@@ -196,6 +196,45 @@ test("collectFromCache: tags events with source/readOnly/feedId/uid/kidId and ap
   assert.equal(e.kidId, kid.id);
 });
 
+// ---------- hideEvent (persisted hide-list, since events aren't stored rows) ----------
+test("hideEvent: hides a synced event from collectFromCache output", () => {
+  const { fam, kid } = makeFamilyWithKid();
+  const { subscription } = schoolFeeds.subscribe(fam.id, { kidId: kid.id, feedId: "sta-whole-school" });
+  const s = schoolFeeds.famStore(fam.id);
+  const now = Date.now();
+  s.cache[subscription.id] = {
+    fetchedAt: new Date().toISOString(),
+    error: null,
+    events: [
+      { uid: "keep-me", summary: "Assembly", start: new Date(now + 86400000).toISOString(), end: null, allDay: false, location: "", description: "", recurring: false },
+      { uid: "hide-me", summary: "Book Fair", start: new Date(now + 86400000).toISOString(), end: null, allDay: false, location: "", description: "", recurring: false },
+    ],
+  };
+  assert.equal(schoolFeeds.collectFromCache(s, now).length, 2);
+
+  const result = schoolFeeds.hideEvent(fam.id, { subscriptionId: subscription.id, uid: "hide-me" });
+  assert.deepEqual(result, { ok: true });
+
+  const events = schoolFeeds.collectFromCache(s, now);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].uid, "keep-me");
+});
+
+test("hideEvent: returns an error for an unknown subscriptionId", () => {
+  const { fam } = makeFamilyWithKid();
+  const result = schoolFeeds.hideEvent(fam.id, { subscriptionId: "sub_bogus", uid: "whatever" });
+  assert.deepEqual(result, { error: "Subscription not found." });
+});
+
+test("hideEvent: is idempotent (hiding twice leaves one hidden entry)", () => {
+  const { fam, kid } = makeFamilyWithKid();
+  const { subscription } = schoolFeeds.subscribe(fam.id, { kidId: kid.id, feedId: "sta-whole-school" });
+  schoolFeeds.hideEvent(fam.id, { subscriptionId: subscription.id, uid: "dup-hide" });
+  schoolFeeds.hideEvent(fam.id, { subscriptionId: subscription.id, uid: "dup-hide" });
+  const s = schoolFeeds.famStore(fam.id);
+  assert.deepEqual(s.hidden.filter((k) => k === `${subscription.id}::dup-hide`), [`${subscription.id}::dup-hide`]);
+});
+
 // ---------- webcal:// normalization ----------
 test("normalizeCalendarUrl: rewrites webcal:// to https://", () => {
   assert.equal(

@@ -731,6 +731,7 @@ function normalizeSchoolEvent(ev) {
   return {
     id: 'school-' + ev.subscriptionId + '-' + ev.uid,
     uid: ev.uid,
+    subscriptionId: ev.subscriptionId,
     title: ev.title,
     date: startDate,
     time,
@@ -1012,16 +1013,25 @@ function showDetail(id) {
     notesRow.style.display = 'none';
   }
 
-  // School events are read-only (synced from the school's calendar) — hide
-  // delete and show a lock hint instead. Any signed-in parent can delete a
-  // manual event (parent-only app — see APP-BRIEF.md).
+  // School events are read-only for kids (synced from the school's calendar)
+  // — hide delete and show a lock hint instead. Parents can delete (hide)
+  // a school event too; it stays hidden across future syncs. Any signed-in
+  // parent can delete a manual event (parent-only app — see APP-BRIEF.md).
   const deleteBtn = document.getElementById('btn-delete-event');
   const lockHint = document.getElementById('detail-readonly-hint');
   if (ev.source === 'school') {
-    deleteBtn.style.display = 'none';
-    if (lockHint) {
-      lockHint.style.display = '';
-      lockHint.textContent = `🔒 Synced from ${ev.feedLabel || 'the school calendar'} — read-only.` + (ev.recurring ? ' Repeats — showing the next occurrence.' : '');
+    if (isKidSession()) {
+      deleteBtn.style.display = 'none';
+      if (lockHint) {
+        lockHint.style.display = '';
+        lockHint.textContent = `🔒 Synced from ${ev.feedLabel || 'the school calendar'} — read-only.` + (ev.recurring ? ' Repeats — showing the next occurrence.' : '');
+      }
+    } else {
+      deleteBtn.style.display = '';
+      if (lockHint) {
+        lockHint.style.display = '';
+        lockHint.textContent = `🎓 Synced from ${ev.feedLabel || 'the school calendar'}.` + (ev.recurring ? ' Repeats — showing the next occurrence.' : '') + ' Deleting hides it from Fam ETC only.';
+      }
     }
   } else {
     deleteBtn.style.display = '';
@@ -1031,8 +1041,25 @@ function showDetail(id) {
   openModal('event-detail-modal');
 }
 
-function deleteCurrentEvent() {
-  if (!activeEventId || String(activeEventId).startsWith('school-')) return;
+async function deleteCurrentEvent() {
+  if (!activeEventId) return;
+  if (String(activeEventId).startsWith('school-')) {
+    if (isKidSession()) return;
+    const ev = visibleEvents().find(e => e.id === activeEventId);
+    if (!ev) return;
+    try {
+      await window.auth.hideSchoolEvent(ev.subscriptionId, ev.uid);
+      schoolEvents = schoolEvents.filter(e => !(e.subscriptionId === ev.subscriptionId && e.uid === ev.uid));
+      closeModal('event-detail-modal');
+      renderCalendar();
+      renderMiniCal();
+      toast('School event removed 🎓');
+      activeEventId = null;
+    } catch (err) {
+      toast(`❌ ${err.message || 'Could not remove that event.'}`);
+    }
+    return;
+  }
   saveEvents(getEvents().filter(e => e.id !== activeEventId));
   closeModal('event-detail-modal');
   renderCalendar();
