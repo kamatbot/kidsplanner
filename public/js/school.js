@@ -296,8 +296,8 @@ function renderSchoolStatsWidget() {
    (server returns a PREVIEW, nothing saved yet) -> "Add to Fam ETC" confirms.
    Homework confirms into the server-side homework hub (see loadHomework()).
    Timetable rows come back from the preview/confirm response and are added
-   here as normal calendar events (localStorage `fam_events`, same shape as
-   saveEvent() above: {id,userId,kidId,title,date,time,endTime,category,notes})
+   here as normal calendar events (server-synced via loadFamilyEvents(), same
+   shape as saveEvent() above: {kidId,title,date,time,endTime,category,notes})
    tagged category:'school' and kidId — see confirmTimetableAsEvents().
 ============================================================ */
 let schoolStatusCache = null;      // last GET /api/school/status result
@@ -487,7 +487,10 @@ function confirmTimetableAsEvents(timetableRows, kidId) {
     });
     added++;
   });
-  if (added) saveEvents(events);
+  if (added) {
+    saveEvents(events);
+    loadFamilyEvents(); // push to the server (silent — no chat flood)
+  }
 }
 
 async function handleDisconnectSchoolAccount() {

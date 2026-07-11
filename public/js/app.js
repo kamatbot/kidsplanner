@@ -693,6 +693,11 @@ function showDashboard() {
   renderChatDockAvatars();
   applyChatDockState('today');
 
+  // Manual events (server-synced with iOS): fetch once up front — until it
+  // resolves the calendar renders the localStorage mirror. Also uploads any
+  // legacy/offline-queued local events (one-time migration off fam_events).
+  loadFamilyEvents();
+
   // Homework (Phase 3): load once up front so calendar "due" chips render on
   // first paint; the Homework tab reloads on its own each time it's opened.
   loadHomework().then(() => { renderCalendar(); applyEnrichmentGating(); updateHomeworkBadge(); renderTodayScreen(); });
@@ -1059,12 +1064,14 @@ function openAddEventModal(ds) {
   openModal('add-event-modal');
 }
 
-function saveEvent(e) {
+/* Manual events are server-synced family data (/api/calendar/events — the same
+   store the iOS app reads/writes), so an event added here shows up on every
+   device. The server posts the family-chat announcement on POST, so the web no
+   longer sends its own (that would double-post). localStorage 'fam_events' is
+   only the offline mirror + pending-upload queue — see loadFamilyEvents(). */
+async function saveEvent(e) {
   e.preventDefault();
-  const events = getEvents();
-  const ev = {
-    id:       uid(),
-    userId:   sessionUser.id,
+  const payload = {
     kidId:    activeKidId || null,
     title:    document.getElementById('event-title').value.trim(),
     date:     document.getElementById('event-date').value,
@@ -1073,36 +1080,66 @@ function saveEvent(e) {
     category: document.querySelector('input[name="cat"]:checked').value,
     notes:    document.getElementById('event-notes').value.trim(),
   };
-  events.push(ev);
-  saveEvents(events);
-  announceEventToChat(ev);
+  let ev;
+  try {
+    ev = (await window.auth.addCalendarEvent(payload)).event;
+    toast('Event added! 🎯');
+  } catch (err) {
+    if (err && err.status) { // server rejected it (bad date, kicked session…) — don't queue garbage
+      toast(`❌ ${err.message || 'Could not save that event.'}`);
+      return;
+    }
+    // Offline: keep it locally (non-ev_ id) — the next loadFamilyEvents()
+    // uploads it silently. The chat announcement is skipped in that case.
+    ev = { id: uid(), ...payload };
+    toast('Saved on this device — will sync when back online. 📴');
+  }
+  saveEvents(getEvents().concat([ev]));
   closeModal('add-event-modal');
   renderCalendar();
   renderMiniCal();
   scheduleReminders();
-  toast('Event added! 🎯');
 }
 
-// A manually-added calendar event lives only in this device's localStorage
-// (fam_events). The shared family chat is the one server-synced surface
-// everyone sees, so we post the new event there to notify the group. Bulk
-// imports (school feeds, timetable) call saveEvents() directly and deliberately
-// skip this, so they never flood the chat. Fire-and-forget: the event is
-// already saved, so a chat hiccup must not block the add or throw on the
-// calendar flow.
-function announceEventToChat(ev) {
-  if (!ev || !ev.title) return;
-  if (!window.auth || typeof window.auth.sendChatMessage !== 'function') return;
-  try {
-    const catIcon = { school: '🏫', sports: '⚽', arts: '🎨', social: '👫', other: '⭐' };
-    const when = ev.time
-      ? `${formatLong(parseIso(ev.date))} at ${fmt12(ev.time)}`
-      : `${formatLong(parseIso(ev.date))} (all day)`;
-    const kidName = ev.kidId ? kidNameFor(ev.kidId) : '';
-    const forWho = kidName ? ` for ${kidName}` : '';
-    const text = `📅 New event${forWho}: ${catIcon[ev.category] || '📌'} ${ev.title} — ${when}`;
-    Promise.resolve(window.auth.sendChatMessage(text)).catch(() => {});
-  } catch (_) { /* never let the announcement break adding an event */ }
+/* Fetch the family's server events, then upload anything still sitting in
+   localStorage without a server id ('ev_' prefix): legacy pre-migration events
+   (one-time migration) and offline-queued adds. Uploads are silent — no chat
+   flood — and dedup by date|time|title|kid so a re-run never duplicates.
+   Queued back-to-back (bulk imports call this too) so runs never interleave. */
+let famEventsSync = null;
+function loadFamilyEvents() {
+  const run = async () => {
+    let serverEvents;
+    try {
+      serverEvents = await window.auth.getCalendarEvents();
+    } catch (e) {
+      return; // offline — keep rendering the localStorage mirror
+    }
+    const evKey = (ev) => `${ev.date}|${ev.time || ''}|${String(ev.title || '').trim().toLowerCase()}|${ev.kidId || ''}`;
+    const seen = new Set(serverEvents.map(evKey));
+    const pending = [];
+    for (const ev of getEvents()) {
+      if (String(ev.id).startsWith('ev_') || seen.has(evKey(ev))) continue;
+      try {
+        const res = await window.auth.addCalendarEvent({
+          title: ev.title, date: ev.date, time: ev.time || '', endTime: ev.endTime || '',
+          notes: ev.notes || '', category: ev.category, kidId: ev.kidId || null, silent: true,
+        });
+        serverEvents.push(res.event);
+        seen.add(evKey(res.event));
+      } catch (e) {
+        if (e && e.status) continue; // server rejected it (e.g. bad legacy date) — drop, don't retry forever
+        pending.push(ev); // network hiccup — keep locally, retried next load
+      }
+    }
+    saveEvents(serverEvents.concat(pending));
+    renderCalendar();
+    renderMiniCal();
+    renderTodayScreen();
+    scheduleReminders();
+  };
+  famEventsSync = (famEventsSync || Promise.resolve()).then(run, run);
+  return famEventsSync;
 }
 
 function showDetail(id) {
@@ -1154,7 +1191,9 @@ function showDetail(id) {
       }
     }
   } else {
-    deleteBtn.style.display = '';
+    // Manual events are family-shared on the server now, and DELETE is
+    // parent-only there — hide the button for kids instead of letting it 403.
+    deleteBtn.style.display = isKidSession() ? 'none' : '';
     if (lockHint) lockHint.style.display = 'none';
   }
 
@@ -1179,6 +1218,17 @@ async function deleteCurrentEvent() {
       toast(`❌ ${err.message || 'Could not remove that event.'}`);
     }
     return;
+  }
+  // Server-synced manual event ('ev_' id): delete on the server first so it
+  // disappears everywhere (iOS too). Events without a server id are still
+  // local-only (offline-queued) and just get dropped from the mirror.
+  if (String(activeEventId).startsWith('ev_')) {
+    try {
+      await window.auth.deleteCalendarEvent(activeEventId);
+    } catch (err) {
+      toast(`❌ ${err.message || 'Could not delete that event.'}`);
+      return;
+    }
   }
   saveEvents(getEvents().filter(e => e.id !== activeEventId));
   closeModal('event-detail-modal');
@@ -1727,6 +1777,7 @@ function applyParsedSchedule() {
   }
 
   saveEvents(events);
+  loadFamilyEvents(); // push the new local events to the server (silent — no chat flood)
   closeModal('parse-modal');
   renderCalendar();
   renderMiniCal();
@@ -3808,6 +3859,7 @@ async function famImportSchoolData(payload) {
 
       if (result.eventsAdded > 0) {
         saveEvents(events);
+        loadFamilyEvents(); // push to the server (silent — no chat flood)
         renderCalendar();
         renderMiniCal();
       }

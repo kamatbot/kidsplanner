@@ -51,7 +51,12 @@ function uid() {
 function load(key)        { try { return JSON.parse(localStorage.getItem(key)) || null; } catch { return null; } }
 function save(key, val)   { localStorage.setItem(key, JSON.stringify(val)); }
 
-function getEvents()   { return load('fam_events')   || []; }
-function saveEvents(e) { save('fam_events', e); }
+/* Manual family events live on the server (/api/calendar/events — shared with
+   iOS; see loadFamilyEvents() in app.js). getEvents() reads the in-memory copy
+   synchronously; localStorage 'fam_events' is the offline mirror and, for
+   events without the server's 'ev_' id prefix, the pending-upload queue. */
+let famEventsCache = null; // null until loadFamilyEvents() resolves
+function getEvents()   { return famEventsCache || load('fam_events') || []; }
+function saveEvents(e) { famEventsCache = e; save('fam_events', e); }
 function getSchedules(){ return load('fam_schedules')|| []; }
 function saveSched(s)  { save('fam_schedules', s); }
