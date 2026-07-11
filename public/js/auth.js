@@ -403,6 +403,22 @@
     });
   }
 
+  /* ---------- family calendar events (manual appointments, server-synced) ---------- */
+  async function getCalendarEvents() {
+    const data = await api("/api/calendar/events", { method: "GET" });
+    return (data && data.events) || [];
+  }
+
+  // payload: {title, date, time, endTime, notes, category, kidId, silent}
+  // silent:true skips the server's family-chat announcement (bulk imports).
+  async function addCalendarEvent(payload) {
+    return api("/api/calendar/events", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function deleteCalendarEvent(id) {
+    return api("/api/calendar/events/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
   /* ---------- homework (Phase 3) ---------- */
   async function getHomework(opts) {
     const params = new URLSearchParams();
@@ -598,6 +614,9 @@
     unsubscribeCalendarFeed,
     syncCalendar,
     hideSchoolEvent,
+    getCalendarEvents,
+    addCalendarEvent,
+    deleteCalendarEvent,
     backupCodeSignIn,
     getCredentials,
     renameCredential,
