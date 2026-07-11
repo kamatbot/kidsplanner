@@ -2,6 +2,10 @@
    "Horizon" palette (2026-07 refresh) */
 
 :root {
+  /* Keep UA form controls (buttons, inputs, selects) in the same scheme as
+     the tokens — without this, dark mode renders light-scheme native controls
+     (white button faces, black control text) under the dark palette. */
+  color-scheme: light;
   --bg: #f1efec;
   --sidebar: #f8f6f3;
   --panel: #ffffff;
@@ -29,6 +33,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --bg: #211f1d;
   --sidebar: #262421;
   --panel: #2c2926;
