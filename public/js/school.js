@@ -95,7 +95,7 @@ function renderSchoolSettings() {
   const feedCols = `grid-template-columns:minmax(0,1fr) repeat(${kids.length},minmax(56px,72px))`;
   html += '<div class="school-feed-table">';
   html += `<div class="school-feed-row school-feed-hdr" style="${feedCols}">
-      <span></span>${kids.map(k => `<span class="school-feed-kid-hdr" style="color:${k.color}">${esc(k.name)}</span>`).join('')}
+      <span></span>${kids.map(k => `<span class="school-feed-kid-hdr" style="color:${kidColorFor(k.id) || k.color}">${esc(k.name)}</span>`).join('')}
     </div>`;
   builtin.forEach(feed => {
     html += `<div class="school-feed-row" style="${feedCols}">
@@ -117,7 +117,7 @@ function renderSchoolSettings() {
       const kid = kids.find(k => k.id === s.kidId);
       return `<div class="custom-feed-row">
           <span class="custom-feed-label">${esc(s.customName || 'Custom calendar')}${s.deadline ? ' <span class="school-feed-deadline-tag">deadlines</span>' : ''}</span>
-          <span class="custom-feed-kid" style="color:${kid ? kid.color : '#6C63FF'}">${kid ? esc(kid.name) : ''}</span>
+          <span class="custom-feed-kid" style="color:${kid ? (kidColorFor(kid.id) || kid.color) : 'var(--accent)'}">${kid ? esc(kid.name) : ''}</span>
           <button type="button" class="kid-row-remove" title="Remove" onclick="handleRemoveCustomFeed('${s.id}')">×</button>
         </div>`;
     }).join('');
@@ -281,7 +281,7 @@ function renderSchoolStatsWidget() {
     const lowBalance = hasBalance && s.canteenBalance < LOW_BALANCE_THRESHOLD;
     const balance = hasBalance ? `฿${s.canteenBalance}` : '—';
     return `<div class="school-stats-row">
-      <span class="school-stats-swatch" style="background:${k.color || '#ccc'}"></span>
+      <span class="school-stats-swatch" style="background:${kidColorFor(k.id) || k.color || 'var(--border)'}"></span>
       <span class="school-stats-name">${esc(k.name)}</span>
       <span class="school-stats-metric" title="House points">🏆 ${points}</span>
       <span class="school-stats-metric" title="Attendance (punctuality)">✅ ${attend}${esc(punctual)}</span>

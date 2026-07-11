@@ -513,7 +513,7 @@ function renderKidSwitcher() {
     const mine = kids.find((k) => k.id === sessionUser.kidId);
     activeKidId = sessionUser.kidId || null;
     const html = mine
-      ? `<span class="kid-chip active" style="--kid-color:${mine.color}">${esc(mine.name)}</span>`
+      ? `<span class="kid-chip active" style="--kid-color:${kidColorFor(mine.id) || mine.color}">${esc(mine.name)}</span>`
       : '';
     els.forEach((el) => { el.innerHTML = html; });
     return;
@@ -521,7 +521,7 @@ function renderKidSwitcher() {
 
   const chips = [`<button class="kid-chip${activeKidId === null ? ' active' : ''}" onclick="setActiveKid(null)">All kids</button>`]
     .concat(kids.map((k) =>
-      `<button class="kid-chip${activeKidId === k.id ? ' active' : ''}" style="--kid-color:${k.color}" onclick="setActiveKid('${k.id}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
+      `<button class="kid-chip${activeKidId === k.id ? ' active' : ''}" style="--kid-color:${kidColorFor(k.id) || k.color}" onclick="setActiveKid('${k.id}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
     ));
   els.forEach((el) => { el.innerHTML = chips.join(''); });
 }
@@ -610,7 +610,7 @@ function renderManageFamily() {
     const kids = currentFamily.kids || [];
     el.innerHTML = kids.map((k) =>
       `<div class="kid-row">
-        <span class="kid-row-swatch" style="background:${k.color}"></span>
+        <span class="kid-row-swatch" style="background:${kidColorFor(k.id) || k.color}"></span>
         <span class="kid-row-name">${esc(k.name)}</span>
         <span class="kid-row-grade">${esc(k.grade || '')}</span>
         <button class="kid-row-remove" onclick="handleRemoveKid('${k.id}')" title="Remove kid">×</button>
@@ -999,7 +999,7 @@ function renderMoodleIdsSettings() {
     const mapping = schoolKidMappings.find((m) => m.kidId === k.id);
     const value = mapping ? esc(mapping.moodleUserId) : '';
     return `<div class="kid-row" id="moodle-id-row-${k.id}">
-      <span class="kid-row-swatch" style="background:${k.color}"></span>
+      <span class="kid-row-swatch" style="background:${kidColorFor(k.id) || k.color}"></span>
       <span class="kid-row-name">${esc(k.name)}</span>
       <input type="text" inputmode="numeric" placeholder="Moodle id, e.g. 14197"
         id="moodle-id-input-${k.id}" value="${value}" style="width:140px;margin:0 8px">

@@ -33,14 +33,15 @@
 | Uploads | yes — timetable/homework photos (JPG/PNG/PDF), feeds existing Claude parse pipeline | multer; native document scanner on iOS |
 | Min iOS | latest major minus 1 | modern SwiftUI @Observable |
 
-## Design (FINAL)
+## Design (FINAL — Horizon redesign, user-confirmed 2026-07-11; spec: docs/design/redesign/)
 | Decision | Value |
 |---|---|
-| Language | Horizon re-skin — reuse token/motion/haptics/component structure, evolve KidsPlanner's existing palette into it |
-| Palette | Carry from KidsPlanner: primary `#6C63FF` (purple, dark `#5A52D5`), secondary `#FF6B9D` (pink), accent `#4ECDC4` (teal); bg `#F0EEFF`, panel white. Dark-mode hexes: TBD during design pass (adaptive tokens). |
-| Hero gradient | purple→pink (`#6C63FF`→`#FF6B9D`), reserved for one hero element/screen |
-| Dark mode | both at launch (marketing screenshots in light mode) |
-| Typography | SF Pro + SF Mono for numbers (drop KidsPlanner's Nunito web font on native; web app may keep Nunito) |
+| Language | Full Horizon adoption per "Fam ETC Redesign.dc.html" (claude.ai/design d048593a…): one structure everywhere — sidebar nav → main content → docked family chat (slim-strip collapse on Homework/Goals/Activities). Today replaces the widget-wall dashboard; learning widgets fold into one "Daily 5" card. |
+| Palette | Horizon tokens 1:1 web+iOS (`public/css/horizon.css` / `Theme.swift`): bg `#f1efec` greige, panel white, accent `#6f43d6` violet (the ONLY interactive color), coral `#f0704f` partner; dark mode = same tokens re-resolved (accent `#b98cff`). Per-kid identity = categorical palette by kid order (kid 1 teal, kid 2 amber). Green/red strictly semantic. |
+| Hero gradient | coral→violet, reserved for ONE momentum element per screen |
+| Dark mode | both at launch (marketing screenshots in light mode); web toggle Auto/Light/Dark in Settings |
+| Typography | Space Grotesk (UI) + JetBrains Mono (numerals, 11px uppercase micro-labels), self-hosted on web (`public/fonts/`) and bundled on iOS |
+| Superseded | The original KidsPlanner-carryover palette (purple `#6C63FF`/pink/teal, purple→pink hero) and the 2026-07-04 "no docked chat on iPad" revert — both replaced by this redesign. |
 
 ## Monetization
 | Decision | Value | → Components |
