@@ -27,3 +27,4 @@ ios/build/
 ios/DerivedData/
 
 *.tar.gz
+.serena/
