@@ -52,3 +52,101 @@ test("removeEvent: deletes, and is per-family isolated", () => {
   assert.equal(events.listEvents(f1.id).length, 0);
   assert.ok(events.removeEvent(f1.id, "missing").error);
 });
+
+// ----- multi-day + recurring (server-side expansion) -----
+
+test("addEvent: endDate before date is rejected; same-as-date/absent stored as null", () => {
+  const f = fam();
+  assert.equal(
+    events.addEvent(f.id, { title: "Trip", date: "2026-07-10", endDate: "2026-07-09" }).error,
+    "End date can't be before the start date."
+  );
+  const same = events.addEvent(f.id, { title: "Trip", date: "2026-07-10", endDate: "2026-07-10" }).event;
+  assert.equal(same.endDate, null);
+  const absent = events.addEvent(f.id, { title: "Trip", date: "2026-07-10" }).event;
+  assert.equal(absent.endDate, null);
+  const multi = events.addEvent(f.id, { title: "Trip", date: "2026-07-10", endDate: "2026-07-14" }).event;
+  assert.equal(multi.endDate, "2026-07-14");
+});
+
+test("addEvent: repeat defaults/validates to 'none', repeatUntil invalid -> null", () => {
+  const f = fam();
+  const noRepeat = events.addEvent(f.id, { title: "Once", date: "2026-07-10" }).event;
+  assert.equal(noRepeat.repeat, "none");
+  const bogus = events.addEvent(f.id, { title: "Once", date: "2026-07-10", repeat: "yearly" }).event;
+  assert.equal(bogus.repeat, "none");
+  const weekly = events.addEvent(f.id, { title: "Class", date: "2026-07-10", repeat: "weekly", repeatUntil: "nope" }).event;
+  assert.equal(weekly.repeat, "weekly");
+  assert.equal(weekly.repeatUntil, null);
+});
+
+test("listEvents: multi-day event intersecting window is included", () => {
+  const f = fam();
+  events.addEvent(f.id, { title: "Camp", date: "2026-07-05", endDate: "2026-07-08" });
+  // window starts after the event's start date but before its end date
+  const win = events.listEvents(f.id, { from: "2026-07-07", to: "2026-07-31" });
+  assert.deepEqual(win.map((e) => e.title), ["Camp"]);
+  // window entirely before the event's span
+  assert.equal(events.listEvents(f.id, { from: "2026-06-01", to: "2026-07-04" }).length, 0);
+});
+
+test("listEvents: weekly recurring expansion within an explicit window", () => {
+  const f = fam();
+  events.addEvent(f.id, { title: "Piano", date: "2026-07-01", time: "16:00", repeat: "weekly" });
+  const win = events.listEvents(f.id, { from: "2026-07-01", to: "2026-07-31" });
+  // 07-01, 08, 15, 22, 29
+  assert.deepEqual(win.map((e) => e.date), ["2026-07-01", "2026-07-08", "2026-07-15", "2026-07-22", "2026-07-29"]);
+  for (const occ of win) {
+    assert.equal(occ.recurring, true);
+    assert.equal(occ.seriesId, win[0].id);
+  }
+});
+
+test("listEvents: biweekly recurring steps by 14 days", () => {
+  const f = fam();
+  events.addEvent(f.id, { title: "Tutor", date: "2026-07-01", repeat: "biweekly" });
+  const win = events.listEvents(f.id, { from: "2026-07-01", to: "2026-08-15" });
+  assert.deepEqual(win.map((e) => e.date), ["2026-07-01", "2026-07-15", "2026-07-29", "2026-08-12"]);
+});
+
+test("listEvents: monthly recurring skips months without that day-of-month", () => {
+  const f = fam();
+  events.addEvent(f.id, { title: "Rent due", date: "2026-01-31", repeat: "monthly" });
+  const win = events.listEvents(f.id, { from: "2026-01-01", to: "2026-05-31" });
+  // Feb has no 31st (skipped); Mar/May have 31, Apr has only 30 (skipped)
+  assert.deepEqual(win.map((e) => e.date), ["2026-01-31", "2026-03-31", "2026-05-31"]);
+});
+
+test("listEvents: repeatUntil caps expansion", () => {
+  const f = fam();
+  events.addEvent(f.id, { title: "Swim", date: "2026-07-01", repeat: "weekly", repeatUntil: "2026-07-10" });
+  const win = events.listEvents(f.id, { from: "2026-07-01", to: "2026-07-31" });
+  assert.deepEqual(win.map((e) => e.date), ["2026-07-01", "2026-07-08"]);
+});
+
+test("listEvents: recurring multi-day occurrence carries seriesId, recurring flag, and shifted endDate", () => {
+  const f = fam();
+  const created = events.addEvent(f.id, {
+    title: "Long weekend", date: "2026-07-03", endDate: "2026-07-05", repeat: "weekly",
+  }).event;
+  const win = events.listEvents(f.id, { from: "2026-07-01", to: "2026-07-31" });
+  assert.ok(win.length >= 2);
+  const first = win[0];
+  assert.equal(first.id, created.id);
+  assert.equal(first.seriesId, created.id);
+  assert.equal(first.recurring, true);
+  assert.equal(first.date, "2026-07-03");
+  assert.equal(first.endDate, "2026-07-05");
+  const second = win[1];
+  assert.equal(second.date, "2026-07-10");
+  assert.equal(second.endDate, "2026-07-12");
+});
+
+test("listEvents: repeat:'none' behavior is unchanged (single-day intersection only)", () => {
+  const f = fam();
+  events.addEvent(f.id, { title: "One-off", date: "2026-07-15" });
+  const win = events.listEvents(f.id, { from: "2026-07-01", to: "2026-07-31" });
+  assert.equal(win.length, 1);
+  assert.equal(win[0].recurring, undefined);
+  assert.equal(win[0].seriesId, undefined);
+});
