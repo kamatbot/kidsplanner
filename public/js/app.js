@@ -499,9 +499,12 @@ async function handleRemoveKid(kidId) {
   }
 }
 
+// Renders into every .kid-switcher on the page — Calendar and Homework each
+// have their own header instance (canvas 1b/1c), sharing the one activeKidId
+// state, so both stay in sync no matter which one triggered the change.
 function renderKidSwitcher() {
-  const el = document.getElementById('kid-switcher');
-  if (!el || !currentFamily) return;
+  const els = document.querySelectorAll('.kid-switcher');
+  if (!els.length || !currentFamily) return;
   const kids = currentFamily.kids || [];
 
   // A kid session is locked to its own profile — no "All kids" view and no
@@ -509,17 +512,18 @@ function renderKidSwitcher() {
   if (isKidSession()) {
     const mine = kids.find((k) => k.id === sessionUser.kidId);
     activeKidId = sessionUser.kidId || null;
-    el.innerHTML = mine
+    const html = mine
       ? `<span class="kid-chip active" style="--kid-color:${mine.color}">${esc(mine.name)}</span>`
       : '';
+    els.forEach((el) => { el.innerHTML = html; });
     return;
   }
 
   const chips = [`<button class="kid-chip${activeKidId === null ? ' active' : ''}" onclick="setActiveKid(null)">All kids</button>`]
     .concat(kids.map((k) =>
-      `<button class="kid-chip${activeKidId === k.id ? ' active' : ''}" style="--kid-color:${k.color}" onclick="setActiveKid('${k.id}')">${esc(k.name)}</button>`
+      `<button class="kid-chip${activeKidId === k.id ? ' active' : ''}" style="--kid-color:${k.color}" onclick="setActiveKid('${k.id}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
     ));
-  el.innerHTML = chips.join('');
+  els.forEach((el) => { el.innerHTML = chips.join(''); });
 }
 
 function setActiveKid(kidId) {
@@ -528,6 +532,10 @@ function setActiveKid(kidId) {
   renderCalendar();
   renderMiniCal();
   renderSchoolStatsWidget();
+  // Homework has its own kid-switcher instance now (canvas 1c) sharing this
+  // same state — re-render it too so switching kid from either screen stays
+  // in sync without needing a tab switch.
+  if (document.getElementById('homework-list')) renderHomeworkHub();
 }
 
 function renderManageFamily() {
@@ -828,7 +836,16 @@ function visibleEvents() {
 
 function renderCalendar() {
   currentView === 'week' ? renderWeekView() : renderMonthView();
+  renderCalendarFooter();
 }
+
+// Horizon event styling: a left bar in the owning kid's color (violet for
+// school/whole-family events with no kidId), mono start time, and an
+// "all day" marker for events with no time set — shared by week + month.
+function eventBarColor(ev) {
+  return ev.kidId ? (kidColorFor(ev.kidId) || 'var(--c-violet)') : 'var(--c-violet)';
+}
+const allDayIconSvg = '<svg class="evt-allday-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"></path><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"></path></svg>';
 
 function renderWeekView() {
   const today  = isoDate(new Date());
@@ -849,19 +866,20 @@ function renderWeekView() {
     const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="week-day-col${isT?' is-today':''}${isW?' is-weekend':''}">
       <div class="week-day-col-hdr">
-        <div class="wday-name">${days[i]}</div>
+        <div class="wday-name">${days[i]}${isT ? ' · today' : ''}</div>
         <div class="wday-num">${d.getDate()}</div>
       </div>
       <div class="week-day-events">
-        ${dueHw.map(h => `
-          <div class="week-evt hw-due-chip" onclick="switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">
+        ${dueHw.map(h => {
+          const overdue = h.dueDate < today;
+          return `<div class="week-evt hw-due-chip${overdue ? ' hw-due-overdue' : ''}" onclick="switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">
             <span class="hw-due-icon">📚</span>${esc(h.title)}
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
         ${evs.map(ev => `
-          <div class="week-evt c-${ev.category}${ev.source === 'school' ? ' school-evt' : ''}" onclick="showDetail('${ev.id}')">
-            ${ev.time ? `<span class="evt-time">${fmt12(ev.time)}</span>` : ''}
-            ${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}
-            ${esc(ev.title)}
+          <div class="week-evt${ev.source === 'school' ? ' school-evt' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="showDetail('${ev.id}')">
+            <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
+            <span class="evt-title">${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${esc(ev.title)}</span>
           </div>`).join('')}
         <button class="week-add-btn" onclick="openAddEventModal('${ds}')">+ Add</button>
       </div>
@@ -869,6 +887,33 @@ function renderWeekView() {
   }
   html += '</div>';
   document.getElementById('calendar-grid').innerHTML = html;
+}
+
+// Footer legend + sync status (canvas 1b) — kid colors from the same family
+// order as kidColorFor, plus real school-feed sync state (schoolFeedsInfo /
+// schoolEvents), not invented numbers.
+function renderCalendarFooter() {
+  const el = document.getElementById('calendar-footer');
+  if (!el) return;
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const kidLegend = kids.map((k) =>
+    `<span class="cal-legend-item"><span class="cal-legend-swatch" style="background:${kidColorFor(k.id) || 'var(--c-violet)'}"></span>${esc(k.name)}</span>`
+  ).join('');
+
+  const monday = mondayOf(new Date());
+  const sunday = new Date(+monday + 6 * 86400000);
+  const weekEventCount = schoolEvents
+    .map(normalizeSchoolEvent)
+    .filter((ev) => ev.date >= isoDate(monday) && ev.date <= isoDate(sunday)).length;
+  const syncedText = (schoolFeedsInfo && schoolFeedsInfo.lastSyncAt)
+    ? `Synced ${timeAgo(schoolFeedsInfo.lastSyncAt)} · ${weekEventCount} school event${weekEventCount === 1 ? '' : 's'} this week`
+    : 'Not synced yet';
+
+  el.innerHTML = `
+    ${kidLegend}
+    <span class="cal-legend-item"><span class="cal-legend-swatch" style="background:var(--c-violet)"></span>School feed</span>
+    <span class="cal-legend-item"><span class="cal-legend-swatch cal-legend-dashed"></span>Homework due</span>
+    <span class="cal-sync-status micro-label">${esc(syncedText)}</span>`;
 }
 
 function renderMonthView() {
@@ -898,12 +943,13 @@ function renderMonthView() {
     const evs  = events.filter(e => e.date === ds);
     const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="month-day${isT?' is-today':''}" onclick="openAddEventModal('${ds}')">
-      <span class="mday-num">${isT ? `<span>${day}</span>` : day}</span>
-      ${dueHw.slice(0,3).map(h =>
-        `<span class="month-evt hw-due-chip" onclick="event.stopPropagation();switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">📚 ${esc(h.title)}</span>`
-      ).join('')}
-      ${evs.slice(0,3).map(ev =>
-        `<span class="month-evt chip-${ev.category}${ev.source === 'school' ? ' school-evt' : ''}" onclick="event.stopPropagation();showDetail('${ev.id}')">${ev.source === 'school' ? '🎓 ' : ''}${esc(ev.title)}</span>`
+      <span class="mday-num">${day}</span>
+      ${dueHw.slice(0,3).map((h) => {
+        const overdue = h.dueDate < today;
+        return `<span class="month-evt hw-due-chip${overdue ? ' hw-due-overdue' : ''}" onclick="event.stopPropagation();switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">📚 ${esc(h.title)}</span>`;
+      }).join('')}
+      ${evs.slice(0,3).map((ev) =>
+        `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}')">${ev.source === 'school' ? '🎓 ' : ''}${esc(ev.title)}</span>`
       ).join('')}
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
@@ -2302,47 +2348,93 @@ function renderHomeworkHub() {
     return;
   }
 
-  const groups = groupHomeworkByDueDate(items);
-  const sections = [
-    ['overdue', '🔴 Overdue'],
-    ['today', '🟡 Today'],
-    ['thisWeek', '📅 This week'],
-    ['later', '🗓️ Later'],
-  ];
+  // Overdue/Due today/This week/Later come from the shared groupHomeworkByDueDate
+  // (pending items only — same bucketing Today's homework widget uses, see that
+  // function's header comment). "Done this week" is computed separately here
+  // rather than folded into groupHomeworkByDueDate, so completed items don't
+  // also vanish from Today's due-list (out of scope for this pass).
+  const groups = groupHomeworkByDueDate(items.filter((h) => h.status !== 'done'));
+  const mondayIso = isoDate(mondayOf(new Date()));
+  // ponytail: "done this week" uses updatedAt as a completion-time proxy (any
+  // edit bumps it, not just the done toggle) — there's no separate completedAt
+  // field. Good enough; revisit if stale edits make this noisy.
+  const doneThisWeek = items.filter((h) => h.status === 'done' && (h.updatedAt || h.dueDate || '').slice(0, 10) >= mondayIso);
 
-  list.innerHTML = sections
-    .filter(([key]) => groups[key].length)
-    .map(([key, label]) => `
-      <div class="homework-group">
-        <h4 class="homework-group-title">${label} <span class="homework-group-count">${groups[key].length}</span></h4>
-        <div class="homework-group-items">
-          ${groups[key].sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(renderHomeworkRow).join('')}
-        </div>
+  const sections = [
+    ['overdue', 'Overdue', groups.overdue],
+    ['today', 'Due today', groups.today],
+    ['thisWeek', 'This week', groups.thisWeek],
+    ['later', 'Later', groups.later],
+    ['done', 'Done this week', doneThisWeek],
+  ].filter(([, , rows]) => rows.length);
+
+  if (!sections.length) {
+    list.innerHTML = `<p class="text-muted">${isKidSession() ? "Nothing due — you're all caught up! 🎉" : 'Nothing due right now.'}</p>`;
+    return;
+  }
+
+  list.innerHTML = sections.map(([key, label, rows]) => `
+    <div class="homework-group">
+      <div class="homework-group-title micro-label homework-group-title-${key}">
+        <span>${label}</span><span class="homework-group-count">${rows.length}</span>
       </div>
-    `).join('');
+      <div class="homework-group-items">
+        ${rows.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(renderHomeworkRow).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// "Plan a work session" from a homework row (canvas 1c's inline hint) — thin
+// wrapper around the existing detail-modal action (planWorkSessionForCurrentHomework)
+// so the row doesn't need its own copy of that logic.
+function planWorkSessionFor(id) {
+  activeHomeworkId = id;
+  planWorkSessionForCurrentHomework();
+}
+
+function homeworkMetaLine(item) {
+  const checklistTotal = (item.checklist || []).length;
+  if (checklistTotal) {
+    const done = item.checklist.filter((c) => c.done).length;
+    return `${done} of ${checklistTotal} steps done`;
+  }
+  if (item.source === 'school') {
+    const feed = item.subject ? esc(item.subject) : 'the school calendar';
+    const effort = item.effortMin ? ` · ~${Math.max(1, Math.round(item.effortMin / 60))}h effort` : '';
+    return `Synced from ${feed}${effort}`;
+  }
+  if (item.effortMin) return `~${item.effortMin} min effort`;
+  if (isKidSession() || item.status === 'done') return '';
+  return `<a href="#" class="hw-meta-link" onclick="event.stopPropagation();planWorkSessionFor('${item.id}');return false">Plan a work session → adds a calendar block</a>`;
 }
 
 function renderHomeworkRow(item) {
   const done = item.status === 'done';
-  const checklistDone = (item.checklist || []).filter((c) => c.done).length;
-  const checklistTotal = (item.checklist || []).length;
-  const kidLabel = (!isKidSession() && !activeKidId) ? `<span class="hw-kid-tag">${esc(kidNameFor(item.kidId))}</span>` : '';
+  const today = isoDate(new Date());
+  const overdue = !done && item.dueDate && item.dueDate < today;
+  const isToday = !done && item.dueDate === today;
+  const dueClass = overdue ? 'hw-due-overdue' : (isToday ? 'hw-due-today' : '');
+  const dueText = item.dueDate ? (isToday ? 'Today' : esc(formatShort(parseIso(item.dueDate)))) : '';
+  const kidColor = item.kidId ? kidColorFor(item.kidId) : null;
+  const kidTag = (!isKidSession() && item.kidId) ? `
+    <span class="hw-kid-tag" style="color:${kidColor || 'var(--text-2)'}">
+      <span class="hw-kid-dot" style="background:${kidColor || 'var(--text-2)'}"></span>${esc(kidNameFor(item.kidId))}
+    </span>` : '';
+
   return `
     <div class="homework-row${done ? ' hw-done' : ''}" data-hw-id="${item.id}">
-      <button class="hw-check${done ? ' checked' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')" title="${done ? 'Mark as not done' : 'Mark as done'}" aria-label="Toggle done">${done ? '✓' : ''}</button>
+      <button class="hw-check${done ? ' checked' : ''}${overdue ? ' hw-check-overdue' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')" title="${done ? 'Mark as not done' : 'Mark as done'}" aria-label="Toggle done">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}</button>
       <div class="hw-row-main" onclick="openHomeworkDetail('${item.id}')">
         <div class="hw-row-title-line">
-          ${homeworkSourceBadge(item.source)}
           <span class="hw-row-title">${esc(item.title)}</span>
-          ${kidLabel}
+          ${homeworkSourceBadge(item.source)}
         </div>
-        <div class="hw-row-meta">
-          ${item.subject ? `<span class="hw-chip hw-subject-chip">${esc(item.subject)}</span>` : ''}
-          <span class="hw-chip hw-status-chip hw-status-${item.status}">${item.status === 'in_progress' ? 'In progress' : (item.status === 'done' ? 'Done' : 'To do')}</span>
-          <span class="hw-due-label">${formatShort(parseIso(item.dueDate))}${item.dueTime ? ' · ' + fmt12(item.dueTime) : ''}</span>
-          ${checklistTotal ? `<span class="hw-checklist-progress">${checklistDone}/${checklistTotal} steps</span>` : ''}
-        </div>
+        <div class="hw-row-sub">${homeworkMetaLine(item)}</div>
       </div>
+      ${item.subject ? `<span class="hw-chip hw-subject-chip">${esc(item.subject)}</span>` : ''}
+      ${kidTag}
+      <span class="hw-due-label ${dueClass}">${dueText}</span>
     </div>`;
 }
 

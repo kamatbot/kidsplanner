@@ -579,12 +579,21 @@ html { font-size: 16px; }
 .streak-ring-label { font-family: "JetBrains Mono", monospace; }
 
 /* ============================================================
-   MINI CALENDAR / UPLOADS / STREAK — live inside the Calendar tab for now
-   (Calendar screen restyle is phase W2); functional, token-themed.
+   PAGE HEADERS — shared by Calendar + Homework (canvas 1b/1c): title, kid
+   chips, a spacer, then screen-specific controls, all in one row.
+============================================================ */
+.page-title { font-size: 25px; font-weight: 700; letter-spacing: -.02em; flex: none; }
+.page-header-spacer { flex: 1; }
+.cal-page-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+
+/* ============================================================
+   MINI CALENDAR / UPLOADS — secondary tools rail beside the Calendar grid
+   (not shown in canvas 1b, kept so nothing already shipped gets dropped).
 ============================================================ */
 .calendar-tab-layout { display: flex; gap: 16px; align-items: flex-start; }
-.calendar-side { width: 220px; flex: none; display: flex; flex-direction: column; gap: 14px; }
-.calendar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.calendar-tools { width: 220px; flex: none; display: flex; flex-direction: column; gap: 14px; }
+.calendar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.calendar-grid-scroll { overflow-x: auto; }
 
 .mini-calendar-card { padding: 14px; }
 .mini-cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -630,28 +639,22 @@ html { font-size: 16px; }
 .upload-item:hover .upload-delete-btn { opacity: 1; }
 .upload-delete-btn:hover { color: var(--c-red); }
 
-.streak-card { text-align: center; padding: 18px 14px; }
-.streak-icon { font-size: 32px; line-height: 1; }
-.streak-count { font-family: "JetBrains Mono", monospace; font-size: 40px; font-weight: 700; color: var(--coral); line-height: 1.1; }
-.streak-label { font-size: 14px; font-weight: 700; }
-.streak-sublabel { font-size: 11px; color: var(--text-2); margin-top: 4px; line-height: 1.4; }
-
 /* ============================================================
-   CALENDAR (week/month) — token-themed, W2 owns the full restyle
+   CALENDAR (week/month) — canvas 1b
 ============================================================ */
-.calendar-section { padding: 20px; }
-.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-.cal-nav { display: flex; align-items: center; gap: 12px; }
-.cal-title { font-size: 17px; font-weight: 700; min-width: 220px; text-align: center; }
 .cal-nav-btn {
   width: 32px; height: 32px; border-radius: 50%;
   border: 1.5px solid var(--border); background: var(--panel); font-size: 17px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; transition: all .15s;
 }
 .cal-nav-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.cal-pager {
+  display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 12px; flex: none;
+}
+.cal-title { white-space: nowrap; }
 
-.cal-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.cal-view-btns { display: flex; background: var(--panel-2); border-radius: 10px; padding: 3px; gap: 2px; }
+.cal-view-btns { display: flex; background: var(--panel-2); border-radius: 10px; padding: 3px; gap: 2px; flex: none; }
 .view-btn {
   padding: 6px 14px; border: none; background: transparent; border-radius: 8px;
   font-family: inherit; font-weight: 600; font-size: 13px;
@@ -659,25 +662,28 @@ html { font-size: 16px; }
 }
 .view-btn.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow-sm); }
 
-.btn-add-event {
-  background: var(--accent); color: var(--on-accent); border: none; padding: 9px 16px; border-radius: var(--radius-sm);
-  font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
-}
-.btn-add-event:hover { filter: brightness(1.08); }
-
-.week-view { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
+.week-view { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; min-width: 760px; }
 .week-day-col { border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden; min-width: 0; }
 .week-day-col-hdr { padding: 8px 6px; text-align: center; background: var(--panel-2); border-bottom: 1px solid var(--border); }
 .week-day-col-hdr .wday-name { font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); }
-.week-day-col-hdr .wday-num { font-size: 18px; font-weight: 700; line-height: 1.2; }
-.week-day-col.is-today .week-day-col-hdr { background: var(--accent); }
-.week-day-col.is-today .wday-name, .week-day-col.is-today .wday-num { color: var(--on-accent); }
+.week-day-col-hdr .wday-num { font-family: "JetBrains Mono", monospace; font-size: 17px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
+.week-day-col.is-today { border-color: var(--accent); }
+.week-day-col.is-today .week-day-col-hdr { background: var(--accent-soft); }
+.week-day-col.is-today .wday-name, .week-day-col.is-today .wday-num { color: var(--accent); }
 .week-day-col.is-weekend .week-day-col-hdr { background: var(--panel-2); }
 
 .week-day-events { padding: 6px; min-height: 56px; }
-.week-evt { font-size: 11px; font-weight: 600; padding: 4px 7px; border-radius: 5px; margin-bottom: 4px; cursor: pointer; line-height: 1.3; transition: opacity .15s; }
+.week-evt {
+  font-size: 12px; font-weight: 600; padding: 6px 8px; border-radius: 6px; margin-bottom: 6px;
+  cursor: pointer; line-height: 1.3; transition: opacity .15s;
+  background: var(--panel-2); border-left: 3px solid var(--c-violet);
+}
 .week-evt:hover { opacity: .85; }
-.week-evt .evt-time { font-size: 10px; opacity: .75; display: block; }
+.week-evt .evt-time {
+  font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--text-2);
+  display: flex; align-items: center; gap: 4px; margin-bottom: 1px;
+}
+.week-evt .evt-allday-icon { flex: none; }
 
 .week-add-btn {
   width: 100%; background: none; border: 1px dashed var(--border); border-radius: 5px;
@@ -686,7 +692,7 @@ html { font-size: 16px; }
 }
 .week-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-.month-view { display: grid; grid-template-columns: repeat(7,1fr); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.month-view { display: grid; grid-template-columns: repeat(7,1fr); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
 .month-day-hdr {
   padding: 8px; text-align: center; font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700;
   text-transform: uppercase; color: var(--text-2); background: var(--panel-2); border-bottom: 1px solid var(--border);
@@ -696,22 +702,26 @@ html { font-size: 16px; }
 .month-day:hover { background: var(--hover); }
 .month-day.other-month { background: var(--panel-2); }
 .month-day.other-month .mday-num { color: var(--border); }
+.month-day.is-today { background: var(--accent-soft); }
 .month-day.is-today .mday-num {
   background: var(--accent); color: var(--on-accent); border-radius: 50%;
   width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
 }
-.mday-num { font-size: 13px; font-weight: 700; margin-bottom: 4px; display: inline-block; }
-.month-evt { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-bottom: 2px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: opacity .15s; }
+.mday-num { font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; margin-bottom: 4px; display: inline-block; }
+.month-evt {
+  font-size: 11px; font-weight: 600; padding: 2px 6px 2px 7px; border-radius: 4px; margin-bottom: 2px; display: block;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: opacity .15s;
+  background: var(--panel-2); border-left: 3px solid var(--c-violet);
+}
 .month-evt:hover { opacity: .8; }
 .month-more { font-size: 10px; font-weight: 600; color: var(--text-2); padding: 1px 4px; }
 
-/* Event category colors — derived from horizon hues via color-mix so both
-   themes stay correct automatically. */
-.c-school  { background: color-mix(in srgb, var(--c-blue) 16%, var(--panel));   color: var(--c-blue);   border-left: 3px solid var(--c-blue); }
-.c-sports  { background: color-mix(in srgb, var(--c-green) 16%, var(--panel));  color: var(--c-green);  border-left: 3px solid var(--c-green); }
-.c-arts    { background: color-mix(in srgb, var(--c-orange) 16%, var(--panel)); color: var(--c-orange-ink); border-left: 3px solid var(--c-orange); }
-.c-social  { background: color-mix(in srgb, var(--c-amber) 16%, var(--panel));  color: var(--warn);     border-left: 3px solid var(--c-amber); }
-.c-other   { background: color-mix(in srgb, var(--accent) 14%, var(--panel));   color: var(--accent);   border-left: 3px solid var(--accent); }
+/* Footer legend + sync status (canvas 1b) */
+.calendar-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text-2); }
+.cal-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.cal-legend-swatch { width: 8px; height: 8px; border-radius: 2px; }
+.cal-legend-dashed { background: none; border: 1px dashed var(--text-2); }
+.cal-sync-status { margin-left: auto; }
 
 .chip-school  { background: color-mix(in srgb, var(--c-blue) 16%, var(--panel));   color: var(--c-blue); }
 .chip-sports  { background: color-mix(in srgb, var(--c-green) 16%, var(--panel));  color: var(--c-green); }
@@ -940,35 +950,37 @@ html { font-size: 16px; }
   .chat-dock.chat-collapsed .chat-dock-avatars { flex-direction: row; }
   .chat-fab { display: flex; }
   .calendar-tab-layout { flex-direction: column; }
-  .calendar-side { width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .calendar-tools { width: 100%; flex-direction: row; flex-wrap: wrap; }
   .mini-calendar-card { flex: 1; min-width: 200px; }
 }
 
 @media (max-width: 640px) {
-  .week-view { grid-template-columns: repeat(4,1fr); }
   .quiz-options { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
-  .cal-header { flex-direction: column; align-items: flex-start; }
-  .cal-controls { width: 100%; justify-content: space-between; }
+  .cal-page-header, .homework-hub-header { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 420px) {
   .auth-card { padding: 24px 20px; }
-  .week-view { grid-template-columns: repeat(3,1fr); }
 }
 
 /* ============================================================
-   KID SWITCHER (moves to Calendar screen in W2 — lives there for now)
+   KID SWITCHER — Calendar + Homework page headers (canvas 1b/1c) each get
+   their own instance; renderKidSwitcher() updates every .kid-switcher on
+   the page in lockstep, so they always agree on activeKidId.
 ============================================================ */
-.kid-switcher { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.kid-switcher { display: flex; gap: 6px; flex-wrap: wrap; }
 .kid-chip {
   --kid-color: var(--accent);
-  border: 1.5px solid var(--border); background: var(--panel); color: var(--text);
-  padding: 6px 14px; border-radius: 20px; font-family: inherit;
-  font-weight: 600; font-size: 13px; cursor: pointer; transition: all .15s;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
+  padding: 5px 12px; border-radius: 999px; font-family: inherit;
+  font-weight: 600; font-size: 12.5px; cursor: pointer; transition: all .15s;
+  display: inline-flex; align-items: center;
 }
 .kid-chip:hover { border-color: var(--kid-color); }
 .kid-chip.active { background: var(--kid-color); border-color: var(--kid-color); color: #fff; }
+.kid-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kid-color); margin-right: 6px; flex: none; }
+.kid-chip.active .kid-chip-dot { background: #fff; }
 
 /* Manage-family kid rows */
 .kid-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -1036,50 +1048,76 @@ html { font-size: 16px; }
 .feed-guide-panel code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 
 /* ============================================================
-   HOMEWORK HUB
+   HOMEWORK HUB — canvas 1c
 ============================================================ */
-.homework-hub-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.homework-hub-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.homework-hub-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .homework-filter-select {
-  border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px;
-  font-family: inherit; font-weight: 600; font-size: 13px; color: var(--text); background: var(--panel); cursor: pointer;
+  border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px;
+  font-family: inherit; font-weight: 600; font-size: 12.5px; color: var(--text-2); background: var(--panel); cursor: pointer;
 }
-.homework-group { margin-bottom: 20px; }
-.homework-group:last-child { margin-bottom: 0; }
-.homework-group-title { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-.homework-group-count { background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
-.homework-group-items { display: flex; flex-direction: column; gap: 8px; }
+.homework-hub-header .btn-secondary { display: inline-flex; align-items: center; gap: 7px; }
 
-.homework-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); transition: border-color .15s; }
-.homework-row:hover { border-color: var(--accent); }
-.homework-row.hw-done { opacity: .6; }
+.homework-list { display: flex; flex-direction: column; gap: 20px; max-width: 880px; }
+.homework-group-title {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; color: var(--text-2); font-weight: 700;
+}
+.homework-group-title-overdue span:first-child { color: var(--c-red); }
+.homework-group-title-today span:first-child { color: var(--warn); }
+.homework-group-count { color: var(--text-2); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+.homework-group-items {
+  display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow); overflow: hidden;
+}
+.homework-group-title-done + .homework-group-items { opacity: .65; box-shadow: none; }
+
+.homework-row {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border);
+  transition: background .15s;
+}
+.homework-row:hover { background: var(--hover); }
+.homework-group-items .homework-row:last-child { border-bottom: none; }
 .homework-row.hw-done .hw-row-title { text-decoration: line-through; }
 
 .hw-check {
-  flex: none; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border);
-  background: var(--panel); cursor: pointer; font-size: 13px; font-weight: 700; color: #fff;
-  display: flex; align-items: center; justify-content: center; transition: all .15s; margin-top: 2px;
+  flex: none; width: 18px; height: 18px; border-radius: 6px; border: 1.5px solid var(--border);
+  background: none; cursor: pointer; padding: 0;
+  display: flex; align-items: center; justify-content: center; transition: all .15s;
 }
 .hw-check:hover { border-color: var(--c-teal); }
+.hw-check.hw-check-overdue { border-color: var(--c-red); }
 .hw-check.checked { background: var(--c-green); border-color: var(--c-green); }
 
 .hw-row-main { flex: 1; min-width: 0; cursor: pointer; }
-.hw-row-title-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
-.hw-row-title { font-weight: 700; font-size: 14px; color: var(--text); }
+.hw-row-title-line { display: flex; align-items: center; gap: 8px; }
+.hw-row-title { font-weight: 600; font-size: 14.5px; color: var(--text); }
 .hw-source-badge { font-size: 12px; }
-.hw-kid-tag { font-size: 10px; font-weight: 700; color: var(--text-2); background: var(--panel-2); padding: 1px 8px; border-radius: 999px; margin-left: 2px; }
-.hw-row-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
-.hw-chip { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
-.hw-subject-chip { background: var(--accent-soft); color: var(--accent); }
-.hw-status-chip.hw-status-todo { background: var(--panel-2); color: var(--text-2); }
-.hw-status-chip.hw-status-in_progress { background: color-mix(in srgb, var(--c-amber) 18%, var(--panel)); color: var(--warn); }
-.hw-status-chip.hw-status-done { background: color-mix(in srgb, var(--c-green) 16%, var(--panel)); color: var(--c-green); }
-.hw-due-label { color: var(--text-2); font-weight: 600; }
-.hw-checklist-progress { color: var(--text-2); font-weight: 600; }
+.hw-row-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.hw-meta-link { color: var(--accent); font-weight: 600; text-decoration: none; }
+.hw-meta-link:hover { text-decoration: underline; }
 
-.hw-due-chip { background: color-mix(in srgb, var(--c-amber) 20%, var(--panel)); color: var(--warn); border-left: 3px solid var(--c-amber); cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.hw-chip { flex: none; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); }
+
+.hw-kid-tag { flex: none; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; }
+.hw-kid-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+.hw-due-label {
+  flex: none; width: 76px; text-align: right; font-family: "JetBrains Mono", monospace; font-size: 12px;
+  color: var(--text-2);
+}
+.hw-due-label.hw-due-overdue { color: var(--c-red); }
+.hw-due-label.hw-due-today { color: var(--warn); }
+
+/* Homework-due markers on the calendar grid (canvas 1b): dashed outline box,
+   red variant once the due date has passed. */
+.hw-due-chip {
+  background: none; border: 1px dashed var(--border); color: var(--text-2);
+  cursor: pointer; display: flex; align-items: center; gap: 4px;
+}
+.hw-due-chip.hw-due-overdue { border-color: var(--c-red); color: var(--c-red); font-weight: 700; }
 .hw-due-icon { font-size: 11px; }
-.month-evt.hw-due-chip { border-left: none; }
+.month-evt.hw-due-chip { border-left: 1px dashed var(--border); }
+.month-evt.hw-due-chip.hw-due-overdue { border-left: 1px dashed var(--c-red); }
 
 .homework-checklist-editor { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .homework-checklist-row { display: flex; align-items: center; gap: 8px; }

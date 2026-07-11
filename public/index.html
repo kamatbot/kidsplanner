@@ -331,13 +331,38 @@
           </div>
         </div>
 
-        <!-- Calendar Tab — mini-cal/uploads/streak live here for now (Calendar
-             screen restyle is phase W2); kid switching also moves here in W2. -->
+        <!-- Calendar Tab (canvas 1b) — page header (title + kid chips + view
+             toggle + date pager + Add) above the week/month grid, with a
+             footer legend + sync status row. Mini-cal/Upload Schedule move to
+             a secondary tools rail — the canvas itself doesn't show them, but
+             dropping them would orphan features nothing else replaces (see
+             REDESIGN-PLAN.md "nothing dropped"); the redundant streak card
+             (Today already owns the streak, canvas 1a) was removed as dead
+             duplicate UI. -->
         <div class="tab-panel" id="tab-calendar">
-          <div class="calendar-tab-layout">
-            <aside class="calendar-side">
-              <div id="kid-switcher" class="kid-switcher"></div>
+          <div class="cal-page-header">
+            <h1 class="page-title">Calendar</h1>
+            <div id="kid-switcher-calendar" class="kid-switcher"></div>
+            <div class="page-header-spacer"></div>
+            <div class="cal-view-btns">
+              <button class="view-btn active" id="btn-week" onclick="setCalView('week')">Week</button>
+              <button class="view-btn" id="btn-month" onclick="setCalView('month')">Month</button>
+            </div>
+            <div class="cal-pager">
+              <button class="cal-nav-btn" onclick="calPrev()" aria-label="Previous">‹</button>
+              <span id="cal-title" class="cal-title micro-label"></span>
+              <button class="cal-nav-btn" onclick="calNext()" aria-label="Next">›</button>
+            </div>
+            <button class="btn-primary" onclick="openAddEventModal()">+ Add</button>
+          </div>
 
+          <div class="calendar-tab-layout">
+            <section class="calendar-main">
+              <div class="calendar-grid-scroll"><div id="calendar-grid" class="calendar-grid"></div></div>
+              <div class="calendar-footer" id="calendar-footer"></div>
+            </section>
+
+            <aside class="calendar-tools">
               <div class="card mini-calendar-card">
                 <div class="mini-cal-header">
                   <button class="mini-nav" onclick="miniCalPrev()" aria-label="Previous month">‹</button>
@@ -350,51 +375,28 @@
               <button class="btn-upload" onclick="openUploadModal()">📎 Upload Schedule</button>
               <button class="btn-upload btn-upload-secondary" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">🎓 Add school calendar</button>
               <div id="uploads-list" class="uploads-list"></div>
-
-              <div class="card streak-card">
-                <div class="streak-icon">🔥</div>
-                <div class="streak-count" id="streak-count">0</div>
-                <div class="streak-label">Day Streak!</div>
-                <div class="streak-sublabel">Answer daily quiz to build your streak</div>
-              </div>
             </aside>
-
-            <section class="card calendar-section calendar-main">
-              <div class="cal-header">
-                <div class="cal-nav">
-                  <button class="cal-nav-btn" onclick="calPrev()" aria-label="Previous">‹</button>
-                  <h3 id="cal-title" class="cal-title"></h3>
-                  <button class="cal-nav-btn" onclick="calNext()" aria-label="Next">›</button>
-                </div>
-                <div class="cal-controls">
-                  <div class="cal-view-btns">
-                    <button class="view-btn active" id="btn-week" onclick="setCalView('week')">Week</button>
-                    <button class="view-btn" id="btn-month" onclick="setCalView('month')">Month</button>
-                  </div>
-                  <button class="btn-add-event" onclick="openAddEventModal()">+ Add Event</button>
-                </div>
-              </div>
-              <div id="calendar-grid" class="calendar-grid"></div>
-            </section>
           </div>
         </div>
 
-        <!-- Homework Tab (Phase 3) -->
+        <!-- Homework Tab (canvas 1c) — grouped by urgency: Overdue/Due today/
+             This week/Later/Done this week (renderHomeworkHub in app.js). -->
         <div class="tab-panel" id="tab-homework">
-          <section class="card homework-hub">
-            <div class="homework-hub-header">
-              <h3>📚 Homework</h3>
-              <div class="homework-hub-actions">
-                <select id="homework-subject-filter" class="homework-filter-select" onchange="renderHomeworkHub()">
-                  <option value="">All subjects</option>
-                </select>
-                <button type="button" class="btn-secondary" id="school-import-btn" onclick="openSchoolAccountModal()" style="display:none">🏫 Import from school</button>
-                <button type="button" class="btn-secondary" onclick="openSnapHomeworkModal()">📸 Snap homework</button>
-                <button type="button" class="btn-primary" onclick="openAddHomeworkModal()">+ Add homework</button>
-              </div>
-            </div>
-            <div id="homework-list" class="homework-list"></div>
-          </section>
+          <div class="homework-hub-header">
+            <h1 class="page-title">Homework</h1>
+            <div id="kid-switcher-homework" class="kid-switcher"></div>
+            <select id="homework-subject-filter" class="homework-filter-select" onchange="renderHomeworkHub()">
+              <option value="">All subjects</option>
+            </select>
+            <div class="page-header-spacer"></div>
+            <button type="button" class="btn-secondary" id="school-import-btn" onclick="openSchoolAccountModal()" style="display:none">🏫 Import from school</button>
+            <button type="button" class="btn-secondary" onclick="openSnapHomeworkModal()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"></rect><circle cx="12" cy="13" r="4"></circle><path d="M9 7l1.5-3h3L15 7"></path></svg>
+              Scan diary
+            </button>
+            <button type="button" class="btn-primary" onclick="openAddHomeworkModal()">+ Add</button>
+          </div>
+          <div id="homework-list" class="homework-list"></div>
         </div>
 
         <!-- Notes Tab — day-grouped timeline of notes (quotes reflections,
