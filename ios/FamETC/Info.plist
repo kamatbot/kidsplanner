@@ -29,6 +29,11 @@
 	<false/>
 	<key>FAMIOSClientKey</key>
 	<string>$(FAM_IOS_CLIENT_KEY)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>SpaceGrotesk.ttf</string>
+		<string>JetBrainsMono.ttf</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

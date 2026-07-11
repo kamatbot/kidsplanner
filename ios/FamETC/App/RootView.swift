@@ -5,28 +5,31 @@ import SwiftUI
 // Fam ETC leans on Chat being "always nearby" the way a family group chat is,
 // so the layout isn't a plain 1:1 port of RetireOdds's iPhone-only tab bar:
 //
-//   iPhone (compact width)            → FloatingTabBar (4 tabs), same pill /
+//   iPhone (any orientation)          → FloatingTabBar (5 tabs), same pill /
 //                                        matchedGeometryEffect / glass-material
-//                                        pattern as RetireOdds, adapted to 4 tabs.
-//                                        Chat is a full tab like the others.
+//                                        pattern as RetireOdds. Chat is a full
+//                                        tab like the others.
 //
-//   iPad landscape (regular width,     → NavigationSplitView 3-column: a narrow
-//   compact height via GeometryReader    nav rail (sidebar), the selected tab's
-//   width>height, `.pad` idiom)          main content, and a DOCKED chat column
-//                                        on the trailing edge — so chat is always
-//                                        visible while browsing Today/Calendar/
-//                                        Homework, mirroring how a family actually
-//                                        uses group chat alongside a calendar.
+//   iPad landscape, PARENT session    → nav rail (Today/Calendar/Homework/Notes
+//                                        — no Chat entry) + main content + a
+//                                        DOCKED family-chat column on the
+//                                        trailing edge (canvas-1f) — so chat is
+//                                        always visible while browsing.
 //
-//   iPad portrait (regular width AND   → main content fills the screen with a
-//   regular height)                      compact top/side nav rail; Chat is
-//                                        reached via a slide-in trailing sheet
-//                                        instead of a docked column, since there
-//                                        isn't width to spare for 3 columns.
+//   iPad portrait, OR any kid         → nav rail (all 5 tabs) + full-width main
+//   session (any orientation)           content; tapping the Chat rail item
+//                                        opens ChatScreen as a slide-over sheet
+//                                        instead of docking a column (canvas-1g)
+//                                        — there isn't width to spare for a
+//                                        permanent 3rd column at kid-friendly
+//                                        scale or in portrait.
+//
+// iPad size classes are regular×regular in BOTH orientations, so orientation is
+// read from actual geometry (`onGeometryChange`), not size classes.
 //
 // Settings/Goals/Activities are NOT native tabs — they're reached from a "More"
 // entry inside Today, hosted by `HybridWebView`. That "More" sheet/menu is out
-// of scope for this scaffold; only the 4-tab native surface is wired here.
+// of scope for this scaffold; only the 5-tab native surface is wired here.
 enum Tab: String, CaseIterable, Identifiable {
     case today, chat, calendar, homework, notes
     var id: String { rawValue }
@@ -56,20 +59,30 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selection: Tab = .today
+    @State private var showChatSlideOver = false
+    // iPad size classes are regular×regular in BOTH orientations, so they can't
+    // tell landscape from portrait — read it from the actual geometry.
+    @State private var isLandscape = true
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    /// Docked chat column shows only for parent sessions in iPad landscape —
+    /// kid sessions and iPad portrait always use the rail + slide-over instead.
+    private var showDockedChat: Bool { isPad && isLandscape && store.isParent }
+    private var mainTabs: [Tab] { Tab.allCases.filter { $0 != .chat } }
 
     var body: some View {
         Group {
             if isPad {
-                // Full-width dashboard with a nav rail; Chat is reached as a
-                // full tab through the rail (a docked chat column crowded
-                // out the widgets).
-                iPadPortraitLayout
+                if showDockedChat {
+                    iPadDockedChatLayout
+                } else {
+                    iPadRailLayout
+                }
             } else {
                 iPhoneLayout
             }
         }
+        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
         // Parents: kids waiting to be let in appear as a banner above everything.
@@ -102,7 +115,10 @@ struct RootView: View {
         .onAppear {
             #if DEBUG
             switch DebugLaunch.screen {
-            case "chat": selection = .chat
+            case "chat":
+                if !isPad { selection = .chat }
+                else if !showDockedChat { showChatSlideOver = true }
+                // else: docked column already shows chat.
             case "calendar": selection = .calendar
             case "homework": selection = .homework
             case "notes": selection = .notes
@@ -130,25 +146,55 @@ struct RootView: View {
         .onChange(of: selection) { _, _ in Haptics.selection() }
     }
 
-    // MARK: iPad — nav rail + full-width content, chat is a full tab
+    // MARK: iPad landscape (parent) — nav rail + content + DOCKED chat column
 
-    private var iPadPortraitLayout: some View {
+    /// Nav rail (no Chat entry — it's docked, not tabbed) + main content +
+    /// a fixed-width `ChatScreen` column pinned to the trailing edge, per
+    /// canvas-1f. `ChatScreen` is used as-is (unmodified) — it already renders
+    /// its own header/composer and adapts its bottom inset via horizontalSizeClass.
+    private var iPadDockedChatLayout: some View {
         HStack(spacing: 0) {
-            NavRailList(selection: $selection)
+            NavRailList(selection: $selection, tabs: mainTabs)
                 .frame(width: 90)
             Divider()
-            // A TabView (with its own tab bar hidden) keeps all five screens alive
-            // like the iPhone layout, so switching tabs is instant and each screen's
-            // loaded data + scroll state persist instead of being rebuilt (and
-            // reloaded from the network) on every tap.
             TabView(selection: $selection) {
                 TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
-                ChatScreen().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
                 NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
             }
             .frame(maxWidth: .infinity)
+            Divider()
+            ChatScreen()
+                .frame(width: 300)
+        }
+    }
+
+    // MARK: iPad portrait, or any kid session — nav rail + slide-over chat
+
+    /// Nav rail with all 5 tabs (including Chat); tapping Chat opens
+    /// `ChatScreen` as a large sheet instead of swapping the main content,
+    /// since there isn't width to spare for a permanent chat column here
+    /// (canvas-1g). Main `TabView` only carries the non-chat screens, so
+    /// `selection` never actually becomes `.chat` in this layout.
+    private var iPadRailLayout: some View {
+        HStack(spacing: 0) {
+            NavRailList(selection: $selection, tabs: Tab.allCases, onTapChat: { showChatSlideOver = true })
+                .frame(width: 90)
+            Divider()
+            // A TabView (with its own tab bar hidden) keeps all screens alive,
+            // so switching tabs is instant and each screen's loaded data +
+            // scroll state persist instead of being rebuilt on every tap.
+            TabView(selection: $selection) {
+                TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
+                CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
+                HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
+                NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .sheet(isPresented: $showChatSlideOver) {
+            ChatScreen().presentationDetents([.large])
         }
     }
 }
@@ -159,13 +205,20 @@ struct RootView: View {
 /// rail, selection driven by direct taps (not `List(selection:)`, which only
 /// updates selection via edit mode / NavigationSplitView row selection and
 /// otherwise leaves taps outside a split view inert).
+///
+/// `tabs` lets a layout omit an entry entirely (docked chat has no Chat row).
+/// `onTapChat`, when set, intercepts a tap on the Chat row instead of changing
+/// `selection` — used to open the chat slide-over sheet rather than swap the
+/// main content.
 private struct NavRailList: View {
     @Binding var selection: Tab
+    var tabs: [Tab] = Tab.allCases
+    var onTapChat: (() -> Void)? = nil
     @Environment(AppStore.self) private var store
 
     var body: some View {
         VStack(spacing: Space.xs) {
-            ForEach(Tab.allCases) { tab in
+            ForEach(tabs) { tab in
                 let isOn = tab == selection
                 VStack(spacing: 4) {
                     Image(systemName: tab.icon)
@@ -191,6 +244,11 @@ private struct NavRailList: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    if tab == .chat, let onTapChat {
+                        Haptics.selection()
+                        onTapChat()
+                        return
+                    }
                     guard selection != tab else { return }
                     Haptics.selection()
                     selection = tab

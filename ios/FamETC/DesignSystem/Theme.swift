@@ -28,30 +28,34 @@ extension Color {
 }
 
 enum Palette {
-    // Fam ETC palette: primary #6C63FF (dark #5A52D5), secondary #FF6B9D, accent
-    // #4ECDC4, bg #F0EEFF (light). The coral→violet signal gradient from RetireOdds
-    // is replaced by a purple→pink hero gradient (see `Signal` below), reserved for
-    // ONE hero element per screen; violet/primary alone is the interactive accent;
-    // green/red stay semantic (good news / danger).
-    // TODO: confirm dark palette during design pass
-    static let bg         = Color.adaptive(Color(hex: 0xF0EEFF), Color(hex: 0x1A1830))
-    static let panel      = Color.adaptive(Color(hex: 0xFFFFFF), Color(hex: 0x242140))
-    static let border     = Color.adaptive(Color(hex: 0xE1DDFB), Color(hex: 0x342F57))
-    static let text       = Color.adaptive(Color(hex: 0x211E1B), Color(hex: 0xF1EFEC))
-    static let textSecond = Color.adaptive(Color(hex: 0x75706A), Color(hex: 0xA29C93))
-    static let accent     = Color.adaptive(Color(hex: 0x6C63FF), Color(hex: 0x5A52D5))
-    static let accentSoft = Color.adaptive(Color(hex: 0x6C63FF, alpha: 0.11), Color(hex: 0x5A52D5, alpha: 0.15))
-    static let coral      = Color.adaptive(Color(hex: 0xFF6B9D), Color(hex: 0xFF6B9D))
-    static let warn       = Color.adaptive(Color(hex: 0xB07F2E), Color(hex: 0xD6A24A))
-    static let grid       = Color.adaptive(Color(hex: 0xEDEAE5), Color(hex: 0x35322E))
+    // "Horizon" palette (2026-07 redesign) — mapped 1:1 from public/css/horizon.css
+    // light (:root) / dark (.dark) custom properties, so native mirrors the web
+    // exactly. Warm greige neutrals, violet accent, coral partner. Property names
+    // below are kept stable from the old KidsPlanner palette so Features/ code
+    // keeps compiling untouched; only the underlying hex values changed.
+    static let bg         = Color.adaptive(Color(hex: 0xF1EFEC), Color(hex: 0x211F1D))   // --bg
+    static let sidebar    = Color.adaptive(Color(hex: 0xF8F6F3), Color(hex: 0x262421))   // --sidebar
+    static let panel      = Color.adaptive(Color(hex: 0xFFFFFF), Color(hex: 0x2C2926))   // --panel
+    static let panel2     = Color.adaptive(Color(hex: 0xFAF8F5), Color(hex: 0x33302C))   // --panel-2
+    static let border     = Color.adaptive(Color(hex: 0xE7E3DD), Color(hex: 0x3B3733))   // --border
+    static let text       = Color.adaptive(Color(hex: 0x211E1B), Color(hex: 0xF1EFEC))   // --text
+    static let textSecond = Color.adaptive(Color(hex: 0x6A655F), Color(hex: 0xA29C93))   // --text-2
+    static let muted      = Color.adaptive(Color(hex: 0x6F6A63), Color(hex: 0x968F86))   // --muted
+    static let accent     = Color.adaptive(Color(hex: 0x6F43D6), Color(hex: 0xB98CFF))   // --accent
+    static let accentSoft = Color.adaptive(Color(hex: 0x6F43D6, alpha: 0.11), Color(hex: 0xB98CFF, alpha: 0.15)) // --accent-soft
+    static let coral      = Color.adaptive(Color(hex: 0xF0704F), Color(hex: 0xFF8A66))   // --coral
+    static let warn       = Color.adaptive(Color(hex: 0x8A6410), Color(hex: 0xD6A24A))   // --warn
+    static let grid       = Color.adaptive(Color(hex: 0xEDEAE5), Color(hex: 0x35322E))   // --grid
 
-    // Chart series
-    static let blue   = Color.adaptive(Color(hex: 0x2563EB), Color(hex: 0x60A5FA))
-    static let violet = Color.adaptive(Color(hex: 0x7C3AED), Color(hex: 0xA78BFA))
-    static let amber  = Color.adaptive(Color(hex: 0xF59E0B), Color(hex: 0xFBBF24))
-    static let green  = Color.adaptive(Color(hex: 0x16A34A), Color(hex: 0x4ADE80))
-    static let red    = Color.adaptive(Color(hex: 0xDC2626), Color(hex: 0xF87171))
-    static let orange = Color.adaptive(Color(hex: 0xEA580C), Color(hex: 0xFB923C))
+    // Categorical palette (--c-*)
+    static let blue   = Color.adaptive(Color(hex: 0x2563EB), Color(hex: 0x60A5FA))       // --c-blue
+    static let violet = Color.adaptive(Color(hex: 0x7C3AED), Color(hex: 0xA78BFA))       // --c-violet
+    static let amber  = Color.adaptive(Color(hex: 0xF59E0B), Color(hex: 0xFBBF24))       // --c-amber
+    static let green  = Color.adaptive(Color(hex: 0x16A34A), Color(hex: 0x4ADE80))       // --c-green
+    static let red    = Color.adaptive(Color(hex: 0xDC2626), Color(hex: 0xF87171))       // --c-red
+    static let teal   = Color.adaptive(Color(hex: 0x0D9488), Color(hex: 0x2DD4BF))       // --c-teal
+    static let orange = Color.adaptive(Color(hex: 0xEA580C), Color(hex: 0xFB923C))       // --c-orange
+    static let orangeInk = Color.adaptive(Color(hex: 0xB8420C), Color(hex: 0xFF8A4D))    // --c-orange-ink
 
     // Categorical palette — exact hex from the Claude Design source ("Retire Odds App.dc.html").
     // Used identically in light & dark, like the design's hardcoded category / asset-class
@@ -63,24 +67,32 @@ enum Palette {
     static let dsSky    = Color(hex: 0x0EA5E9)   // Transport · Cash
     static let dsRed    = Color(hex: 0xE5484D)   // negative change
 
-    /// Secondary brand tone (#FF6B9D) — same as `coral`, kept as an alias for clarity.
+    /// Secondary brand tone — same as `coral`, kept as an alias for clarity.
     static let secondary = coral
-    /// Tertiary accent (#4ECDC4) — teal, for small highlights distinct from `accent`.
-    static let teal = Color.adaptive(Color(hex: 0x4ECDC4), Color(hex: 0x4ECDC4))
 
-    /// White on a colored fill, regardless of theme (e.g. text on the accent).
-    static let onAccent = Color.white
+    /// Text/icon color on top of a solid `accent` fill. Adaptive: white on the
+    /// darker light-mode violet, dark ink (#1c1526) on the lighter dark-mode
+    /// lavender — a flat white would fail contrast in dark mode.
+    static let onAccent = Color.adaptive(Color(hex: 0xFFFFFF), Color(hex: 0x1C1526))
+
+    /// Per-kid identity color, assigned by family kid order (kid 1 = teal, kid 2 =
+    /// amber, ...), cycling through the rest of the categorical palette beyond two
+    /// kids so a family of any size still gets a distinct color per child.
+    static func kidColor(index: Int) -> Color {
+        let cycle: [Color] = [teal, amber, blue, violet, red, orange]
+        return cycle[index % cycle.count]
+    }
 }
 
 // MARK: - Signal gradient
 //
-// The purple→pink "Fam ETC" hero gradient — reserved for ONE hero element per
+// The Horizon coral→violet hero gradient — reserved for ONE momentum element per
 // screen (e.g. a headline card or primary "run" CTA). Everything else uses flat
 // palette colors so the gradient keeps its meaning.
 
 enum Signal {
-    static let start = Palette.accent   // #6C63FF
-    static let end   = Palette.coral    // #FF6B9D
+    static let start = Palette.coral    // Horizon coral
+    static let end   = Palette.accent   // Horizon violet
 
     static func gradient(_ startPoint: UnitPoint = .leading, _ endPoint: UnitPoint = .trailing) -> LinearGradient {
         LinearGradient(colors: [start, end], startPoint: startPoint, endPoint: endPoint)
@@ -93,19 +105,33 @@ enum Signal {
     }
 }
 
+// MARK: - Fonts
+//
+// Horizon brand fonts, bundled as variable TTFs (UIAppFonts in Info.plist):
+// Space Grotesk for UI text, JetBrains Mono for numerals/micro-labels. SwiftUI's
+// `.weight()` modifier walks a bundled variable font's `wght` axis, so one file
+// per family covers every weight — no per-weight font files needed.
+enum Theme {
+    static func font(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .custom("SpaceGrotesk-Light", size: size).weight(weight)
+    }
+    static func mono(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
+        .custom("JetBrainsMono-Regular", size: size).weight(weight)
+    }
+}
+
 // MARK: - Typography
 //
-// Semantic roles. The brand uses Space Grotesk (display) + JetBrains Mono (numbers);
-// until those font files are bundled (Info.plist `UIAppFonts`), we use SF Pro and
-// SF Mono so nothing falls back unpredictably. Swap the two helpers below to adopt
-// the brand fonts app-wide.
+// Semantic roles, routed through `Theme.font`/`Theme.mono` (Space Grotesk +
+// JetBrains Mono) so every shared component and screen that already reaches for
+// `Typography.*` picks up the brand fonts automatically.
 
 enum Typography {
     static func display(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight)
+        Theme.font(size, weight: weight)
     }
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .medium) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        Theme.mono(size, weight: weight)
     }
 
     static let largeTitle = display(28, .bold)

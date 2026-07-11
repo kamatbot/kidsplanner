@@ -67,6 +67,22 @@ struct KPILabel: View {
     }
 }
 
+// MARK: - Micro label
+
+/// 11px uppercase, letter-spaced JetBrains Mono caption — the Horizon section
+/// header style used above cards/lists throughout the redesign (e.g. "TODAY'S
+/// SCHEDULE", "HOMEWORK DUE"). Same visual recipe as `KPILabel`; kept as a
+/// separate, more general name for section headers vs. KPI captions.
+struct MicroLabel: View {
+    let text: String
+    var body: some View {
+        Text(text.uppercased())
+            .font(Typography.monoSmall)
+            .tracking(0.9)
+            .foregroundStyle(Palette.textSecond)
+    }
+}
+
 // MARK: - KPI card
 
 /// A tappable KPI tile: label, animated value, optional caption. Used across the
@@ -184,6 +200,33 @@ struct SignalButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, Space.md)
             .background(Signal.gradient(), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+        }
+        .buttonStyle(PressableStyle())
+    }
+}
+
+/// Solid violet primary action button — onAccent text, `Radius.field` corners.
+/// The everyday "do a thing" button; reserve `SignalButton`'s coral→violet
+/// gradient for the one momentum CTA per screen.
+struct AccentButton: View {
+    let title: String
+    var systemImage: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.impact(.light)
+            action()
+        } label: {
+            HStack(spacing: Space.sm) {
+                if let systemImage { Image(systemName: systemImage) }
+                Text(title)
+            }
+            .font(Typography.body.weight(.semibold))
+            .foregroundStyle(Palette.onAccent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Space.md)
+            .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
         }
         .buttonStyle(PressableStyle())
     }
