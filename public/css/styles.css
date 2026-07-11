@@ -523,18 +523,24 @@ html { font-size: 16px; }
 .daily5-card .sat-example { display: none; }
 .daily5-card .widget-word { border-top: none; padding-top: 10px; border-top: 1px solid var(--border); }
 .daily5-card .widget-quiz { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
-.daily5-quiz-toggle { width: 100%; height: 36px; margin-top: 4px; font-size: 13px; }
 
-/* News — folded in as a quiet single line by default (design's "news ticker"),
-   click the headline to expand the summary + reflection composer in place. */
+/* News — folded in as a quiet single line by default (design's "news ticker");
+   the headline is a real link to the article, a separate chevron expands the
+   summary + reflection composer in place. */
 .widget-news { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
 .widget-news .widget-header { margin-bottom: 4px; }
 .widget-news .news-badge { font-size: 10px; padding: 1px 7px; }
+.news-headline-row { display: flex; align-items: baseline; gap: 6px; margin: 4px 0 0; }
 .widget-news .news-headline {
-  font-size: 12.5px; font-weight: 600; margin: 4px 0 0; cursor: pointer;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; font-weight: 600; text-decoration: none; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
 }
-.widget-news .news-headline:hover { color: var(--accent); }
+.widget-news .news-headline:hover { color: var(--accent); text-decoration: underline; }
+.news-more-btn {
+  background: none; border: none; color: var(--text-2); cursor: pointer;
+  font-size: 12px; padding: 0 2px; line-height: 1; flex-shrink: 0;
+}
+.news-more-btn:hover { color: var(--accent); }
 #news-details { display: none; margin-top: 8px; }
 #news-details.news-open { display: block; }
 
@@ -555,8 +561,11 @@ html { font-size: 16px; }
 .kid-view .schedule-row:last-child { margin-bottom: 0; }
 .kid-view .homework-due-row.overdue { border: 1.5px solid var(--c-red); border-radius: 14px; padding: 10px 12px; }
 .kid-view .today-right-col { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; overflow: visible; }
-.kid-view .daily5-quiz-toggle,
 .kid-view .today-quiz-btn { height: 46px; font-size: 15px; }
+/* The brain teaser is always visible in-card (no more toggle button to size
+   up) — keep its answer buttons big/tappable for kids, matching the old
+   toggle's intent. */
+.kid-view .quiz-opt { padding: 12px 14px; font-size: 14px; }
 /* .kid-view .chat-dock slide-over + .kid-view .chat-fab are defined earlier,
    next to the base .chat-fab rules. */
 

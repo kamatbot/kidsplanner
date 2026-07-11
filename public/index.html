@@ -239,7 +239,7 @@
                     <div class="widget-flip-front">
                       <div class="widget-header">
                         <span class="widget-icon">💬</span>
-                        <span class="widget-label">Quote of the day</span>
+                        <span class="widget-label">Quote</span>
                         <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinQuote()">📌</button>
                       </div>
                       <blockquote class="quote-text" id="quote-text"></blockquote>
@@ -271,7 +271,7 @@
                   <div class="sat-pos" id="sat-pos"></div>
                   <div class="sat-def" id="sat-def"></div>
                   <div class="sat-example" id="sat-example"></div>
-                  <div id="sat-placement" class="fam-sat-placement" hidden></div>
+                  <details id="sat-placement" class="fam-sat-placement" hidden></details>
                   <div id="sat-activity" class="fam-sat-activity"></div>
                   <div class="fam-sat-footer">
                     <button type="button" class="btn-link" onclick="toggleWordBank()">🔤 Word bank</button>
@@ -281,15 +281,14 @@
                   <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
                 </div>
 
-                <!-- Daily Brain Teaser — collapsed behind "Take today's quiz →"
-                     until clicked (toggleDailyQuiz()); day-ramped question count
-                     from the brainteaser API, resurfacing previously-wrong ones. -->
-                <button type="button" class="btn-secondary daily5-quiz-toggle" id="daily5-quiz-toggle" onclick="toggleDailyQuiz()">Take today's quiz →</button>
-                <div class="widget widget-quiz fam-enrich-card" id="widget-quiz" hidden>
+                <!-- Daily Brain Teaser — always visible in-card; day-ramped
+                     question count from the brainteaser API, resurfacing
+                     previously-wrong ones. -->
+                <div class="widget widget-quiz fam-enrich-card" id="widget-quiz">
                   <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
                   <div class="widget-header">
                     <span class="widget-icon">🧠</span>
-                    <span class="widget-label">Daily brain teaser</span>
+                    <span class="widget-label">Brain teaser</span>
                     <span class="fam-bt-progress" id="bt-progress"></span>
                   </div>
                   <div class="quiz-question" id="quiz-question"></div>
@@ -298,15 +297,20 @@
                   <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
                 </div>
 
-                <!-- Interesting News — quiet single line by default, expands to
-                     summary + reflection composer on click (toggleNewsDetails()). -->
+                <!-- Interesting News — headline is a real link straight to the
+                     article; a separate chevron expands the summary +
+                     reflection composer in place (toggleNewsDetails()). -->
                 <div class="widget widget-news fam-enrich-card" id="widget-news">
                   <div class="fam-enrich-lock" id="lock-news" hidden></div>
                   <div class="widget-header">
                     <span class="widget-icon">📰</span>
+                    <span class="widget-label">Interesting news</span>
                     <span class="news-badge" id="news-badge"></span>
                   </div>
-                  <div class="news-headline" id="news-headline" onclick="toggleNewsDetails()"></div>
+                  <div class="news-headline-row">
+                    <a class="news-headline" id="news-headline" href="#" target="_blank" rel="noopener noreferrer"></a>
+                    <button type="button" class="news-more-btn" id="news-more-btn" onclick="toggleNewsDetails()" aria-label="Show summary">▾</button>
+                  </div>
                   <div id="news-details">
                     <div class="news-summary" id="news-summary"></div>
                     <a class="news-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Read the full story</a>

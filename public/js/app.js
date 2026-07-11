@@ -1390,7 +1390,8 @@ function renderWidgets() {
   const n = dailyPick(NEWS_ITEMS, now);
   currentNews = n;
   document.getElementById('news-badge').textContent    = n.cat;
-  document.getElementById('news-headline').textContent = n.headline;
+  const newsHeadlineEl = document.getElementById('news-headline');
+  if (newsHeadlineEl) { newsHeadlineEl.textContent = n.headline; newsHeadlineEl.href = newsArticleLink(n); }
   document.getElementById('news-summary').textContent  = n.summary;
   const newsLink = document.getElementById('news-link');
   if (newsLink) newsLink.href = newsArticleLink(n);
@@ -2686,20 +2687,9 @@ function renderTodayHabitsAndMomentum() {
   if (fillEl) fillEl.style.width = totalTarget ? `${Math.min(100, Math.round((totalChecked / totalTarget) * 100))}%` : '0%';
 }
 
-/* Daily 5: the brain-teaser quiz is collapsed behind "Take today's quiz →"
-   until clicked, matching the design; the quote/word/news widgets above it
-   are always visible (unchanged behavior, just restyled/relocated). */
-function toggleDailyQuiz() {
-  const panel = document.getElementById('widget-quiz');
-  const btn = document.getElementById('daily5-quiz-toggle');
-  if (!panel) return;
-  const reveal = panel.hidden;
-  panel.hidden = !reveal;
-  if (btn) btn.hidden = reveal;
-}
-
-/* News: quiet single line by default (the design's "news ticker"); click the
-   headline to expand the summary + reflection composer in place. */
+/* News: quiet single line by default (the design's "news ticker"); the
+   headline itself is a real link to the article (opens in a new tab) —
+   click the separate chevron to expand the summary + reflection composer. */
 function toggleNewsDetails() {
   const details = document.getElementById('news-details');
   if (details) details.classList.toggle('news-open');

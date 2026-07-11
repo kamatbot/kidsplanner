@@ -8,12 +8,15 @@ function renderSatActivity() {
   const container = document.getElementById('sat-activity');
   if (!w || !container) return;
 
-  // First-run placement step: "do you already know these?"
+  // First-run placement step: "do you already know these?" — a native
+  // <details> so it reads as a collapsed "Word bank →" line by default
+  // instead of dominating the WORD section's height.
   const placementEl = document.getElementById('sat-placement');
   if (placementEl && !load(satPlacementKey())) {
     const sample = SAT_WORDS.slice(0, 6);
     placementEl.hidden = false;
     placementEl.innerHTML = `
+      <summary class="fam-sat-placement-summary">Word bank →</summary>
       <div class="fam-sat-placement-title">Do you already know these words?</div>
       <div class="fam-sat-placement-list">
         ${sample.map((s, i) => `<label class="fam-sat-placement-item"><input type="checkbox" data-word="${esc(s.word)}"> ${esc(s.word)}</label>`).join('')}

@@ -123,7 +123,12 @@
 .fam-sat-feedback.correct { color: var(--c-green); }
 .fam-sat-feedback.wrong { color: var(--c-red); }
 
+/* Native <details>: collapsed to a single "Word bank →" line by default so
+   the first-run placement checklist doesn't dominate the WORD section's
+   height (it's stashed until the reader opts in). */
 .fam-sat-placement { margin: 10px 0; padding: 10px; background: var(--panel-2); border-radius: var(--radius-sm); }
+.fam-sat-placement > summary { font-weight: 600; font-size: 13px; color: var(--accent); cursor: pointer; }
+.fam-sat-placement[open] > summary { margin-bottom: 8px; }
 .fam-sat-placement-title { font-weight: 600; font-size: 13px; margin-bottom: 8px; }
 .fam-sat-placement-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; font-size: 13px; }
 .fam-sat-placement-item { display: flex; align-items: center; gap: 6px; cursor: pointer; }
