@@ -645,7 +645,7 @@
       <div class="form-row">
         <div class="form-group">
           <label>Date *</label>
-          <input type="date" id="event-date" required>
+          <input type="date" id="event-date" required oninput="document.getElementById('event-end-date').min=this.value">
         </div>
         <div class="form-group">
           <label>Start Time</label>
@@ -655,6 +655,26 @@
       <div class="form-group">
         <label>End Time</label>
         <input type="time" id="event-end-time">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>End Date</label>
+          <input type="date" id="event-end-date">
+        </div>
+        <div class="form-group">
+          <label>Repeat</label>
+          <select id="event-repeat" onchange="onEventRepeatChange()">
+            <option value="none">Doesn't repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Every 2 weeks</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="event-repeat-until-group" style="display:none">
+        <label>Until</label>
+        <input type="date" id="event-repeat-until">
       </div>
       <div class="form-group">
         <label>Category</label>
@@ -732,6 +752,8 @@
     <div class="detail-rows">
       <div class="detail-row"><span class="detail-icon">📅</span><span id="detail-date"></span></div>
       <div class="detail-row"><span class="detail-icon">⏰</span><span id="detail-time"></span></div>
+      <div class="detail-row" id="detail-through-row" style="display:none"><span class="detail-icon">📆</span><span id="detail-through"></span></div>
+      <div class="detail-row" id="detail-repeat-row" style="display:none"><span class="detail-icon">↻</span><span id="detail-repeat"></span></div>
       <div class="detail-row" id="detail-notes-row"><span class="detail-icon">📝</span><span id="detail-notes"></span></div>
     </div>
     <p id="detail-readonly-hint" class="text-muted" style="display:none;margin:8px 0 0"></p>

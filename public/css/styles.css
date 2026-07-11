@@ -694,6 +694,12 @@ html { font-size: 16px; }
 }
 .week-evt .evt-allday-icon { flex: none; }
 
+/* Multi-day continuation days + recurring-series affordance — shared by week
+   and month chips. Subtle/token-only: same reduced-opacity treatment already
+   used for read-only school-evt chips, no new colors. */
+.week-evt.evt-continuation, .month-evt.evt-continuation { opacity: .7; }
+.evt-repeat-badge { margin-right: 3px; font-size: 11px; opacity: .75; }
+
 .week-add-btn {
   width: 100%; background: none; border: 1px dashed var(--border); border-radius: 5px;
   padding: 4px; font-size: 11px; color: var(--text-2); cursor: pointer;

@@ -409,7 +409,9 @@
     return (data && data.events) || [];
   }
 
-  // payload: {title, date, time, endTime, notes, category, kidId, silent}
+  // payload: {title, date, time, endTime, notes, category, kidId, silent,
+  //           endDate, repeat, repeatUntil} — endDate/repeat/repeatUntil are
+  //           optional; forwarded through untouched, server validates them.
   // silent:true skips the server's family-chat announcement (bulk imports).
   async function addCalendarEvent(payload) {
     return api("/api/calendar/events", { method: "POST", body: JSON.stringify(payload || {}) });

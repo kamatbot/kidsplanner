@@ -164,6 +164,7 @@ let monthDate       = null;   // any date in displayed month
 let miniMonth       = null;   // any date in mini-cal month
 let quizIndex       = 0;
 let activeEventId   = null;
+let activeEventRecurring = false; // set by showDetail; drives the delete confirm() copy
 let pendingDate     = null;   // pre-filled date for add-event modal
 let uploadedFile    = null;
 
@@ -742,7 +743,7 @@ function showDashboard() {
 function renderMiniCal() {
   const d     = miniMonth;
   const today = isoDate(new Date());
-  const evDates = new Set(visibleEvents().map(e => e.date));
+  const evDates = new Set(visibleEvents().flatMap(eventSpanDates));
   const names = ['S','M','T','W','T','F','S'];
 
   document.getElementById('mini-cal-month').textContent =
@@ -854,6 +855,27 @@ function renderCalendar() {
 function eventBarColor(ev) {
   return ev.kidId ? (kidColorFor(ev.kidId) || 'var(--c-violet)') : 'var(--c-violet)';
 }
+
+// "Repeats weekly until Jul 30" — occurrences carry `repeat`/`repeatUntil`
+// from the series (see lib/events.js makeOccurrence); fall back to a generic
+// label if a server ever sends recurring:true without the repeat field.
+const REPEAT_LABELS = { daily: 'daily', weekly: 'weekly', biweekly: 'every 2 weeks', monthly: 'monthly' };
+function repeatLabel(ev) {
+  if (!ev || !ev.recurring) return '';
+  let label = `Repeats ${REPEAT_LABELS[ev.repeat] || ''}`.trim();
+  if (ev.repeatUntil) label += ` until ${formatShort(parseIso(ev.repeatUntil))}`;
+  return label;
+}
+
+// All ISO dates an event spans (date..endDate inclusive) — used by the
+// mini-cal to mark every day a multi-day event covers.
+function eventSpanDates(ev) {
+  const end = ev.endDate || ev.date;
+  if (end <= ev.date) return [ev.date];
+  const out = [];
+  for (let d = parseIso(ev.date); isoDate(d) <= end; d = new Date(+d + 86400000)) out.push(isoDate(d));
+  return out;
+}
 const allDayIconSvg = '<svg class="evt-allday-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"></path><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"></path></svg>';
 
 function renderWeekView() {
@@ -871,7 +893,7 @@ function renderWeekView() {
     const ds  = isoDate(d);
     const isT = ds === today;
     const isW = i >= 5;
-    const evs = events.filter(e => e.date === ds);
+    const evs = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
     const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="week-day-col${isT?' is-today':''}${isW?' is-weekend':''}">
       <div class="week-day-col-hdr">
@@ -885,11 +907,15 @@ function renderWeekView() {
             <span class="hw-due-icon">📚</span>${esc(h.title)}
           </div>`;
         }).join('')}
-        ${evs.map(ev => `
-          <div class="week-evt${ev.source === 'school' ? ' school-evt' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="showDetail('${ev.id}')">
+        ${evs.map(ev => {
+          const isCont = ev.date !== ds; // continuation day of a multi-day event
+          const rLabel = repeatLabel(ev);
+          return `
+          <div class="week-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
             <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
-            <span class="evt-title">${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${esc(ev.title)}</span>
-          </div>`).join('')}
+            <span class="evt-title">${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
+          </div>`;
+        }).join('')}
         <button class="week-add-btn" onclick="openAddEventModal('${ds}')">+ Add</button>
       </div>
     </div>`;
@@ -949,7 +975,7 @@ function renderMonthView() {
     const date = new Date(d.getFullYear(), d.getMonth(), day);
     const ds   = isoDate(date);
     const isT  = ds === today;
-    const evs  = events.filter(e => e.date === ds);
+    const evs  = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
     const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="month-day${isT?' is-today':''}" onclick="openAddEventModal('${ds}')">
       <span class="mday-num">${day}</span>
@@ -957,9 +983,11 @@ function renderMonthView() {
         const overdue = h.dueDate < today;
         return `<span class="month-evt hw-due-chip${overdue ? ' hw-due-overdue' : ''}" onclick="event.stopPropagation();switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">📚 ${esc(h.title)}</span>`;
       }).join('')}
-      ${evs.slice(0,3).map((ev) =>
-        `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}')">${ev.source === 'school' ? '🎓 ' : ''}${esc(ev.title)}</span>`
-      ).join('')}
+      ${evs.slice(0,3).map((ev) => {
+        const isCont = ev.date !== ds;
+        const rLabel = repeatLabel(ev);
+        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
+      }).join('')}
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
   }
@@ -1055,13 +1083,24 @@ window.famGetSchoolMappings = famGetSchoolMappings;
 ============================================================ */
 function openAddEventModal(ds) {
   pendingDate = ds || null;
+  const startDate = ds || isoDate(new Date());
   document.getElementById('event-title').value   = '';
-  document.getElementById('event-date').value    = ds || isoDate(new Date());
+  document.getElementById('event-date').value    = startDate;
   document.getElementById('event-time').value    = '';
   document.getElementById('event-end-time').value= '';
   document.getElementById('event-notes').value   = '';
+  document.getElementById('event-end-date').value = '';
+  document.getElementById('event-end-date').min   = startDate;
+  document.getElementById('event-repeat').value  = 'none';
+  document.getElementById('event-repeat-until').value = '';
+  document.getElementById('event-repeat-until-group').style.display = 'none';
   document.querySelector('input[name="cat"][value="school"]').checked = true;
   openModal('add-event-modal');
+}
+
+function onEventRepeatChange() {
+  const repeats = document.getElementById('event-repeat').value !== 'none';
+  document.getElementById('event-repeat-until-group').style.display = repeats ? '' : 'none';
 }
 
 /* Manual events are server-synced family data (/api/calendar/events — the same
@@ -1079,6 +1118,9 @@ async function saveEvent(e) {
     endTime:  document.getElementById('event-end-time').value,
     category: document.querySelector('input[name="cat"]:checked').value,
     notes:    document.getElementById('event-notes').value.trim(),
+    endDate:  document.getElementById('event-end-date').value || null,
+    repeat:   document.getElementById('event-repeat').value,
+    repeatUntil: document.getElementById('event-repeat-until').value || null,
   };
   let ev;
   try {
@@ -1142,14 +1184,18 @@ function loadFamilyEvents() {
   return famEventsSync;
 }
 
-function showDetail(id) {
+function showDetail(id, occDate) {
   // School events live in server state (schoolEvents), not localStorage —
   // look there first via the normalized id shape ('school-<subId>-<uid>').
+  // Recurring occurrences share their series' `id`, so match on occDate
+  // (the occurrence's own date) too — otherwise two occurrences of the same
+  // series would always resolve to whichever one getEvents() finds first.
   const ev = String(id).startsWith('school-')
     ? visibleEvents().find(e => e.id === id)
-    : getEvents().find(e => e.id === id);
+    : getEvents().find(e => e.id === id && (!occDate || (e.occurrenceDate || e.date) === occDate));
   if (!ev) return;
   activeEventId = id;
+  activeEventRecurring = !!ev.recurring && ev.source !== 'school';
 
   const catLabel = { school:'🏫 School', sports:'⚽ Sports', arts:'🎨 Arts', social:'👫 Social', other:'⭐ Other' };
   const badge = document.getElementById('detail-badge');
@@ -1168,6 +1214,24 @@ function showDetail(id) {
     notesRow.style.display = '';
   } else {
     notesRow.style.display = 'none';
+  }
+
+  // "Through <date>" (multi-day span) and "Repeats <cadence>" — manual events
+  // only; school-feed recurrence is already surfaced via the lock hint below.
+  const throughRow = document.getElementById('detail-through-row');
+  if (ev.source !== 'school' && ev.endDate) {
+    document.getElementById('detail-through').textContent = `Through ${formatLong(parseIso(ev.endDate))}`;
+    throughRow.style.display = '';
+  } else {
+    throughRow.style.display = 'none';
+  }
+  const repeatRow = document.getElementById('detail-repeat-row');
+  const rLabel = ev.source !== 'school' ? repeatLabel(ev) : '';
+  if (rLabel) {
+    document.getElementById('detail-repeat').textContent = rLabel;
+    repeatRow.style.display = '';
+  } else {
+    repeatRow.style.display = 'none';
   }
 
   // School events are read-only for kids (synced from the school's calendar)
@@ -1219,6 +1283,9 @@ async function deleteCurrentEvent() {
     }
     return;
   }
+  // Deleting a recurring event removes the whole series server-side — confirm
+  // that explicitly so a tap on one occurrence doesn't silently wipe them all.
+  if (activeEventRecurring && !confirm('Delete this event and all its repeats?')) return;
   // Server-synced manual event ('ev_' id): delete on the server first so it
   // disappears everywhere (iOS too). Events without a server id are still
   // local-only (offline-queued) and just get dropped from the mirror.
@@ -2569,15 +2636,20 @@ function renderTodayScheduleRow(ev) {
   const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
   const lock = ev.source === 'school' ? ' 🔒' : '';
   const meta = ev.location || ev.notes || '';
-  return `<div class="schedule-row" onclick="showDetail('${ev.id}')">
+  return `<div class="schedule-row" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')">
     <span class="schedule-time">${ev.time ? esc(ev.time) : 'All day'}</span>
     <span class="schedule-bar" style="background:${color}"></span>
     <span class="schedule-main">
-      <div class="schedule-title">${esc(ev.title)}${lock}</div>
+      <div class="schedule-title">${ev.recurring ? '<span class="evt-repeat-badge">↻</span>' : ''}${esc(ev.title)}${lock}</div>
       ${meta ? `<div class="schedule-meta">${esc(meta)}</div>` : ''}
     </span>
     ${kidName ? `<span class="schedule-kid" style="color:${color}">${kidName}</span>` : ''}
   </div>`;
+}
+
+// An event is "today" if today falls anywhere in its date..endDate span.
+function eventsOnDay(events, ds) {
+  return events.filter((e) => e.date <= ds && (e.endDate || e.date) >= ds);
 }
 
 function renderTodaySchedule(todayIso) {
@@ -2591,7 +2663,7 @@ function renderTodaySchedule(todayIso) {
   // switcher lives on the Calendar screen, not here.
   const events = allEvents()
     .filter((e) => !isKidSession() || e.kidId === sessionUser.kidId || (e.source === 'school' && !e.kidId));
-  const todays = events.filter((e) => e.date === todayIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const todays = eventsOnDay(events, todayIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
   const addEventHint = isKidSession() ? '' : ' — <a href="#" class="btn-link" style="display:inline" onclick="openAddEventModal();return false">add one</a>';
   if (countEl) countEl.textContent = todays.length ? `${todays.length} event${todays.length === 1 ? '' : 's'}` : '';
@@ -2600,7 +2672,7 @@ function renderTodaySchedule(todayIso) {
     : `<div class="today-empty">Nothing on the calendar today${addEventHint}.</div>`;
 
   const tomorrowIso = isoDate(new Date(Date.now() + 86400000));
-  const tomorrowEvents = events.filter((e) => e.date === tomorrowIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const tomorrowEvents = eventsOnDay(events, tomorrowIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   if (tomorrowWrap) tomorrowWrap.hidden = !tomorrowEvents.length;
   if (tomorrowRow && tomorrowEvents.length) {
     const first = tomorrowEvents[0];
