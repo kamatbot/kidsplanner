@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// A unified row for the Today / Calendar surfaces — a school-feed event, a
 /// school "deadline", or a homework item — so both screens can render one list.
@@ -13,6 +14,7 @@ struct AgendaItem: Identifiable {
     let sortKey: String      // 24h "HH:mm" for intra-day ordering
     let subtitle: String?    // subject / feed / location
     let homework: HomeworkItem?  // set when kind == .homework (enables the done toggle)
+    let kidId: String?       // resolves a per-kid color/name badge (Palette.kidColor)
 }
 
 /// Builds/labels agenda data. Formatters are shared (see DateFmt) — allocating
@@ -59,7 +61,8 @@ enum Agenda {
         }
         let kind: AgendaKind = (e.isDeadline ?? false) || e.type == "deadline" ? .deadline : .event
         return AgendaItem(id: "ev-\(e.id)", kind: kind, title: e.title, dayKey: dayKey,
-                          time: time, sortKey: sort, subtitle: e.feedLabel ?? e.location, homework: nil)
+                          time: time, sortKey: sort, subtitle: e.feedLabel ?? e.location, homework: nil,
+                          kidId: e.kidId)
     }
 
     private static func fromFamilyEvent(_ e: FamilyEvent) -> AgendaItem {
@@ -67,7 +70,8 @@ enum Agenda {
         return AgendaItem(id: "fe-\(e.id)", kind: .event, title: e.title, dayKey: e.date,
                           time: hasTime ? display(hhmm: e.time!) : nil,
                           sortKey: hasTime ? e.time! : "00:00",
-                          subtitle: (e.notes?.isEmpty == false) ? e.notes : nil, homework: nil)
+                          subtitle: (e.notes?.isEmpty == false) ? e.notes : nil, homework: nil,
+                          kidId: e.kidId)
     }
 
     private static func fromHomework(_ h: HomeworkItem) -> AgendaItem {
@@ -75,7 +79,7 @@ enum Agenda {
                    time: h.dueTime.map(display(hhmm:)),
                    sortKey: h.dueTime ?? "23:59",
                    subtitle: (h.subject?.isEmpty == false) ? h.subject : "Homework",
-                   homework: h)
+                   homework: h, kidId: h.kidId)
     }
 
     /// All agenda items for a day key, sorted by time.
@@ -104,5 +108,18 @@ enum Agenda {
         let today = todayKey(); let limit = dayKey(offset: days)
         return homework.filter { !$0.isDone && $0.dueDate >= today && $0.dueDate <= limit }
             .sorted { $0.dueDate < $1.dueDate }
+    }
+
+    /// Resolves a kid's Horizon identity color from their position in the family's
+    /// kid list (Palette.kidColor cycles teal/amber/blue/… by kid order) — the same
+    /// mapping the web app uses. Returns nil when `kidId` doesn't match a kid
+    /// (family/school-feed events with no specific kid).
+    static func kidColor(_ kidId: String?, kids: [Kid]) -> Color? {
+        guard let kidId, let idx = kids.firstIndex(where: { $0.id == kidId }) else { return nil }
+        return Palette.kidColor(index: idx)
+    }
+    static func kidName(_ kidId: String?, kids: [Kid]) -> String? {
+        guard let kidId else { return nil }
+        return kids.first { $0.id == kidId }?.name
     }
 }

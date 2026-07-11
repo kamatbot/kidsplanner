@@ -21,7 +21,7 @@ struct AgendaRow: View {
             Spacer(minLength: Space.sm)
             if let t = item.time {
                 Text(t)
-                    .font(Typography.caption.weight(.semibold))
+                    .font(Typography.mono(11.5))
                     .foregroundStyle(Palette.textSecond)
                     .fixedSize()
             }

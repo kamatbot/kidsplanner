@@ -75,8 +75,9 @@ private struct EnrichmentGateModifier: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     /// Apply the enrichment lock overlay to a widget when `store.enrichmentLocked`.
+    /// Internal (not file-private) — also used by TodayView's Daily 5 / News cards.
     func enrichmentGated(locked: Bool, dueCount: Int) -> some View {
         modifier(EnrichmentGateModifier(locked: locked, dueCount: dueCount))
     }
@@ -139,7 +140,7 @@ struct QuoteWidget: View {
                             } label: {
                                 Text("Save reflection")
                                     .font(Typography.caption.weight(.bold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Palette.onAccent)
                                     .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
                                     .background(Palette.coral, in: Capsule())
                             }
@@ -172,77 +173,6 @@ struct WordWidget: View {
     }
 }
 
-struct NewsWidget: View {
-    @Environment(AppStore.self) private var store
-    @State private var reflection = ""
-    @State private var saved = false
-
-    var body: some View {
-        let n = Daily.news
-        return DashCard("📰", "Interesting News", tint: Palette.green) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(n.cat)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Palette.green)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Palette.green.opacity(0.16), in: Capsule())
-                Text(n.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(n.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let url = URL(string: n.articleLink) {
-                    Link(destination: url) {
-                        Label("Read the full story", systemImage: "arrow.up.right.square")
-                            .font(Typography.caption.weight(.bold))
-                            .foregroundStyle(Palette.green)
-                    }
-                }
-
-                Divider().overlay(Palette.border)
-
-                Text("What do you think about this?")
-                    .font(Typography.caption.weight(.semibold))
-                    .foregroundStyle(Palette.textSecond)
-                TextField("Share your thoughts…", text: $reflection, axis: .vertical)
-                    .lineLimit(2...4)
-                    .font(Typography.body)
-                    .padding(Space.sm)
-                    .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                HStack {
-                    Spacer()
-                    if saved {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .font(Typography.caption.weight(.bold))
-                            .foregroundStyle(Palette.green)
-                    } else {
-                        Button {
-                            Haptics.selection()
-                            let text = reflection
-                            Task {
-                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": "\(n.headline)\n\n\(n.summary)\n\n\(n.articleLink)"])
-                                saved = true
-                                try? await Task.sleep(nanoseconds: 900_000_000)
-                                saved = false
-                                reflection = ""
-                            }
-                        } label: {
-                            Text("Save")
-                                .font(Typography.caption.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                                .background(Palette.green, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-            }
-        }
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
-    }
-}
-
 struct QuizWidget: View {
     @Environment(AppStore.self) private var store
     var body: some View {
@@ -250,5 +180,96 @@ struct QuizWidget: View {
             BrainTeaserView()
         }
         .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
+    }
+}
+
+// MARK: - Daily 5 card (Horizon, canvas-1f/1g)
+//
+// Folds the quote, SAT word-of-the-day, and brain-teaser widgets above into one
+// compact card — a quote line + word row (tap either to open the full existing
+// experience in a sheet) and a "quiz" CTA that opens the brain teaser. Their
+// underlying views/sheets/flows (QuoteWidget, SATActivityView, BrainTeaserView)
+// are unchanged, just re-hosted.
+struct DailyFiveCard: View {
+    @Environment(AppStore.self) private var store
+    /// Kid variant per canvas-1g: no quote row, solid full-width CTA instead of
+    /// the parent's outline button.
+    var isKid: Bool = false
+
+    private enum DailySheet: String, Identifiable { case quote, word, teaser; var id: String { rawValue } }
+    @State private var activeSheet: DailySheet? = nil
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                MicroLabel(text: "Daily 5")
+
+                if !isKid {
+                    Button { Haptics.selection(); activeSheet = .quote } label: {
+                        Text("“\(Daily.quote.text)”")
+                            .font(Typography.caption.italic())
+                            .foregroundStyle(Palette.textSecond)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button { Haptics.selection(); activeSheet = .word } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                        if !isKid { MicroLabel(text: "Word") }
+                        Text(Daily.word.word).font(Typography.body.weight(.bold)).foregroundStyle(Palette.accent)
+                        Text(Daily.word.def).font(Typography.caption).foregroundStyle(Palette.textSecond).lineLimit(1)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: Space.sm)
+
+                if isKid {
+                    AccentButton(title: "Play today's quiz") { activeSheet = .teaser }
+                } else {
+                    Button { Haptics.selection(); activeSheet = .teaser } label: {
+                        Text("Take today's quiz →")
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Palette.accent)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Space.sm + 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                                    .strokeBorder(Palette.border, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PressableStyle())
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
+        .sheet(item: $activeSheet) { sheet in
+            NavigationStack {
+                ScrollView { sheetContent(sheet).padding(Space.lg) }
+                    .background(ScreenBackground())
+                    .navigationTitle(sheetTitle(sheet))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { activeSheet = nil } } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sheetContent(_ sheet: DailySheet) -> some View {
+        switch sheet {
+        case .quote: QuoteWidget()
+        case .word: WordWidget()
+        case .teaser: QuizWidget()
+        }
+    }
+    private func sheetTitle(_ sheet: DailySheet) -> String {
+        switch sheet {
+        case .quote: return "Quote of the Day"
+        case .word: return "SAT Word of the Day"
+        case .teaser: return "Daily Brain Teaser"
+        }
     }
 }

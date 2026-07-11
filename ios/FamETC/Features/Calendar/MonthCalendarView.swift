@@ -15,6 +15,14 @@ struct MonthCalendarView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
     private var cellHeight: CGFloat { hSize == .regular ? 104 : 72 }
 
+    private var monthEventCount: Int {
+        gridDays.compactMap { $0 }
+            .filter { cal.isDate($0, equalTo: monthAnchor, toGranularity: .month) }
+            .reduce(0) { total, date in
+                total + Agenda.items(on: DateFmt.ymd.string(from: date), events: store.events, familyEvents: store.familyEvents, homework: store.homework).count
+            }
+    }
+
     var body: some View {
         VStack(spacing: Space.md) {
             header
@@ -33,6 +41,8 @@ struct MonthCalendarView: View {
                 }
                 .padding(.bottom, hSize == .compact ? Layout.tabBarClearance : Space.md)
             }
+            MicroLabel(text: "\(monthEventCount) item\(monthEventCount == 1 ? "" : "s") this month")
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(Space.lg)
         .background(ScreenBackground())
@@ -113,7 +123,7 @@ private struct DayCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(dayNumber)")
-                .font(.system(size: 12, weight: isToday ? .heavy : .semibold))
+                .font(Typography.mono(12, isToday ? .heavy : .semibold))
                 .foregroundStyle(isToday ? Palette.onAccent : Palette.text)
                 .frame(width: 21, height: 21)
                 .background(isToday ? Palette.accent : Color.clear, in: Circle())
@@ -139,15 +149,21 @@ private struct DayCell: View {
     }
 
     @ViewBuilder private func chip(_ item: AgendaItem) -> some View {
-        let color: Color = item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent)
-        let label = Text(item.title)
-            .font(.system(size: 9, weight: .semibold))
-            .lineLimit(1)
-            .foregroundStyle(color)
-            .strikethrough(item.homework?.isDone == true, color: color)
-            .padding(.horizontal, 5).padding(.vertical, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(color.opacity(0.16), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        // Kid-color bar when the item is tied to a specific kid (matches the
+        // Today schedule + canvas-1b), otherwise falls back to a kind color.
+        let color: Color = Agenda.kidColor(item.kidId, kids: store.kids)
+            ?? (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent))
+        let label = HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 2.5)
+            Text(item.title)
+                .font(.system(size: 9, weight: .semibold))
+                .lineLimit(1)
+                .foregroundStyle(Palette.text)
+                .strikethrough(item.homework?.isDone == true, color: Palette.textSecond)
+        }
+        .padding(.vertical, 2).padding(.trailing, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
         if item.kind == .homework, store.isParent, let hw = item.homework {
             label.draggable(hw.id)
         } else {

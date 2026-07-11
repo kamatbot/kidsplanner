@@ -119,9 +119,11 @@ struct EventDetailSheet: View {
         }
     }
 
+    // Cosmetic only (Horizon mono micro-label for the row caption) — kept minimal
+    // since another session is concurrently touching this sheet's structure.
     private func detailRow(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).font(Typography.caption.weight(.bold)).foregroundStyle(Palette.textSecond)
+            MicroLabel(text: label)
             Spacer()
             Text(value).font(Typography.body).foregroundStyle(Palette.text)
         }

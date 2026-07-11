@@ -62,18 +62,9 @@ struct NotesScreen: View {
     }
 
     private var addNoteButton: some View {
-        Button { Haptics.selection(); showComposer = true } label: {
-            HStack(spacing: Space.sm) {
-                Image(systemName: "plus.circle.fill")
-                Text("Add a note")
-            }
-            .font(Typography.body.weight(.semibold))
-            .foregroundStyle(Palette.accent)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, Space.md)
-            .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+        AccentButton(title: "Add a note", systemImage: "plus.circle.fill") {
+            showComposer = true
         }
-        .buttonStyle(PressableStyle())
     }
 
     private var emptyState: some View {

@@ -59,10 +59,8 @@ struct ChatScreen: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Chat").font(Typography.title).foregroundStyle(Palette.text)
-                if let name = store.family?.name {
-                    Text(name).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                }
+                MicroLabel(text: "Family chat")
+                Text(store.family?.name ?? "Chat").font(Typography.cardTitle).foregroundStyle(Palette.text)
             }
             Spacer()
         }
@@ -154,7 +152,7 @@ struct ChatScreen: View {
                 .lineLimit(1...5)
                 .focused($composerFocused)
                 .padding(.horizontal, Space.md).padding(.vertical, Space.sm + 3)
-                .background(Palette.bg, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
 
             Button(action: send) {
@@ -162,7 +160,7 @@ struct ChatScreen: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Palette.onAccent)
                     .frame(width: 42, height: 42)
-                    .background(canSend ? AnyShapeStyle(Signal.gradient()) : AnyShapeStyle(Palette.textSecond.opacity(0.4)), in: Circle())
+                    .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
             }
             .disabled(!canSend)
             .accessibilityLabel("Send message")
@@ -262,7 +260,7 @@ struct ChatMessageRow: View {
                     Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderColor).padding(.horizontal, 6)
                 }
                 bubble
-                Text(ChatTime.short(message.createdAt)).font(.system(size: 11)).foregroundStyle(Palette.textSecond).padding(.horizontal, 6)
+                Text(ChatTime.short(message.createdAt)).font(Typography.mono(10.5)).foregroundStyle(Palette.textSecond).padding(.horizontal, 6)
             }
             if !isMine { Spacer(minLength: 52) }
         }
@@ -292,13 +290,16 @@ struct ChatMessageRow: View {
                 .background(Palette.panel)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         } else {
+            // Own messages: flat violet fill (Horizon --accent), white/onAccent
+            // text. Others: neutral panel bg + border — the sender name above
+            // (not the bubble) carries their kid/parent color.
             Text(message.text)
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(isMine ? Palette.onAccent : Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16).padding(.vertical, 11)
-                .background(bubbleShape.fill(isMine ? AnyShapeStyle(Signal.gradient(.topLeading, .bottomTrailing)) : AnyShapeStyle(senderColor.opacity(0.16))))
-                .overlay(isMine ? nil : bubbleShape.strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
+                .background(bubbleShape.fill(isMine ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Palette.panel2)))
+                .overlay(isMine ? nil : bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
                 .contextMenu {
                     Button {
                         onAddToCalendar(message.text)
