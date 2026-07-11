@@ -1132,3 +1132,101 @@ html { font-size: 16px; }
 /* Confetti celebration overlay (kid completions) */
 .confetti-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 9999; display: none; }
 .confetti-canvas.show { display: block; }
+
+/* ============================================================
+   GOALS — canvas 1d. Habit rings + milestone bars + weekly family recap.
+   Gentle language: no red/failure styling anywhere in this block.
+============================================================ */
+.goals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; max-width: 1040px; }
+.goal-card { display: flex; gap: 16px; align-items: center; }
+.goal-card.goal-card-milestone { flex-direction: column; align-items: stretch; gap: 0; }
+
+.goal-ring-btn { flex: none; background: none; border: none; padding: 0; cursor: pointer; border-radius: 50%; }
+.goal-ring-btn:hover { filter: brightness(0.96); }
+.goal-ring-track { fill: none; stroke: var(--grid); stroke-width: 7; }
+.goal-ring-fill { fill: none; stroke-width: 7; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 33px 33px; transition: stroke-dasharray .2s; }
+.goal-ring-text { font-family: "JetBrains Mono", monospace; font-size: 14px; font-weight: 700; fill: var(--text); text-anchor: middle; }
+
+.goal-card-body { flex: 1; min-width: 0; }
+.goal-card-title { font-size: 14.5px; font-weight: 600; }
+.goal-card-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.goal-card-streak {
+  display: flex; align-items: center; gap: 5px; margin-top: 8px;
+  font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--coral);
+}
+.goal-card-fresh { margin-top: 8px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-2); }
+
+.goal-progress-row { display: flex; justify-content: space-between; margin: 14px 0 5px; }
+.goal-progress-count { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; }
+.goal-progress-track { height: 7px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+.goal-progress-fill { height: 100%; background: var(--accent); transition: width .2s; }
+.goal-increment-btn { margin-top: 14px; align-self: flex-start; }
+.goal-card-delete { margin-left: auto; }
+
+.goals-empty { color: var(--text-2); font-size: 13.5px; padding: 6px 2px; }
+.goals-empty a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.goals-empty a:hover { text-decoration: underline; }
+
+.goals-recap-card { max-width: 720px; }
+.goals-recap-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.goals-recap-rows { display: flex; flex-direction: column; gap: 10px; }
+.goals-recap-row { display: flex; align-items: center; gap: 12px; }
+.goals-recap-kid { display: inline-flex; align-items: center; gap: 6px; width: 90px; flex: none; font-size: 13px; font-weight: 600; }
+.goals-recap-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.goals-recap-track { flex: 1; height: 7px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+.goals-recap-fill { height: 100%; }
+.goals-recap-count { font-family: "JetBrains Mono", monospace; font-size: 12px; flex: none; text-align: right; }
+.goals-recap-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); }
+
+/* ============================================================
+   ACTIVITIES — canvas 1e. Registry cards + day-of helper banner.
+============================================================ */
+.activities-dayof-banner {
+  display: flex; flex-direction: column; gap: 8px; background: var(--accent-soft); border-radius: 14px;
+  padding: 14px 18px; max-width: 960px;
+}
+.activities-dayof-banner[hidden] { display: none; }
+.activities-dayof-row { display: flex; align-items: center; gap: 12px; }
+.activities-dayof-icon { flex: none; color: var(--accent); }
+.activities-dayof-text { flex: 1; font-size: 13.5px; }
+.activities-dayof-label { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); flex: none; }
+
+.activities-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; max-width: 1040px; align-items: start; }
+.activity-card { border-top: 3px solid var(--kid-color, var(--accent)); }
+.activity-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.activity-card-name { font-size: 15.5px; font-weight: 700; }
+.activity-card-kid { font-size: 12.5px; font-weight: 600; margin-top: 2px; color: var(--kid-color, var(--accent)); }
+.activity-card-rows { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; font-size: 12.5px; color: var(--text-2); }
+.activity-card-row { display: flex; gap: 8px; }
+.activity-card-row-label {
+  font-family: "JetBrains Mono", monospace; font-size: 11px; width: 56px; flex: none;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.activity-gear-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.activity-gear-chip { padding: 3px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); font-size: 11.5px; }
+.activity-card-footer {
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-2);
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.activity-card-edit { flex: none; }
+
+.activity-schedule-editor { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.activity-schedule-row { display: flex; align-items: center; gap: 8px; }
+.activity-schedule-row select,
+.activity-schedule-row input[type="time"] {
+  border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 7px 8px;
+  font-family: inherit; font-size: 13px; background: var(--panel); color: var(--text);
+}
+
+/* ============================================================
+   SETTINGS / NOTES cosmetic pass — micro-label section headers,
+   consistent with the rest of Horizon (ids/structure unchanged).
+============================================================ */
+#tab-settings .card > h3,
+#tab-notes .notes-hub > .notes-hub-header > h3 {
+  font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-2); font-weight: 700; margin: 0 0 14px;
+}
+#tab-notes .notes-hub > .notes-hub-header { margin-bottom: 0; }
+#tab-notes .notes-hub > .notes-hub-header > h3 { margin: 0; }

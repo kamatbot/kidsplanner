@@ -419,20 +419,35 @@
           </section>
         </div>
 
-        <!-- Goals Tab (Phase 5 — placeholder) -->
+        <!-- Goals Tab (Phase W3, canvas-1d) — habit rings + milestone bars +
+             a weekly family recap. Gentle language throughout: no red/failure
+             states, a missed day just resets a streak, it doesn't punish. -->
         <div class="tab-panel" id="tab-goals">
-          <section class="card">
-            <h3>🎯 Goals</h3>
-            <p class="text-muted">Goals &amp; streaks are coming in a future update — see FEATURE_PLAN.md Phase 5.</p>
+          <div class="homework-hub-header">
+            <h1 class="page-title">Goals</h1>
+            <div class="page-header-spacer"></div>
+            <button type="button" class="btn-primary" onclick="openAddGoalModal()">+ New goal</button>
+          </div>
+          <div id="goals-list" class="goals-grid"></div>
+          <section class="card goals-recap-card" id="goals-recap-card" hidden>
+            <div class="goals-recap-header">
+              <span class="micro-label" id="goals-recap-week"></span>
+            </div>
+            <div id="goals-recap-rows" class="goals-recap-rows"></div>
+            <div class="goals-recap-footer">Missed days reset gently — streaks pause, they don't punish.</div>
           </section>
         </div>
 
-        <!-- Activities Tab (Phase 4 — placeholder) -->
+        <!-- Activities Tab (Phase W3, canvas-1e) — extracurricular registry
+             with a day-of helper banner rendered only from real data. -->
         <div class="tab-panel" id="tab-activities">
-          <section class="card">
-            <h3>⚽ Activities</h3>
-            <p class="text-muted">Extracurricular activities are coming in a future update — see FEATURE_PLAN.md Phase 4.</p>
-          </section>
+          <div class="homework-hub-header">
+            <h1 class="page-title">Activities</h1>
+            <div class="page-header-spacer"></div>
+            <button type="button" class="btn-primary" onclick="openAddActivityModal()">+ New activity</button>
+          </div>
+          <div id="activities-dayof-banner" class="activities-dayof-banner" hidden></div>
+          <div id="activities-list" class="activities-grid"></div>
         </div>
 
         <!-- Settings Tab: Manage Family -->
@@ -943,6 +958,101 @@
       <button type="button" class="btn-secondary" id="hw-detail-edit-btn" onclick="editCurrentHomework()">✏️ Edit</button>
       <button type="button" class="btn-danger" id="hw-detail-delete-btn" onclick="deleteCurrentHomework()">Delete 🗑️</button>
     </div>
+  </div>
+</div>
+
+<!-- Add Goal Modal (Phase W3) — habit (checked-in per week) or milestone
+     (total count) goal, parent-only creation (see openAddGoalModal). -->
+<div id="add-goal-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-goal-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>🎯 New goal</h3>
+      <button class="modal-close" onclick="closeModal('add-goal-modal')">×</button>
+    </div>
+    <form onsubmit="saveGoalForm(event)">
+      <div class="form-group">
+        <label>Kid</label>
+        <select id="goal-kid"></select>
+      </div>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="goal-title" placeholder="Read 20 min daily, Learn 50 SAT words…" required>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <div class="category-picker">
+          <label class="cat-opt"><input type="radio" name="goal-type" value="habit" checked onchange="updateGoalTargetLabel()"><span class="cat-chip other">🔁 Habit</span></label>
+          <label class="cat-opt"><input type="radio" name="goal-type" value="milestone" onchange="updateGoalTargetLabel()"><span class="cat-chip other">🏁 Milestone</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="goal-target-label">Times per week</label>
+        <input type="number" id="goal-target" min="1" step="1" placeholder="7" required>
+      </div>
+      <div id="goal-form-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-goal-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save goal 🎯</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Activity Modal (Phase W3) — extracurricular registry entry,
+     parent-only creation/editing (see openAddActivityModal). -->
+<div id="add-activity-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-activity-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="add-activity-title">⚽ New activity</h3>
+      <button class="modal-close" onclick="closeModal('add-activity-modal')">×</button>
+    </div>
+    <form onsubmit="saveActivityForm(event)">
+      <div class="form-group">
+        <label>Kid</label>
+        <select id="activity-kid"></select>
+      </div>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="activity-name" placeholder="Football, Art club, Piano…" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <div class="category-picker">
+          <label class="cat-opt"><input type="radio" name="activity-category" value="sports" checked><span class="cat-chip sports">⚽ Sports</span></label>
+          <label class="cat-opt"><input type="radio" name="activity-category" value="arts"><span class="cat-chip arts">🎨 Arts</span></label>
+          <label class="cat-opt"><input type="radio" name="activity-category" value="music"><span class="cat-chip other">🎵 Music</span></label>
+          <label class="cat-opt"><input type="radio" name="activity-category" value="other"><span class="cat-chip other">⭐ Other</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Schedule</label>
+        <div id="activity-schedule-editor" class="activity-schedule-editor"></div>
+        <button type="button" class="btn-link" onclick="addActivityScheduleRow()">+ Add a time</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="activity-location" placeholder="Main field, Room B204…">
+        </div>
+        <div class="form-group">
+          <label>Coach / teacher name</label>
+          <input type="text" id="activity-coach-name" placeholder="Mr. Daniels">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Gear (comma separated)</label>
+        <input type="text" id="activity-gear" placeholder="shin guards, water bottle, boots">
+      </div>
+      <div class="form-group">
+        <label>Note (fee, season, etc.)</label>
+        <input type="text" id="activity-note" placeholder="Term fee due Aug 15">
+      </div>
+      <div id="activity-form-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-activity-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save activity ⚽</button>
+      </div>
+    </form>
   </div>
 </div>
 

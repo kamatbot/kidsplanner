@@ -697,6 +697,10 @@ function showDashboard() {
   // first paint; the Homework tab reloads on its own each time it's opened.
   loadHomework().then(() => { renderCalendar(); applyEnrichmentGating(); updateHomeworkBadge(); renderTodayScreen(); });
 
+  // Goals (Phase W3): load once up front so Today's habits card renders real
+  // check-ins on first paint; the Goals tab reloads on its own when opened.
+  loadGoals().then(() => renderTodayScreen());
+
   // Notes: load once up front so the Notes tab is ready and pin affordances
   // elsewhere have fresh state; the Notes tab reloads on its own when opened.
   loadNotes();
@@ -1954,8 +1958,10 @@ function chatUnreadCount() {
 function updateChatUnreadBadge() {
   const dock = document.getElementById('chat-dock');
   const dockVisible = dock && !dock.hidden && !dock.classList.contains('chat-collapsed');
-  if (dockVisible) { markChatSeen(); return; } // being looked at right now — nothing to badge
-  const count = chatUnreadCount();
+  // Being looked at right now — nothing to badge. Compute count as 0 directly
+  // rather than calling markChatSeen() here: markChatSeen() itself calls this
+  // function, and re-entering it would recurse forever.
+  const count = dockVisible ? 0 : chatUnreadCount();
   [['chat-unread-badge'], ['chat-fab-badge']].forEach(([id]) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2589,31 +2595,44 @@ function renderTodayHomework(todayIso) {
   listEl.innerHTML = rows.map((item) => renderTodayHomeworkRow(item, todayIso)).join('');
 }
 
+function renderTodayHabitRow(goal) {
+  const checkedToday = (goal.checks || []).includes(isoDate(new Date()));
+  const color = kidColorFor(goal.kidId) || 'var(--accent)';
+  const streak = goalCurrentStreak(goal);
+  return `<div class="habit-row">
+    <button type="button" class="habit-check${checkedToday ? ' done' : ''}" onclick="toggleGoalCheckIn('${goal.id}')" aria-label="Check in" title="${checkedToday ? 'Checked in — tap to undo' : 'Check in for today'}"></button>
+    <span class="habit-title">${esc(goal.title)}</span>
+    <span class="habit-streak" style="color:${streak > 0 ? 'var(--coral)' : 'var(--text-2)'}">${streak > 0 ? streak + 'd' : ''}</span>
+  </div>`;
+}
+
 function renderTodayHabitsAndMomentum() {
   const listEl = document.getElementById('today-habits-list');
   const countEl = document.getElementById('today-habits-count');
-  // No habit/goal data model exists yet (Goals tab is an unbuilt placeholder,
-  // see tab-goals) — render an honest empty state rather than invented rows.
+  const habitGoals = goalsItems.filter((g) => g.type === 'habit' && (!isKidSession() || g.kidId === sessionUser.kidId));
+
   if (listEl) {
-    listEl.innerHTML = `<p class="today-empty-cta">Habit tracking is coming soon. <a href="#" onclick="switchNavTab('goals');return false">See Goals →</a></p>`;
+    if (!habitGoals.length) {
+      listEl.innerHTML = `<p class="today-empty-cta">Set a first goal — reading, practice, anything worth a streak. <a href="#" onclick="switchNavTab('goals');return false">Add one →</a></p>`;
+    } else {
+      listEl.innerHTML = habitGoals.map(renderTodayHabitRow).join('');
+    }
   }
-  if (countEl) countEl.textContent = '';
+  const todayIso = isoDate(new Date());
+  const checkedTodayCount = habitGoals.filter((g) => (g.checks || []).includes(todayIso)).length;
+  if (countEl) countEl.textContent = habitGoals.length ? `${checkedTodayCount}/${habitGoals.length}` : '';
 
   // The design reserves exactly one coral→violet gradient "momentum" element
-  // per screen, tied to habit completion — since that data doesn't exist yet,
-  // this repurposes the same bar to real data (homework completed this week)
-  // rather than fabricate a habit number. Revisit once Goals ships.
+  // per screen, tied to habit completion — now wired to real weekly check-ins
+  // across every habit goal.
   const labelEl = document.getElementById('today-momentum-label');
   const valueEl = document.getElementById('today-momentum-value');
   const fillEl = document.getElementById('today-momentum-fill');
-  const monday = mondayOf(new Date());
-  const sunday = new Date(+monday + 6 * 86400000);
-  const weekItems = homeworkItems.filter((h) => h.dueDate && parseIso(h.dueDate) >= monday && parseIso(h.dueDate) <= sunday);
-  const done = weekItems.filter((h) => h.status === 'done').length;
-  const total = weekItems.length;
-  if (labelEl) labelEl.textContent = 'Homework done this week';
-  if (valueEl) valueEl.textContent = total ? `${done}/${total}` : '—';
-  if (fillEl) fillEl.style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
+  const totalTarget = habitGoals.reduce((sum, g) => sum + (g.target || 0), 0);
+  const totalChecked = habitGoals.reduce((sum, g) => sum + goalChecksThisWeek(g), 0);
+  if (labelEl) labelEl.textContent = 'Habit check-ins this week';
+  if (valueEl) valueEl.textContent = totalTarget ? `${totalChecked}/${totalTarget}` : '—';
+  if (fillEl) fillEl.style.width = totalTarget ? `${Math.min(100, Math.round((totalChecked / totalTarget) * 100))}%` : '0%';
 }
 
 /* Daily 5: the brain-teaser quiz is collapsed behind "Take today's quiz →"
@@ -2891,6 +2910,406 @@ function celebrateHomeworkDone() {
   requestAnimationFrame(step);
 }
 
+/* ============================================================
+   GOALS (Phase W3, canvas 1d) — habit rings (check in today, per-week
+   target) + milestone bars (total count). Gentle language throughout: a
+   missed day is never flagged, streaks just start counting again.
+============================================================ */
+let goalsItems = []; // last-loaded list from GET /api/goals
+
+async function loadGoals() {
+  try { goalsItems = await window.auth.getGoals({}); } catch (e) { goalsItems = []; }
+  return goalsItems;
+}
+
+function goalChecksThisWeek(goal) {
+  if (!goal || goal.type !== 'habit') return 0;
+  const monday = mondayOf(new Date());
+  const sunday = new Date(+monday + 6 * 86400000);
+  const mondayIso = isoDate(monday), sundayIso = isoDate(sunday);
+  return (goal.checks || []).filter((d) => d >= mondayIso && d <= sundayIso).length;
+}
+
+function goalCurrentStreak(goal) {
+  if (!goal || goal.type !== 'habit') return 0;
+  const set = new Set(goal.checks || []);
+  let streak = 0;
+  let d = new Date();
+  while (set.has(isoDate(d))) { streak++; d = new Date(+d - 86400000); }
+  return streak;
+}
+
+function goalRingSvg(goal) {
+  const r = 26, c = 2 * Math.PI * r;
+  const weekChecks = goalChecksThisWeek(goal);
+  const frac = Math.min(1, goal.target ? weekChecks / goal.target : 0);
+  const dash = (frac * c).toFixed(1);
+  const color = kidColorFor(goal.kidId) || 'var(--accent)';
+  const checkedToday = (goal.checks || []).includes(isoDate(new Date()));
+  return `<button type="button" class="goal-ring-btn" onclick="toggleGoalCheckIn('${goal.id}')" title="${checkedToday ? 'Checked in today — tap to undo' : 'Check in for today'}" aria-label="Check in">
+    <svg viewBox="0 0 66 66" width="66" height="66">
+      <circle class="goal-ring-track" cx="33" cy="33" r="${r}"></circle>
+      <circle class="goal-ring-fill" cx="33" cy="33" r="${r}" style="stroke:${color};stroke-dasharray:${dash} ${c.toFixed(1)}"></circle>
+      <text x="33" y="38" class="goal-ring-text">${esc(String(weekChecks))}/${esc(String(goal.target))}</text>
+    </svg>
+  </button>`;
+}
+
+function renderGoalCard(goal) {
+  const kidName = kidNameFor(goal.kidId);
+  const canManage = !isKidSession();
+  const deleteBtn = canManage
+    ? `<button type="button" class="btn-link-danger goal-card-delete" onclick="deleteGoalItem('${goal.id}')" title="Delete goal">🗑️</button>` : '';
+
+  if (goal.type === 'habit') {
+    const streak = goalCurrentStreak(goal);
+    const streakHtml = streak > 0
+      ? `<div class="goal-card-streak"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>${streak}-day streak</div>`
+      : `<div class="goal-card-fresh">Fresh start today ✓</div>`;
+    return `<div class="card goal-card" data-goal-id="${goal.id}">
+      ${goalRingSvg(goal)}
+      <div class="goal-card-body">
+        <div class="goal-card-title">${esc(goal.title)}</div>
+        <div class="goal-card-sub">${esc(kidName)} · habit</div>
+        ${streakHtml}
+      </div>
+      ${deleteBtn}
+    </div>`;
+  }
+
+  // milestone
+  const pct = Math.min(100, goal.target ? Math.round((goal.progress / goal.target) * 100) : 0);
+  const reached = goal.progress >= goal.target;
+  return `<div class="card goal-card goal-card-milestone" data-goal-id="${goal.id}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div>
+        <div class="goal-card-title">${esc(goal.title)}</div>
+        <div class="goal-card-sub">${esc(kidName)} · milestone</div>
+      </div>
+      ${deleteBtn}
+    </div>
+    <div class="goal-progress-row"><span class="micro-label">Progress</span><span class="goal-progress-count">${goal.progress}/${goal.target}</span></div>
+    <div class="goal-progress-track"><div class="goal-progress-fill" style="width:${pct}%"></div></div>
+    <button type="button" class="btn-secondary goal-increment-btn" onclick="incrementGoalMilestone('${goal.id}')"${reached ? ' disabled' : ''}>${reached ? 'Reached 🎉' : '+1'}</button>
+  </div>`;
+}
+
+function renderGoalsRecap(habitGoals) {
+  const card = document.getElementById('goals-recap-card');
+  const rowsEl = document.getElementById('goals-recap-rows');
+  const weekEl = document.getElementById('goals-recap-week');
+  if (!card || !rowsEl) return;
+  if (!habitGoals.length) { card.hidden = true; return; }
+  card.hidden = false;
+  if (weekEl) weekEl.textContent = `Family recap · week of ${formatShort(mondayOf(new Date()))}`;
+  rowsEl.innerHTML = habitGoals.map((g) => {
+    const color = kidColorFor(g.kidId) || 'var(--accent)';
+    const checked = goalChecksThisWeek(g);
+    const pct = Math.min(100, g.target ? Math.round((checked / g.target) * 100) : 0);
+    return `<div class="goals-recap-row">
+      <span class="goals-recap-kid" style="color:${color}"><span class="goals-recap-dot" style="background:${color}"></span>${esc(kidNameFor(g.kidId))}</span>
+      <div class="goals-recap-track"><div class="goals-recap-fill" style="width:${pct}%;background:${color}"></div></div>
+      <span class="goals-recap-count">${checked}/${g.target} ${esc(g.title)}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderGoalsHub() {
+  const listEl = document.getElementById('goals-list');
+  if (!listEl) return;
+  let items = goalsItems.slice();
+  if (isKidSession()) items = items.filter((g) => g.kidId === sessionUser.kidId);
+
+  if (!items.length) {
+    const cta = isKidSession() ? '' : ` <a href="#" onclick="openAddGoalModal();return false">+ New goal</a>`;
+    listEl.innerHTML = `<p class="goals-empty">Set a first goal — reading, practice, anything worth a streak.${cta}</p>`;
+  } else {
+    listEl.innerHTML = items.map(renderGoalCard).join('');
+  }
+  renderGoalsRecap(items.filter((g) => g.type === 'habit'));
+}
+
+function openAddGoalModal() {
+  document.getElementById('goal-title').value = '';
+  document.getElementById('goal-target').value = '';
+  document.getElementById('goal-form-error').textContent = '';
+  document.querySelector('input[name="goal-type"][value="habit"]').checked = true;
+  updateGoalTargetLabel();
+
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const kidSelect = document.getElementById('goal-kid');
+  kidSelect.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">Add a kid first</option>';
+  if (isKidSession()) kidSelect.value = sessionUser.kidId;
+  else if (activeKidId) kidSelect.value = activeKidId;
+  openModal('add-goal-modal');
+}
+
+function updateGoalTargetLabel() {
+  const checked = document.querySelector('input[name="goal-type"]:checked');
+  const type = checked ? checked.value : 'habit';
+  const label = document.getElementById('goal-target-label');
+  const input = document.getElementById('goal-target');
+  if (type === 'habit') { label.textContent = 'Times per week'; input.placeholder = '7'; }
+  else { label.textContent = 'Target total'; input.placeholder = '50'; }
+}
+
+async function saveGoalForm(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('goal-form-error');
+  const kidId = isKidSession() ? sessionUser.kidId : document.getElementById('goal-kid').value;
+  const title = document.getElementById('goal-title').value.trim();
+  const type = document.querySelector('input[name="goal-type"]:checked').value;
+  const target = document.getElementById('goal-target').value;
+  if (!kidId) { errEl.textContent = 'Add a kid profile first.'; return; }
+  try {
+    const res = await window.auth.addGoal({ kidId, title, type, target });
+    goalsItems.push(res.goal);
+    closeModal('add-goal-modal');
+    renderGoalsHub();
+    renderTodayHabitsAndMomentum();
+    toast('Goal added 🎯');
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+async function toggleGoalCheckIn(id) {
+  try {
+    const res = await window.auth.checkGoalToday(id);
+    const idx = goalsItems.findIndex((g) => g.id === id);
+    if (idx >= 0) goalsItems[idx] = res.goal;
+    renderGoalsHub();
+    renderTodayHabitsAndMomentum();
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+async function incrementGoalMilestone(id) {
+  try {
+    const res = await window.auth.incrementGoalProgress(id, 1);
+    const idx = goalsItems.findIndex((g) => g.id === id);
+    if (idx >= 0) goalsItems[idx] = res.goal;
+    renderGoalsHub();
+    if (res.goal.progress >= res.goal.target) toast('🎉 Milestone reached!');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+async function deleteGoalItem(id) {
+  if (!confirm('Delete this goal?')) return;
+  try {
+    await window.auth.deleteGoal(id);
+    goalsItems = goalsItems.filter((g) => g.id !== id);
+    renderGoalsHub();
+    renderTodayHabitsAndMomentum();
+    toast('Goal deleted.');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
+/* ============================================================
+   ACTIVITIES (Phase W3, canvas 1e) — extracurricular registry + a day-of
+   helper banner rendered only from real data (today's activity + its gear
+   tags). Creating/editing an activity does NOT create calendar events in
+   this phase — that sync is a follow-up.
+============================================================ */
+let activitiesItems = []; // last-loaded list from GET /api/activities
+let editingActivityId = null;
+let activityScheduleDraft = []; // [{day,start,end}] while the add/edit modal is open
+
+async function loadActivities() {
+  try { activitiesItems = await window.auth.getActivities({}); } catch (e) { activitiesItems = []; }
+  return activitiesItems;
+}
+
+const ACTIVITY_DAY_LABEL = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+const ACTIVITY_CATEGORY_LABEL = { sports: 'Sports', arts: 'Arts', music: 'Music', other: 'Other' };
+
+function formatActivitySchedule(schedule) {
+  return (schedule || [])
+    .slice()
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((s) => `${ACTIVITY_DAY_LABEL[s.day] || s.day} ${fmt12(s.start)}${s.end ? '–' + fmt12(s.end) : ''}`)
+    .join(', ');
+}
+
+function renderActivityCard(item) {
+  const color = kidColorFor(item.kidId) || 'var(--accent)';
+  const canManage = !isKidSession();
+  const gearHtml = (item.gear || []).map((g) => `<span class="activity-gear-chip">${esc(g)}</span>`).join('');
+  const manageLinks = canManage
+    ? `<span><a href="#" class="btn-link activity-card-edit" onclick="editActivityItem('${item.id}');return false">Edit</a> · <a href="#" class="btn-link-danger" onclick="deleteActivityItem('${item.id}');return false">Delete</a></span>`
+    : '';
+  return `<div class="card activity-card" style="--kid-color:${color}" data-activity-id="${item.id}">
+    <div class="activity-card-head">
+      <div class="activity-card-name">${esc(item.name)}</div>
+      <span class="micro-label">${ACTIVITY_CATEGORY_LABEL[item.category] || 'Other'}</span>
+    </div>
+    <div class="activity-card-kid">${esc(kidNameFor(item.kidId))}</div>
+    <div class="activity-card-rows">
+      ${item.schedule && item.schedule.length ? `<div class="activity-card-row"><span class="activity-card-row-label">When</span>${esc(formatActivitySchedule(item.schedule))}</div>` : ''}
+      ${item.location ? `<div class="activity-card-row"><span class="activity-card-row-label">Where</span>${esc(item.location)}</div>` : ''}
+      ${item.coachName ? `<div class="activity-card-row"><span class="activity-card-row-label">${esc(item.coachLabel || 'Coach')}</span>${esc(item.coachName)}</div>` : ''}
+    </div>
+    ${gearHtml ? `<div class="activity-gear-row">${gearHtml}</div>` : ''}
+    ${(item.note || manageLinks) ? `<div class="activity-card-footer"><span>${esc(item.note || '')}</span>${manageLinks}</div>` : ''}
+  </div>`;
+}
+
+function renderActivitiesDayOfBanner(items) {
+  const el = document.getElementById('activities-dayof-banner');
+  if (!el) return;
+  const dowMap = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const dow = dowMap[new Date().getDay()];
+  const todays = [];
+  items.forEach((a) => {
+    const slot = (a.schedule || []).filter((s) => s.day === dow).sort((x, y) => x.start.localeCompare(y.start))[0];
+    if (slot) todays.push({ activity: a, slot });
+  });
+  todays.sort((x, y) => x.slot.start.localeCompare(y.slot.start));
+
+  if (!todays.length) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = todays.map(({ activity, slot }) => {
+    const gear = (activity.gear || []).join(', ');
+    return `<div class="activities-dayof-row">
+      <svg class="activities-dayof-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
+      <div class="activities-dayof-text"><strong>${esc(activity.name)} today at ${esc(fmt12(slot.start))}</strong>${gear ? ' — ' + esc(gear) : ''}</div>
+      <span class="activities-dayof-label">Day-of helper</span>
+    </div>`;
+  }).join('');
+}
+
+function renderActivitiesHub() {
+  const listEl = document.getElementById('activities-list');
+  if (!listEl) return;
+  let items = activitiesItems.slice();
+  if (isKidSession()) items = items.filter((a) => a.kidId === sessionUser.kidId);
+
+  if (!items.length) {
+    const cta = isKidSession() ? '' : ` <a href="#" onclick="openAddActivityModal();return false">+ New activity</a>`;
+    listEl.innerHTML = `<p class="goals-empty">No activities yet.${cta}</p>`;
+  } else {
+    listEl.innerHTML = items.map(renderActivityCard).join('');
+  }
+  renderActivitiesDayOfBanner(items);
+}
+
+function renderActivityScheduleEditor() {
+  const el = document.getElementById('activity-schedule-editor');
+  if (!el) return;
+  const days = Object.keys(ACTIVITY_DAY_LABEL);
+  el.innerHTML = activityScheduleDraft.map((s, i) => `
+    <div class="activity-schedule-row">
+      <select onchange="activityScheduleDraft[${i}].day=this.value">
+        ${days.map((d) => `<option value="${d}"${s.day === d ? ' selected' : ''}>${ACTIVITY_DAY_LABEL[d]}</option>`).join('')}
+      </select>
+      <input type="time" value="${s.start || ''}" onchange="activityScheduleDraft[${i}].start=this.value">
+      <input type="time" value="${s.end || ''}" onchange="activityScheduleDraft[${i}].end=this.value">
+      <button type="button" class="hw-checklist-remove" onclick="removeActivityScheduleRow(${i})" aria-label="Remove time">×</button>
+    </div>`).join('');
+}
+
+function addActivityScheduleRow() {
+  activityScheduleDraft.push({ day: 'mon', start: '16:00', end: '' });
+  renderActivityScheduleEditor();
+}
+
+function removeActivityScheduleRow(i) {
+  activityScheduleDraft.splice(i, 1);
+  renderActivityScheduleEditor();
+}
+
+function openAddActivityModal() {
+  editingActivityId = null;
+  activityScheduleDraft = [];
+  document.getElementById('add-activity-title').textContent = '⚽ New activity';
+  document.getElementById('activity-name').value = '';
+  document.getElementById('activity-location').value = '';
+  document.getElementById('activity-coach-name').value = '';
+  document.getElementById('activity-gear').value = '';
+  document.getElementById('activity-note').value = '';
+  document.getElementById('activity-form-error').textContent = '';
+  const sportsInput = document.querySelector('input[name="activity-category"][value="sports"]');
+  if (sportsInput) sportsInput.checked = true;
+  renderActivityScheduleEditor();
+
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const kidSelect = document.getElementById('activity-kid');
+  kidSelect.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">Add a kid first</option>';
+  if (activeKidId) kidSelect.value = activeKidId;
+  openModal('add-activity-modal');
+}
+
+function editActivityItem(id) {
+  const item = activitiesItems.find((a) => a.id === id);
+  if (!item) return;
+  editingActivityId = id;
+  activityScheduleDraft = (item.schedule || []).map((s) => Object.assign({}, s));
+  document.getElementById('add-activity-title').textContent = '✏️ Edit activity';
+  document.getElementById('activity-name').value = item.name;
+  document.getElementById('activity-location').value = item.location || '';
+  document.getElementById('activity-coach-name').value = item.coachName || '';
+  document.getElementById('activity-gear').value = (item.gear || []).join(', ');
+  document.getElementById('activity-note').value = item.note || '';
+  document.getElementById('activity-form-error').textContent = '';
+  const catInput = document.querySelector(`input[name="activity-category"][value="${item.category}"]`);
+  if (catInput) catInput.checked = true;
+  renderActivityScheduleEditor();
+
+  const kids = (currentFamily && currentFamily.kids) || [];
+  const kidSelect = document.getElementById('activity-kid');
+  kidSelect.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('');
+  kidSelect.value = item.kidId;
+  openModal('add-activity-modal');
+}
+
+async function saveActivityForm(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('activity-form-error');
+  const kidId = document.getElementById('activity-kid').value;
+  const name = document.getElementById('activity-name').value.trim();
+  const category = document.querySelector('input[name="activity-category"]:checked').value;
+  const location = document.getElementById('activity-location').value.trim();
+  const coachName = document.getElementById('activity-coach-name').value.trim();
+  const gear = document.getElementById('activity-gear').value.split(',').map((s) => s.trim()).filter(Boolean);
+  const note = document.getElementById('activity-note').value.trim();
+  const schedule = activityScheduleDraft.filter((s) => s.start);
+  if (!kidId) { errEl.textContent = 'Add a kid profile first.'; return; }
+
+  try {
+    if (editingActivityId) {
+      const res = await window.auth.updateActivity(editingActivityId, { name, category, schedule, location, coachName, gear, note });
+      const idx = activitiesItems.findIndex((a) => a.id === editingActivityId);
+      if (idx >= 0) activitiesItems[idx] = res.activity;
+      toast('Activity updated ⚽');
+    } else {
+      const res = await window.auth.addActivity({ kidId, name, category, schedule, location, coachName, gear, note });
+      activitiesItems.push(res.activity);
+      toast('Activity added ⚽');
+    }
+    closeModal('add-activity-modal');
+    renderActivitiesHub();
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+async function deleteActivityItem(id) {
+  if (!confirm('Delete this activity?')) return;
+  try {
+    await window.auth.deleteActivity(id);
+    activitiesItems = activitiesItems.filter((a) => a.id !== id);
+    renderActivitiesHub();
+    toast('Activity deleted.');
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
 /* ---------- Calendar fusion: homework "due" chips ----------
    Amber due chips on the week/month calendar, distinct from events,
    respecting the kid switcher + per-kid color (see visibleHomeworkDueItems). */
@@ -2922,6 +3341,8 @@ function switchNavTab(tab) {
   if (tab === 'today') { renderTodayScreen(); }
   if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
   if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); applyEnrichmentGating(); updateHomeworkBadge(); }); }
+  if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
+  if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
   if (tab === 'notes') { loadNotes(); }
 
   // Chat is docked/collapsed (not hidden) on every tab except Notes/Settings —

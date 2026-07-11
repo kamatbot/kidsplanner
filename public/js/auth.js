@@ -469,6 +469,54 @@
     return api("/api/school/disconnect", { method: "POST" });
   }
 
+  /* ---------- goals (Phase W3) ---------- */
+  async function getGoals(opts) {
+    const qs = opts && opts.kidId ? ("?kidId=" + encodeURIComponent(opts.kidId)) : "";
+    const data = await api("/api/goals" + qs, { method: "GET" });
+    return (data && data.goals) || [];
+  }
+
+  async function addGoal(payload) {
+    return api("/api/goals", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function checkGoalToday(id) {
+    return api("/api/goals/" + encodeURIComponent(id) + "/check", { method: "PATCH" });
+  }
+
+  async function incrementGoalProgress(id, amount) {
+    return api("/api/goals/" + encodeURIComponent(id) + "/progress", {
+      method: "PATCH",
+      body: JSON.stringify({ amount: amount == null ? 1 : amount }),
+    });
+  }
+
+  async function deleteGoal(id) {
+    return api("/api/goals/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  /* ---------- activities (Phase W3) ---------- */
+  async function getActivities(opts) {
+    const qs = opts && opts.kidId ? ("?kidId=" + encodeURIComponent(opts.kidId)) : "";
+    const data = await api("/api/activities" + qs, { method: "GET" });
+    return (data && data.activities) || [];
+  }
+
+  async function addActivity(payload) {
+    return api("/api/activities", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function updateActivity(id, patch) {
+    return api("/api/activities/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteActivity(id) {
+    return api("/api/activities/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
   /* ---------- notes (enrichment) ---------- */
   async function getNotes(opts) {
     const params = new URLSearchParams();
@@ -580,6 +628,15 @@
     addHomework,
     updateHomework,
     deleteHomework,
+    getGoals,
+    addGoal,
+    checkGoalToday,
+    incrementGoalProgress,
+    deleteGoal,
+    getActivities,
+    addActivity,
+    updateActivity,
+    deleteActivity,
     getSchoolStatus,
     connectSchoolAccount,
     mapSchoolKid,
