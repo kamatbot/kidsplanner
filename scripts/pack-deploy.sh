@@ -72,7 +72,9 @@ case "$OUT" in
   *)     tar -xzf "$OUT" -C "$TMP" ;;
 esac
 ( cd "$TMP" && npm install --omit=dev --silent >/dev/null 2>&1 )
-( cd "$TMP" && NODE_ENV=production PORT="$PORT_T" node server.js >/tmp/pack-smoke.log 2>&1 ) &
+# FAM_DATA_DIR in .env.hostinger points at the prod path, which doesn't exist
+# locally — override it so boot-time db access (e.g. migrations) can run here.
+( cd "$TMP" && NODE_ENV=production PORT="$PORT_T" FAM_DATA_DIR="$TMP/data" node server.js >/tmp/pack-smoke.log 2>&1 ) &
 SRV=$!
 disown "$SRV" 2>/dev/null || true  # keep job-control chatter out of the output
 for i in $(seq 1 15); do
