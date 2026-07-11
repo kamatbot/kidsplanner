@@ -26,3 +26,4 @@ build-info.json
 ios/build/
 ios/DerivedData/
 
+*.tar.gz
