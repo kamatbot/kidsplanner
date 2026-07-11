@@ -1,0 +1,99 @@
+/* RetireOdds design tokens + base + auth pages.
+   "Horizon" palette (2026-07 refresh) */
+
+:root {
+  --bg: #f1efec;
+  --sidebar: #f8f6f3;
+  --panel: #ffffff;
+  --panel-2: #faf8f5;
+  --border: #e7e3dd;
+  --text: #211e1b;
+  --text-2: #6a655f;
+  --muted: #6f6a63;
+  --accent: #6f43d6;
+  --accent-soft: rgba(111, 67, 214, 0.11);
+  --on-accent: #ffffff;
+  --coral: #f0704f;
+  --warn: #8a6410;
+  --grid: #edeae5;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 28px rgba(0, 0, 0, 0.06);
+  --hover: rgba(33, 30, 27, 0.05);
+  --c-blue: #2563eb;
+  --c-violet: #7c3aed;
+  --c-amber: #f59e0b;
+  --c-green: #16a34a;
+  --c-red: #dc2626;
+  --c-teal: #0d9488;
+  --c-orange: #ea580c;
+  --c-orange-ink: #b8420c;
+}
+
+.dark {
+  --bg: #211f1d;
+  --sidebar: #262421;
+  --panel: #2c2926;
+  --panel-2: #33302c;
+  --border: #3b3733;
+  --text: #f1efec;
+  --text-2: #a29c93;
+  --muted: #968f86;
+  --accent: #b98cff;
+  --accent-soft: rgba(185, 140, 255, 0.15);
+  --on-accent: #1c1526;
+  --coral: #ff8a66;
+  --warn: #d6a24a;
+  --c-orange-ink: #ff8a4d;
+  --grid: #35322e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 38px rgba(0, 0, 0, 0.5);
+  --hover: rgba(241, 239, 236, 0.07);
+  --c-blue: #60a5fa;
+  --c-violet: #a78bfa;
+  --c-amber: #fbbf24;
+  --c-green: #4ade80;
+  --c-red: #f87171;
+  --c-teal: #2dd4bf;
+  --c-orange: #fb923c;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.28);
+  border-radius: 7px;
+  min-height: 44px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.45);
+  background-clip: padding-box;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

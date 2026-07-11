@@ -1,0 +1,83 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="ds/fonts/fonts.css">
+<link rel="stylesheet" href="ds/horizon.css">
+<link rel="stylesheet" href="ds/components.css">
+<style>
+body{margin:0;background:#eceae6;font-family:"Space Grotesk",system-ui,sans-serif}
+a{color:var(--accent)}a:hover{color:var(--accent)}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.dv-tid{font:600 10px "JetBrains Mono",monospace;padding:3px 7px;background:#211e1b;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:600 14px/1.2 "Space Grotesk",sans-serif;color:#211e1b}
+.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px "JetBrains Mono",monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#211e1b;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.3 "Space Grotesk",sans-serif;color:rgba(0,0,0,.6)}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden}
+.dv-opt:target .dv-oid{background:var(--accent);color:#fff}
+.dv-next{margin:24px 0 0;font:12px/1.5 "Space Grotesk",sans-serif;color:rgba(0,0,0,.5)}
+</style>
+</head><body style="margin:0;padding:8px"><div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Web · Homework hub — grouped by urgency, chat collapsed to a strip (1360×840)</div>
+<div class="dv-card" style="width:1360px"><div style="display:flex;height:840px;background:var(--bg);color:var(--text)">
+  <div style="width:212px;flex:none;background:var(--sidebar);border-right:1px solid var(--border);padding:20px 12px 16px;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:10px;padding:0 8px;margin-bottom:22px"><div style="width:32px;height:32px;border-radius:9px;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px">F</div><div style="font-size:17px;font-weight:700;letter-spacing:-0.02em">Fam ETC</div></div>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--text-2);font-size:14px;font-weight:600"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>Today</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--text-2);font-size:14px;font-weight:600"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>Calendar</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-size:14px;font-weight:600"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg><span style="flex:1">Homework</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--panel);border:1px solid var(--border);border-radius:999px;padding:1px 7px;color:var(--text)">4</span></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--text-2);font-size:14px;font-weight:600"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>Goals</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--text-2);font-size:14px;font-weight:600"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>Activities</div>
+    </div>
+  </div>
+  <div style="flex:1;min-width:0;padding:26px 34px;display:flex;flex-direction:column;gap:18px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font-size:25px;font-weight:700;letter-spacing:-0.02em">Homework</div>
+      <div style="display:flex;gap:6px;margin-left:8px">
+        <span style="padding:5px 12px;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:12.5px;font-weight:600">All kids</span>
+        <span style="padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-teal)"></span>Ryshi</span>
+        <span style="padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-amber)"></span>Arya</span>
+        <span style="padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--panel);font-size:12.5px;font-weight:600;color:var(--text-2)">Subject ▾</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn-secondary" style="height:38px;padding:0 14px;font-size:13.5px;display:inline-flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"></rect><circle cx="12" cy="13" r="4"></circle><path d="M9 7l1.5-3h3L15 7"></path></svg>Scan diary</button>
+      <button class="btn-primary" style="width:auto;height:38px;padding:0 15px;font-size:14px">+ Add</button>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:20px;overflow:hidden;max-width:880px">
+      <div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--c-red);font-weight:700">Overdue</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">1</span></div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px"><span style="width:18px;height:18px;border-radius:6px;border:1.5px solid var(--c-red);flex:none"></span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:600">Math worksheet 4B</div><div style="font-size:12px;color:var(--text-2);margin-top:2px">2 of 3 steps done</div></div><span style="padding:3px 9px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-2)">Math</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--c-teal)"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-teal)"></span>Ryshi</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--c-red);width:76px;text-align:right">Thu Jul 9</span></div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--warn);font-weight:700">Due today</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">1</span></div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px"><span style="width:18px;height:18px;border-radius:6px;border:1.5px solid var(--border);flex:none"></span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:8px">IA first draft <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"></path><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"></path></svg></div><div style="font-size:12px;color:var(--text-2);margin-top:2px">From Class of 2027 feed · ~2h effort</div></div><span style="padding:3px 9px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-2)">Senior Studies</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--c-teal)"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-teal)"></span>Ryshi</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--warn);width:76px;text-align:right">Today</span></div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-2);font-weight:700">This week</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">2</span></div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)"><span style="width:18px;height:18px;border-radius:6px;border:1.5px solid var(--border);flex:none"></span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:600">Reading log</div><div style="font-size:12px;color:var(--text-2);margin-top:2px">Plan a work session → adds a calendar block</div></div><span style="padding:3px 9px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-2)">English</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--c-amber)"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-amber)"></span>Arya</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2);width:76px;text-align:right">Mon Jul 13</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px"><span style="width:18px;height:18px;border-radius:6px;border:1.5px solid var(--border);flex:none"></span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:600;display:flex;align-items:center;gap:8px">Extended Essay outline <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"></path><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"></path></svg></div><div style="font-size:12px;color:var(--text-2);margin-top:2px">From CAHE feed</div></div><span style="padding:3px 9px;border-radius:999px;background:var(--panel-2);border:1px solid var(--border);font-size:11.5px;font-weight:600;color:var(--text-2)">CAHE</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--c-teal)"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-teal)"></span>Ryshi</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2);width:76px;text-align:right">Fri Jul 17</span></div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-2);font-weight:700">Done this week</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-2)">1</span></div>
+        <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;opacity:0.65">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px 18px"><span style="width:18px;height:18px;border-radius:6px;background:var(--c-green);flex:none;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span><div style="flex:1"><div style="font-size:14.5px;font-weight:600;text-decoration:line-through">Science poster</div></div><span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--c-amber)"><span style="width:7px;height:7px;border-radius:50%;background:var(--c-amber)"></span>Arya</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2);width:76px;text-align:right">Wed Jul 8</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="width:58px;flex:none;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:14px">
+    <div style="position:relative"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1-5.3A8.5 8.5 0 1 1 21 11.5z"></path></svg><span style="position:absolute;top:-5px;right:-7px;font-family:'JetBrains Mono',monospace;font-size:9px;background:var(--coral);color:#fff;border-radius:999px;padding:1px 5px;font-weight:700">2</span></div>
+    <div style="width:26px;border-top:1px solid var(--border)"></div>
+    <span style="width:24px;height:24px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">M</span>
+    <span style="width:24px;height:24px;border-radius:50%;background:var(--c-teal);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">R</span>
+    <span style="width:24px;height:24px;border-radius:50%;background:var(--c-amber);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">A</span>
+  </div>
+</div></div></div>
+
+</body></html>
