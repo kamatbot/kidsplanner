@@ -59,6 +59,7 @@ private struct CalendarAgendaList: View {
     @Environment(AppStore.self) private var store
     var onAdd: () -> Void
     var days: Int = 45
+    @State private var eventDetailRef: CalEventRef?
 
     private var sections: [(day: String, items: [AgendaItem])] {
         Agenda.upcomingSections(events: store.events, familyEvents: store.familyEvents, homework: store.homework, days: days)
@@ -86,7 +87,14 @@ private struct CalendarAgendaList: View {
                         Card {
                             VStack(spacing: 0) {
                                 ForEach(s.items) { item in
-                                    AgendaRow(item: item)
+                                    if let fe = item.familyEvent {
+                                        Button {
+                                            eventDetailRef = CalEventRef(id: "\(fe.id)-\(fe.date)", eventId: fe.id, occurrenceDate: fe.date)
+                                        } label: { AgendaRow(item: item) }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        AgendaRow(item: item)
+                                    }
                                     if item.id != s.items.last?.id { Divider().overlay(Palette.border) }
                                 }
                             }
@@ -98,6 +106,7 @@ private struct CalendarAgendaList: View {
             }
         }
         .refreshable { await store.refreshDashboard() }
+        .sheet(item: $eventDetailRef) { ref in EventDetailSheet(eventId: ref.eventId, occurrenceDate: ref.occurrenceDate) }
     }
 
     private var emptyState: some View {
@@ -113,4 +122,12 @@ private struct CalendarAgendaList: View {
             }
         }
     }
+}
+
+/// Wrapper so a (series id, occurrence date) pair can drive `.sheet(item:)` —
+/// occurrences of a recurring event share `id`, so the id alone isn't unique.
+private struct CalEventRef: Identifiable {
+    let id: String
+    let eventId: String
+    let occurrenceDate: String
 }

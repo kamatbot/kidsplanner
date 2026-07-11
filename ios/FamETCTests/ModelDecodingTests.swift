@@ -141,4 +141,43 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(r.family.kids[0].name, "Ava")
         XCTAssertEqual(r.family.inviteCode, "ABC123")
     }
+
+    /// Mirrors an expanded occurrence from lib/events.js `expandRecurring`: the
+    /// `repeat` JSON key (a Swift keyword) maps to `repeatRule`, and the
+    /// recurrence-only fields (seriesId/recurring/occurrenceDate/endDate) decode.
+    func testDecodesFamilyEventRecurringOccurrence() throws {
+        let payload = """
+        {
+          "event": {
+            "id": "ev_1", "title": "Soccer camp", "date": "2026-07-13",
+            "endDate": "2026-07-14", "time": "09:00", "endTime": null,
+            "notes": null, "category": "sports", "kidId": null,
+            "repeat": "weekly", "repeatUntil": "2026-08-30",
+            "seriesId": "ev_1", "recurring": true, "occurrenceDate": "2026-07-13"
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.event.repeatRule, "weekly")
+        XCTAssertTrue(r.event.isRecurring)
+        XCTAssertEqual(r.event.endDate, "2026-07-14")
+        XCTAssertEqual(r.event.seriesId, "ev_1")
+        XCTAssertEqual(r.event.occurrenceDate, "2026-07-13")
+    }
+
+    func testDecodesPlainFamilyEventWithNoRecurrenceExtras() throws {
+        let payload = """
+        {
+          "event": {
+            "id": "ev_2", "title": "Dentist", "date": "2026-07-15",
+            "time": "14:00", "notes": null, "category": "other", "kidId": null
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(payload.utf8))
+        XCTAssertNil(r.event.repeatRule)
+        XCTAssertNil(r.event.endDate)
+        XCTAssertNil(r.event.seriesId)
+        XCTAssertFalse(r.event.isRecurring)
+    }
 }

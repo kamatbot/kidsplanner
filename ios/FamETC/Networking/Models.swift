@@ -103,15 +103,36 @@ struct CalendarEvent: Codable, Identifiable {
 
 /// A manually-added family appointment (`/api/calendar/events`), server-synced
 /// across the family. Distinct from read-only school-feed `CalendarEvent`s.
+///
+/// The server expands a recurring series into occurrences (lib/events.js
+/// `expandRecurring`): every occurrence shares the series' `id`, and carries
+/// `seriesId`/`recurring`/`occurrenceDate` plus `date`/`endDate` shifted to
+/// that occurrence. Non-recurring events keep the plain shape with those
+/// fields nil.
 struct FamilyEvent: Codable, Identifiable {
     let id: String
     var title: String
     var date: String      // YYYY-MM-DD
     var time: String?     // HH:mm
     var endTime: String?
+    var endDate: String?      // YYYY-MM-DD — multi-day span end (nil = single day)
     var notes: String?
     var category: String?
     var kidId: String?
+    var repeatRule: String?   // "none" | "daily" | "weekly" | "biweekly" | "monthly" (server key "repeat")
+    var repeatUntil: String?  // YYYY-MM-DD
+    var seriesId: String?     // set on expanded occurrences — the series' event id
+    var recurring: Bool?      // true on expanded occurrences
+    var occurrenceDate: String?  // this occurrence's date (== date) on expanded occurrences
+
+    /// True for a recurring series or any of its expanded occurrences.
+    var isRecurring: Bool { recurring == true || (repeatRule ?? "none") != "none" }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, date, time, endTime, endDate, notes, category, kidId
+        case repeatRule = "repeat"
+        case repeatUntil, seriesId, recurring, occurrenceDate
+    }
 }
 
 /// A homework item (`/api/homework`). Kids see their own; parents see the family's.

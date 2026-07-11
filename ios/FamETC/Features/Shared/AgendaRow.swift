@@ -10,10 +10,17 @@ struct AgendaRow: View {
         HStack(spacing: Space.md) {
             leading
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(item.homework?.isDone == true ? Palette.textSecond : Palette.text)
-                    .strikethrough(item.homework?.isDone == true, color: Palette.textSecond)
+                HStack(spacing: 4) {
+                    Text(item.title)
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(item.homework?.isDone == true ? Palette.textSecond : Palette.text)
+                        .strikethrough(item.homework?.isDone == true, color: Palette.textSecond)
+                    if item.familyEvent?.isRecurring == true {
+                        Image(systemName: "repeat")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                }
                 if let sub = item.subtitle, !sub.isEmpty {
                     Text(sub).font(Typography.caption).foregroundStyle(Palette.textSecond)
                 }

@@ -16,8 +16,17 @@ struct AddEventSheet: View {
     @State private var notes = ""
     @State private var category = "other"
     @State private var saving = false
+    @State private var isMultiDay = false
+    @State private var endDate = Date()
+    @State private var repeatRule = "none"
+    @State private var hasRepeatUntil = false
+    @State private var repeatUntilDate = Date()
 
     private let categories = ["school", "sports", "arts", "social", "other"]
+    private let repeatOptions: [(value: String, label: String)] = [
+        ("none", "None"), ("daily", "Daily"), ("weekly", "Weekly"),
+        ("biweekly", "Biweekly"), ("monthly", "Monthly"),
+    ]
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
 
@@ -30,6 +39,22 @@ struct AddEventSheet: View {
                     Toggle("Set a time", isOn: $hasTime.animation())
                     if hasTime {
                         DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                    }
+                    Toggle("Multi-day", isOn: $isMultiDay.animation())
+                    if isMultiDay {
+                        DatePicker("End date", selection: $endDate, in: date..., displayedComponents: .date)
+                    }
+                }
+                Section("Repeat") {
+                    Picker("Repeat", selection: $repeatRule) {
+                        ForEach(repeatOptions, id: \.value) { Text($0.label).tag($0.value) }
+                    }
+                    .pickerStyle(.menu)
+                    if repeatRule != "none" {
+                        Toggle("Until a date", isOn: $hasRepeatUntil.animation())
+                        if hasRepeatUntil {
+                            DatePicker("Until", selection: $repeatUntilDate, in: date..., displayedComponents: .date)
+                        }
                     }
                 }
                 Section("Category") {
@@ -53,6 +78,8 @@ struct AddEventSheet: View {
         }
         .onAppear {
             date = initialDate
+            endDate = initialDate
+            repeatUntilDate = initialDate
             if !initialTitle.isEmpty { title = initialTitle }
             if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
                 let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
@@ -71,8 +98,11 @@ struct AddEventSheet: View {
         let t = hasTime ? EventFmt.hm.string(from: time) : nil
         let clean = title.trimmingCharacters(in: .whitespaces)
         let n = notes.trimmingCharacters(in: .whitespaces)
+        let ed = (isMultiDay && endDate > date) ? EventFmt.ymd.string(from: endDate) : nil
+        let until = (repeatRule != "none" && hasRepeatUntil) ? EventFmt.ymd.string(from: repeatUntilDate) : nil
         Task {
-            await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: nil)
+            await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: nil,
+                                  endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
             dismiss()
         }
     }
@@ -83,8 +113,16 @@ struct EventDetailSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let eventId: String
+    var occurrenceDate: String? = nil
+    @State private var showDeleteConfirm = false
 
-    private var event: FamilyEvent? { store.familyEvents.first { $0.id == eventId } }
+    // Occurrences of a recurring series share `id`, so prefer the occurrence
+    // that matches the date we were opened from; fall back to any occurrence
+    // of the series (e.g. when opened from a chat card with no specific date).
+    private var event: FamilyEvent? {
+        store.familyEvents.first { $0.id == eventId && (occurrenceDate == nil || $0.date == occurrenceDate) }
+            ?? store.familyEvents.first { $0.id == eventId }
+    }
 
     var body: some View {
         NavigationStack {
@@ -95,6 +133,12 @@ struct EventDetailSheet: View {
                         Text(ev.title).font(Typography.title).foregroundStyle(Palette.text)
                             .fixedSize(horizontal: false, vertical: true)
                         detailRow("When", Agenda.dayLabel(ev.date) + (ev.time.flatMap { $0.isEmpty ? nil : " · \($0)" } ?? ""))
+                        if let ed = ev.endDate, !ed.isEmpty { detailRow("Through", Agenda.dayLabel(ed)) }
+                        if ev.isRecurring {
+                            let rule = (ev.repeatRule ?? "none").capitalized
+                            let until = ev.repeatUntil.flatMap { $0.isEmpty ? nil : " until \(Agenda.dayLabel($0))" } ?? ""
+                            detailRow("Repeats", rule + until)
+                        }
                         if let cat = ev.category, !cat.isEmpty { detailRow("Category", cat.capitalized) }
                         if let notes = ev.notes, !notes.isEmpty {
                             VStack(alignment: .leading, spacing: Space.xs) {
@@ -103,8 +147,23 @@ struct EventDetailSheet: View {
                             }
                         }
                         Spacer()
+                        if store.isParent {
+                            Button(role: .destructive) { showDeleteConfirm = true } label: {
+                                Text("Delete Event").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(Palette.coral)
+                        }
                     }
                     .padding(Space.xl).frame(maxWidth: .infinity, alignment: .leading)
+                    .alert("Delete Event", isPresented: $showDeleteConfirm) {
+                        Button("Cancel", role: .cancel) {}
+                        Button("Delete", role: .destructive) {
+                            Task { await store.deleteEvent(ev.id); dismiss() }
+                        }
+                    } message: {
+                        Text(ev.isRecurring ? "Delete this event and all its repeats?" : "Delete this event?")
+                    }
                 } else {
                     VStack(spacing: Space.md) {
                         Image(systemName: "calendar.badge.exclamationmark").font(.system(size: 34)).foregroundStyle(Palette.textSecond)

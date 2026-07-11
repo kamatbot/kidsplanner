@@ -15,6 +15,7 @@ struct AgendaItem: Identifiable {
     let subtitle: String?    // subject / feed / location
     let homework: HomeworkItem?  // set when kind == .homework (enables the done toggle)
     let kidId: String?       // resolves a per-kid color/name badge (Palette.kidColor)
+    let familyEvent: FamilyEvent?  // set for manually-added events (recurring indicator, tap-to-detail)
 }
 
 /// Builds/labels agenda data. Formatters are shared (see DateFmt) — allocating
@@ -62,16 +63,43 @@ enum Agenda {
         let kind: AgendaKind = (e.isDeadline ?? false) || e.type == "deadline" ? .deadline : .event
         return AgendaItem(id: "ev-\(e.id)", kind: kind, title: e.title, dayKey: dayKey,
                           time: time, sortKey: sort, subtitle: e.feedLabel ?? e.location, homework: nil,
-                          kidId: e.kidId)
+                          kidId: e.kidId, familyEvent: nil)
     }
 
     private static func fromFamilyEvent(_ e: FamilyEvent) -> AgendaItem {
         let hasTime = (e.time?.isEmpty == false)
-        return AgendaItem(id: "fe-\(e.id)", kind: .event, title: e.title, dayKey: e.date,
+        return AgendaItem(id: "fe-\(e.id)-\(e.date)", kind: .event, title: e.title, dayKey: e.date,
                           time: hasTime ? display(hhmm: e.time!) : nil,
                           sortKey: hasTime ? e.time! : "00:00",
                           subtitle: (e.notes?.isEmpty == false) ? e.notes : nil, homework: nil,
-                          kidId: e.kidId)
+                          kidId: e.kidId, familyEvent: e)
+    }
+
+    /// Expands a multi-day family event (`endDate` set) into one AgendaItem per
+    /// day in its span, so it shows up on every day it covers — not just the
+    /// start. Continuation days carry no time (all-day) but keep the same
+    /// `familyEvent` ref for the detail sheet / recurring indicator. A plain
+    /// single-day event just returns its one item.
+    private static func expandFamilyEvent(_ e: FamilyEvent) -> [AgendaItem] {
+        let first = fromFamilyEvent(e)
+        guard let endDate = e.endDate, !endDate.isEmpty, endDate > e.date,
+              let start = DateFmt.ymd.date(from: e.date), let end = DateFmt.ymd.date(from: endDate) else {
+            return [first]
+        }
+        var items = [first]
+        var cur = start
+        // ponytail: 62-day span cap — guards a malformed/huge endDate from
+        // looping forever; raise if a real multi-week trip event needs more.
+        for _ in 0..<62 {
+            guard let next = Calendar.current.date(byAdding: .day, value: 1, to: cur) else { break }
+            cur = next
+            if cur > end { break }
+            let key = DateFmt.ymd.string(from: cur)
+            items.append(AgendaItem(id: "fe-\(e.id)-\(key)", kind: .event, title: e.title, dayKey: key,
+                                     time: nil, sortKey: "00:00", subtitle: first.subtitle, homework: nil,
+                                     kidId: e.kidId, familyEvent: e))
+        }
+        return items
     }
 
     private static func fromHomework(_ h: HomeworkItem) -> AgendaItem {
@@ -79,12 +107,12 @@ enum Agenda {
                    time: h.dueTime.map(display(hhmm:)),
                    sortKey: h.dueTime ?? "23:59",
                    subtitle: (h.subject?.isEmpty == false) ? h.subject : "Homework",
-                   homework: h, kidId: h.kidId)
+                   homework: h, kidId: h.kidId, familyEvent: nil)
     }
 
     /// All agenda items for a day key, sorted by time.
     static func items(on key: String, events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem]) -> [AgendaItem] {
-        let all = events.map(fromEvent) + familyEvents.map(fromFamilyEvent) + homework.map(fromHomework)
+        let all = events.map(fromEvent) + familyEvents.flatMap(expandFamilyEvent) + homework.map(fromHomework)
         return all.filter { $0.dayKey == key }.sorted { $0.sortKey < $1.sortKey }
     }
 
@@ -92,7 +120,7 @@ enum Agenda {
     static func upcomingSections(events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem], days: Int) -> [(day: String, items: [AgendaItem])] {
         let today = todayKey()
         let limit = dayKey(offset: days)
-        let all = (events.map(fromEvent) + familyEvents.map(fromFamilyEvent) + homework.map(fromHomework))
+        let all = (events.map(fromEvent) + familyEvents.flatMap(expandFamilyEvent) + homework.map(fromHomework))
             .filter { $0.dayKey >= today && $0.dayKey <= limit }
         let byDay = Dictionary(grouping: all) { $0.dayKey }
         return byDay.keys.sorted().map { day in

@@ -116,6 +116,7 @@ private struct DayCell: View {
     let key: String
     let dayNumber: Int
     @State private var targeted = false
+    @State private var eventDetailRef: DayEventRef?
 
     private var items: [AgendaItem] { Agenda.items(on: key, events: store.events, familyEvents: store.familyEvents, homework: store.homework) }
     private var isToday: Bool { key == Agenda.todayKey() }
@@ -146,6 +147,7 @@ private struct DayCell: View {
             Task { await store.rescheduleHomework(id, to: key) }
             return true
         } isTargeted: { targeted = $0 }
+        .sheet(item: $eventDetailRef) { ref in EventDetailSheet(eventId: ref.eventId, occurrenceDate: ref.occurrenceDate) }
     }
 
     @ViewBuilder private func chip(_ item: AgendaItem) -> some View {
@@ -153,9 +155,10 @@ private struct DayCell: View {
         // Today schedule + canvas-1b), otherwise falls back to a kind color.
         let color: Color = Agenda.kidColor(item.kidId, kids: store.kids)
             ?? (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent))
+        let titleText = (item.familyEvent?.isRecurring == true ? "↻ " : "") + item.title
         let label = HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 2.5)
-            Text(item.title)
+            Text(titleText)
                 .font(.system(size: 9, weight: .semibold))
                 .lineLimit(1)
                 .foregroundStyle(Palette.text)
@@ -166,8 +169,21 @@ private struct DayCell: View {
         .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
         if item.kind == .homework, store.isParent, let hw = item.homework {
             label.draggable(hw.id)
+        } else if let fe = item.familyEvent {
+            Button {
+                eventDetailRef = DayEventRef(id: "\(fe.id)-\(fe.date)", eventId: fe.id, occurrenceDate: fe.date)
+            } label: { label }
+            .buttonStyle(.plain)
         } else {
             label
         }
     }
+}
+
+/// Wrapper so a (series id, occurrence date) pair can drive `.sheet(item:)` —
+/// occurrences of a recurring event share `id`, so the id alone isn't unique.
+private struct DayEventRef: Identifiable {
+    let id: String
+    let eventId: String
+    let occurrenceDate: String
 }
