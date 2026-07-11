@@ -202,6 +202,52 @@ const SCHOOL_AUTO_SYNC_MIN_MS = 60 * 60 * 1000; // mirrors server-side throttle
 let schoolKidMappings = []; // [{ kidId, moodleUserId }] as returned by the server
 
 /* ============================================================
+   THEME (dark mode) — fam_theme in localStorage: 'light' | 'dark' | 'system'.
+   Applied before first paint by the inline <head> script in index.html;
+   this just keeps it in sync after a user picks a theme in Settings.
+============================================================ */
+function setTheme(choice) {
+  if (choice === 'system') {
+    localStorage.removeItem('fam_theme');
+  } else {
+    save('fam_theme', choice);
+  }
+  applyThemeChoice();
+}
+
+function applyThemeChoice() {
+  const choice = load('fam_theme') || 'system';
+  const dark = choice === 'dark' || (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+  document.querySelectorAll('#theme-toggle [data-theme-choice]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.themeChoice === choice);
+  });
+}
+
+function initTheme() {
+  applyThemeChoice();
+  // Auto mode should follow a live OS theme change, not just the page load.
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (!load('fam_theme')) applyThemeChoice();
+    });
+  }
+}
+
+/* ============================================================
+   SIDEBAR USER MENU (click-toggle dropdown — the old header version was
+   hover-only, which doesn't work on touch/iPad)
+============================================================ */
+function toggleUserMenu() {
+  const menu = document.getElementById('sidebar-user-menu');
+  if (menu) menu.classList.toggle('open');
+}
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('sidebar-user-menu');
+  if (menu && menu.classList.contains('open') && !menu.contains(e.target)) menu.classList.remove('open');
+});
+
+/* ============================================================
    ENRICHMENT + NOTES (Notes tab, quote/mood/news reflections,
    SAT word activity + word bank + pop quiz, brain teaser, gating).
    See /private/tmp .../enrichment-spec.md section 4 for the contract.
@@ -486,6 +532,7 @@ function setActiveKid(kidId) {
 
 function renderManageFamily() {
   applyRoleScopingToUI();
+  renderChatDockAvatars();
   // Kid sessions never render family-management controls at all — the
   // parent-only container is hidden by applyRoleScopingToUI(), and the
   // backend independently rejects any parent-only call a kid might still
@@ -499,7 +546,7 @@ function renderManageFamily() {
   if (!currentFamily) {
     // No family loaded yet — guide the user instead of showing blank sections.
     const msg = `<p class="text-muted">You're not in a family yet.
-      <a href="#" onclick="showFirstRunPanel();return false" style="color:var(--primary);font-weight:700">Create or join a family</a> to add parents and kids.</p>`;
+      <a href="#" onclick="showFirstRunPanel();return false" style="color:var(--accent);font-weight:700">Create or join a family</a> to add parents and kids.</p>`;
     if (parentsEl0) parentsEl0.innerHTML = msg;
     if (inviteEl0)  inviteEl0.innerHTML = '';
     if (kidsEl0)    kidsEl0.innerHTML = '';
@@ -602,13 +649,27 @@ async function handleRemoveParent(userId) {
 ============================================================ */
 function showDashboard() {
   const now  = new Date();
-  const dateEl = document.getElementById('header-date');
-  if (dateEl) dateEl.textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  // Horizon shell: kid sessions get the simplified top-bar layout + floating
+  // chat button instead of the parent sidebar + docked chat (see styles.css
+  // "KID VIEW"). Applied once here since role never changes mid-session.
+  const screenEl = document.getElementById('dashboard-screen');
+  if (screenEl) screenEl.classList.toggle('kid-view', isKidSession());
 
   const av = document.getElementById('user-avatar');
   if (av) av.textContent = (sessionUser.name || '?')[0].toUpperCase();
-  const nameDisplay = document.getElementById('user-name-display');
-  if (nameDisplay) nameDisplay.textContent = sessionUser.name || '';
+  document.querySelectorAll('#user-name-display, #user-name-display-2').forEach((el) => {
+    el.textContent = sessionUser.name || '';
+  });
+  const roleEl = document.getElementById('sidebar-user-role');
+  if (roleEl) roleEl.textContent = isKidSession() ? 'Kid' : 'Parent';
+  const kidAvatarEl = document.getElementById('kid-topbar-avatar');
+  if (kidAvatarEl) {
+    kidAvatarEl.textContent = (sessionUser.name || '?')[0].toUpperCase();
+    kidAvatarEl.style.background = kidColorFor(sessionUser.kidId) || 'var(--accent)';
+  }
+
+  initTheme();
 
   weekStart = mondayOf(now);
   monthDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -620,10 +681,13 @@ function showDashboard() {
   renderUploads();
   renderStreak();
   renderManageFamily();
+  renderTodayScreen();
+  renderChatDockAvatars();
+  applyChatDockState('today');
 
   // Homework (Phase 3): load once up front so calendar "due" chips render on
   // first paint; the Homework tab reloads on its own each time it's opened.
-  loadHomework().then(() => { renderCalendar(); applyEnrichmentGating(); });
+  loadHomework().then(() => { renderCalendar(); applyEnrichmentGating(); updateHomeworkBadge(); renderTodayScreen(); });
 
   // Notes: load once up front so the Notes tab is ready and pin affordances
   // elsewhere have fresh state; the Notes tab reloads on its own when opened.
@@ -635,6 +699,7 @@ function showDashboard() {
   loadSchoolFeedsInfo().then(() => {
     renderSchoolSettings();
     syncSchoolCalendar({ silent: false, showToast: false });
+    renderTodayScreen();
   });
 
   // Moodle IDs (extension auto-sync): load once up front, same lifecycle as
@@ -748,10 +813,15 @@ function normalizeSchoolEvent(ev) {
   };
 }
 
+// Manual + school events merged, before any kid filter — shared by
+// visibleEvents() (respects the Calendar screen's kid switcher) and
+// renderTodaySchedule() (always whole-family, no switcher on Today).
+function allEvents() {
+  return getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+}
+
 function visibleEvents() {
-  const events = getEvents();
-  const school = schoolEvents.map(normalizeSchoolEvent);
-  const merged = events.concat(school);
+  const merged = allEvents();
   if (!activeKidId) return merged;
   return merged.filter(e => e.kidId === activeKidId || (e.source === 'school' && !e.kidId));
 }
@@ -1113,7 +1183,7 @@ function processUpload(file) {
     } else if (file.type === 'application/pdf') {
       content.innerHTML = `<iframe src="${ev.target.result}" title="Schedule PDF"></iframe>`;
     } else {
-      content.innerHTML = `<div style="padding:16px;color:var(--text-muted)">Preview not available for this file type.</div>`;
+      content.innerHTML = `<div style="padding:16px;color:var(--text-2)">Preview not available for this file type.</div>`;
     }
     document.getElementById('upload-preview').style.display = '';
     uploadedFile._dataUrl = ev.target.result;
@@ -1332,10 +1402,17 @@ function nextQuestion() {
 /* ============================================================
    STREAK
 ============================================================ */
+function setStreakDisplays(count) {
+  ['streak-count', 'daily5-streak-count'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = count;
+  });
+}
+
 function renderStreak() {
   const key    = `fam_streak_${sessionUser.id}`;
   const streak = load(key) || { count: 0, last: '' };
-  document.getElementById('streak-count').textContent = streak.count;
+  setStreakDisplays(streak.count);
 }
 
 function incrementStreak() {
@@ -1347,7 +1424,7 @@ function incrementStreak() {
   streak.count = (streak.last === yesterday) ? streak.count + 1 : 1;
   streak.last  = today;
   save(key, streak);
-  document.getElementById('streak-count').textContent = streak.count;
+  setStreakDisplays(streak.count);
 }
 
 /* ============================================================
@@ -1626,10 +1703,18 @@ function closeModalOnBg(e, id) {
    Parent-only controls (delete/flag) are still backend-enforced
    (requireParent) — the UI just doesn't offer delete to a kid session.
 ============================================================ */
+/* Horizon per-kid identity color: first kid in family order = teal, second =
+   amber, any further kid = violet — per the redesign's design language (this
+   replaces the arbitrary picker color from Settings > Add a kid profile for
+   every accent use — chat bubbles, schedule bars, kid avatars — the picker
+   color still seeds .kid-row-swatch in Manage Family, unrelated to this). */
 function kidColorFor(kidProfileId) {
   const kids = (currentFamily && currentFamily.kids) || [];
-  const k = kids.find((x) => x.id === kidProfileId);
-  return k ? k.color : null;
+  const idx = kids.findIndex((k) => k.id === kidProfileId);
+  if (idx === 0) return 'var(--c-teal)';
+  if (idx === 1) return 'var(--c-amber)';
+  if (idx > 1) return 'var(--c-violet)';
+  return null;
 }
 
 function chatSenderName(msg) {
@@ -1697,7 +1782,7 @@ function renderChatMessages() {
       return `<div class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
     }
     const own = isOwnMessage(m);
-    const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--primary)') : 'var(--primary)';
+    const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--accent)') : 'var(--accent)';
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
     const pinBtn = (!m.deleted && m.text) ? `<button class="chat-msg-ctrl" onclick="handlePinChatMessage('${m.id}')" title="Pin to notes">📌</button>` : '';
     const controls = !isKidSession() ? `
@@ -1725,6 +1810,7 @@ function renderChatMessages() {
   }).join('') || '<p class="text-muted chat-empty">No messages yet. Say hi! 👋</p>';
 
   if (wasAtBottom) el.scrollTop = el.scrollHeight;
+  updateChatUnreadBadge();
 }
 
 async function loadChatMessages() {
@@ -1780,6 +1866,96 @@ function setupChatRealtimeNudges() {
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) nudge(); });
   window.addEventListener('focus', nudge);
+}
+
+/* ============================================================
+   CHAT DOCK — avatar strip, collapse-to-slim-rail (Homework/Goals/
+   Activities), unread badge, and the kid-session slide-over.
+   Docked-vs-collapsed-vs-hidden per tab is decided in switchNavTab().
+============================================================ */
+function renderChatDockAvatars() {
+  if (!currentFamily) return;
+  const parents = currentFamily.parents || (currentFamily.parentIds || []).map((id) => ({ id, name: null }));
+  const kids = currentFamily.kids || [];
+  const items = parents.map((p) => ({
+    initial: ((p.name || 'P')[0] || 'P').toUpperCase(),
+    isMe: sessionUser && p.id === sessionUser.id,
+    color: 'var(--accent)',
+  })).concat(kids.map((k) => ({
+    initial: (k.name || 'K')[0].toUpperCase(),
+    isMe: sessionUser && k.id === sessionUser.kidId,
+    color: kidColorFor(k.id) || 'var(--accent)',
+  })));
+  ['chat-dock-avatars'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = items.map((it) =>
+      `<span class="chat-avatar-dot${it.isMe ? ' is-me' : ''}" style="${it.isMe ? '' : `background:${it.color}`}">${esc(it.initial)}</span>`
+    ).join('');
+  });
+}
+
+// fam_chat_seen_at: last time the dock was actually open/visible to this
+// user — drives the unread badge shown while the dock is collapsed/hidden.
+function chatSeenAtKey() { return `fam_chat_seen_at_${(sessionUser && sessionUser.id) || 'anon'}`; }
+function markChatSeen() { save(chatSeenAtKey(), new Date().toISOString()); updateChatUnreadBadge(); }
+
+function chatUnreadCount() {
+  const seenAt = load(chatSeenAtKey()) || '';
+  return chatMessages.filter((m) => !m.deleted && m.createdAt > seenAt && !isOwnMessage(m)).length;
+}
+
+function updateChatUnreadBadge() {
+  const dock = document.getElementById('chat-dock');
+  const dockVisible = dock && !dock.hidden && !dock.classList.contains('chat-collapsed');
+  if (dockVisible) { markChatSeen(); return; } // being looked at right now — nothing to badge
+  const count = chatUnreadCount();
+  [['chat-unread-badge'], ['chat-fab-badge']].forEach(([id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = count > 9 ? '9+' : String(count);
+    el.hidden = count === 0;
+  });
+}
+
+/* Homework/Goals/Activities: dock shrinks to a 56px avatar rail; clicking it
+   force-expands over the content (doesn't change flow layout). Today/Calendar
+   show it fully docked; Notes/Settings hide it — see applyChatDockState(). */
+function handleChatDockClick(event) {
+  const dock = document.getElementById('chat-dock');
+  if (!dock || !dock.classList.contains('chat-collapsed')) return;
+  if (dock.classList.contains('chat-force-open')) {
+    // Only collapse back on a click outside the actual chat card (so typing
+    // a message doesn't immediately re-collapse the dock).
+    if (event.target.closest('.chat-card')) return;
+    dock.classList.remove('chat-force-open');
+  } else {
+    dock.classList.add('chat-force-open');
+    markChatSeen();
+  }
+}
+
+function toggleKidChat() {
+  const dock = document.getElementById('chat-dock');
+  if (!dock) return;
+  const open = dock.classList.toggle('chat-open');
+  if (open) markChatSeen();
+}
+
+const CHAT_DOCK_MODE = { today: 'open', calendar: 'open', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', notes: 'hidden', settings: 'hidden' };
+function applyChatDockState(tab) {
+  const dock = document.getElementById('chat-dock');
+  if (!dock) return;
+  const mode = CHAT_DOCK_MODE[tab] || 'open';
+  dock.hidden = mode === 'hidden';
+  dock.classList.toggle('chat-collapsed', mode === 'collapsed');
+  dock.classList.remove('chat-force-open');
+  dock.classList.remove('chat-open'); // switching tabs closes any open slide-over
+  // The FAB (kid sessions, and any session on narrow screens — see styles.css)
+  // shouldn't appear at all when the dock itself is hidden (Notes/Settings).
+  const fab = document.getElementById('chat-fab');
+  if (fab) fab.hidden = mode === 'hidden';
+  if (mode === 'open') markChatSeen(); else updateChatUnreadBadge();
 }
 
 /* ============================================================
@@ -2077,6 +2253,17 @@ function groupHomeworkByDueDate(items) {
   return groups;
 }
 
+function updateHomeworkBadge() {
+  const badge = document.getElementById('sidebar-homework-badge');
+  if (!badge) return;
+  // Today (and the sidebar badge) show the whole family, unfiltered — the
+  // kid switcher lives on the Calendar screen, not the sidebar/Today.
+  const groups = groupHomeworkByDueDate(homeworkItems.filter((h) => h.status !== 'done'));
+  const count = groups.overdue.length + groups.today.length;
+  badge.textContent = count;
+  badge.hidden = count === 0;
+}
+
 function homeworkSourceBadge(source) {
   if (source === 'school') return '<span class="hw-source-badge" title="Synced from school calendar">🎓</span>';
   if (source === 'ai') return '<span class="hw-source-badge" title="Added from a photo (AI parsed)">📸</span>';
@@ -2088,6 +2275,7 @@ function kidNameFor(kidId) {
   const k = kids.find((x) => x.id === kidId);
   return k ? k.name : '';
 }
+
 
 function populateSubjectFilter() {
   const sel = document.getElementById('homework-subject-filter');
@@ -2175,6 +2363,184 @@ async function toggleHomeworkDone(id) {
   } catch (err) {
     toast(`❌ ${err.message}`);
   }
+}
+
+/* ============================================================
+   TODAY SCREEN (the new landing view — canvas 1a/1f/1g)
+   Merges real data only: today's schedule (visibleEvents), homework due
+   (homeworkItems), and real homework-completion-this-week for the design's
+   one required gradient "momentum" element. Habits/goals have no data model
+   yet (Goals tab is an unbuilt placeholder) — that card renders an honest
+   empty state instead of invented numbers. The Daily 5 card below reuses
+   the existing quote/word/quiz/news widgets verbatim (see index.html).
+============================================================ */
+function renderTodayScreen() {
+  if (!sessionUser) return;
+  const now = new Date();
+  const todayIso = isoDate(now);
+  const kid = isKidSession();
+
+  const dateLabel = document.getElementById('today-date-label');
+  if (dateLabel) dateLabel.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const greetingEl = document.getElementById('today-greeting');
+  if (greetingEl) {
+    const firstName = (sessionUser.name || '').split(' ')[0] || (kid ? 'there' : 'there');
+    if (kid) {
+      greetingEl.textContent = `Hey ${firstName}!`;
+    } else {
+      const hour = now.getHours();
+      const salutation = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+      greetingEl.textContent = `${salutation}, ${firstName}`;
+    }
+  }
+
+  // Sync status + Add event are parent-only affordances (kids don't manage feeds/events).
+  const syncStatusEl = document.getElementById('today-sync-status');
+  const addEventBtn = document.getElementById('today-add-event-btn');
+  if (syncStatusEl) syncStatusEl.hidden = kid;
+  if (addEventBtn) addEventBtn.style.display = kid ? 'none' : '';
+  if (syncStatusEl && !kid) {
+    const textEl = document.getElementById('today-sync-text');
+    if (textEl) {
+      textEl.textContent = (schoolFeedsInfo && schoolFeedsInfo.lastSyncAt)
+        ? `School feeds synced ${timeAgo(schoolFeedsInfo.lastSyncAt)}`
+        : 'School feeds not synced yet';
+    }
+  }
+
+  renderTodaySchedule(todayIso);
+  renderTodayHomework(todayIso);
+  renderTodayHabitsAndMomentum();
+}
+
+function renderTodayScheduleRow(ev) {
+  const color = ev.kidId ? (kidColorFor(ev.kidId) || 'var(--c-violet)') : 'var(--c-violet)';
+  const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
+  const lock = ev.source === 'school' ? ' 🔒' : '';
+  const meta = ev.location || ev.notes || '';
+  return `<div class="schedule-row" onclick="showDetail('${ev.id}')">
+    <span class="schedule-time">${ev.time ? esc(ev.time) : 'All day'}</span>
+    <span class="schedule-bar" style="background:${color}"></span>
+    <span class="schedule-main">
+      <div class="schedule-title">${esc(ev.title)}${lock}</div>
+      ${meta ? `<div class="schedule-meta">${esc(meta)}</div>` : ''}
+    </span>
+    ${kidName ? `<span class="schedule-kid" style="color:${color}">${kidName}</span>` : ''}
+  </div>`;
+}
+
+function renderTodaySchedule(todayIso) {
+  const listEl = document.getElementById('today-schedule-list');
+  const countEl = document.getElementById('today-schedule-count');
+  const tomorrowWrap = document.getElementById('today-tomorrow');
+  const tomorrowRow = document.getElementById('today-tomorrow-row');
+  if (!listEl) return;
+
+  // Today always shows the whole family merged, like the design — the kid
+  // switcher lives on the Calendar screen, not here.
+  const events = allEvents()
+    .filter((e) => !isKidSession() || e.kidId === sessionUser.kidId || (e.source === 'school' && !e.kidId));
+  const todays = events.filter((e) => e.date === todayIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+  const addEventHint = isKidSession() ? '' : ' — <a href="#" class="btn-link" style="display:inline" onclick="openAddEventModal();return false">add one</a>';
+  if (countEl) countEl.textContent = todays.length ? `${todays.length} event${todays.length === 1 ? '' : 's'}` : '';
+  listEl.innerHTML = todays.length
+    ? todays.map(renderTodayScheduleRow).join('')
+    : `<div class="today-empty">Nothing on the calendar today${addEventHint}.</div>`;
+
+  const tomorrowIso = isoDate(new Date(Date.now() + 86400000));
+  const tomorrowEvents = events.filter((e) => e.date === tomorrowIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  if (tomorrowWrap) tomorrowWrap.hidden = !tomorrowEvents.length;
+  if (tomorrowRow && tomorrowEvents.length) {
+    const first = tomorrowEvents[0];
+    const more = tomorrowEvents.length > 1 ? ` +${tomorrowEvents.length - 1} more` : '';
+    tomorrowRow.innerHTML = `<span class="schedule-time">${first.time ? esc(first.time) : 'All day'}</span><span>${esc(first.title)}${esc(more)}</span>`;
+  }
+}
+
+function renderTodayHomeworkRow(item, todayIso) {
+  const done = item.status === 'done';
+  const overdue = !done && item.dueDate && item.dueDate < todayIso;
+  const isToday = !done && item.dueDate === todayIso;
+  let when = '';
+  if (overdue) when = isKidSession() ? 'catch up!' : 'overdue';
+  else if (isToday) when = 'today';
+  else if (item.dueDate) when = parseIso(item.dueDate).toLocaleDateString('en-US', { weekday: 'short' });
+  const whenClass = overdue ? 'overdue' : (isToday ? 'today' : '');
+  const dotColor = item.kidId ? (kidColorFor(item.kidId) || 'var(--c-violet)') : 'var(--c-violet)';
+  const checkCls = done ? 'done' : (overdue ? 'overdue' : '');
+  const checkMark = done
+    ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+    : '';
+  return `<div class="homework-due-row${done ? ' done' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')">
+    <button type="button" class="homework-due-check ${checkCls}" aria-label="Toggle done">${checkMark}</button>
+    <span class="homework-due-title">${esc(item.title)}</span>
+    ${when ? `<span class="homework-due-when ${whenClass}">${esc(when)}</span>` : ''}
+    <span class="homework-due-kid-dot" style="background:${dotColor}"></span>
+  </div>`;
+}
+
+function renderTodayHomework(todayIso) {
+  const listEl = document.getElementById('today-homework-list');
+  if (!listEl) return;
+
+  const groups = groupHomeworkByDueDate(homeworkItems);
+  const rows = groups.overdue.concat(groups.today, groups.thisWeek)
+    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
+    .slice(0, 6);
+
+  if (!rows.length) {
+    listEl.innerHTML = `<div class="today-empty">No homework due this week 🎉</div>`;
+    return;
+  }
+  listEl.innerHTML = rows.map((item) => renderTodayHomeworkRow(item, todayIso)).join('');
+}
+
+function renderTodayHabitsAndMomentum() {
+  const listEl = document.getElementById('today-habits-list');
+  const countEl = document.getElementById('today-habits-count');
+  // No habit/goal data model exists yet (Goals tab is an unbuilt placeholder,
+  // see tab-goals) — render an honest empty state rather than invented rows.
+  if (listEl) {
+    listEl.innerHTML = `<p class="today-empty-cta">Habit tracking is coming soon. <a href="#" onclick="switchNavTab('goals');return false">See Goals →</a></p>`;
+  }
+  if (countEl) countEl.textContent = '';
+
+  // The design reserves exactly one coral→violet gradient "momentum" element
+  // per screen, tied to habit completion — since that data doesn't exist yet,
+  // this repurposes the same bar to real data (homework completed this week)
+  // rather than fabricate a habit number. Revisit once Goals ships.
+  const labelEl = document.getElementById('today-momentum-label');
+  const valueEl = document.getElementById('today-momentum-value');
+  const fillEl = document.getElementById('today-momentum-fill');
+  const monday = mondayOf(new Date());
+  const sunday = new Date(+monday + 6 * 86400000);
+  const weekItems = homeworkItems.filter((h) => h.dueDate && parseIso(h.dueDate) >= monday && parseIso(h.dueDate) <= sunday);
+  const done = weekItems.filter((h) => h.status === 'done').length;
+  const total = weekItems.length;
+  if (labelEl) labelEl.textContent = 'Homework done this week';
+  if (valueEl) valueEl.textContent = total ? `${done}/${total}` : '—';
+  if (fillEl) fillEl.style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
+}
+
+/* Daily 5: the brain-teaser quiz is collapsed behind "Take today's quiz →"
+   until clicked, matching the design; the quote/word/news widgets above it
+   are always visible (unchanged behavior, just restyled/relocated). */
+function toggleDailyQuiz() {
+  const panel = document.getElementById('widget-quiz');
+  const btn = document.getElementById('daily5-quiz-toggle');
+  if (!panel) return;
+  const reveal = panel.hidden;
+  panel.hidden = !reveal;
+  if (btn) btn.hidden = reveal;
+}
+
+/* News: quiet single line by default (the design's "news ticker"); click the
+   headline to expand the summary + reflection composer in place. */
+function toggleNewsDetails() {
+  const details = document.getElementById('news-details');
+  if (details) details.classList.toggle('news-open');
 }
 
 /* ---------- Add / Edit homework ---------- */
@@ -2443,25 +2809,32 @@ function visibleHomeworkDueItems() {
 }
 
 /* ============================================================
-   NAV TABS (Calendar[=Dashboard] / Homework / Goals / Activities / Settings)
-   Chat is not a tab — it's a persistent part of the Calendar/dashboard panel
-   (see index.html .dashboard-chat). Its poll lifecycle is tied to the
-   dashboard tab being visible: polling starts when the user is on the
-   dashboard and stops the moment they switch to any other tab, so it never
-   polls needlessly in the background.
+   NAV TABS (Today / Calendar / Homework / Goals / Activities / Notes / Settings)
+   Chat is not a tab — it's the shell-level docked column (see index.html
+   #chat-dock), docked on Today/Calendar, collapsed to a slim rail on
+   Homework/Goals/Activities, and hidden on Notes/Settings — see
+   CHAT_DOCK_MODE/applyChatDockState(). Its poll lifecycle is tied to the
+   dock being visible at all (docked or collapsed), so it never polls
+   needlessly once hidden.
 ============================================================ */
 function switchNavTab(tab) {
-  document.querySelectorAll('.nav-tab').forEach((t) => {
+  document.querySelectorAll('.sidebar-nav-item').forEach((t) => {
     t.classList.toggle('active', t.dataset.tab === tab);
   });
   document.querySelectorAll('.tab-panel').forEach((p) => {
     p.classList.toggle('active', p.id === `tab-${tab}`);
   });
+  applyChatDockState(tab);
+
   // Re-render dynamic panels each time they're opened so they reflect current state.
+  if (tab === 'today') { renderTodayScreen(); }
   if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
-  if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); applyEnrichmentGating(); }); }
+  if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); applyEnrichmentGating(); updateHomeworkBadge(); }); }
   if (tab === 'notes') { loadNotes(); }
-  if (tab === 'calendar') {
+
+  // Chat is docked/collapsed (not hidden) on every tab except Notes/Settings —
+  // keep it live and polling on all of those, stop only where it's hidden.
+  if (CHAT_DOCK_MODE[tab] !== 'hidden') {
     loadChatMessages();
     startChatPolling();
   } else {

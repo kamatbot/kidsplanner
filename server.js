@@ -503,6 +503,7 @@ require("./lib/routes/push")(app, routeDeps);
 const IMMUTABLE = "public, max-age=31536000, immutable";
 app.use("/css", express.static(path.join(PUBLIC, "css"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
 app.use("/js/vendor", express.static(path.join(PUBLIC, "js", "vendor"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
+app.use("/fonts", express.static(path.join(PUBLIC, "fonts"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
 const jsCache = new Map();
 app.get(/^\/js\/([\w.-]+\.js)$/, (req, res, next) => {
   const file = req.params[0];

@@ -1,6 +1,21 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "fametc", "runtimeExecutable": "npm", "runtimeArgs": ["start"], "port": 3000 }
+    {
+      "name": "fametc",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "design-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-kamatbot-Documents-Claude-Planner/221037ae-64ef-42a7-b786-c67013cb0a6e/scratchpad/design/serve.js"
+      ],
+      "port": 4173
+    }
   ]
 }

@@ -4,9 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fam ETC — Family Planner</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Dark mode must be applied before first paint (no flash): read the saved
+       preference or fall back to the OS setting. Settings > Appearance writes
+       fam_theme ('light'|'dark'|'system') via setTheme() in app.js. -->
+  <script>
+    (function () {
+      try {
+        // fam_theme is stored JSON-encoded (see save() in util.js) — mirror
+        // that here so this pre-paint check agrees with applyThemeChoice().
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
   <link rel="stylesheet" href="/css/styles.css">
   <!-- Enrichment + Notes styles (Notes tab, feelings check-in, SAT activity,
        brain teaser, gating overlay). Kept separate from styles.css so this
@@ -28,7 +42,7 @@
     <div class="modal-header">
       <h3>👋 Welcome to Fam ETC!</h3>
     </div>
-    <p style="margin-bottom:16px;color:var(--text-muted);font-weight:600">Create your family, or join one with an invite code from your co-parent.</p>
+    <p style="margin-bottom:16px;color:var(--text-2);font-weight:600">Create your family, or join one with an invite code from your co-parent.</p>
 
     <form id="first-run-create-form" style="margin-bottom:20px">
       <div class="form-group">
@@ -53,96 +67,299 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════
-     APP SHELL
+     APP SHELL — sidebar nav (parents) / top bar (kids) + main content +
+     docked family chat. isKidSession() adds .kid-view to #dashboard-screen
+     at boot (see applyKidViewClass() in app.js) which swaps the sidebar for
+     a slim top bar and the docked chat for a floating slide-over button —
+     see styles.css "KID VIEW".
 ═══════════════════════════════════════════════════════════ -->
 <div id="dashboard-screen" class="screen active">
+  <div class="app-shell">
 
-  <!-- Header -->
-  <header class="app-header">
-    <div class="header-left">
-      <span class="app-logo">🗂️</span>
-      <span class="app-name">Fam ETC</span>
+    <!-- Kid top bar (kid sessions only — CSS-gated via .kid-view) -->
+    <div class="kid-topbar">
+      <div class="kid-topbar-avatar" id="kid-topbar-avatar"></div>
+      <nav class="kid-topbar-nav">
+        <button class="kid-topbar-nav-item sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')" aria-label="Today" title="Today">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')" aria-label="Calendar" title="Calendar">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="homework" onclick="switchNavTab('homework')" aria-label="Homework" title="Homework">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="goals" onclick="switchNavTab('goals')" aria-label="Goals" title="Goals">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="activities" onclick="switchNavTab('activities')" aria-label="Activities" title="Activities">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="settings" onclick="switchNavTab('settings')" aria-label="Settings" title="Settings">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"></path></svg>
+        </button>
+      </nav>
     </div>
-    <div class="header-center">
-      <div id="kid-switcher" class="kid-switcher"></div>
-    </div>
-    <div class="header-right">
-      <span id="header-date" class="header-date"></span>
-      <div class="user-menu">
-        <div class="user-avatar" id="user-avatar" tabindex="0"></div>
-        <div class="user-dropdown" id="user-dropdown">
-          <div class="dropdown-name" id="user-name-display"></div>
-          <hr class="dropdown-divider">
-          <a class="dropdown-item" href="/security" style="display:block;text-decoration:none;color:inherit">🔐 Security &amp; passkeys</a>
-          <a class="dropdown-item" id="nav-billing-link" href="/billing" style="display:block;text-decoration:none;color:inherit">💳 Billing</a>
-          <button class="dropdown-item logout-item" onclick="handleLogout()">🚪 Logout</button>
+
+    <div class="main-content-wrap">
+
+      <!-- Sidebar (parent sessions — CSS-hidden for .kid-view) -->
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-mark">F</div>
+          <span class="sidebar-brand-name">Fam ETC</span>
         </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Nav tabs -->
-  <nav class="nav-tabs">
-    <button class="nav-tab active" data-tab="calendar" onclick="switchNavTab('calendar')">📅 Calendar</button>
-    <button class="nav-tab" data-tab="homework" onclick="switchNavTab('homework')">📚 Homework</button>
-    <button class="nav-tab" data-tab="notes" onclick="switchNavTab('notes')">📝 Notes</button>
-    <button class="nav-tab" data-tab="goals" onclick="switchNavTab('goals')">🎯 Goals</button>
-    <button class="nav-tab" data-tab="activities" onclick="switchNavTab('activities')">⚽ Activities</button>
-    <button class="nav-tab" data-tab="settings" onclick="switchNavTab('settings')">⚙️ Settings</button>
-  </nav>
-
-  <!-- App Body -->
-  <div class="app-layout">
-
-    <!-- Sidebar -->
-    <aside class="sidebar">
-
-      <!-- Mini Calendar -->
-      <div class="card mini-calendar-card">
-        <div class="mini-cal-header">
-          <button class="mini-nav" onclick="miniCalPrev()" aria-label="Previous month">‹</button>
-          <span id="mini-cal-month" class="mini-cal-title"></span>
-          <button class="mini-nav" onclick="miniCalNext()" aria-label="Next month">›</button>
+        <nav class="sidebar-nav">
+          <button class="sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+            <span>Today</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
+            <span>Calendar</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="homework" onclick="switchNavTab('homework')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>
+            <span>Homework</span>
+            <span class="sidebar-nav-badge" id="sidebar-homework-badge" hidden>0</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="goals" onclick="switchNavTab('goals')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>
+            <span>Goals</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="activities" onclick="switchNavTab('activities')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
+            <span>Activities</span>
+          </button>
+        </nav>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-bottom">
+          <button class="sidebar-nav-item" data-tab="notes" onclick="switchNavTab('notes')" style="padding:9px 10px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            <span>Notes</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="settings" onclick="switchNavTab('settings')" style="padding:9px 10px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"></path></svg>
+            <span>Settings</span>
+          </button>
+          <div class="sidebar-user-menu" id="sidebar-user-menu">
+            <div class="sidebar-user" onclick="toggleUserMenu()">
+              <div class="sidebar-user-avatar" id="user-avatar" tabindex="0"></div>
+              <div>
+                <div class="sidebar-user-name" id="user-name-display"></div>
+                <div class="sidebar-user-role" id="sidebar-user-role"></div>
+              </div>
+            </div>
+            <div class="user-dropdown" id="user-dropdown">
+              <div class="dropdown-name" id="user-name-display-2"></div>
+              <hr class="dropdown-divider">
+              <a class="dropdown-item" href="/security" style="display:block;text-decoration:none;color:inherit">🔐 Security &amp; passkeys</a>
+              <a class="dropdown-item" id="nav-billing-link" href="/billing" style="display:block;text-decoration:none;color:inherit">💳 Billing</a>
+              <button class="dropdown-item logout-item" onclick="handleLogout()">🚪 Logout</button>
+            </div>
+          </div>
         </div>
-        <div class="mini-cal-grid" id="mini-cal-grid"></div>
-      </div>
+      </aside>
 
-      <!-- Upload Button -->
-      <button class="btn-upload" onclick="openUploadModal()">📎 Upload Schedule</button>
+      <!-- Main -->
+      <main class="main-content">
 
-      <!-- Add school calendar (parents) -->
-      <button class="btn-upload btn-upload-secondary" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">🎓 Add school calendar</button>
+        <!-- Pending kid sign-in requests (parents only) — a kid asked to join on a
+             device; a parent approves/denies here. Populated by renderKidAccessRequests(). -->
+        <div id="kid-requests-banner" class="kid-requests-banner" hidden></div>
 
-      <!-- Uploaded Schedules List -->
-      <div id="uploads-list" class="uploads-list"></div>
+        <!-- Today Tab — the new landing screen. Schedule/homework/habits/momentum
+             lists are rendered by renderTodayScreen() (app.js); the Daily 5 card
+             below reuses the existing quote/word/news/quiz widgets verbatim. -->
+        <div class="tab-panel active" id="tab-today">
+          <div class="today-header">
+            <div class="today-greeting-col">
+              <div class="micro-label" id="today-date-label"></div>
+              <div class="today-greeting" id="today-greeting"></div>
+            </div>
+            <div class="today-sync-status micro-label" id="today-sync-status" hidden>
+              <span class="today-sync-dot"></span><span id="today-sync-text"></span>
+            </div>
+            <button class="btn-primary" id="today-add-event-btn" onclick="openAddEventModal()" style="display:inline-flex;align-items:center;gap:7px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add event
+            </button>
+          </div>
 
-      <!-- Streak -->
-      <div class="card streak-card">
-        <div class="streak-icon">🔥</div>
-        <div class="streak-count" id="streak-count">0</div>
-        <div class="streak-label">Day Streak!</div>
-        <div class="streak-sublabel">Answer daily quiz to build your streak</div>
-      </div>
+          <div class="today-grid">
+            <section class="card today-schedule-card">
+              <div class="today-card-header">
+                <span class="micro-label">Today's schedule</span>
+                <span class="micro-label" id="today-schedule-count"></span>
+              </div>
+              <div id="today-schedule-list"></div>
+              <div class="today-tomorrow" id="today-tomorrow" hidden>
+                <div class="micro-label" style="margin-bottom:10px">Tomorrow</div>
+                <div id="today-tomorrow-row"></div>
+              </div>
+            </section>
 
-    </aside>
+            <section class="card today-homework-card">
+              <div class="today-card-header">
+                <span class="micro-label">Homework due</span>
+                <a href="#" class="btn-link" onclick="switchNavTab('homework');return false" style="font-size:12px">All →</a>
+              </div>
+              <div id="today-homework-list"></div>
+            </section>
 
-    <!-- Main -->
-    <main class="main-content">
+            <div class="today-right-col">
+              <section class="card">
+                <div class="today-card-header">
+                  <span class="micro-label">Today's habits</span>
+                  <span class="micro-label" id="today-habits-count"></span>
+                </div>
+                <div id="today-habits-list" class="habits-list"></div>
+                <div class="momentum-block">
+                  <div class="momentum-labels">
+                    <span class="momentum-label" id="today-momentum-label">Week momentum</span>
+                    <span class="momentum-value" id="today-momentum-value"></span>
+                  </div>
+                  <div class="momentum-track"><div class="momentum-fill" id="today-momentum-fill" style="width:0%"></div></div>
+                </div>
+              </section>
 
-      <!-- Pending kid sign-in requests (parents only) — a kid asked to join on a
-           device; a parent approves/denies here. Populated by renderKidAccessRequests(). -->
-      <div id="kid-requests-banner" class="kid-requests-banner" hidden></div>
+              <section class="card daily5-card">
+                <div class="today-card-header">
+                  <span class="micro-label">Daily 5</span>
+                  <span class="daily5-streak">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>
+                    <span id="daily5-streak-count">0</span>d streak
+                  </span>
+                </div>
 
-      <!-- Calendar Tab = the DASHBOARD. Chat is a persistent, core part of this
-           surface (not a separate tab) — see dashboard-body two-column layout:
-           dashboard-primary (calendar + widgets) and the docked chat column.
-           On narrow screens dashboard-body stacks and chat becomes a prominent
-           section below the calendar (see styles.css RESPONSIVE / DASHBOARD CHAT). -->
-      <div class="tab-panel active" id="tab-calendar">
-        <div class="dashboard-body">
+                <!-- Quote of the Day — flips to a reflection composer that saves
+                     as a note (source:"quote"). See renderWidgets/flipQuoteCard. -->
+                <div class="widget widget-quote fam-enrich-card" id="widget-quote">
+                  <div class="fam-enrich-lock" id="lock-quote" hidden></div>
+                  <div class="widget-flip-inner" id="quote-flip-inner">
+                    <div class="widget-flip-front">
+                      <div class="widget-header">
+                        <span class="widget-icon">💬</span>
+                        <span class="widget-label">Quote of the day</span>
+                        <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinQuote()">📌</button>
+                      </div>
+                      <blockquote class="quote-text" id="quote-text"></blockquote>
+                      <cite class="quote-author" id="quote-author"></cite>
+                      <button type="button" class="btn-link fam-reflect-btn" onclick="flipQuoteCard(true)">✍️ Write a reflection</button>
+                    </div>
+                    <div class="widget-flip-back">
+                      <div class="widget-header">
+                        <span class="widget-icon">💬</span>
+                        <span class="widget-label">Your reflection</span>
+                        <button type="button" class="fam-pin-btn" title="Back to quote" onclick="flipQuoteCard(false)">↩️</button>
+                      </div>
+                      <p class="fam-reflect-prompt" id="quote-reflect-prompt"></p>
+                      <textarea id="quote-reflect-text" class="fam-reflect-textarea" rows="3" placeholder="What does this quote mean to you today?"></textarea>
+                      <button type="button" class="btn-primary fam-save-btn" onclick="saveQuoteReflection()">Save reflection</button>
+                    </div>
+                  </div>
+                </div>
 
-          <div class="dashboard-primary">
-            <section class="card calendar-section">
+                <!-- SAT Word — interactive daily activity + word bank + pop quiz. -->
+                <div class="widget widget-word fam-enrich-card" id="widget-word">
+                  <div class="fam-enrich-lock" id="lock-sat" hidden></div>
+                  <div class="widget-header">
+                    <span class="widget-icon">📖</span>
+                    <span class="widget-label">Word</span>
+                    <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinSatWord()">📌</button>
+                  </div>
+                  <div class="sat-word" id="sat-word"></div>
+                  <div class="sat-pos" id="sat-pos"></div>
+                  <div class="sat-def" id="sat-def"></div>
+                  <div class="sat-example" id="sat-example"></div>
+                  <div id="sat-placement" class="fam-sat-placement" hidden></div>
+                  <div id="sat-activity" class="fam-sat-activity"></div>
+                  <div class="fam-sat-footer">
+                    <button type="button" class="btn-link" onclick="toggleWordBank()">🔤 Word bank</button>
+                    <button type="button" class="btn-secondary" id="sat-quiz-btn" onclick="startWordQuiz()" disabled>🎯 Pop quiz</button>
+                  </div>
+                  <div id="sat-wordbank-panel" class="fam-sat-wordbank" hidden></div>
+                  <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
+                </div>
+
+                <!-- Daily Brain Teaser — collapsed behind "Take today's quiz →"
+                     until clicked (toggleDailyQuiz()); day-ramped question count
+                     from the brainteaser API, resurfacing previously-wrong ones. -->
+                <button type="button" class="btn-secondary daily5-quiz-toggle" id="daily5-quiz-toggle" onclick="toggleDailyQuiz()">Take today's quiz →</button>
+                <div class="widget widget-quiz fam-enrich-card" id="widget-quiz" hidden>
+                  <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
+                  <div class="widget-header">
+                    <span class="widget-icon">🧠</span>
+                    <span class="widget-label">Daily brain teaser</span>
+                    <span class="fam-bt-progress" id="bt-progress"></span>
+                  </div>
+                  <div class="quiz-question" id="quiz-question"></div>
+                  <div class="quiz-options" id="quiz-options"></div>
+                  <div class="quiz-feedback" id="quiz-feedback"></div>
+                  <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
+                </div>
+
+                <!-- Interesting News — quiet single line by default, expands to
+                     summary + reflection composer on click (toggleNewsDetails()). -->
+                <div class="widget widget-news fam-enrich-card" id="widget-news">
+                  <div class="fam-enrich-lock" id="lock-news" hidden></div>
+                  <div class="widget-header">
+                    <span class="widget-icon">📰</span>
+                    <span class="news-badge" id="news-badge"></span>
+                  </div>
+                  <div class="news-headline" id="news-headline" onclick="toggleNewsDetails()"></div>
+                  <div id="news-details">
+                    <div class="news-summary" id="news-summary"></div>
+                    <a class="news-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Read the full story</a>
+                    <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
+                    <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…"></textarea>
+                    <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>
+                  </div>
+                </div>
+              </section>
+
+              <!-- School Stats (house points / attendance / canteen) — parent-only,
+                   populated by the Chrome extension's Moodle home-dashboard scrape.
+                   Hidden entirely until there's data (see renderSchoolStatsWidget). -->
+              <section class="widget card widget-school-stats today-compact-card" id="widget-school-stats" style="display:none">
+                <div class="widget-header">
+                  <span class="widget-icon">🏫</span>
+                  <span class="widget-label">School</span>
+                </div>
+                <div id="school-stats-rows"></div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <!-- Calendar Tab — mini-cal/uploads/streak live here for now (Calendar
+             screen restyle is phase W2); kid switching also moves here in W2. -->
+        <div class="tab-panel" id="tab-calendar">
+          <div class="calendar-tab-layout">
+            <aside class="calendar-side">
+              <div id="kid-switcher" class="kid-switcher"></div>
+
+              <div class="card mini-calendar-card">
+                <div class="mini-cal-header">
+                  <button class="mini-nav" onclick="miniCalPrev()" aria-label="Previous month">‹</button>
+                  <span id="mini-cal-month" class="mini-cal-title"></span>
+                  <button class="mini-nav" onclick="miniCalNext()" aria-label="Next month">›</button>
+                </div>
+                <div class="mini-cal-grid" id="mini-cal-grid"></div>
+              </div>
+
+              <button class="btn-upload" onclick="openUploadModal()">📎 Upload Schedule</button>
+              <button class="btn-upload btn-upload-secondary" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">🎓 Add school calendar</button>
+              <div id="uploads-list" class="uploads-list"></div>
+
+              <div class="card streak-card">
+                <div class="streak-icon">🔥</div>
+                <div class="streak-count" id="streak-count">0</div>
+                <div class="streak-label">Day Streak!</div>
+                <div class="streak-sublabel">Answer daily quiz to build your streak</div>
+              </div>
+            </aside>
+
+            <section class="card calendar-section calendar-main">
               <div class="cal-header">
                 <div class="cal-nav">
                   <button class="cal-nav-btn" onclick="calPrev()" aria-label="Previous">‹</button>
@@ -159,196 +376,75 @@
               </div>
               <div id="calendar-grid" class="calendar-grid"></div>
             </section>
-
-            <!-- Widgets Grid -->
-            <section class="widgets-grid">
-
-              <!-- Quote of the Day — flips to a reflection composer that saves
-                   as a note (source:"quote"). See renderWidgets/flipQuoteCard. -->
-              <div class="widget card widget-quote fam-enrich-card" id="widget-quote">
-                <div class="fam-enrich-lock" id="lock-quote" hidden></div>
-                <div class="widget-flip-inner" id="quote-flip-inner">
-                  <div class="widget-flip-front">
-                    <div class="widget-header">
-                      <span class="widget-icon">💬</span>
-                      <span class="widget-label">Quote of the Day</span>
-                      <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinQuote()">📌</button>
-                    </div>
-                    <blockquote class="quote-text" id="quote-text"></blockquote>
-                    <cite class="quote-author" id="quote-author"></cite>
-                    <button type="button" class="btn-link fam-reflect-btn" onclick="flipQuoteCard(true)">✍️ Write a reflection</button>
-                  </div>
-                  <div class="widget-flip-back">
-                    <div class="widget-header">
-                      <span class="widget-icon">💬</span>
-                      <span class="widget-label">Your reflection</span>
-                      <button type="button" class="fam-pin-btn" title="Back to quote" onclick="flipQuoteCard(false)">↩️</button>
-                    </div>
-                    <p class="fam-reflect-prompt" id="quote-reflect-prompt"></p>
-                    <textarea id="quote-reflect-text" class="fam-reflect-textarea" rows="3" placeholder="What does this quote mean to you today?"></textarea>
-                    <button type="button" class="btn-primary fam-save-btn" onclick="saveQuoteReflection()">Save reflection</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- SAT Word — interactive daily activity + word bank + pop quiz. -->
-              <div class="widget card widget-word fam-enrich-card" id="widget-word">
-                <div class="fam-enrich-lock" id="lock-sat" hidden></div>
-                <div class="widget-header">
-                  <span class="widget-icon">📖</span>
-                  <span class="widget-label">SAT Word of the Day</span>
-                  <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinSatWord()">📌</button>
-                </div>
-                <div class="sat-word" id="sat-word"></div>
-                <div class="sat-pos" id="sat-pos"></div>
-                <div class="sat-def" id="sat-def"></div>
-                <div class="sat-example" id="sat-example"></div>
-                <div id="sat-placement" class="fam-sat-placement" hidden></div>
-                <div id="sat-activity" class="fam-sat-activity"></div>
-                <div class="fam-sat-footer">
-                  <button type="button" class="btn-link" onclick="toggleWordBank()">🔤 Word bank</button>
-                  <button type="button" class="btn-secondary" id="sat-quiz-btn" onclick="startWordQuiz()" disabled>🎯 Pop quiz</button>
-                </div>
-                <div id="sat-wordbank-panel" class="fam-sat-wordbank" hidden></div>
-                <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
-              </div>
-
-              <!-- Interesting News — reflection question + response. -->
-              <div class="widget card widget-news fam-enrich-card" id="widget-news">
-                <div class="fam-enrich-lock" id="lock-news" hidden></div>
-                <div class="widget-header">
-                  <span class="widget-icon">📰</span>
-                  <span class="widget-label">Interesting News</span>
-                </div>
-                <span class="news-badge" id="news-badge"></span>
-                <div class="news-headline" id="news-headline"></div>
-                <div class="news-summary" id="news-summary"></div>
-                <a class="news-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Read the full story</a>
-                <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
-                <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…"></textarea>
-                <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>
-              </div>
-
-              <!-- Daily Brain Teaser — day-ramped question count from the
-                   brainteaser API, resurfacing previously-wrong questions. -->
-              <div class="widget card widget-quiz fam-enrich-card" id="widget-quiz">
-                <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
-                <div class="widget-header">
-                  <span class="widget-icon">🧠</span>
-                  <span class="widget-label">Daily Brain Teaser</span>
-                  <span class="fam-bt-progress" id="bt-progress"></span>
-                </div>
-                <div class="quiz-question" id="quiz-question"></div>
-                <div class="quiz-options" id="quiz-options"></div>
-                <div class="quiz-feedback" id="quiz-feedback"></div>
-                <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
-              </div>
-
-              <!-- School Stats (house points / attendance / canteen) — parent-only,
-                   populated by the Chrome extension's Moodle home-dashboard scrape.
-                   Hidden entirely until there's data (see renderSchoolStatsWidget). -->
-              <div class="widget card widget-school-stats" id="widget-school-stats" style="display:none">
-                <div class="widget-header">
-                  <span class="widget-icon">🏫</span>
-                  <span class="widget-label">School</span>
-                </div>
-                <div id="school-stats-rows"></div>
-              </div>
-
-            </section>
           </div>
-
-          <!-- Family Chat — docked right-hand column on wide screens (iPad
-               landscape / desktop), stacks as a prominent section below the
-               calendar on narrow screens (iPhone / iPad portrait). One chat
-               per family — no thread selection. Poll lifecycle is tied to the
-               dashboard being visible (see startChatPolling/stopChatPolling
-               calls in switchNavTab). -->
-          <aside class="dashboard-chat">
-            <section class="card chat-card">
-              <div class="chat-card-header">
-                <span class="chat-card-header-icon">💬</span>
-                <span class="chat-card-header-label">Family Chat</span>
-              </div>
-              <div class="chat-messages" id="chat-messages"></div>
-              <!-- Emoji + GIF popovers: absolutely positioned relative to
-                   .chat-send-row (position:relative in CSS), toggled by
-                   toggleEmojiPicker()/toggleGifPicker() in app.js. -->
-              <div class="chat-picker-anchor">
-                <div class="chat-popover chat-emoji-popover" id="chat-emoji-popover" hidden></div>
-                <div class="chat-popover chat-gif-popover" id="chat-gif-popover" hidden>
-                  <input type="text" id="chat-gif-search" class="chat-gif-search" placeholder="Search GIFs…" autocomplete="off" oninput="handleGifSearchInput()">
-                  <div class="chat-gif-grid" id="chat-gif-grid"></div>
-                </div>
-              </div>
-              <form id="chat-send-form" class="chat-send-row" onsubmit="handleSendChatMessage(event)">
-                <button type="button" class="chat-picker-btn" id="chat-emoji-btn" title="Add an emoji" onclick="toggleEmojiPicker()">😀</button>
-                <button type="button" class="chat-picker-btn chat-gif-btn" id="chat-gif-btn" title="Send a GIF" onclick="toggleGifPicker()">GIF</button>
-                <input type="text" id="chat-input" class="chat-input" placeholder="Message the family…" autocomplete="off" maxlength="4000">
-                <button type="submit" class="btn-primary chat-send-btn" title="Send" aria-label="Send"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg></button>
-              </form>
-            </section>
-          </aside>
-
         </div>
-      </div>
 
-      <!-- Homework Tab (Phase 3) -->
-      <div class="tab-panel" id="tab-homework">
-        <section class="card homework-hub">
-          <div class="homework-hub-header">
-            <h3>📚 Homework</h3>
-            <div class="homework-hub-actions">
-              <select id="homework-subject-filter" class="homework-filter-select" onchange="renderHomeworkHub()">
-                <option value="">All subjects</option>
-              </select>
-              <button type="button" class="btn-secondary" id="school-import-btn" onclick="openSchoolAccountModal()" style="display:none">🏫 Import from school</button>
-              <button type="button" class="btn-secondary" onclick="openSnapHomeworkModal()">📸 Snap homework</button>
-              <button type="button" class="btn-primary" onclick="openAddHomeworkModal()">+ Add homework</button>
+        <!-- Homework Tab (Phase 3) -->
+        <div class="tab-panel" id="tab-homework">
+          <section class="card homework-hub">
+            <div class="homework-hub-header">
+              <h3>📚 Homework</h3>
+              <div class="homework-hub-actions">
+                <select id="homework-subject-filter" class="homework-filter-select" onchange="renderHomeworkHub()">
+                  <option value="">All subjects</option>
+                </select>
+                <button type="button" class="btn-secondary" id="school-import-btn" onclick="openSchoolAccountModal()" style="display:none">🏫 Import from school</button>
+                <button type="button" class="btn-secondary" onclick="openSnapHomeworkModal()">📸 Snap homework</button>
+                <button type="button" class="btn-primary" onclick="openAddHomeworkModal()">+ Add homework</button>
+              </div>
             </div>
-          </div>
-          <div id="homework-list" class="homework-list"></div>
-        </section>
-      </div>
+            <div id="homework-list" class="homework-list"></div>
+          </section>
+        </div>
 
-      <!-- Notes Tab — day-grouped timeline of notes (quotes reflections,
-           social-emotional check-ins, news responses, SAT + chat pins, manual
-           entries), only showing days that have a note. -->
-      <div class="tab-panel" id="tab-notes">
-        <section class="card notes-hub">
-          <div class="notes-hub-header">
-            <h3>📝 Notes</h3>
-            <button type="button" class="btn-primary" onclick="openAddNoteComposer()">+ Add a note</button>
-          </div>
-          <div id="notes-composer" class="notes-composer" hidden>
-            <textarea id="notes-composer-text" class="fam-reflect-textarea" rows="3" placeholder="Write a note…"></textarea>
-            <div class="notes-composer-actions">
-              <button type="button" class="btn-secondary" onclick="closeAddNoteComposer()">Cancel</button>
-              <button type="button" class="btn-primary" onclick="handleSaveManualNote()">Save note</button>
+        <!-- Notes Tab — day-grouped timeline of notes (quotes reflections,
+             social-emotional check-ins, news responses, SAT + chat pins, manual
+             entries), only showing days that have a note. -->
+        <div class="tab-panel" id="tab-notes">
+          <section class="card notes-hub">
+            <div class="notes-hub-header">
+              <h3>📝 Notes</h3>
+              <button type="button" class="btn-primary" onclick="openAddNoteComposer()">+ Add a note</button>
             </div>
+            <div id="notes-composer" class="notes-composer" hidden>
+              <textarea id="notes-composer-text" class="fam-reflect-textarea" rows="3" placeholder="Write a note…"></textarea>
+              <div class="notes-composer-actions">
+                <button type="button" class="btn-secondary" onclick="closeAddNoteComposer()">Cancel</button>
+                <button type="button" class="btn-primary" onclick="handleSaveManualNote()">Save note</button>
+              </div>
+            </div>
+            <div id="notes-timeline" class="notes-timeline"></div>
+          </section>
+        </div>
+
+        <!-- Goals Tab (Phase 5 — placeholder) -->
+        <div class="tab-panel" id="tab-goals">
+          <section class="card">
+            <h3>🎯 Goals</h3>
+            <p class="text-muted">Goals &amp; streaks are coming in a future update — see FEATURE_PLAN.md Phase 5.</p>
+          </section>
+        </div>
+
+        <!-- Activities Tab (Phase 4 — placeholder) -->
+        <div class="tab-panel" id="tab-activities">
+          <section class="card">
+            <h3>⚽ Activities</h3>
+            <p class="text-muted">Extracurricular activities are coming in a future update — see FEATURE_PLAN.md Phase 4.</p>
+          </section>
+        </div>
+
+        <!-- Settings Tab: Manage Family -->
+        <div class="tab-panel" id="tab-settings">
+        <section class="card" id="appearance-settings-card">
+          <h3>🎨 Appearance</h3>
+          <p class="text-muted" style="margin-bottom:12px">Match your device, or pick a theme.</p>
+          <div class="cal-view-btns" id="theme-toggle" style="display:inline-flex">
+            <button type="button" class="view-btn" data-theme-choice="system" onclick="setTheme('system')">Auto</button>
+            <button type="button" class="view-btn" data-theme-choice="light" onclick="setTheme('light')">Light</button>
+            <button type="button" class="view-btn" data-theme-choice="dark" onclick="setTheme('dark')">Dark</button>
           </div>
-          <div id="notes-timeline" class="notes-timeline"></div>
         </section>
-      </div>
 
-      <!-- Goals Tab (Phase 5 — placeholder) -->
-      <div class="tab-panel" id="tab-goals">
-        <section class="card">
-          <h3>🎯 Goals</h3>
-          <p class="text-muted">Goals &amp; streaks are coming in a future update — see FEATURE_PLAN.md Phase 5.</p>
-        </section>
-      </div>
-
-      <!-- Activities Tab (Phase 4 — placeholder) -->
-      <div class="tab-panel" id="tab-activities">
-        <section class="card">
-          <h3>⚽ Activities</h3>
-          <p class="text-muted">Extracurricular activities are coming in a future update — see FEATURE_PLAN.md Phase 4.</p>
-        </section>
-      </div>
-
-      <!-- Settings Tab: Manage Family -->
-      <div class="tab-panel" id="tab-settings">
         <section class="card" id="notifications-settings-card">
           <h3>🔔 Notifications</h3>
           <p class="text-muted" style="margin-bottom:12px">
@@ -462,7 +558,50 @@
         </section>
       </div>
 
-    </main>
+      </main>
+
+      <!-- Family Chat — docked right-hand column on Today/Calendar/Homework/
+           Goals/Activities (collapses to a slim avatar strip on the latter
+           three — see switchNavTab), hidden entirely on Notes/Settings and
+           for kid sessions (which get a floating slide-over button instead,
+           see .chat-fab + toggleKidChat()). One chat per family — no thread
+           selection. Poll lifecycle is tied to the shell being visible (see
+           startChatPolling/stopChatPolling calls in switchNavTab). -->
+      <aside class="chat-dock" id="chat-dock" onclick="handleChatDockClick(event)">
+        <div class="chat-dock-header">
+          <span class="chat-dock-title micro-label">Family chat</span>
+          <div class="chat-dock-avatars" id="chat-dock-avatars"></div>
+          <span class="chat-unread-badge" id="chat-unread-badge" hidden>0</span>
+        </div>
+        <section class="chat-card">
+          <div class="chat-messages" id="chat-messages"></div>
+          <!-- Emoji + GIF popovers: absolutely positioned relative to
+               .chat-send-row (position:relative in CSS), toggled by
+               toggleEmojiPicker()/toggleGifPicker() in app.js. -->
+          <div class="chat-picker-anchor">
+            <div class="chat-popover chat-emoji-popover" id="chat-emoji-popover" hidden></div>
+            <div class="chat-popover chat-gif-popover" id="chat-gif-popover" hidden>
+              <input type="text" id="chat-gif-search" class="chat-gif-search" placeholder="Search GIFs…" autocomplete="off" oninput="handleGifSearchInput()">
+              <div class="chat-gif-grid" id="chat-gif-grid"></div>
+            </div>
+          </div>
+          <form id="chat-send-form" class="chat-send-row" onsubmit="handleSendChatMessage(event)">
+            <button type="button" class="chat-picker-btn" id="chat-emoji-btn" title="Add an emoji" onclick="toggleEmojiPicker()">😀</button>
+            <button type="button" class="chat-picker-btn chat-gif-btn" id="chat-gif-btn" title="Send a GIF" onclick="toggleGifPicker()">GIF</button>
+            <input type="text" id="chat-input" class="chat-input" placeholder="Message the family…" autocomplete="off" maxlength="4000">
+            <button type="submit" class="btn-primary chat-send-btn" title="Send" aria-label="Send"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg></button>
+          </form>
+        </section>
+      </aside>
+
+    </div>
+
+    <!-- Floating chat button — kid sessions only (chat becomes a slide-over) -->
+    <button type="button" class="chat-fab" id="chat-fab" onclick="toggleKidChat()" aria-label="Family chat">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1-5.3A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+      <span class="chat-fab-badge" id="chat-fab-badge" hidden>0</span>
+    </button>
+
   </div>
 </div>
 

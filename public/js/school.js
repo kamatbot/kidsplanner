@@ -31,6 +31,7 @@ async function syncSchoolCalendar(opts) {
     renderMiniCal();
     renderSchoolSettings();
     scheduleReminders();
+    if (typeof renderTodayScreen === 'function') renderTodayScreen();
     if (schoolSyncErrors.length && !silent) {
       const names = schoolSyncErrors.map(e => e.label).join(', ');
       toast(`⚠️ Couldn't sync: ${names}`);
@@ -542,7 +543,7 @@ function processHomeworkUpload(file) {
     } else if (file.type === 'application/pdf') {
       content.innerHTML = `<iframe src="${ev.target.result}" title="Homework diary PDF"></iframe>`;
     } else {
-      content.innerHTML = `<div style="padding:16px;color:var(--text-muted)">Preview not available for this file type.</div>`;
+      content.innerHTML = `<div style="padding:16px;color:var(--text-2)">Preview not available for this file type.</div>`;
     }
     document.getElementById('hw-upload-preview').style.display = '';
     hwUploadedFile._dataUrl = ev.target.result;
