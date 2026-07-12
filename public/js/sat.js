@@ -88,6 +88,7 @@ async function answerSatActivity(correct) {
       if (res && res.entry) mergeWordBankEntry(res.entry);
     } catch (e) { /* best effort */ }
   }
+  setTimeout(() => markDaily5Done('sat'), 1500);
 }
 
 function mergeWordBankEntry(entry) {

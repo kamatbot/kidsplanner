@@ -1428,6 +1428,36 @@ function viewSchedule(id) {
 /* ============================================================
    WIDGETS
 ============================================================ */
+/* Daily 5 completion — once the day's word activity / brain teaser is
+   answered, the interactive blocks leave the Today view for the rest of the
+   day (the word, quote, and news stay). Per-user, per-local-day. */
+function daily5DoneKey() {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return `fam_daily5_done_${sessionUser ? sessionUser.id : 'anon'}_${ymd}`;
+}
+function markDaily5Done(part) {
+  const s = load(daily5DoneKey()) || {};
+  s[part] = true;
+  save(daily5DoneKey(), s);
+  applyDaily5Done();
+}
+function applyDaily5Done() {
+  const s = load(daily5DoneKey()) || {};
+  if (s.sat) {
+    ['sat-placement', 'sat-activity', 'sat-wordbank-panel', 'sat-quiz-panel'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.hidden = true;
+    });
+    const footer = document.querySelector('#widget-word .fam-sat-footer');
+    if (footer) footer.hidden = true;
+  }
+  if (s.bt) {
+    const bt = document.getElementById('widget-quiz');
+    if (bt) bt.hidden = true;
+  }
+}
+
 function renderWidgets() {
   const now = new Date();
 
@@ -1466,6 +1496,7 @@ function renderWidgets() {
   loadBrainTeaser();
 
   applyEnrichmentGating();
+  applyDaily5Done();
 }
 
 /* ============================================================
@@ -1561,6 +1592,7 @@ function nextQuestion() {
     document.getElementById('quiz-options').innerHTML = '';
     document.getElementById('quiz-feedback').textContent = '';
     document.getElementById('btn-next-q').style.display = 'none';
+    setTimeout(() => markDaily5Done('bt'), 1500);
   }
 }
 
