@@ -101,7 +101,15 @@ struct ChatScreen: View {
             // card/button tap without blocking it).
             .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
             .overlay { emptyOrLoading }
-            .onChange(of: store.messages.last?.id) { _, _ in scrollToBottom(proxy) }
+            // defaultScrollAnchor(.bottom) alone mispositions with LazyVStack
+            // when messages land after layout (lazy rows have no measured
+            // height yet, so the viewport parks in blank space until the user
+            // scrolls — seen on device in build 21). Scroll explicitly on
+            // appear AND on any count change; count (not last?.id) also fires
+            // when the initial fetch replaces the cached array with an
+            // identical trailing message.
+            .onAppear { scrollToBottom(proxy, animated: false) }
+            .onChange(of: store.messages.count) { _, _ in scrollToBottom(proxy) }
             .onChange(of: keyboardVisible) { _, v in if v { scrollToBottom(proxy) } }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -135,6 +143,10 @@ struct ChatScreen: View {
         DispatchQueue.main.async {
             if animated { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(bottomAnchorID, anchor: .bottom) } }
             else { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
+            // Second pass one tick later: lazy rows measured by the first
+            // scroll can grow the content height, leaving the first target
+            // short of the true bottom.
+            DispatchQueue.main.async { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
         }
     }
 
