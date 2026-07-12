@@ -301,9 +301,14 @@ final class AppStore {
     /// yet), an OLD server ignoring `afterId` re-sends the latest full page
     /// (ids we already have) — either way, union-by-id + sort keeps the result
     /// correct, and an id already present gets its latest copy (edits/flags).
-    private func mergeIncoming(_ fresh: [ChatMessage]) {
+    func mergeIncoming(_ fresh: [ChatMessage]) {  // internal for FamETCTests
         guard !fresh.isEmpty else { return }
-        var byId = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
+        // uniquingKeysWith, NOT uniqueKeysWithValues: `messages` can briefly
+        // hold a duplicate id (optimistic send-append racing a long-poll
+        // delta), and uniqueKeysWithValues TRAPS on duplicates — this was the
+        // TestFlight build-24 crash (assertionFailure in Dictionary.init via
+        // mergeIncoming). Collapsing to the newest copy self-heals instead.
+        var byId = Dictionary(messages.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         for m in fresh { byId[m.id] = m }
         messages = byId.values.sorted { $0.createdAt < $1.createdAt }
     }
