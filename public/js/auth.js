@@ -598,6 +598,14 @@
     });
   }
 
+  /* ---------- AI parse (schedule/homework photo -> structured items) ---------- */
+  async function parseWithAI(kind, mediaType, dataBase64) {
+    return api("/api/ai/parse", {
+      method: "POST",
+      body: JSON.stringify({ kind, mediaType, dataBase64 }),
+    });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -675,5 +683,6 @@
     wordBankQuiz,
     getBrainTeaserToday,
     answerBrainTeaser,
+    parseWithAI,
   };
 })();

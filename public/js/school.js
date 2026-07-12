@@ -551,14 +551,9 @@ function processHomeworkUpload(file) {
     document.getElementById('hw-upload-preview').style.display = '';
     hwUploadedFile._dataUrl = ev.target.result;
 
-    if (typeof ANTHROPIC_API_KEY !== 'undefined' && ANTHROPIC_API_KEY) {
-      document.getElementById('hw-ai-parse-section').style.display = '';
-      setHomeworkParseStatus('⏳', 'Parsing homework diary with AI…');
-      parseHomeworkWithAI();
-    } else {
-      setHomeworkParseStatus('⚠️', 'No API key configured in config.js');
-      document.getElementById('hw-ai-parse-section').style.display = '';
-    }
+    document.getElementById('hw-ai-parse-section').style.display = '';
+    setHomeworkParseStatus('⏳', 'Parsing homework diary with AI…');
+    parseHomeworkWithAI();
   };
   reader.readAsDataURL(file);
 }
@@ -579,9 +574,6 @@ function setHomeworkParseStatus(icon, text) {
 }
 
 async function parseHomeworkWithAI() {
-  const apiKey = (typeof ANTHROPIC_API_KEY !== 'undefined' && ANTHROPIC_API_KEY) ? ANTHROPIC_API_KEY : '';
-  if (!apiKey) { setHomeworkParseStatus('⚠️', 'No API key configured in config.js'); return; }
-
   try {
     let base64, mediaType;
     if (hwUploadedFile.type === 'application/pdf') {
@@ -597,48 +589,7 @@ async function parseHomeworkWithAI() {
       }
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text', text: `Parse this photo of a homework diary/planner page into a JSON array of homework items.
-Each element must have exactly these fields:
-{
-  "subject": "subject or class name",
-  "title": "short description of the homework/assignment",
-  "dueDate": "YYYY-MM-DD — infer the year from context if not shown; use today's date ${isoDate(new Date())} as a reference point for 'this Friday' etc. style phrasing"
-}
-Rules:
-- One entry per homework/assignment item, even if several are for the same subject.
-- If no due date is visible for an item, make your best guess based on context (e.g. tomorrow) rather than omitting it.
-- Return ONLY a valid JSON array with no markdown, no code blocks, no extra text.` },
-          ],
-        }],
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `API error ${res.status}`);
-    }
-
-    const data = await res.json();
-    let rawText = data.content?.[0]?.text?.trim() || '';
-    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) rawText = fenceMatch[1].trim();
-
-    const items = JSON.parse(rawText);
+    const { items } = await window.auth.parseWithAI('homework', mediaType, base64);
     if (!Array.isArray(items) || items.length === 0) throw new Error('No homework items found in the photo.');
 
     setHomeworkParseStatus('✅', `Found ${items.length} item(s) — review below`);

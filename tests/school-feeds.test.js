@@ -360,6 +360,53 @@ test("requireParent gating: a kid session is blocked from subscribing/unsubscrib
   assert.ok(!result.error);
 });
 
+// ---------- SSRF guards ----------
+test("previewFeed: rejects an IP-literal https URL that resolves to a private address", async () => {
+  const preview = await schoolFeeds.previewFeed("https://10.0.0.1/x.ics");
+  assert.equal(preview.ok, false);
+  assert.match(preview.error, /private network/i);
+});
+
+test("previewFeed: rejects a redirect to a private address", async () => {
+  await new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(302, { Location: "https://10.0.0.1/evil.ics" });
+      res.end();
+    });
+    server.listen(0, "127.0.0.1", async () => {
+      const port = server.address().port;
+      try {
+        const preview = await schoolFeeds.previewFeed(`http://127.0.0.1:${port}/redir`);
+        assert.equal(preview.ok, false);
+        assert.match(preview.error, /private network/i);
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        server.close();
+      }
+    });
+  });
+});
+
+test("previewFeed: rejects a response body over the 5 MB cap", async () => {
+  const big = "BEGIN:VCALENDAR\nX-PADDING:" + "a".repeat(6 * 1024 * 1024) + "\nEND:VCALENDAR";
+  await withLocalIcsServer(big, {}, async (url) => {
+    const preview = await schoolFeeds.previewFeed(url);
+    assert.equal(preview.ok, false);
+    assert.match(preview.error, /too large/i);
+  });
+});
+
+test("previewFeed: loopback http:// fixtures still work (dev/test allowance unaffected)", async () => {
+  const body = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:e1@example.com\nDTSTART:20260710T090000\nSUMMARY:Still works\nEND:VEVENT\nEND:VCALENDAR";
+  await withLocalIcsServer(body, {}, async (url) => {
+    const preview = await schoolFeeds.previewFeed(url);
+    assert.equal(preview.ok, true);
+    assert.equal(preview.count, 1);
+  });
+});
+
 test("collectFromCache: applies a per-subscription keyword filter", () => {
   const { fam, kid } = makeFamilyWithKid();
   const { subscription } = schoolFeeds.subscribe(fam.id, { kidId: kid.id, feedId: "sta-hs-sport", filterKeyword: "U13" });

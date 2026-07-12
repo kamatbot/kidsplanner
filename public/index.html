@@ -26,11 +26,9 @@
        brain teaser, gating overlay). Kept separate from styles.css so this
        feature's CSS is easy to find/own. -->
   <link rel="stylesheet" href="/css/app.css">
-  <!-- PDF.js for rendering PDF uploads to images for AI parsing -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <!-- Developer API key config — never shown to users. See app.js TODO(security)
-       for the known client-exposed-key issue this depends on. -->
-  <script src="/config.js" onerror="void 0"></script>
+  <!-- PDF.js for rendering PDF uploads to images for AI parsing. Self-hosted
+       (not cdnjs) so it loads under CSP script-src 'self'. -->
+  <script src="/js/vendor/pdfjs/pdf.min.js"></script>
 </head>
 <body>
 
