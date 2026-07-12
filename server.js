@@ -26,6 +26,7 @@ const {
 
 const store = require("./lib/store");
 const db = require("./lib/db");
+const datacrypto = require("./lib/datacrypto");
 const billing = require("./lib/billing");
 const backupCodes = require("./lib/backup-codes");
 const analytics = require("./lib/analytics");
@@ -193,7 +194,10 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), asyn
   res.json({ received: true });
 });
 
-app.use(express.json({ limit: "2mb" }));
+// 12mb: comfortably covers an 8MB-decoded image as base64 (~10.9MB) plus
+// JSON overhead, for POST /api/ai/parse (lib/routes/ai.js re-checks the
+// decoded size itself — this is just the outer transport ceiling).
+app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Content-hash build tag for asset cache-busting (?v=BUILD).
@@ -227,6 +231,21 @@ if (IS_PROD && !SESSION_SECRET) {
 }
 if (!SESSION_SECRET) {
   console.warn("[auth] SESSION_SECRET is not set — using an INSECURE dev secret. Never run this in production.");
+}
+// lib/db.js serializeForDisk() silently falls back to plaintext when no key is
+// configured (dev convenience) — but in production that means kids' data +
+// chat land on disk unencrypted with no warning. Reuse datacrypto's own
+// validation (loadKey throws on a malformed key) instead of duplicating it.
+if (process.env.NODE_ENV === "production") {
+  let hasKey;
+  try {
+    hasKey = !!datacrypto.loadKey();
+  } catch (e) {
+    throw new Error(`DATA_ENCRYPTION_KEY is invalid: ${e.message}`);
+  }
+  if (!hasKey) {
+    throw new Error("DATA_ENCRYPTION_KEY must be set in production (refusing to start and silently write unencrypted user data).");
+  }
 }
 app.use(
   cookieSession({
@@ -410,6 +429,11 @@ app.get("/api/health", (req, res) => {
       // Present only when a key was supplied but failed to load (bad .p8 / path).
       configError: notifications.configError() || undefined,
     },
+    chat: {
+      // "sqlite" once better-sqlite3 loaded; "json" if it fell back (e.g. no
+      // prebuilt binary on this host) — see lib/chat.js.
+      backend: chat.getBackend(),
+    },
   });
 });
 
@@ -502,6 +526,7 @@ require("./lib/routes/activities")(app, routeDeps);
 require("./lib/routes/learning")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
 require("./lib/routes/push")(app, routeDeps);
+require("./lib/routes/ai")(app, routeDeps);
 
 // ===================== PAGES =====================
 const IMMUTABLE = "public, max-age=31536000, immutable";
@@ -548,7 +573,7 @@ const sendPage = (req, res, file, opts = {}) => {
   if (!pageCache.has(file)) {
     try {
       const html = fs.readFileSync(path.join(PUBLIC, file), "utf8")
-        .replace(/\/css\/styles\.css/g, `/css/styles.css?v=${BUILD}`)
+        .replace(/\/css\/([\w.-]+\.css)/g, `/css/$1?v=${BUILD}`)
         .replace(/\/js\/school-stats\.js/g, `/js/school-stats.js?v=${BUILD}`)
         .replace(/\/js\/auth\.js/g, `/js/auth.js?v=${BUILD}`)
         .replace(/\/js\/app\.js/g, `/js/app.js?v=${BUILD}`);

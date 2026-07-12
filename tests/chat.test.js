@@ -4,12 +4,19 @@ const assert = require("node:assert/strict");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-test-"));
+// Set before any lib/* require so datacrypto's key cache picks it up — same
+// pattern as tests/notes.test.js / tests/school-account.test.js. Exercises
+// the encrypted-at-rest path for the whole file; the sqlite-specific test
+// below is the one that actually asserts on it.
+process.env.DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
 
 const store = require("../lib/store");
 const family = require("../lib/family");
 const chat = require("../lib/chat");
+const chatRoutes = require("../lib/routes/chat");
 
 function makeFamily() {
   const p1 = store.createUser("cp1@example.com", "Chat Parent One");
@@ -114,4 +121,136 @@ test("listMessages: since filter only returns newer messages", async () => {
   chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "new" });
   const msgs = chat.listMessages(fam.id, { since: cursor });
   assert.deepEqual(msgs.map((m) => m.text), ["new"]);
+});
+
+/* ============================================================
+   SQLITE BACKEND — storage (lib/chat-store.js via lib/chat.js)
+============================================================ */
+
+test("sqlite backend: message body round-trips through the public API and is never plaintext on disk", () => {
+  if (chat.getBackend() !== "sqlite") return; // no prebuilt better-sqlite3 binary on this host — JSON fallback is exercised by every test above instead
+  const chatStore = require("../lib/chat-store");
+  const { p1, fam } = makeFamily();
+  const secret = "a very secret message nobody should read in plaintext";
+  chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: secret });
+  chatStore._checkpointForTest(); // flush WAL into the main file so we can read it back
+  const raw = fs.readFileSync(chatStore.DB_FILE);
+  assert.ok(!raw.includes(secret), "sqlite file bytes must not contain the plaintext message body");
+  const msgs = chat.listMessages(fam.id);
+  assert.equal(msgs[msgs.length - 1].text, secret); // decrypts correctly through the public API
+});
+
+test("migration: legacy JSON chat history is copied into sqlite once, and root.chats is cleared", () => {
+  const modPaths = ["../lib/db", "../lib/paths", "../lib/store", "../lib/family", "../lib/chat", "../lib/chat-store"].map((m) => require.resolve(m));
+  const savedDataDir = process.env.FAM_DATA_DIR;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-chatmigrate-"));
+  process.env.FAM_DATA_DIR = tmpDir;
+  modPaths.forEach((p) => delete require.cache[p]);
+  try {
+    const freshDb = require("../lib/db");
+    const freshStore = require("../lib/store");
+    const freshFamily = require("../lib/family");
+    const p1 = freshStore.createUser("mig@example.com", "Migrate Parent");
+    const fam = freshFamily.createFamily(p1.id, "Migrate Family");
+    // Seed legacy shape directly (root.chats — what lib/chat.js used before sqlite).
+    const root = freshDb.load();
+    root.chats = {
+      [fam.id]: {
+        messages: [
+          { id: "m_legacy1", familyId: fam.id, senderType: "parent", senderId: p1.id, postedByUserId: p1.id, text: "legacy one", card: null, media: null, createdAt: "2026-01-01T00:00:00.000Z", deleted: false, deletedBy: null, flagged: false, flagReason: null, flaggedBy: null },
+          { id: "m_legacy2", familyId: fam.id, senderType: "parent", senderId: p1.id, postedByUserId: p1.id, text: "legacy two", card: null, media: null, createdAt: "2026-01-01T00:00:01.000Z", deleted: false, deletedBy: null, flagged: false, flagReason: null, flaggedBy: null },
+        ],
+      },
+    };
+    freshDb.persist();
+    freshDb.flushSync();
+
+    const freshChat = require("../lib/chat"); // migration runs here, at first load, if sqlite is live
+    if (freshChat.getBackend() !== "sqlite") return; // nothing to migrate into on this host
+
+    const msgs = freshChat.listMessages(fam.id);
+    assert.deepEqual(msgs.map((m) => m.text), ["legacy one", "legacy two"]);
+    assert.equal(freshDb.load().chats, undefined, "root.chats must be cleared after migration");
+  } finally {
+    process.env.FAM_DATA_DIR = savedDataDir;
+    modPaths.forEach((p) => delete require.cache[p]); // restore this file's original module instances
+  }
+});
+
+/* ============================================================
+   LONG-POLL — lib/routes/chat.js
+============================================================ */
+
+function buildChatRouteHarness() {
+  const routes = {};
+  const register = (method) => (p, ...handlers) => { routes[`${method} ${p}`] = handlers[handlers.length - 1]; };
+  const app = { get: register("GET"), post: register("POST"), delete: register("DELETE") };
+  chatRoutes(app, {
+    chat,
+    notifications: { notifyChatMessage: async () => {} },
+    store,
+    gifs: {},
+    requireAuth: (req, res, next) => next(),
+    requireParent: (req, res, next) => next(),
+    requireFamily: (req, res, next) => next(),
+    userRole: () => "parent",
+    gifLimiter: (req, res, next) => next(),
+  });
+  return routes;
+}
+
+function callChatRoute(handler, { query, familyId } = {}) {
+  return new Promise((resolve) => {
+    const res = {
+      statusCode: 200,
+      set() { return this; },
+      status(c) { this.statusCode = c; return this; },
+      json(b) { resolve({ statusCode: this.statusCode, body: b }); },
+    };
+    const req = {
+      body: {}, params: {}, query: query || {},
+      user: { id: "u1", data: {} },
+      family: { id: familyId },
+      on() {}, // no disconnect simulated in these tests
+    };
+    handler(req, res);
+  });
+}
+
+test("GET /api/chat/messages: no afterId/wait — unchanged immediate response (back-compat)", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "hi" });
+  const res = await callChatRoute(routes["GET /api/chat/messages"], { familyId: fam.id });
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.body.messages.some((m) => m.text === "hi"));
+});
+
+test("GET /api/chat/messages: afterId+wait=1 returns immediately when a newer message already exists", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  const { message: m1 } = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "one" });
+  const { message: m2 } = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "two" });
+  const started = Date.now();
+  const res = await Promise.race([
+    callChatRoute(routes["GET /api/chat/messages"], { familyId: fam.id, query: { afterId: m1.id, wait: "1" } }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("did not resolve immediately")), 500)),
+  ]);
+  assert.ok(Date.now() - started < 500);
+  assert.deepEqual(res.body.messages.map((m) => m.id), [m2.id]);
+});
+
+test("GET /api/chat/messages: afterId+wait=1 wakes as soon as a message is sent (well under 25s)", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  const { message: m1 } = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "baseline" });
+  const started = Date.now();
+  const pending = callChatRoute(routes["GET /api/chat/messages"], { familyId: fam.id, query: { afterId: m1.id, wait: "1" } });
+  setTimeout(() => {
+    chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "woke you up" });
+  }, 100);
+  const res = await pending;
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 5000, `expected a quick wake, took ${elapsed}ms`);
+  assert.ok(res.body.messages.some((m) => m.text === "woke you up"));
 });

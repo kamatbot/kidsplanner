@@ -170,9 +170,12 @@ let uploadedFile    = null;
 
 /* Chat */
 let chatMessages    = [];     // messages currently rendered, oldest-first
-let chatLastAt      = null;   // createdAt cursor for polling ?since=
-let chatPollTimer   = null;
-const CHAT_POLL_MS  = 2000;
+let chatLastAt      = null;   // createdAt cursor (used for the one-shot ?since= fetch)
+let chatLastId      = null;   // id cursor for the long-poll ?afterId=
+let chatPollTimer   = false;  // truthy while the long-poll loop should keep running
+let chatPollAbort   = null;   // AbortController for the in-flight long-poll fetch, if any
+const CHAT_LONGPOLL_WAIT_S = 25; // must match LONG_POLL_MS in lib/routes/chat.js
+const CHAT_BACKOFF_MS = [2000, 5000, 10000]; // retry backoff on poll errors, capped
 
 /* Chat: emoji + GIF pickers (see CHAT PICKERS section near the bottom) */
 const CHAT_EMOJI_LIST = [
@@ -1355,17 +1358,11 @@ function processUpload(file) {
     document.getElementById('upload-preview').style.display = '';
     uploadedFile._dataUrl = ev.target.result;
 
-    // Auto-parse if API key is configured.
-    // TODO(security): this still calls the Anthropic API directly from the
-    // browser with a client-exposed key (config.js / ANTHROPIC_API_KEY) —
-    // known FEATURE_PLAN.md Phase 1 security-hygiene item ("move the
-    // Anthropic key behind a serverless proxy"). Not fixed as part of this
-    // migration; flagging per migration instructions.
-    if (typeof ANTHROPIC_API_KEY !== 'undefined' && ANTHROPIC_API_KEY) {
-      document.getElementById('ai-parse-section').style.display = '';
-      setParseStatus('⏳', 'Parsing schedule with AI…');
-      parseScheduleWithAI();
-    }
+    // Auto-parse — AI parsing runs server-side (POST /api/ai/parse), so it's
+    // available whenever the user is signed in.
+    document.getElementById('ai-parse-section').style.display = '';
+    setParseStatus('⏳', 'Parsing schedule with AI…');
+    parseScheduleWithAI();
   };
   reader.readAsDataURL(file);
 }
@@ -1596,11 +1593,7 @@ function incrementStreak() {
 }
 
 /* ============================================================
-   AI SCHEDULE PARSING
-   TODO(security): parseScheduleWithAI() below calls the Anthropic API
-   directly from the browser using a client-exposed key. This matches a
-   known FEATURE_PLAN.md Phase 1 item ("move the Anthropic key behind a
-   serverless proxy") — flagged, not fixed, in this migration.
+   AI SCHEDULE PARSING (server-side proxy — POST /api/ai/parse)
 ============================================================ */
 
 let parsedEvents = [];
@@ -1624,8 +1617,7 @@ function getNextMonday() {
 
 async function renderPdfToBase64(file) {
   if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js not loaded yet. Please try again.');
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/vendor/pdfjs/pdf.worker.min.js';
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async e => {
@@ -1654,12 +1646,6 @@ function setParseStatus(icon, text) {
 }
 
 async function parseScheduleWithAI() {
-  const apiKey = (typeof ANTHROPIC_API_KEY !== 'undefined' && ANTHROPIC_API_KEY) ? ANTHROPIC_API_KEY : '';
-  if (!apiKey) {
-    setParseStatus('⚠️', 'No API key configured in config.js');
-    return;
-  }
-
   try {
     let base64, mediaType;
 
@@ -1677,53 +1663,7 @@ async function parseScheduleWithAI() {
       }
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key':                              apiKey,
-        'anthropic-version':                      '2023-06-01',
-        'content-type':                           'application/json',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model:      'claude-sonnet-4-6',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
-            { type: 'text',  text: `Parse this school timetable image into a JSON array.
-Each element must have exactly these fields:
-{
-  "day": one of "Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday",
-  "subject": "subject or class name",
-  "teacher": "teacher name or empty string",
-  "room": "room/location or empty string",
-  "startTime": "HH:MM in 24-hour format",
-  "endTime": "HH:MM in 24-hour format (estimate from next period if not shown)"
-}
-Rules:
-- Skip registration/form periods unless they have a distinct subject.
-- Derive endTime from the next period's startTime if not explicitly shown.
-- Return ONLY a valid JSON array with no markdown, no code blocks, no extra text.` }
-          ]
-        }]
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `API error ${res.status}`);
-    }
-
-    const data   = await res.json();
-    let   rawText = data.content?.[0]?.text?.trim() || '';
-
-    // Strip markdown code fences if present
-    const fenceMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) rawText = fenceMatch[1].trim();
-
-    const events = JSON.parse(rawText);
+    const { items: events } = await window.auth.parseWithAI('schedule', mediaType, base64);
     if (!Array.isArray(events) || events.length === 0) throw new Error('No events found in the schedule image.');
 
     setParseStatus('✅', `Found ${events.length} classes — review below`);
@@ -1987,6 +1927,7 @@ async function loadChatMessages() {
     const msgs = await window.auth.getMessages();
     chatMessages = msgs;
     chatLastAt = msgs.length ? msgs[msgs.length - 1].createdAt : null;
+    chatLastId = msgs.length ? msgs[msgs.length - 1].id : null;
     renderChatMessages();
     scrollChatToBottom(); // always land on the latest message when (re)loading
   } catch (err) {
@@ -1994,40 +1935,93 @@ async function loadChatMessages() {
   }
 }
 
+// Merge a batch of fetched messages into chatMessages by id: a poll can
+// return an update to an already-seen message (e.g. deleted/flagged in
+// place), not just brand-new ones.
+function mergeChatMessages(msgs) {
+  if (!msgs.length) return;
+  const byId = new Map(chatMessages.map((m) => [m.id, m]));
+  for (const m of msgs) byId.set(m.id, m);
+  chatMessages = Array.from(byId.values()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  chatLastAt = chatMessages[chatMessages.length - 1].createdAt;
+  chatLastId = chatMessages[chatMessages.length - 1].id;
+  renderChatMessages();
+}
+
+// One-shot immediate fetch (not long-polling) — used for the "just sent a
+// message" fallback and by the realtime nudge. Callers that want to keep
+// receiving new messages continuously should rely on the long-poll loop
+// (startChatPolling), not repeated calls to this.
 async function pollChatMessages() {
   try {
-    const msgs = await window.auth.getMessages(chatLastAt);
-    if (msgs.length) {
-      // Merge by id: a poll can return an update to an already-seen message
-      // (e.g. deleted/flagged in place), not just brand-new ones.
-      const byId = new Map(chatMessages.map((m) => [m.id, m]));
-      for (const m of msgs) byId.set(m.id, m);
-      chatMessages = Array.from(byId.values()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
-      chatLastAt = chatMessages[chatMessages.length - 1].createdAt;
-      renderChatMessages();
-    }
+    mergeChatMessages(await window.auth.getMessages(chatLastAt));
   } catch (err) { /* transient poll failures shouldn't spam toasts */ }
+}
+
+// Long-poll loop: hold a GET open (server-side wait, up to CHAT_LONGPOLL_WAIT_S)
+// until a new message exists, render it, and immediately re-request — this
+// replaces the old fixed 2s setInterval with near-instant delivery and far
+// fewer idle requests. Paused entirely while the tab is hidden.
+async function chatLongPollFetch() {
+  const qs = `?afterId=${encodeURIComponent(chatLastId || '')}&wait=1`;
+  chatPollAbort = new AbortController();
+  const res = await fetch('/api/chat/messages' + qs, { credentials: 'same-origin', signal: chatPollAbort.signal });
+  if (!res.ok) throw new Error(`poll failed (${res.status})`);
+  const data = await res.json().catch(() => null);
+  return (data && data.messages) || [];
+}
+
+function chatWaitForVisible() {
+  return new Promise((resolve) => {
+    const onVis = () => {
+      if (document.hidden) return;
+      document.removeEventListener('visibilitychange', onVis);
+      resolve();
+    };
+    document.addEventListener('visibilitychange', onVis);
+  });
+}
+
+async function chatLongPollLoop() {
+  let backoffIdx = 0;
+  while (chatPollTimer) {
+    if (document.hidden) { await chatWaitForVisible(); continue; }
+    try {
+      const msgs = await chatLongPollFetch();
+      if (!chatPollTimer) break;
+      mergeChatMessages(msgs);
+      backoffIdx = 0;
+    } catch (err) {
+      if (!chatPollTimer || err.name === 'AbortError') continue; // stopped, or woken early on purpose — retry now, no backoff
+      await new Promise((r) => setTimeout(r, CHAT_BACKOFF_MS[Math.min(backoffIdx, CHAT_BACKOFF_MS.length - 1)]));
+      backoffIdx++;
+    }
+  }
 }
 
 function startChatPolling() {
   stopChatPolling();
-  chatPollTimer = setInterval(pollChatMessages, CHAT_POLL_MS);
+  chatPollTimer = true;
+  chatLongPollLoop();
   setupChatRealtimeNudges();
 }
 
 function stopChatPolling() {
-  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
+  chatPollTimer = false;
+  if (chatPollAbort) { chatPollAbort.abort(); chatPollAbort = null; }
 }
 
 // Instant-refresh triggers so a new message renders with ~no lag instead of
-// waiting for the poll tick: (a) the service worker posts 'fam-push' the moment
-// a chat push arrives; (b) the tab regaining focus/visibility. Both only poll
-// while chat is actually active (chatPollTimer set). Registered once.
+// waiting out the long-poll: (a) the service worker posts 'fam-push' the
+// moment a chat push arrives; (b) the tab regaining focus/visibility. Both
+// abort the in-flight long-poll fetch so chatLongPollLoop immediately
+// re-requests with the latest cursor, rather than waiting up to
+// CHAT_LONGPOLL_WAIT_S. Registered once.
 let chatNudgesReady = false;
 function setupChatRealtimeNudges() {
   if (chatNudgesReady) return;
   chatNudgesReady = true;
-  const nudge = () => { if (chatPollTimer) pollChatMessages(); };
+  const nudge = () => { if (chatPollTimer && chatPollAbort) chatPollAbort.abort(); };
   if (navigator.serviceWorker) {
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'fam-push') nudge();
@@ -3983,19 +3977,9 @@ function normalizeSchoolImportDate(raw, now) {
   return isoDate(new Date(year, monthIdx, dayNum));
 }
 
-// Reachable via postMessage too, so the extension can inject a tiny script
-// that posts to the tab instead of calling the function directly (both
-// paths are supported; executeScript-into-tab calling the function directly
-// is the primary path — see chrome-extension/popup.js).
-window.addEventListener('message', (event) => {
-  if (!event.data || event.data.type !== 'fam-etc-school-import') return;
-  famImportSchoolData(event.data.payload || {}).then((result) => {
-    if (event.source && typeof event.source.postMessage === 'function') {
-      event.source.postMessage({ type: 'fam-etc-school-import-result', result }, event.origin);
-    }
-  });
-});
-
+// The chrome extension's background.js calls window.famImportSchoolData(...)
+// directly via chrome.scripting.executeScript (see chrome-extension/
+// background.js) — no postMessage bridge needed, so none is registered here.
 window.famImportSchoolData = famImportSchoolData;
 
 /* ============================================================
