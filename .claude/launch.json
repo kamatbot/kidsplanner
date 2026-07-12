@@ -3,8 +3,10 @@
   "configurations": [
     {
       "name": "fametc",
-      "runtimeExecutable": "npm",
+      "runtimeExecutable": "env",
       "runtimeArgs": [
+        "FAM_DATA_DIR=/Users/kamatbot/.fametc-data",
+        "npm",
         "start"
       ],
       "port": 3000
