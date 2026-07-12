@@ -78,7 +78,7 @@ final class AppStore {
         if family == nil, let cached = cache.load() {
             me = cached.me
             family = cached.family
-            messages = cached.messages
+            messages = Self.dedupe(cached.messages)  // heal caches poisoned by build 24
         }
         await refresh()
     }
@@ -105,7 +105,7 @@ final class AppStore {
                 async let kids: Void = refreshKidRequests()
                 async let calHw: Void = loadCalendarAndHomework()
                 async let notesLoad: Void = loadNotes()
-                messages = try await msgs
+                messages = Self.dedupe(try await msgs)
                 updateChatSeen()
                 _ = await (kids, calHw, notesLoad)
             }
@@ -301,16 +301,26 @@ final class AppStore {
     /// yet), an OLD server ignoring `afterId` re-sends the latest full page
     /// (ids we already have) — either way, union-by-id + sort keeps the result
     /// correct, and an id already present gets its latest copy (edits/flags).
+    /// THE single upsert path for chat messages — every source (long-poll
+    /// deltas, full refreshes, sent text, sent GIFs, disk cache) must land in
+    /// `messages` through this or through `Self.dedupe`. Build 24 crashed
+    /// because send paths blind-appended while the long-poll merged the same
+    /// message: `messages` held a duplicate id, `persist()` poisoned the disk
+    /// cache with it, and the next `Dictionary(uniqueKeysWithValues:)` call
+    /// (or next LAUNCH, via the poisoned cache) trapped — AppStore.swift:306
+    /// in the TestFlight crash log.
     func mergeIncoming(_ fresh: [ChatMessage]) {  // internal for FamETCTests
         guard !fresh.isEmpty else { return }
-        // uniquingKeysWith, NOT uniqueKeysWithValues: `messages` can briefly
-        // hold a duplicate id (optimistic send-append racing a long-poll
-        // delta), and uniqueKeysWithValues TRAPS on duplicates — this was the
-        // TestFlight build-24 crash (assertionFailure in Dictionary.init via
-        // mergeIncoming). Collapsing to the newest copy self-heals instead.
-        var byId = Dictionary(messages.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
-        for m in fresh { byId[m.id] = m }
-        messages = byId.values.sorted { $0.createdAt < $1.createdAt }
+        messages = Self.dedupe(messages + fresh)
+    }
+
+    /// Collapse duplicate ids (last occurrence wins — later elements are the
+    /// fresher copies) and order by createdAt. Tolerates already-corrupt
+    /// input, so build-24-poisoned disk caches self-heal on load.
+    static func dedupe(_ msgs: [ChatMessage]) -> [ChatMessage] {
+        var byId: [String: ChatMessage] = [:]
+        for m in msgs { byId[m.id] = m }
+        return byId.values.sorted { $0.createdAt < $1.createdAt }
     }
 
     // MARK: Notes
@@ -456,7 +466,7 @@ final class AppStore {
     func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String) async {
         do {
             let msg = try await api.sendChatMessage(text: text, card: card, senderType: senderType, senderId: senderId)
-            messages.append(msg)
+            mergeIncoming([msg])   // NEVER append: the long-poll may already have delivered this id
             persist()
         } catch { handle(error) }
     }
@@ -480,7 +490,7 @@ final class AppStore {
         ]
         do {
             let msg = try await api.sendChatMessage(text: "", card: nil, media: media, senderType: sType, senderId: sId)
-            messages.append(msg)
+            mergeIncoming([msg])   // NEVER append: the long-poll may already have delivered this id
             persist()
         } catch { handle(error) }
     }
@@ -493,7 +503,7 @@ final class AppStore {
     func refreshChatNow() async {
         guard family != nil else { return }
         if let fresh = try? await api.chatMessages(limit: 50) {
-            messages = fresh
+            messages = Self.dedupe(fresh)
             persist()
         }
         updateChatSeen()
