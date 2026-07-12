@@ -184,6 +184,7 @@
           </div>
 
           <div class="today-grid">
+            <div class="today-left-col">
             <section class="card today-schedule-card">
               <div class="today-card-header">
                 <span class="micro-label">Today's schedule</span>
@@ -204,22 +205,23 @@
               <div id="today-homework-list"></div>
             </section>
 
-            <div class="today-right-col">
-              <section class="card">
-                <div class="today-card-header">
-                  <span class="micro-label">Today's habits</span>
-                  <span class="micro-label" id="today-habits-count"></span>
+            <section class="card">
+              <div class="today-card-header">
+                <span class="micro-label">Today's habits</span>
+                <span class="micro-label" id="today-habits-count"></span>
+              </div>
+              <div id="today-habits-list" class="habits-list"></div>
+              <div class="momentum-block">
+                <div class="momentum-labels">
+                  <span class="momentum-label" id="today-momentum-label">Week momentum</span>
+                  <span class="momentum-value" id="today-momentum-value"></span>
                 </div>
-                <div id="today-habits-list" class="habits-list"></div>
-                <div class="momentum-block">
-                  <div class="momentum-labels">
-                    <span class="momentum-label" id="today-momentum-label">Week momentum</span>
-                    <span class="momentum-value" id="today-momentum-value"></span>
-                  </div>
-                  <div class="momentum-track"><div class="momentum-fill" id="today-momentum-fill" style="width:0%"></div></div>
-                </div>
-              </section>
+                <div class="momentum-track"><div class="momentum-fill" id="today-momentum-fill" style="width:0%"></div></div>
+              </div>
+            </section>
+            </div>
 
+            <div class="today-right-col">
               <section class="card daily5-card">
                 <div class="today-card-header">
                   <span class="micro-label">Daily 5</span>

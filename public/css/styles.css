@@ -452,12 +452,13 @@ html { font-size: 16px; }
 .today-sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-green); flex: none; }
 
 .today-grid {
-  flex: 1; display: grid; grid-template-columns: 1.45fr 1fr; grid-template-rows: auto 1fr;
+  flex: 1; display: grid; grid-template-columns: 1.45fr 1fr;
   gap: 16px; min-height: 0;
 }
-.today-schedule-card { grid-row: span 2; align-self: start; display: flex; flex-direction: column; }
+.today-schedule-card { display: flex; flex-direction: column; }
 .today-card-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
-.today-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
+.today-left-col, .today-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
+.today-left-col > .card, .today-right-col > .card { flex: none; }
 
 .schedule-row {
   display: flex; gap: 14px; padding: 13px 4px; border-bottom: 1px solid var(--border); align-items: center;
@@ -554,13 +555,11 @@ html { font-size: 16px; }
 .kid-view .main-content { padding: 22px 26px; }
 .kid-view .today-header { align-items: center; gap: 14px; }
 .kid-view .today-greeting { font-size: 29px; }
-.kid-view .today-grid { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto auto; }
-.kid-view .today-schedule-card,
-.kid-view .today-homework-card { grid-row: auto; grid-column: 1 / -1; }
+.kid-view .today-grid { grid-template-columns: 1fr; }
 .kid-view .schedule-row { min-height: 52px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
 .kid-view .schedule-row:last-child { margin-bottom: 0; }
 .kid-view .homework-due-row.overdue { border: 1.5px solid var(--c-red); border-radius: 14px; padding: 10px 12px; }
-.kid-view .today-right-col { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; overflow: visible; }
+.kid-view .today-left-col, .kid-view .today-right-col { overflow: visible; }
 .kid-view .today-quiz-btn { height: 46px; font-size: 15px; }
 /* The brain teaser is always visible in-card (no more toggle button to size
    up) — keep its answer buttons big/tappable for kids, matching the old
@@ -941,8 +940,8 @@ html { font-size: 16px; }
   .sidebar-bottom { border-top: none; flex-direction: row; padding: 0; margin-left: auto; }
   .main-content-wrap { flex-direction: column; overflow: visible; }
   .main-content { padding: 16px; overflow-y: visible; }
-  .today-grid { grid-template-columns: 1fr; grid-template-rows: auto; }
-  .today-schedule-card { grid-row: auto; }
+  .today-grid { grid-template-columns: 1fr; }
+  .today-left-col, .today-right-col { overflow: visible; }
   /* Chat becomes a slide-over on narrow screens too, same mechanism as kid
      view (see the .kid-view .chat-dock rule above) — width-triggered instead
      of role-triggered. There's no room for the slim collapsed rail on mobile
