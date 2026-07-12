@@ -203,7 +203,15 @@ app.use(express.urlencoded({ extended: true }));
 // Content-hash build tag for asset cache-busting (?v=BUILD).
 const BUILD = (() => {
   try {
-    const files = ["css/styles.css", "js/app.js", "js/auth.js", "js/school-stats.js"].map((f) => fs.readFileSync(path.join(PUBLIC, f)));
+    // Hash every first-party asset (not just a hand-picked few) so ANY
+    // css/js edit busts browser caches — app.css/sat.js edits used to ship
+    // without a version change and users kept stale files.
+    const files = [];
+    for (const dir of ["css", "js"]) {
+      for (const f of fs.readdirSync(path.join(PUBLIC, dir)).sort()) {
+        if (/\.(css|js)$/.test(f)) files.push(fs.readFileSync(path.join(PUBLIC, dir, f)));
+      }
+    }
     return crypto.createHash("md5").update(Buffer.concat(files)).digest("hex").slice(0, 10);
   } catch (e) {
     return String(Date.now());
@@ -574,9 +582,7 @@ const sendPage = (req, res, file, opts = {}) => {
     try {
       const html = fs.readFileSync(path.join(PUBLIC, file), "utf8")
         .replace(/\/css\/([\w.-]+\.css)/g, `/css/$1?v=${BUILD}`)
-        .replace(/\/js\/school-stats\.js/g, `/js/school-stats.js?v=${BUILD}`)
-        .replace(/\/js\/auth\.js/g, `/js/auth.js?v=${BUILD}`)
-        .replace(/\/js\/app\.js/g, `/js/app.js?v=${BUILD}`);
+        .replace(/\/js\/([\w.-]+\.js)/g, `/js/$1?v=${BUILD}`);
       pageCache.set(file, html);
     } catch (e) {
       pageCache.set(file, null);
