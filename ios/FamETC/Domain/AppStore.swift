@@ -253,6 +253,16 @@ final class AppStore {
     /// GET — works unchanged against the CURRENT production server and is
     /// what makes chat render immediately with no tap needed.
     private func runChatLoop() async {
+        #if DEBUG
+        // UI-test hook (FAM_MOCK_CHAT_DELAY_MS): hermetically reproduce the
+        // messages-arrive-after-layout timing with no server, then stop.
+        if let ms = DebugLaunch.mockChatDelayMs {
+            try? await Task.sleep(for: .milliseconds(ms))
+            if Task.isCancelled { return }
+            injectMockChat()
+            return
+        }
+        #endif
         var first = true
         while !Task.isCancelled {
             guard family != nil else {
@@ -533,4 +543,33 @@ final class AppStore {
         if case APIError.unauthenticated = error { needsAuth = true }
         else { syncError = error.localizedDescription }
     }
+
+    #if DEBUG
+    /// Backs the FAM_MOCK_CHAT_DELAY_MS UI-test hook: enough messages to
+    /// overflow one screen (so a mispositioned viewport is detectable), a
+    /// system card (covers the onAppear-gated card regression), and a final
+    /// marker message the UI test asserts is visible WITHOUT any gesture.
+    private func injectMockChat() {
+        let famId = "f_uitest"
+        family = Family(id: famId, name: "QA Family", inviteCode: "QATEST",
+                        parentIds: ["u_qa_parent"], parents: nil,
+                        kids: [], createdAt: "2026-01-01T00:00:00.000Z")
+        var msgs: [ChatMessage] = []
+        func add(_ i: Int, _ text: String, mine: Bool = false, card: ChatCard? = nil) {
+            msgs.append(ChatMessage(id: "m_qa_\(i)", familyId: famId,
+                                    senderType: "parent",
+                                    senderId: mine ? "u_qa_parent" : "u_qa_other",
+                                    postedByUserId: nil, text: text, card: card,
+                                    media: nil,
+                                    createdAt: "2026-01-01T10:\(String(format: "%02d", i)):00.000Z",
+                                    deleted: false, deletedBy: nil,
+                                    flagged: false, flagReason: nil, flaggedBy: nil))
+        }
+        for i in 0..<12 { add(i, "Filler message number \(i) — long enough to take a couple of lines on a phone screen so twelve of these overflow the viewport.", mine: i % 3 == 0) }
+        add(12, "📚 New homework for QA: Card visibility check", card: ChatCard(type: "homework", id: "hw_qa", title: "Card visibility check"))
+        add(13, "FINAL MARKER — visible without scroll")
+        messages = msgs
+    }
+    #endif
+
 }

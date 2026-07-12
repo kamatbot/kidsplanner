@@ -20,9 +20,9 @@ struct ChatScreen: View {
     @State private var hwRef: HWRef?
     @State private var eventRef: EVRef?
     @State private var newEventReq: NewEventReq?
+    @State private var scrollPos = ScrollPosition(edge: .bottom)
     @FocusState private var composerFocused: Bool
 
-    private let bottomAnchorID = "chat-bottom-anchor"
     private var baseInset: CGFloat { hSize == .compact ? Layout.tabBarClearance : Space.lg }
     private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
 
@@ -76,42 +76,43 @@ struct ChatScreen: View {
 
     // MARK: Messages
 
+    // First-layout race fix (device bug, builds 21-22): a LazyVStack whose
+    // rows arrive AFTER initial layout keeps a stale visible region — rows
+    // exist in store.messages but never materialize until a gesture forces
+    // recalculation (and card rows gated on onAppear stayed invisible).
+    // Repair: plain VStack (the server caps the window at 200 messages, so
+    // laziness buys nothing), iOS 18 ScrollPosition + scrollTargetLayout for
+    // a stable programmatic position, and a bottom scroll AFTER the updated
+    // content has laid out — unanimated for the initial population.
     private var messages: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: Space.md) {
-                    ForEach(store.messages) { m in
-                        ChatMessageRow(message: m,
-                                       isMine: store.isMine(m),
-                                       senderName: store.senderName(for: m),
-                                       onTapCard: handleCardTap,
-                                       onAddToCalendar: handleAddToCalendar,
-                                       onPinToNotes: handlePinToNotes)
-                            .id(m.id)
-                    }
-                    Color.clear.frame(height: 1).id(bottomAnchorID)
+        ScrollView {
+            VStack(spacing: Space.md) {
+                ForEach(store.messages) { m in
+                    ChatMessageRow(message: m,
+                                   isMine: store.isMine(m),
+                                   senderName: store.senderName(for: m),
+                                   onTapCard: handleCardTap,
+                                   onAddToCalendar: handleAddToCalendar,
+                                   onPinToNotes: handlePinToNotes)
+                        .id(m.id)
                 }
-                .padding(.horizontal, Space.md)
-                .padding(.vertical, Space.md)
-                .frame(maxWidth: .infinity)
             }
-            .defaultScrollAnchor(.bottom)
-            .scrollDismissesKeyboard(.interactively)
-            // Tapping the chat body dismisses the keyboard (fires alongside any
-            // card/button tap without blocking it).
-            .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
-            .overlay { emptyOrLoading }
-            // defaultScrollAnchor(.bottom) alone mispositions with LazyVStack
-            // when messages land after layout (lazy rows have no measured
-            // height yet, so the viewport parks in blank space until the user
-            // scrolls — seen on device in build 21). Scroll explicitly on
-            // appear AND on any count change; count (not last?.id) also fires
-            // when the initial fetch replaces the cached array with an
-            // identical trailing message.
-            .onAppear { scrollToBottom(proxy, animated: false) }
-            .onChange(of: store.messages.count) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: keyboardVisible) { _, v in if v { scrollToBottom(proxy) } }
+            .scrollTargetLayout()
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.md)
+            .frame(maxWidth: .infinity)
         }
+        .scrollPosition($scrollPos, anchor: .bottom)
+        .defaultScrollAnchor(.bottom)
+        .scrollDismissesKeyboard(.interactively)
+        // Tapping the chat body dismisses the keyboard (fires alongside any
+        // card/button tap without blocking it).
+        .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
+        .overlay { emptyOrLoading }
+        .onChange(of: store.messages.count) { oldCount, _ in
+            scrollToBottom(animated: oldCount > 0)
+        }
+        .onChange(of: keyboardVisible) { _, v in if v { scrollToBottom(animated: true) } }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -139,14 +140,16 @@ struct ChatScreen: View {
                                  ref: ["kind": "chat", "id": message.id, "context": message.text])
         }
     }
-    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+    private func scrollToBottom(animated: Bool) {
+        // Defer one tick so the scroll targets the CONTENT SIZE that includes
+        // the rows this update just added, then pin to the bottom edge —
+        // ScrollPosition tracks the edge through any late layout growth.
         DispatchQueue.main.async {
-            if animated { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(bottomAnchorID, anchor: .bottom) } }
-            else { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
-            // Second pass one tick later: lazy rows measured by the first
-            // scroll can grow the content height, leaving the first target
-            // short of the true bottom.
-            DispatchQueue.main.async { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) { scrollPos.scrollTo(edge: .bottom) }
+            } else {
+                scrollPos.scrollTo(edge: .bottom)
+            }
         }
     }
 

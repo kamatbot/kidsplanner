@@ -52,6 +52,12 @@ enum DebugLaunch {
     /// The deep-link target screen for this launch (read by RootView).
     static var screen: String? { env["FAM_SCREEN"] }
 
+    /// UI-test hook: when set, AppStore skips the network chat loop and
+    /// injects a mock family + messages after this many milliseconds —
+    /// reproducing the async-arrival timing behind the chat first-layout
+    /// race (messages landing AFTER the chat surface has laid out).
+    static var mockChatDelayMs: Int? { env["FAM_MOCK_CHAT_DELAY_MS"].flatMap(Int.init) }
+
     /// Suppress the push-permission prompt during seeded QA screenshots (a dev
     /// cookie is injected only in that flow), so it doesn't block the UI.
     static var skipPush: Bool { env["FAM_DEV_COOKIE"] != nil }

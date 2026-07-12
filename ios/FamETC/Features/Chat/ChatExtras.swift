@@ -33,7 +33,6 @@ func famAvatar(senderType: String, id: String) -> String {
 struct SystemCardRow: View {
     let message: ChatMessage
     var onTapCard: (ChatCard) -> Void
-    @State private var appeared = false
 
     private var isEvent: Bool { message.card?.type == "event" }
     private var isDone: Bool { !isEvent && message.text.hasPrefix("✅") }
@@ -65,10 +64,10 @@ struct SystemCardRow: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, Space.xl)
-        // Subtle "pop" so system messages read differently from chat bubbles.
-        .scaleEffect(appeared ? 1 : 0.85)
-        .opacity(appeared ? 1 : 0)
-        .onAppear { withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) { appeared = true } }
+        // No onAppear-gated reveal: rows a scroll view hasn't materialized
+        // never fire onAppear, which left these cards INVISIBLE after the
+        // first-layout race (device bug, builds 21-22). Cards render visible
+        // by default; the tinted card styling still reads distinct.
     }
 }
 
