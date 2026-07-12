@@ -4,9 +4,9 @@ import Observation
 
 /// The single source of truth for the native surfaces: the signed-in user's
 /// family (with its kids) and the chat thread. Cache-first load gives an
-/// instant, spinner-free cold start; chat is kept fresh with a debounced poll
-/// (mirrors the RetireOdds `scheduleSim` debounce pattern, applied to
-/// `GET /api/chat/messages?since=`).
+/// instant, spinner-free cold start; chat is kept fresh with a long-poll loop
+/// (`GET /api/chat/messages?afterId=&wait=1`, degrading gracefully against an
+/// older plain-list server — see `runChatLoop`).
 @MainActor
 @Observable
 final class AppStore {
@@ -66,7 +66,8 @@ final class AppStore {
     // Collaborators
     private let api = APIClient.shared
     private let cache = DiskCache()
-    private var pollTask: Task<Void, Never>?
+    private var chatLoopTask: Task<Void, Never>?
+    private var chatAppBackgrounded = false
 
     // MARK: Lifecycle
 
@@ -84,7 +85,15 @@ final class AppStore {
 
     func refresh() async {
         isRefreshing = true
-        defer { isRefreshing = false }
+        // Restart the chat loop unconditionally — including on a thrown 401 or
+        // transport error — so a failed initial network call (cold-start cookie
+        // race, slow DNS/TLS warmup, expired session) can never permanently
+        // stall chat with zero pending requests. Previously this only ran in
+        // the success path below, so a single flaky first fetch left chat dead
+        // until something else (e.g. the Chat tab's `chatActive` toggle)
+        // happened to kick a poll — surfacing as "messages don't load until I
+        // tap the screen".
+        defer { isRefreshing = false; restartChatLoop() }
         do {
             me = try await api.me().user
             let fams = try await api.families()
@@ -103,7 +112,6 @@ final class AppStore {
             syncError = nil
             needsAuth = false
             persist()
-            scheduleChatPoll()
         } catch APIError.unauthenticated {
             needsAuth = true
         } catch {
@@ -112,7 +120,7 @@ final class AppStore {
     }
 
     func signedOut() {
-        pollTask?.cancel()
+        stopChatLoop()
         cache.clear()
         me = nil
         family = nil
@@ -186,37 +194,108 @@ final class AppStore {
 
     // MARK: Chat
 
-    /// Debounced re-poll after sending a message or on a timer (mirrors web
-    /// long-poll behavior). Cancels any in-flight poll before scheduling a new one.
-    /// When the Chat surface is on-screen we poll faster (near-live, matching the
-    /// web's ~2s cadence); in the background we back off to save battery.
+    /// Whether the Chat surface (native tab, iPad docked column, or slide-over)
+    /// is currently on-screen. Toggling this restarts the loop below so the
+    /// switch between the near-live long-poll cadence and the slower
+    /// off-screen badge poll takes effect immediately.
     var chatActive = false {
-        didSet { if chatActive != oldValue { scheduleChatPoll() } }
+        didSet { if chatActive != oldValue { restartChatLoop() } }
     }
 
-    func scheduleChatPoll() {
-        pollTask?.cancel()
-        let interval: Duration = chatActive ? .seconds(2) : .seconds(8)
-        pollTask = Task { [weak self] in
-            try? await Task.sleep(for: interval)
-            guard !Task.isCancelled else { return }
-            await self?.pollChat()
+    /// Cancels any in-flight iteration and starts a fresh loop, whose very
+    /// first iteration is always an immediate plain fetch — this is what makes
+    /// chat render right away on cold start, on entering the Chat surface, and
+    /// on returning from the background, with no tap required. A no-op while
+    /// the app is OS-backgrounded (`chatDidEnterBackground` clears that gate).
+    func restartChatLoop() {
+        stopChatLoop()
+        guard !chatAppBackgrounded else { return }
+        chatLoopTask = Task { [weak self] in
+            await self?.runChatLoop()
         }
     }
 
-    private func pollChat() async {
-        guard family != nil else { scheduleChatPoll(); return }
-        if let fresh = try? await api.chatMessages(limit: 50) {
-            // Only reassign when the thread actually changed, so an unchanged
-            // poll doesn't churn the list / interrupt scrolling.
-            if fresh.map(\.id) != messages.map(\.id) || fresh.last?.text != messages.last?.text {
-                messages = fresh
-                persist()
+    func stopChatLoop() {
+        chatLoopTask?.cancel()
+        chatLoopTask = nil
+    }
+
+    /// Suspend polling — cancels the in-flight request/sleep via structured
+    /// Task cancellation (URLSession's async APIs abort the underlying request
+    /// when their enclosing Task is cancelled, so this doesn't leak a request).
+    func chatDidEnterBackground() {
+        chatAppBackgrounded = true
+        stopChatLoop()
+    }
+
+    /// Resume with an immediate fetch, mirroring cold start / surface-appear.
+    func chatWillEnterForeground() {
+        guard chatAppBackgrounded else { return }
+        chatAppBackgrounded = false
+        restartChatLoop()
+    }
+
+    /// The chat refresh loop. Two cadences, chosen per iteration off the live
+    /// `chatActive` flag (so switching surfaces mid-loop takes effect on the
+    /// very next iteration, not just at restart):
+    ///
+    /// - **On-screen** (`chatActive`): near-live long-poll against the new
+    ///   contract — `GET /api/chat/messages?afterId=<lastId>&wait=1`, which a
+    ///   NEW server holds open up to ~25s and returns the moment newer
+    ///   messages exist, and an OLD server just answers immediately (ignoring
+    ///   the params). Either way we enforce a minimum 2s spacing between
+    ///   iterations so an old server's instant empty replies don't spin in a
+    ///   tight loop — this is what keeps the app correct against both.
+    /// - **Off-screen**: the previous plain 8s poll, so the unread badge and
+    ///   kid-approval banner stay live while browsing other tabs.
+    ///
+    /// The very first iteration after every (re)start is always a plain full
+    /// GET — works unchanged against the CURRENT production server and is
+    /// what makes chat render immediately with no tap needed.
+    private func runChatLoop() async {
+        var first = true
+        while !Task.isCancelled {
+            guard family != nil else {
+                try? await Task.sleep(for: .seconds(chatActive ? 2 : 8))
+                continue
+            }
+            guard chatActive else {
+                await refreshChatNow()
+                guard !Task.isCancelled else { return }
+                try? await Task.sleep(for: .seconds(8))
+                continue
+            }
+            let iterationStart = ContinuousClock.now
+            if first || messages.last?.id == nil {
+                await refreshChatNow()
+                first = false
+            } else if let afterId = messages.last?.id {
+                if let fresh = try? await api.chatMessages(afterId: afterId, wait: true), !fresh.isEmpty {
+                    mergeIncoming(fresh)
+                    persist()
+                }
+                updateChatSeen()
+                await refreshKidRequests() // surface new kid sign-in requests app-wide
+            }
+            guard !Task.isCancelled else { return }
+            let elapsed = iterationStart.duration(to: .now)
+            if elapsed < .seconds(2) {
+                try? await Task.sleep(for: .seconds(2) - elapsed)
             }
         }
-        updateChatSeen()
-        await refreshKidRequests() // surface new kid sign-in requests app-wide
-        scheduleChatPoll()
+    }
+
+    /// Merges a long-poll response into the in-memory thread by message id.
+    /// Handles both server shapes without needing to know which one answered:
+    /// a NEW server's `afterId` response is just the delta (ids we don't have
+    /// yet), an OLD server ignoring `afterId` re-sends the latest full page
+    /// (ids we already have) — either way, union-by-id + sort keeps the result
+    /// correct, and an id already present gets its latest copy (edits/flags).
+    private func mergeIncoming(_ fresh: [ChatMessage]) {
+        guard !fresh.isEmpty else { return }
+        var byId = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
+        for m in fresh { byId[m.id] = m }
+        messages = byId.values.sorted { $0.createdAt < $1.createdAt }
     }
 
     // MARK: Notes
@@ -377,8 +456,11 @@ final class AppStore {
         } catch { handle(error) }
     }
 
-    /// Immediate one-shot chat refresh (e.g. when the Chat tab appears or the app
-    /// returns to the foreground) so new cross-device messages show without waiting.
+    /// Immediate one-shot plain fetch — full authoritative list, so it also
+    /// picks up edits/deletes/flags the delta long-poll wouldn't. Used as the
+    /// first iteration of every chat-loop (re)start (cold start, Chat surface
+    /// appearing, foreground return) so new cross-device messages show without
+    /// waiting on the poll cadence.
     func refreshChatNow() async {
         guard family != nil else { return }
         if let fresh = try? await api.chatMessages(limit: 50) {
@@ -386,6 +468,7 @@ final class AppStore {
             persist()
         }
         updateChatSeen()
+        await refreshKidRequests()
     }
 
     // MARK: Unread chat badge

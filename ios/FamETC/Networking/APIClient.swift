@@ -182,13 +182,27 @@ final class APIClient {
 
     // MARK: Chat
 
-    func chatMessages(since: String? = nil, limit: Int? = nil) async throws -> [ChatMessage] {
+    /// `afterId` + `wait` adopt the server's long-poll contract: with both set,
+    /// a server that supports it holds the connection open (up to ~25s) and
+    /// returns the moment a message newer than `afterId` exists, else answers
+    /// with an empty list once the hold expires. A server that doesn't know
+    /// these params simply ignores them and answers immediately with its plain
+    /// `limit`-bounded list, same as calling this with neither — callers loop
+    /// this and degrade gracefully either way (see `AppStore.runChatLoop`).
+    /// `wait` requests a client-side timeout longer than the server's hold so
+    /// the request doesn't get cut off right as new messages would arrive.
+    func chatMessages(since: String? = nil, limit: Int? = nil, afterId: String? = nil, wait: Bool = false) async throws -> [ChatMessage] {
         var path = "/api/chat/messages"
         var query: [String] = []
         if let since { query.append("since=\(since)") }
         if let limit { query.append("limit=\(limit)") }
+        if let afterId {
+            let encoded = afterId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? afterId
+            query.append("afterId=\(encoded)")
+        }
+        if wait { query.append("wait=1") }
         if !query.isEmpty { path += "?" + query.joined(separator: "&") }
-        let r: MessagesResponse = try await request(path)
+        let r: MessagesResponse = try await request(path, timeout: wait ? 35 : nil)
         return r.messages
     }
     func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String) async throws -> ChatMessage {
@@ -293,8 +307,8 @@ final class APIClient {
 
     // MARK: Core
 
-    private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> T {
-        let data = try await rawSend(path, method: method, body: body)
+    private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {
+        let data = try await rawSend(path, method: method, body: body, timeout: timeout)
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
@@ -302,11 +316,15 @@ final class APIClient {
         }
     }
 
+    /// `timeout` overrides the session's default per-request timeout (30s) —
+    /// used by the chat long-poll, whose server-side hold (~25s) needs more
+    /// headroom than a normal request.
     @discardableResult
-    private func rawSend(_ path: String, method: String, body: [String: Any]?) async throws -> Data {
+    private func rawSend(_ path: String, method: String, body: [String: Any]?, timeout: TimeInterval? = nil) async throws -> Data {
         guard let url = URL(string: base.absoluteString + path) else { throw APIError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = method
+        if let timeout { req.timeoutInterval = timeout }
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -39,10 +39,17 @@ struct ChatScreen: View {
             .padding(.bottom, bottomInset)
             .animation(.easeOut(duration: 0.25), value: keyboardVisible)
         }
-        .onAppear { store.chatActive = true; Task { await store.refreshChatNow() } }
+        // chatActive's didSet restarts the chat loop with an immediate plain
+        // fetch as its first iteration — see AppStore.restartChatLoop — so
+        // messages render right away with no tap needed, whether this is a
+        // native tab page, the iPad docked column, or the slide-over sheet.
+        .onAppear { store.chatActive = true }
         .onDisappear { store.chatActive = false }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            store.chatDidEnterBackground()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            Task { await store.refreshChatNow() }
+            store.chatWillEnterForeground()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
