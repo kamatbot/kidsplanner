@@ -380,10 +380,24 @@ final class AppStore {
     }
 
     /// Add a family appointment (server posts a chat card; chat updates on poll).
-    func addEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?) async {
+    /// Reloads `familyEvents` from the server afterward rather than appending the
+    /// raw response, since a recurring `repeat` expands into multiple occurrences
+    /// server-side (lib/events.js) that only `GET /api/calendar/events` returns.
+    func addEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async {
         do {
-            let ev = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId)
-            familyEvents.append(ev)
+            _ = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil)
+            if let fe = try? await api.familyEvents() { familyEvents = fe }
+            Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
+        } catch { handle(error) }
+    }
+
+    /// Delete a family event's whole series (parent-only server-side). Removes
+    /// every occurrence sharing this series id from local state on success.
+    func deleteEvent(_ id: String) async {
+        do {
+            try await api.deleteFamilyEvent(id)
+            familyEvents.removeAll { $0.id == id }
+            Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
         } catch { handle(error) }
     }
 

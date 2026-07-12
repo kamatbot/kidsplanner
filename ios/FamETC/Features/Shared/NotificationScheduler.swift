@@ -57,7 +57,9 @@ enum NotificationScheduler {
             }
 
             candidates.append(Candidate(
-                identifier: eventPrefix + event.id,
+                // Occurrences of a recurring series share `id` — key by date too,
+                // so each occurrence gets its own reminder instead of last-write-wins.
+                identifier: eventPrefix + event.id + "-" + event.date,
                 fireDate: fireDate,
                 title: "📅 Upcoming: \(event.title)",
                 body: body

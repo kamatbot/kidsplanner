@@ -91,9 +91,6 @@ private struct ParentTodayStack: View {
                     DailyFiveCard()
                 }
             }
-            // Not part of the canvas-1f card set, but kept accessible (nothing
-            // dropped) — restyled to the same Card/MicroLabel language.
-            NewsCard()
         }
     }
 }
@@ -234,69 +231,6 @@ private struct HomeworkDueRow: View {
             }
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - News card (kept, restyled — not part of the canvas-1f set)
-
-private struct NewsCard: View {
-    @Environment(AppStore.self) private var store
-    @State private var reflection = ""
-    @State private var saved = false
-
-    var body: some View {
-        let n = Daily.news
-        Card {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                MicroLabel(text: "Interesting news")
-                Text(n.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(n.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let url = URL(string: n.articleLink) {
-                    Link(destination: url) {
-                        Label("Read the full story", systemImage: "arrow.up.right.square")
-                            .font(Typography.caption.weight(.bold))
-                            .foregroundStyle(Palette.accent)
-                    }
-                }
-                Divider().overlay(Palette.border)
-                TextField("Share your thoughts…", text: $reflection, axis: .vertical)
-                    .lineLimit(2...4)
-                    .font(Typography.body)
-                    .padding(Space.sm)
-                    .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                HStack {
-                    Spacer()
-                    if saved {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.green)
-                    } else {
-                        Button {
-                            Haptics.selection()
-                            let text = reflection
-                            Task {
-                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": "\(n.headline)\n\n\(n.summary)\n\n\(n.articleLink)"])
-                                saved = true
-                                try? await Task.sleep(nanoseconds: 900_000_000)
-                                saved = false
-                                reflection = ""
-                            }
-                        } label: {
-                            Text("Save")
-                                .font(Typography.caption.weight(.bold))
-                                .foregroundStyle(Palette.onAccent)
-                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                                .background(Palette.accent, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 

@@ -100,14 +100,22 @@ final class APIClient {
         let r: FamilyEventsResponse = try await request(path)
         return r.events
     }
-    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?) async throws -> FamilyEvent {
+    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async throws -> FamilyEvent {
         var body: [String: Any] = ["title": title, "date": date]
         if let time, !time.isEmpty { body["time"] = time }
         if let notes, !notes.isEmpty { body["notes"] = notes }
         if let category { body["category"] = category }
         if let kidId { body["kidId"] = kidId }
+        if let endDate, !endDate.isEmpty { body["endDate"] = endDate }
+        if let repeatRule, !repeatRule.isEmpty { body["repeat"] = repeatRule }
+        if let repeatUntil, !repeatUntil.isEmpty { body["repeatUntil"] = repeatUntil }
         let r: FamilyEventResponse = try await request("/api/calendar/events", method: "POST", body: body)
         return r.event
+    }
+    /// Deletes the WHOLE series (parent-only server-side — see requireParent on
+    /// DELETE /api/calendar/events/:id).
+    func deleteFamilyEvent(_ id: String) async throws {
+        let _: OKResponse = try await request("/api/calendar/events/\(id)", method: "DELETE")
     }
     func homework(kidId: String? = nil) async throws -> [HomeworkItem] {
         var path = "/api/homework"
