@@ -455,7 +455,7 @@ html { font-size: 16px; }
   flex: 1; display: grid; grid-template-columns: 1.45fr 1fr; grid-template-rows: auto 1fr;
   gap: 16px; min-height: 0;
 }
-.today-schedule-card { grid-row: span 2; display: flex; flex-direction: column; }
+.today-schedule-card { grid-row: span 2; align-self: start; display: flex; flex-direction: column; }
 .today-card-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
 .today-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
 
