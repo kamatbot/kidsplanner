@@ -17,6 +17,7 @@ struct BrainTeaserView: View {
     @State private var index = 0
     @State private var picked: Int? = nil
     @State private var answeredCount = 0
+    @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
 
     var body: some View {
         // The enclosing WordWidget/QuizWidget provides the DashCard chrome + the
@@ -162,6 +163,7 @@ struct BrainTeaserView: View {
                 .font(Typography.caption)
                 .foregroundStyle(Palette.textSecond)
         }
+        .onAppear { teaserDoneStamp = Daily5Done.todayStamp }
     }
 
     private var retryButton: some View {

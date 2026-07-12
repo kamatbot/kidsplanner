@@ -8,6 +8,7 @@ import SwiftUI
 struct SATActivityView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("fam_sat_placement_done") private var placementDone = false
+    @AppStorage(Daily5Done.wordKey) private var wordDoneStamp = ""
 
     @State private var entry: WordBankEntry? = nil
     @State private var showWordBank = false
@@ -17,14 +18,20 @@ struct SATActivityView: View {
 
     private let word = Daily.word
 
+    private var wordDone: Bool { Daily5Done.isToday(wordDoneStamp) }
+
     var body: some View {
         // The enclosing WordWidget provides the DashCard chrome + homework-gating
         // overlay, so this view renders just its content.
         VStack(alignment: .leading, spacing: Space.md) {
             header
-            ActivityCard(word: word, onAnswered: handleAnswered)
-            masteryRow
-            actionRow
+            if wordDone {
+                wordDoneBlock
+            } else {
+                ActivityCard(word: word, onAnswered: handleAnswered)
+                masteryRow
+                actionRow
+            }
         }
         .task { await loadEntry() }
         .sheet(isPresented: $showWordBank) { WordBankSheet() }
@@ -116,6 +123,22 @@ struct SATActivityView: View {
         }
     }
 
+    private var wordDoneBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(word.def)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("“\(word.example)”")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+            Label("Done for today", systemImage: "checkmark.circle.fill")
+                .font(Typography.caption.weight(.semibold))
+                .foregroundStyle(Palette.green)
+        }
+    }
+
     private func loadEntry() async {
         guard let bank = try? await APIClient.shared.wordBank() else { return }
         entry = bank.words.first { $0.word.caseInsensitiveCompare(word.word) == .orderedSame }
@@ -126,6 +149,12 @@ struct SATActivityView: View {
             if let updated = try? await APIClient.shared.wordInteract(word: word.word, correct: correct) {
                 await MainActor.run { entry = updated }
             }
+        }
+        // Let ActivityCard's correct/wrong feedback + definition show first, then
+        // collapse to the static done block (mirrors the web's 1.5s delay).
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run { wordDoneStamp = Daily5Done.todayStamp }
         }
     }
 }

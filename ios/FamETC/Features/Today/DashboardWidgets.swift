@@ -201,6 +201,7 @@ struct DailyFiveCard: View {
 
     private enum DailySheet: String, Identifiable { case quote, word, teaser, news; var id: String { rawValue } }
     @State private var activeSheet: DailySheet? = nil
+    @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
 
     var body: some View {
         Card {
@@ -232,23 +233,25 @@ struct DailyFiveCard: View {
                     .buttonStyle(.plain)
                 }
 
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    MicroLabel(text: "Brain teaser")
-                    if isKid {
-                        AccentButton(title: "Play today's quiz") { activeSheet = .teaser }
-                    } else {
-                        Button { Haptics.selection(); activeSheet = .teaser } label: {
-                            Text("Take today's quiz →")
-                                .font(Typography.body.weight(.semibold))
-                                .foregroundStyle(Palette.accent)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, Space.sm + 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
-                                        .strokeBorder(Palette.border, lineWidth: 1)
-                                )
+                if !Daily5Done.isToday(teaserDoneStamp) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        MicroLabel(text: "Brain teaser")
+                        if isKid {
+                            AccentButton(title: "Play today's quiz") { activeSheet = .teaser }
+                        } else {
+                            Button { Haptics.selection(); activeSheet = .teaser } label: {
+                                Text("Take today's quiz →")
+                                    .font(Typography.body.weight(.semibold))
+                                    .foregroundStyle(Palette.accent)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, Space.sm + 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                                            .strokeBorder(Palette.border, lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(PressableStyle())
                         }
-                        .buttonStyle(PressableStyle())
                     }
                 }
 

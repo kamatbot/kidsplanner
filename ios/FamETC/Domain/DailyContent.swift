@@ -21,6 +21,21 @@ struct NewsItem {
 }
 struct QuizQuestion { let q: String; let opts: [String]; let ans: Int; let exp: String }
 
+/// Per-device, per-local-day completion flags for the Daily 5 *interactive*
+/// blocks (the word activity + word bank + pop quiz, and the brain teaser).
+/// Once done for the day they leave the Today view; the word/quote/news stay.
+/// Stored (via `@AppStorage` in the views) as the completion day's
+/// `Agenda.todayKey()` stamp, so "done" auto-expires at the next local day —
+/// mirrors the web app's `fam_daily5_done_*` localStorage behavior.
+enum Daily5Done {
+    static let wordKey = "fam_daily5_word_done"
+    static let teaserKey = "fam_daily5_teaser_done"
+    /// Today's local "yyyy-MM-dd" — write this to a key to mark that part done.
+    static var todayStamp: String { Agenda.todayKey() }
+    /// True when a stored stamp is today's local day.
+    static func isToday(_ stamp: String) -> Bool { !stamp.isEmpty && stamp == Agenda.todayKey() }
+}
+
 enum Daily {
     static var dayOfYear: Int { Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 1 }
     static func index(_ count: Int) -> Int { count > 0 ? ((dayOfYear - 1) % count + count) % count : 0 }
