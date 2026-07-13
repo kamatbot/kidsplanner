@@ -598,8 +598,13 @@ html { font-size: 16px; }
    MINI CALENDAR / UPLOADS — secondary tools rail beside the Calendar grid
    (not shown in canvas 1b, kept so nothing already shipped gets dropped).
 ============================================================ */
-.calendar-tab-layout { display: flex; gap: 16px; align-items: flex-start; }
-.calendar-tools { width: 220px; flex: none; display: flex; flex-direction: column; gap: 14px; }
+/* Week grid gets the full width; the mini-cal + tools drop into a row
+   beneath it (moved out of the old right-hand rail per the calendar layout
+   change). */
+.calendar-tab-layout { display: flex; flex-direction: column; gap: 16px; }
+.calendar-tools { width: 100%; display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.calendar-tools .mini-calendar-card { width: 300px; flex: none; }
+.calendar-tools-actions { display: flex; flex-direction: column; gap: 10px; min-width: 240px; align-items: flex-start; }
 .calendar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .calendar-grid-scroll { overflow-x: auto; }
 
@@ -963,9 +968,8 @@ html { font-size: 16px; }
   .chat-dock.chat-collapsed .chat-dock-title { display: block; }
   .chat-dock.chat-collapsed .chat-dock-avatars { flex-direction: row; }
   .chat-fab { display: flex; }
-  .calendar-tab-layout { flex-direction: column; }
-  .calendar-tools { width: 100%; flex-direction: row; flex-wrap: wrap; }
-  .mini-calendar-card { flex: 1; min-width: 200px; }
+  .calendar-tools .mini-calendar-card { width: 100%; }
+  .calendar-tools-actions { width: 100%; }
 }
 
 @media (max-width: 640px) {
