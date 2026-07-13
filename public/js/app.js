@@ -664,11 +664,9 @@ async function handleRemoveParent(userId) {
 function showDashboard() {
   const now  = new Date();
 
-  // Horizon shell: kid sessions get the simplified top-bar layout + floating
-  // chat button instead of the parent sidebar + docked chat (see styles.css
-  // "KID VIEW"). Applied once here since role never changes mid-session.
-  const screenEl = document.getElementById('dashboard-screen');
-  if (screenEl) screenEl.classList.toggle('kid-view', isKidSession());
+  // Kids get the SAME interface as parents — one shell, no separate kid UX.
+  // (Data is still scoped to the kid and parent-only controls stay hidden via
+  // applyRoleScopingToUI; that's permissions, not a different layout.)
 
   const av = document.getElementById('user-avatar');
   if (av) av.textContent = (sessionUser.name || '?')[0].toUpperCase();
@@ -2733,29 +2731,26 @@ function renderTodayScreen() {
   if (!sessionUser) return;
   const now = new Date();
   const todayIso = isoDate(now);
-  const kid = isKidSession();
 
   const dateLabel = document.getElementById('today-date-label');
   if (dateLabel) dateLabel.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   const greetingEl = document.getElementById('today-greeting');
   if (greetingEl) {
-    const firstName = (sessionUser.name || '').split(' ')[0] || (kid ? 'there' : 'there');
-    if (kid) {
-      greetingEl.textContent = `Hey ${firstName}!`;
-    } else {
-      const hour = now.getHours();
-      const salutation = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-      greetingEl.textContent = `${salutation}, ${firstName}`;
-    }
+    const firstName = (sessionUser.name || '').split(' ')[0] || 'there';
+    const hour = now.getHours();
+    const salutation = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    greetingEl.textContent = `${salutation}, ${firstName}`;
   }
 
-  // Sync status + Add event are parent-only affordances (kids don't manage feeds/events).
+  // Kids get the same Today affordances as parents — they can add events
+  // (family or their own) now, so the Add-event button and sync status show
+  // for everyone. Feed syncing itself is still parent-gated server-side.
   const syncStatusEl = document.getElementById('today-sync-status');
   const addEventBtn = document.getElementById('today-add-event-btn');
-  if (syncStatusEl) syncStatusEl.hidden = kid;
-  if (addEventBtn) addEventBtn.style.display = kid ? 'none' : '';
-  if (syncStatusEl && !kid) {
+  if (addEventBtn) addEventBtn.style.display = '';
+  if (syncStatusEl) {
+    syncStatusEl.hidden = false;
     const textEl = document.getElementById('today-sync-text');
     if (textEl) {
       textEl.textContent = (schoolFeedsInfo && schoolFeedsInfo.lastSyncAt)
@@ -2797,13 +2792,14 @@ function renderTodaySchedule(todayIso) {
   const tomorrowRow = document.getElementById('today-tomorrow-row');
   if (!listEl) return;
 
-  // Today always shows the whole family merged, like the design — the kid
-  // switcher lives on the Calendar screen, not here.
+  // Today shows the whole family merged. A kid sees family (unscoped) events
+  // plus their own — never a sibling's — matching the calendar visibility
+  // model (see visibleEvents).
   const events = allEvents()
-    .filter((e) => !isKidSession() || e.kidId === sessionUser.kidId || (e.source === 'school' && !e.kidId));
+    .filter((e) => !isKidSession() || e.kidId == null || e.kidId === sessionUser.kidId);
   const todays = eventsOnDay(events, todayIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
-  const addEventHint = isKidSession() ? '' : ' — <a href="#" class="btn-link" style="display:inline" onclick="openAddEventModal();return false">add one</a>';
+  const addEventHint = ' — <a href="#" class="btn-link" style="display:inline" onclick="openAddEventModal();return false">add one</a>';
   if (countEl) countEl.textContent = todays.length ? `${todays.length} event${todays.length === 1 ? '' : 's'}` : '';
   listEl.innerHTML = todays.length
     ? todays.map(renderTodayScheduleRow).join('')
