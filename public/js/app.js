@@ -846,7 +846,11 @@ function allEvents() {
 function visibleEvents() {
   const merged = allEvents();
   if (!activeKidId) return merged;
-  return merged.filter(e => e.kidId === activeKidId || (e.source === 'school' && !e.kidId));
+  // A filtered view (parent tapping a kid chip, or a kid session which pins
+  // activeKidId to itself) is "that kid's calendar": their own events PLUS
+  // every whole-family event (kidId == null covers both null and undefined) —
+  // family events must never be hidden just because a kid filter is active.
+  return merged.filter(e => e.kidId === activeKidId || e.kidId == null || (e.source === 'school' && !e.kidId));
 }
 
 function renderCalendar() {
@@ -1086,6 +1090,23 @@ window.famGetSchoolMappings = famGetSchoolMappings;
 /* ============================================================
    EVENTS — ADD / VIEW / DELETE
 ============================================================ */
+// Audience ("For") select: whole family (default, kidId null) or one specific
+// kid. Kid sessions may only target themselves or the family — never a
+// sibling — mirroring the server's own coercion (see calendar.js PATCH/POST).
+function populateEventAudienceOptions(selected) {
+  const sel = document.getElementById('event-audience');
+  if (!sel) return;
+  const kids = isKidSession()
+    ? (currentFamily?.kids || []).filter((k) => k.id === sessionUser.kidId)
+    : (currentFamily?.kids || []);
+  sel.innerHTML = ['<option value="family">👨‍👩‍👧‍👦 Whole family</option>']
+    .concat(kids.map((k) => {
+      const color = kidColorFor(k.id) || k.color || 'var(--accent)';
+      return `<option value="${esc(k.id)}" style="color:${color}">${esc(k.name)}</option>`;
+    })).join('');
+  sel.value = selected && sel.querySelector(`option[value="${selected}"]`) ? selected : 'family';
+}
+
 function openAddEventModal(ds) {
   editingEventId = null; // adding fresh — make sure a stale edit session can't hijack this save
   pendingDate = ds || null;
@@ -1101,6 +1122,7 @@ function openAddEventModal(ds) {
   document.getElementById('event-repeat-until').value = '';
   document.getElementById('event-repeat-until-group').style.display = 'none';
   document.querySelector('input[name="cat"][value="school"]').checked = true;
+  populateEventAudienceOptions('family');
   setAddEventModalMode(false);
   openModal('add-event-modal');
 }
@@ -1127,6 +1149,7 @@ function openEditEventModal(ev) {
   const catRadio = document.querySelector(`input[name="cat"][value="${ev.category}"]`);
   if (catRadio) catRadio.checked = true;
   else document.querySelector('input[name="cat"][value="other"]').checked = true;
+  populateEventAudienceOptions(ev.kidId || 'family');
   setAddEventModalMode(true, repeats);
   openModal('add-event-modal');
 }
@@ -1162,8 +1185,9 @@ function onEventRepeatChange() {
    only the offline mirror + pending-upload queue — see loadFamilyEvents(). */
 async function saveEvent(e) {
   e.preventDefault();
+  const audience = document.getElementById('event-audience').value;
   const payload = {
-    kidId:    activeKidId || null,
+    kidId:    audience === 'family' ? null : audience,
     title:    document.getElementById('event-title').value.trim(),
     date:     document.getElementById('event-date').value,
     time:     document.getElementById('event-time').value,
