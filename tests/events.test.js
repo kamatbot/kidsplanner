@@ -150,3 +150,90 @@ test("listEvents: repeat:'none' behavior is unchanged (single-day intersection o
   assert.equal(win[0].recurring, undefined);
   assert.equal(win[0].seriesId, undefined);
 });
+
+// ----- creator-based permissions (createdBy / canManage / updateEvent) -----
+
+test("addEvent: stores createdBy (or null when omitted)", () => {
+  const f = fam();
+  const withCreator = events.addEvent(f.id, { title: "Soccer", date: "2026-07-09", createdBy: "u_kid1" }).event;
+  assert.equal(withCreator.createdBy, "u_kid1");
+  const withoutCreator = events.addEvent(f.id, { title: "Legacy-ish", date: "2026-07-09" }).event;
+  assert.equal(withoutCreator.createdBy, null);
+});
+
+test("canManage: creator can manage their own event (kid or parent)", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Soccer", date: "2026-07-09", createdBy: "u_kid1" }).event;
+  assert.equal(events.canManage(ev, { userId: "u_kid1", isParent: false }), true);
+});
+
+test("canManage: any parent can manage any event, even one created by someone else", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Soccer", date: "2026-07-09", createdBy: "u_kid1" }).event;
+  assert.equal(events.canManage(ev, { userId: "u_parent2", isParent: true }), true);
+});
+
+test("canManage: a non-creator kid cannot manage another's event", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Soccer", date: "2026-07-09", createdBy: "u_kid1" }).event;
+  assert.equal(events.canManage(ev, { userId: "u_kid2", isParent: false }), false);
+});
+
+test("canManage: legacy event with no createdBy is parent-only", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Legacy", date: "2026-07-09" }).event; // no createdBy
+  assert.equal(ev.createdBy, null);
+  assert.equal(events.canManage(ev, { userId: "u_kid1", isParent: false }), false);
+  assert.equal(events.canManage(ev, { userId: "u_parent1", isParent: true }), true);
+});
+
+test("updateEvent: changes title/date/category and leaves createdBy/id/familyId/source unchanged", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Soccer", date: "2026-07-09", category: "sports", createdBy: "u_kid1" }).event;
+  const result = events.updateEvent(f.id, ev.id, { title: "Football", date: "2026-07-11", category: "school", createdBy: "u_hacker" });
+  assert.ok(!result.error);
+  assert.equal(result.event.title, "Football");
+  assert.equal(result.event.date, "2026-07-11");
+  assert.equal(result.event.category, "school");
+  // immutable fields untouched despite being present in the patch
+  assert.equal(result.event.createdBy, "u_kid1");
+  assert.equal(result.event.id, ev.id);
+  assert.equal(result.event.familyId, f.id);
+  assert.equal(result.event.source, "manual");
+});
+
+test("updateEvent: rejects endDate before date", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Trip", date: "2026-07-10" }).event;
+  const result = events.updateEvent(f.id, ev.id, { endDate: "2026-07-01" });
+  assert.equal(result.error, "End date can't be before the start date.");
+});
+
+test("updateEvent: rejects an empty title", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Trip", date: "2026-07-10" }).event;
+  const result = events.updateEvent(f.id, ev.id, { title: "" });
+  assert.ok(result.error);
+});
+
+test("updateEvent: unknown field is silently ignored (no crash, event still returned)", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Trip", date: "2026-07-10" }).event;
+  const result = events.updateEvent(f.id, ev.id, { bogusField: "nope" });
+  assert.ok(!result.error);
+  assert.equal(result.event.title, "Trip");
+  assert.equal(result.event.bogusField, undefined);
+});
+
+test("updateEvent: missing id errors", () => {
+  const f = fam();
+  const result = events.updateEvent(f.id, "ev_missing", { title: "Nope" });
+  assert.equal(result.error, "Event not found.");
+});
+
+test("updateEvent: kidId must be a real kid in the family or null", () => {
+  const f = fam();
+  const ev = events.addEvent(f.id, { title: "Trip", date: "2026-07-10" }).event;
+  const bogus = events.updateEvent(f.id, ev.id, { kidId: "not_a_real_kid" });
+  assert.equal(bogus.event.kidId, null);
+});

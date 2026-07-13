@@ -26,7 +26,7 @@ const calendarRoutes = require("../lib/routes/calendar");
 function buildHarness() {
   const routes = {};
   const register = (method) => (p, ...handlers) => { routes[`${method} ${p}`] = handlers[handlers.length - 1]; };
-  const app = { get: register("GET"), post: register("POST"), delete: register("DELETE") };
+  const app = { get: register("GET"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") };
 
   const chatPosts = [];
   calendarRoutes(app, {
