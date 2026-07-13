@@ -124,6 +124,10 @@ struct FamilyEvent: Codable, Identifiable {
     var seriesId: String?     // set on expanded occurrences — the series' event id
     var recurring: Bool?      // true on expanded occurrences
     var occurrenceDate: String?  // this occurrence's date (== date) on expanded occurrences
+    /// True when the signed-in user created this event OR is a parent (server-computed,
+    /// GET /api/calendar/events). Optional for cache/back-compat — treat nil as false
+    /// (not editable/deletable) since the app always round-trips through the server.
+    var canEdit: Bool?
 
     /// True for a recurring series or any of its expanded occurrences.
     var isRecurring: Bool { recurring == true || (repeatRule ?? "none") != "none" }
@@ -131,7 +135,7 @@ struct FamilyEvent: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, title, date, time, endTime, endDate, notes, category, kidId
         case repeatRule = "repeat"
-        case repeatUntil, seriesId, recurring, occurrenceDate
+        case repeatUntil, seriesId, recurring, occurrenceDate, canEdit
     }
 }
 

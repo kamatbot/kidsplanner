@@ -112,10 +112,27 @@ final class APIClient {
         let r: FamilyEventResponse = try await request("/api/calendar/events", method: "POST", body: body)
         return r.event
     }
-    /// Deletes the WHOLE series (parent-only server-side — see requireParent on
-    /// DELETE /api/calendar/events/:id).
+    /// Deletes the WHOLE series (creator-or-parent server-side — see
+    /// DELETE /api/calendar/events/:id; 403 otherwise).
     func deleteFamilyEvent(_ id: String) async throws {
         let _: OKResponse = try await request("/api/calendar/events/\(id)", method: "DELETE")
+    }
+    /// PATCH /api/calendar/events/:id — edits the WHOLE series (id is the series id;
+    /// creator-or-parent only, 403 otherwise). Always sends the full editable field
+    /// set (rather than a sparse diff) so the sheet can also clear an optional field
+    /// back to empty — an omitted optional is sent as JSON `null`, which the server
+    /// clears; a supplied "none" repeat rule likewise clears recurrence.
+    func updateFamilyEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async throws -> FamilyEvent {
+        var body: [String: Any] = ["title": title, "date": date]
+        body["time"] = (time?.isEmpty == false) ? time! : NSNull()
+        body["notes"] = (notes?.isEmpty == false) ? notes! : NSNull()
+        body["category"] = category ?? NSNull()
+        body["kidId"] = kidId ?? NSNull()
+        body["endDate"] = (endDate?.isEmpty == false) ? endDate! : NSNull()
+        body["repeat"] = (repeatRule?.isEmpty == false) ? repeatRule! : "none"
+        body["repeatUntil"] = (repeatUntil?.isEmpty == false) ? repeatUntil! : NSNull()
+        let r: FamilyEventResponse = try await request("/api/calendar/events/\(id)", method: "PATCH", body: body)
+        return r.event
     }
     func homework(kidId: String? = nil) async throws -> [HomeworkItem] {
         var path = "/api/homework"

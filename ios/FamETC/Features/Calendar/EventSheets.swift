@@ -8,6 +8,10 @@ struct AddEventSheet: View {
     var initialDate: Date = Date()
     var initialTitle: String = ""
     var initialTime: String? = nil
+    /// When set, the sheet edits this event in place (title/CTA become "Edit
+    /// event"/"Save", fields prefill from it, and save() PATCHes instead of
+    /// POSTing). Editing a recurring event updates the whole series.
+    var editing: FamilyEvent? = nil
 
     @State private var title = ""
     @State private var date = Date()
@@ -15,6 +19,7 @@ struct AddEventSheet: View {
     @State private var time = Date()
     @State private var notes = ""
     @State private var category = "other"
+    @State private var kidId: String? = nil
     @State private var saving = false
     @State private var isMultiDay = false
     @State private var endDate = Date()
@@ -28,6 +33,7 @@ struct AddEventSheet: View {
         ("biweekly", "Biweekly"), ("monthly", "Monthly"),
     ]
 
+    private var isEditing: Bool { editing != nil }
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
 
     var body: some View {
@@ -56,6 +62,11 @@ struct AddEventSheet: View {
                             DatePicker("Until", selection: $repeatUntilDate, in: date..., displayedComponents: .date)
                         }
                     }
+                    if isEditing && (editing?.isRecurring ?? false) {
+                        Text("Editing updates the whole series, not just this occurrence.")
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                    }
                 }
                 Section("Category") {
                     Picker("Category", selection: $category) {
@@ -67,25 +78,52 @@ struct AddEventSheet: View {
                     TextField("Optional notes", text: $notes, axis: .vertical).lineLimit(2...5)
                 }
             }
-            .navigationTitle("New Event")
+            .navigationTitle(isEditing ? "Edit Event" : "New Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { save() }.fontWeight(.bold).disabled(!canSave)
+                    Button(isEditing ? "Save" : "Add") { save() }.fontWeight(.bold).disabled(!canSave)
                 }
             }
         }
         .onAppear {
-            date = initialDate
-            endDate = initialDate
-            repeatUntilDate = initialDate
-            if !initialTitle.isEmpty { title = initialTitle }
-            if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
-                let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
-                if let combined = Calendar.current.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: 0, of: Date()) {
-                    hasTime = true
-                    time = combined
+            if let editing {
+                title = editing.title
+                if let d = EventFmt.ymd.date(from: editing.date) { date = d }
+                if let et = editing.endDate, !et.isEmpty, let d = EventFmt.ymd.date(from: et) {
+                    endDate = d
+                    isMultiDay = true
+                } else {
+                    endDate = editing.date.isEmpty ? Date() : (EventFmt.ymd.date(from: editing.date) ?? Date())
+                }
+                if let t = editing.time, !t.isEmpty, let parsed = EventFmt.hm.date(from: t) {
+                    let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
+                    if let combined = Calendar.current.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: 0, of: date) {
+                        hasTime = true
+                        time = combined
+                    }
+                }
+                notes = editing.notes ?? ""
+                category = editing.category ?? "other"
+                kidId = editing.kidId
+                repeatRule = editing.repeatRule ?? "none"
+                repeatUntilDate = date
+                if let ru = editing.repeatUntil, !ru.isEmpty, let d = EventFmt.ymd.date(from: ru) {
+                    hasRepeatUntil = true
+                    repeatUntilDate = d
+                }
+            } else {
+                date = initialDate
+                endDate = initialDate
+                repeatUntilDate = initialDate
+                if !initialTitle.isEmpty { title = initialTitle }
+                if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
+                    let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
+                    if let combined = Calendar.current.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: 0, of: Date()) {
+                        hasTime = true
+                        time = combined
+                    }
                 }
             }
         }
@@ -101,8 +139,13 @@ struct AddEventSheet: View {
         let ed = (isMultiDay && endDate > date) ? EventFmt.ymd.string(from: endDate) : nil
         let until = (repeatRule != "none" && hasRepeatUntil) ? EventFmt.ymd.string(from: repeatUntilDate) : nil
         Task {
-            await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: nil,
-                                  endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
+            if let editing {
+                await store.updateEvent(editing.id, title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: kidId,
+                                         endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
+            } else {
+                await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: nil,
+                                      endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
+            }
             dismiss()
         }
     }
@@ -115,6 +158,7 @@ struct EventDetailSheet: View {
     let eventId: String
     var occurrenceDate: String? = nil
     @State private var showDeleteConfirm = false
+    @State private var showEditSheet = false
 
     // Occurrences of a recurring series share `id`, so prefer the occurrence
     // that matches the date we were opened from; fall back to any occurrence
@@ -147,7 +191,16 @@ struct EventDetailSheet: View {
                             }
                         }
                         Spacer()
-                        if store.isParent {
+                        // Server-computed: true when this user created the event OR is a
+                        // parent (GET /api/calendar/events `canEdit`). nil (not yet synced
+                        // through a server round-trip) is treated as false — no edit/delete
+                        // shown. Kids get edit+delete on their OWN events via this flag, so
+                        // it's deliberately NOT gated on store.isParent.
+                        if ev.canEdit == true {
+                            Button { showEditSheet = true } label: {
+                                Text("Edit Event").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
                             Button(role: .destructive) { showDeleteConfirm = true } label: {
                                 Text("Delete Event").frame(maxWidth: .infinity)
                             }
@@ -156,6 +209,7 @@ struct EventDetailSheet: View {
                         }
                     }
                     .padding(Space.xl).frame(maxWidth: .infinity, alignment: .leading)
+                    .sheet(isPresented: $showEditSheet) { AddEventSheet(editing: ev) }
                     .alert("Delete Event", isPresented: $showDeleteConfirm) {
                         Button("Cancel", role: .cancel) {}
                         Button("Delete", role: .destructive) {

@@ -180,4 +180,35 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(r.event.seriesId)
         XCTAssertFalse(r.event.isRecurring)
     }
+
+    /// `canEdit` (GET /api/calendar/events) is true when this user created the
+    /// event or is a parent; a kid-created event another kid can't touch omits
+    /// it as false. Missing entirely (back-compat/cache) must decode to nil,
+    /// which the UI treats as not-editable.
+    func testDecodesFamilyEventCanEdit() throws {
+        let payload = """
+        {
+          "event": {
+            "id": "ev_3", "title": "Piano lesson", "date": "2026-07-16",
+            "time": null, "notes": null, "category": "other", "kidId": null,
+            "canEdit": true
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.event.canEdit, true)
+    }
+
+    func testDecodesFamilyEventMissingCanEditAsNil() throws {
+        let payload = """
+        {
+          "event": {
+            "id": "ev_4", "title": "Someone else's event", "date": "2026-07-17",
+            "time": null, "notes": null, "category": "other", "kidId": null
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(payload.utf8))
+        XCTAssertNil(r.event.canEdit)
+    }
 }
