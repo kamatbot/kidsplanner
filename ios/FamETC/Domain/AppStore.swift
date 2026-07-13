@@ -28,6 +28,28 @@ final class AppStore {
     /// Kids never approve anyone; only parents see/act on access requests.
     var isParent: Bool { me?.role != "kid" }
 
+    // MARK: Calendar visibility (family/kid audience model)
+
+    /// nil for a parent session (sees the FAMILY superset — every event); the
+    /// signed-in kid's id for a kid session. `GET /api/calendar/events` and
+    /// `/api/calendar/sync` return every family member's events unfiltered (no
+    /// server-side kid scoping, unlike homework), so the client applies the
+    /// same rule the web app uses: a kid sees FAMILY events (kidId nil) plus
+    /// events scoped to themself — never a sibling's.
+    var kidScope: String? { me?.role == "kid" ? me?.kidId : nil }
+
+    /// Family (manually-added) calendar events visible to the current session.
+    var visibleFamilyEvents: [FamilyEvent] {
+        guard let scope = kidScope else { return familyEvents }
+        return familyEvents.filter { $0.kidId == nil || $0.kidId == scope }
+    }
+
+    /// School-feed calendar events visible to the current session.
+    var visibleEvents: [CalendarEvent] {
+        guard let scope = kidScope else { return events }
+        return events.filter { $0.kidId == nil || $0.kidId == scope }
+    }
+
     // MARK: Enrichment gating (Notes / Today widgets)
 
     /// "yyyy-MM-dd" for today, local time. Reuses `Agenda.todayKey()` (the

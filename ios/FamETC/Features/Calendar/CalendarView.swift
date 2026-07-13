@@ -62,7 +62,7 @@ private struct CalendarAgendaList: View {
     @State private var eventDetailRef: CalEventRef?
 
     private var sections: [(day: String, items: [AgendaItem])] {
-        Agenda.upcomingSections(events: store.events, familyEvents: store.familyEvents, homework: store.homework, days: days)
+        Agenda.upcomingSections(events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework, days: days)
     }
     private var itemCount: Int { sections.reduce(0) { $0 + $1.items.count } }
     private var monthLabel: String { Date().formatted(.dateTime.month(.wide).year()) }

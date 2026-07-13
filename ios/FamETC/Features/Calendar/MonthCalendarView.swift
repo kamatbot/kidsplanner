@@ -19,7 +19,7 @@ struct MonthCalendarView: View {
         gridDays.compactMap { $0 }
             .filter { cal.isDate($0, equalTo: monthAnchor, toGranularity: .month) }
             .reduce(0) { total, date in
-                total + Agenda.items(on: DateFmt.ymd.string(from: date), events: store.events, familyEvents: store.familyEvents, homework: store.homework).count
+                total + Agenda.items(on: DateFmt.ymd.string(from: date), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework).count
             }
     }
 
@@ -118,7 +118,7 @@ private struct DayCell: View {
     @State private var targeted = false
     @State private var eventDetailRef: DayEventRef?
 
-    private var items: [AgendaItem] { Agenda.items(on: key, events: store.events, familyEvents: store.familyEvents, homework: store.homework) }
+    private var items: [AgendaItem] { Agenda.items(on: key, events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework) }
     private var isToday: Bool { key == Agenda.todayKey() }
 
     var body: some View {

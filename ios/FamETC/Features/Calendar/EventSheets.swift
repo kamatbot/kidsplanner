@@ -36,6 +36,17 @@ struct AddEventSheet: View {
     private var isEditing: Bool { editing != nil }
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
 
+    /// Rows offered in the "For" picker, beyond "Whole family": a parent may
+    /// target any kid; a kid session may only target themself (the server
+    /// enforces this too — resolveEventKidId coerces any other id to family —
+    /// but the UI shouldn't offer a choice that's a no-op).
+    private var audienceKids: [Kid] {
+        store.isParent ? store.kids : store.kids.filter { $0.id == store.me?.kidId }
+    }
+    private func kidColor(_ kid: Kid) -> Color {
+        store.kids.firstIndex(where: { $0.id == kid.id }).map { Palette.kidColor(index: $0) } ?? Palette.accent
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -67,6 +78,19 @@ struct AddEventSheet: View {
                             .font(Typography.caption)
                             .foregroundStyle(Palette.textSecond)
                     }
+                }
+                Section("For") {
+                    Picker("For", selection: $kidId) {
+                        Text("Whole family").tag(String?.none)
+                        ForEach(audienceKids) { kid in
+                            HStack {
+                                Circle().fill(kidColor(kid)).frame(width: 10, height: 10)
+                                Text(kid.name)
+                            }
+                            .tag(Optional(kid.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
                 }
                 Section("Category") {
                     Picker("Category", selection: $category) {
@@ -143,7 +167,7 @@ struct AddEventSheet: View {
                 await store.updateEvent(editing.id, title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: kidId,
                                          endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
             } else {
-                await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: nil,
+                await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: kidId,
                                       endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
             }
             dismiss()
