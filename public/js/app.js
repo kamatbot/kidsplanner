@@ -165,6 +165,8 @@ let miniMonth       = null;   // any date in mini-cal month
 let quizIndex       = 0;
 let activeEventId   = null;
 let activeEventRecurring = false; // set by showDetail; drives the delete confirm() copy
+let activeEventObj  = null;   // the resolved event object from showDetail; source for editCurrentEvent()
+let editingEventId  = null;   // set by editCurrentEvent(); when non-null saveEvent() PATCHes instead of POSTs
 let pendingDate     = null;   // pre-filled date for add-event modal
 let uploadedFile    = null;
 
@@ -1085,6 +1087,7 @@ window.famGetSchoolMappings = famGetSchoolMappings;
    EVENTS — ADD / VIEW / DELETE
 ============================================================ */
 function openAddEventModal(ds) {
+  editingEventId = null; // adding fresh — make sure a stale edit session can't hijack this save
   pendingDate = ds || null;
   const startDate = ds || isoDate(new Date());
   document.getElementById('event-title').value   = '';
@@ -1098,12 +1101,58 @@ function openAddEventModal(ds) {
   document.getElementById('event-repeat-until').value = '';
   document.getElementById('event-repeat-until-group').style.display = 'none';
   document.querySelector('input[name="cat"][value="school"]').checked = true;
+  setAddEventModalMode(false);
   openModal('add-event-modal');
+}
+
+// Prefills the add/edit modal from an existing event and switches saveEvent()
+// into PATCH mode via editingEventId. Recurring edits apply to the whole
+// series server-side, so surface a one-line hint rather than pretending this
+// is a single-occurrence edit.
+function openEditEventModal(ev) {
+  editingEventId = ev.id;
+  pendingDate = null;
+  const startDate = ev.date || isoDate(new Date());
+  document.getElementById('event-title').value    = ev.title || '';
+  document.getElementById('event-date').value     = startDate;
+  document.getElementById('event-time').value     = ev.time || '';
+  document.getElementById('event-end-time').value = ev.endTime || '';
+  document.getElementById('event-notes').value    = ev.notes || '';
+  document.getElementById('event-end-date').value = ev.endDate || '';
+  document.getElementById('event-end-date').min    = startDate;
+  document.getElementById('event-repeat').value    = ev.repeat || (ev.recurring ? 'weekly' : 'none');
+  document.getElementById('event-repeat-until').value = ev.repeatUntil || '';
+  const repeats = document.getElementById('event-repeat').value !== 'none';
+  document.getElementById('event-repeat-until-group').style.display = repeats ? '' : 'none';
+  const catRadio = document.querySelector(`input[name="cat"][value="${ev.category}"]`);
+  if (catRadio) catRadio.checked = true;
+  else document.querySelector('input[name="cat"][value="other"]').checked = true;
+  setAddEventModalMode(true, repeats);
+  openModal('add-event-modal');
+}
+
+function setAddEventModalMode(isEdit, isRecurring) {
+  const titleEl = document.getElementById('add-event-modal-title');
+  if (titleEl) titleEl.textContent = isEdit ? '✏️ Edit Event' : '✏️ Add New Event';
+  const submitBtn = document.getElementById('add-event-submit-btn');
+  if (submitBtn) submitBtn.textContent = isEdit ? 'Save Changes 💾' : 'Save Event 🎯';
+  const hint = document.getElementById('edit-event-recurring-hint');
+  if (hint) hint.style.display = (isEdit && isRecurring) ? '' : 'none';
+}
+
+function editCurrentEvent() {
+  if (!activeEventId || !activeEventObj) return;
+  closeModal('event-detail-modal');
+  openEditEventModal(activeEventObj);
 }
 
 function onEventRepeatChange() {
   const repeats = document.getElementById('event-repeat').value !== 'none';
   document.getElementById('event-repeat-until-group').style.display = repeats ? '' : 'none';
+  if (editingEventId) {
+    const hint = document.getElementById('edit-event-recurring-hint');
+    if (hint) hint.style.display = repeats ? '' : 'none';
+  }
 }
 
 /* Manual events are server-synced family data (/api/calendar/events — the same
@@ -1125,6 +1174,34 @@ async function saveEvent(e) {
     repeat:   document.getElementById('event-repeat').value,
     repeatUntil: document.getElementById('event-repeat-until').value || null,
   };
+
+  if (editingEventId) {
+    const id = editingEventId;
+    let updated;
+    // Local-only (offline-queued) events have no server id to PATCH — just
+    // update the mirror; the next loadFamilyEvents() upload picks it up.
+    if (!String(id).startsWith('ev_')) {
+      updated = Object.assign({ id }, payload);
+    } else {
+      try {
+        updated = (await window.auth.updateCalendarEvent(id, payload)).event;
+      } catch (err) {
+        // 403 (not permitted) / 400 (validation) — surface and keep the modal open.
+        toast(`❌ ${err.message || 'Could not update that event.'}`);
+        return;
+      }
+    }
+    saveEvents(getEvents().map((ev) => (ev.id === id ? Object.assign({}, ev, updated) : ev)));
+    editingEventId = null;
+    closeModal('add-event-modal');
+    toast('Event updated ✏️');
+    renderCalendar();
+    renderMiniCal();
+    if (typeof renderTodayScreen === 'function') renderTodayScreen();
+    scheduleReminders();
+    return;
+  }
+
   let ev;
   try {
     ev = (await window.auth.addCalendarEvent(payload)).event;
@@ -1198,6 +1275,7 @@ function showDetail(id, occDate) {
     : getEvents().find(e => e.id === id && (!occDate || (e.occurrenceDate || e.date) === occDate));
   if (!ev) return;
   activeEventId = id;
+  activeEventObj = ev;
   activeEventRecurring = !!ev.recurring && ev.source !== 'school';
 
   const catLabel = { school:'🏫 School', sports:'⚽ Sports', arts:'🎨 Arts', social:'👫 Social', other:'⭐ Other' };
@@ -1238,12 +1316,14 @@ function showDetail(id, occDate) {
   }
 
   // School events are read-only for kids (synced from the school's calendar)
-  // — hide delete and show a lock hint instead. Parents can delete (hide)
-  // a school event too; it stays hidden across future syncs. Any signed-in
-  // parent can delete a manual event (parent-only app — see APP-BRIEF.md).
+  // — hide edit/delete and show a lock hint instead. Parents can delete (hide)
+  // a school event too; it stays hidden across future syncs. School events are
+  // never editable (they're synced from the feed, not authored here).
+  const editBtn = document.getElementById('btn-edit-event');
   const deleteBtn = document.getElementById('btn-delete-event');
   const lockHint = document.getElementById('detail-readonly-hint');
   if (ev.source === 'school') {
+    editBtn.style.display = 'none';
     if (isKidSession()) {
       deleteBtn.style.display = 'none';
       if (lockHint) {
@@ -1258,9 +1338,15 @@ function showDetail(id, occDate) {
       }
     }
   } else {
-    // Manual events are family-shared on the server now, and DELETE is
-    // parent-only there — hide the button for kids instead of letting it 403.
-    deleteBtn.style.display = isKidSession() ? 'none' : '';
+    // Manual events are family-shared on the server now. `canEdit` (creator-or-
+    // parent, computed server-side) gates Edit + Delete together — kids can now
+    // manage their OWN events, parents manage all, nobody else sees the buttons.
+    // Offline local-only events (non-'ev_' id) were authored on this device and
+    // have no canEdit from the server, so treat them as manageable.
+    const localOnly = !String(ev.id).startsWith('ev_');
+    const manageable = localOnly || !!ev.canEdit;
+    editBtn.style.display = manageable ? '' : 'none';
+    deleteBtn.style.display = manageable ? '' : 'none';
     if (lockHint) lockHint.style.display = 'none';
   }
 
@@ -1281,6 +1367,7 @@ async function deleteCurrentEvent() {
       renderMiniCal();
       toast('School event removed 🎓');
       activeEventId = null;
+      activeEventObj = null;
     } catch (err) {
       toast(`❌ ${err.message || 'Could not remove that event.'}`);
     }
@@ -1306,6 +1393,7 @@ async function deleteCurrentEvent() {
   renderMiniCal();
   toast('Event deleted.');
   activeEventId = null;
+  activeEventObj = null;
 }
 
 /* ============================================================

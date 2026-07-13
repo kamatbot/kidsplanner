@@ -421,6 +421,15 @@
     return api("/api/calendar/events/" + encodeURIComponent(id), { method: "DELETE" });
   }
 
+  // payload: same editable fields as addCalendarEvent. For recurring events the
+  // id is the series id and the edit applies to the whole series (server-side).
+  async function updateCalendarEvent(id, payload) {
+    return api("/api/calendar/events/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
   /* ---------- homework (Phase 3) ---------- */
   async function getHomework(opts) {
     const params = new URLSearchParams();
@@ -626,6 +635,7 @@
     hideSchoolEvent,
     getCalendarEvents,
     addCalendarEvent,
+    updateCalendarEvent,
     deleteCalendarEvent,
     backupCodeSignIn,
     getCredentials,
