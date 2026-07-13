@@ -428,19 +428,12 @@ html { font-size: 16px; }
    regardless of source order, so the FAB stays gone on Notes/Settings. */
 #chat-fab[hidden] { display: none; }
 
-/* Slide-over chat: used for kid sessions (always) and any session on narrow
-   screens (see the <=900px media rule below). toggleKidChat() adds/removes
-   .chat-open; the dock stays in the DOM (opacity/pointer-events only) so it
-   never has to be re-parented or re-rendered. */
-.kid-view .chat-dock {
-  display: flex; position: fixed; right: 20px; bottom: 100px; z-index: 400;
-  width: 340px; max-width: calc(100vw - 40px); height: min(60vh, 520px);
-  border-radius: var(--radius); box-shadow: var(--shadow);
-  opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none;
-  transition: opacity .18s ease, transform .18s ease;
-}
-.kid-view .chat-dock.chat-open { opacity: 1; transform: none; pointer-events: auto; }
-.kid-view .chat-fab { display: flex; }
+/* Slide-over chat is now purely WIDTH-triggered (the <=900px media rule
+   below), same for every session. Kids on desktop get the docked chat
+   column like parents; only on narrow screens (kid or parent) does it
+   collapse to the slide-over + FAB. toggleKidChat() adds/removes .chat-open;
+   the dock stays in the DOM (opacity/pointer-events only) so it never has to
+   be re-parented or re-rendered. */
 
 /* ============================================================
    TODAY SCREEN
@@ -550,12 +543,16 @@ html { font-size: 16px; }
 /* ============================================================
    KID VIEW — simplified, bigger, playful (canvas 1g)
 ============================================================ */
-.kid-view .app-sidebar { display: none; }
-.kid-view .main-content-wrap { flex-direction: column; }
+/* Playful kid styling — applies at EVERY width, layered on top of whatever
+   shell the width gives. The structural overrides that turned the kid view
+   into a single-column top-rail layout (hide sidebar, stack the wrap, show
+   the kid topbar, slide-over chat) are width-gated to <=900px in the
+   RESPONSIVE section, so a kid on desktop gets the full sidebar + docked
+   chat + two-column layout — the same rich shell parents get — while iPad
+   portrait / phone keep the simplified playful view. */
 .kid-view .main-content { padding: 22px 26px; }
 .kid-view .today-header { align-items: center; gap: 14px; }
 .kid-view .today-greeting { font-size: 29px; }
-.kid-view .today-grid { grid-template-columns: 1fr; }
 .kid-view .schedule-row { min-height: 52px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; }
 .kid-view .schedule-row:last-child { margin-bottom: 0; }
 .kid-view .homework-due-row.overdue { border: 1.5px solid var(--c-red); border-radius: 14px; padding: 10px 12px; }
@@ -572,7 +569,9 @@ html { font-size: 16px; }
   display: none; align-items: center; gap: 14px; padding: 14px 26px; border-bottom: 1px solid var(--border);
   background: var(--sidebar);
 }
-.kid-view .kid-topbar { display: flex; }
+/* .kid-view .kid-topbar is shown only on narrow screens (<=900px, RESPONSIVE
+   section). On desktop a kid uses the normal sidebar, so the topbar stays
+   hidden here. */
 .kid-topbar-avatar {
   width: 40px; height: 40px; border-radius: 50%; color: #fff; font-size: 16px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; flex: none;
@@ -970,6 +969,10 @@ html { font-size: 16px; }
   .chat-fab { display: flex; }
   .calendar-tools .mini-calendar-card { width: 100%; }
   .calendar-tools-actions { width: 100%; }
+  /* Kid sessions swap the shared horizontal sidebar for their own playful top
+     rail on narrow screens; on desktop (>900px) they use the normal sidebar. */
+  .kid-view .app-sidebar { display: none; }
+  .kid-view .kid-topbar { display: flex; }
 }
 
 @media (max-width: 640px) {
