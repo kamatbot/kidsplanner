@@ -6,6 +6,11 @@
  * harness captures the FULL handler chain per route and runs it in sequence
  * with a next() shim — this exercises requireTrip's 404/403/kid-read logic
  * for real, not a stubbed version of it.
+ *
+ * Some handlers (join, itinerary/flight/lodging add) are async — they await
+ * a "push must never block" notifyTripEvent call (lib/fam-notifications.js)
+ * before responding — so `call()` always returns a Promise, resolved when
+ * res.json() is invoked, whether the handler settles synchronously or not.
  */
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -18,6 +23,7 @@ process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-trips-r
 const store = require("../lib/store");
 const family = require("../lib/family");
 const trips = require("../lib/trips");
+const chat = require("../lib/chat");
 const tripsRoutes = require("../lib/routes/trips");
 
 function userRole(user) {
@@ -32,7 +38,8 @@ function buildHarness() {
   const app = { get: register("GET"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") };
 
   tripsRoutes(app, {
-    trips, store, family, userRole,
+    trips, store, family, chat, userRole,
+    notifications: { notifyTripEvent: async () => {}, notifyTripChatMessage: async () => {} },
     requireAuth: (req, res, next) => (req.user ? next() : res.status(401).json({ error: "Not authenticated" })),
     authLimiter: (req, res, next) => next(),
   });
@@ -40,22 +47,23 @@ function buildHarness() {
 }
 
 function call(route, { body, params, query, user } = {}) {
-  const res = {
-    statusCode: 200,
-    body: null,
-    set() { return this; },
-    status(c) { this.statusCode = c; return this; },
-    json(b) { this.body = b; return this; },
-  };
-  const req = { method: route.method, body: body || {}, params: params || {}, query: query || {}, user: user || null };
-  const handlers = route.handlers;
-  let idx = 0;
-  function next() {
-    idx++;
-    if (idx < handlers.length) handlers[idx](req, res, next);
-  }
-  handlers[0](req, res, next);
-  return res;
+  return new Promise((resolve) => {
+    const res = {
+      statusCode: 200,
+      body: null,
+      set() { return this; },
+      status(c) { this.statusCode = c; return this; },
+      json(b) { this.body = b; resolve(this); },
+    };
+    const req = { method: route.method, body: body || {}, params: params || {}, query: query || {}, user: user || null };
+    const handlers = route.handlers;
+    let idx = 0;
+    function next() {
+      idx++;
+      if (idx < handlers.length) handlers[idx](req, res, next);
+    }
+    handlers[0](req, res, next);
+  });
 }
 
 let n = 0;
@@ -80,71 +88,71 @@ function makeTrip(label) {
 }
 
 // ---------- requireTrip: 404 / 403 ----------
-test("GET /api/trips/:tripId: 404 for an unknown trip", () => {
+test("GET /api/trips/:tripId: 404 for an unknown trip", async () => {
   const routes = buildHarness();
   const someone = makeGuest("Z1");
-  const res = call(routes["GET /api/trips/:tripId"], { user: someone, params: { tripId: "trip_bogus" } });
+  const res = await call(routes["GET /api/trips/:tripId"], { user: someone, params: { tripId: "trip_bogus" } });
   assert.equal(res.statusCode, 404);
 });
 
-test("GET /api/trips/:tripId: 403 for a stranger (authenticated, not a member, no kid link)", () => {
+test("GET /api/trips/:tripId: 403 for a stranger (authenticated, not a member, no kid link)", async () => {
   const routes = buildHarness();
   const { trip } = makeTrip("Z2");
   const stranger = makeGuest("Z2s");
-  const res = call(routes["GET /api/trips/:tripId"], { user: stranger, params: { tripId: trip.id } });
+  const res = await call(routes["GET /api/trips/:tripId"], { user: stranger, params: { tripId: trip.id } });
   assert.equal(res.statusCode, 403);
 });
 
 // ---------- kid read-only ----------
-test("GET /api/trips/:tripId: a kid in the trip's family CAN read it", () => {
+test("GET /api/trips/:tripId: a kid in the trip's family CAN read it", async () => {
   const routes = buildHarness();
   const { trip, fam } = makeTrip("Z3");
   const { kid } = family.addKid(fam.id, fam.parentIds[0], { name: "Kiddo" });
   const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
-  const res = call(routes["GET /api/trips/:tripId"], { user: kidUser, params: { tripId: trip.id } });
+  const res = await call(routes["GET /api/trips/:tripId"], { user: kidUser, params: { tripId: trip.id } });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.trip.myRole, "kid");
   assert.equal(res.body.trip.inviteCode, undefined); // stripped for kid-read
 });
 
-test("POST /api/trips/:tripId/itinerary: a kid gets 403 (read-only)", () => {
+test("POST /api/trips/:tripId/itinerary: a kid gets 403 (read-only)", async () => {
   const routes = buildHarness();
   const { trip, fam } = makeTrip("Z4");
   const { kid } = family.addKid(fam.id, fam.parentIds[0], { name: "Kiddo2" });
   const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
-  const res = call(routes["POST /api/trips/:tripId/itinerary"], {
+  const res = await call(routes["POST /api/trips/:tripId/itinerary"], {
     user: kidUser, params: { tripId: trip.id }, body: { date: "2026-08-01", title: "Museum", category: "sight" },
   });
   assert.equal(res.statusCode, 403);
 });
 
-test("POST /api/trips: a kid cannot create a trip", () => {
+test("POST /api/trips: a kid cannot create a trip", async () => {
   const routes = buildHarness();
   const parent = freshParent("Z5p");
   const fam = family.createFamily(parent.id, "Z5 Family");
   const { kid } = family.addKid(fam.id, parent.id, { name: "Kiddo3" });
   const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
-  const res = call(routes["POST /api/trips"], { user: kidUser, body: { name: "X", startDate: "2026-08-01", endDate: "2026-08-05" } });
+  const res = await call(routes["POST /api/trips"], { user: kidUser, body: { name: "X", startDate: "2026-08-01", endDate: "2026-08-05" } });
   assert.equal(res.statusCode, 403);
 });
 
 // ---------- owner vs editor: regenerate invite ----------
-test("POST /api/trips/:tripId/invite/regenerate: owner 200, editor 403", () => {
+test("POST /api/trips/:tripId/invite/regenerate: owner 200, editor 403", async () => {
   const routes = buildHarness();
   const { trip, owner } = makeTrip("Z6");
   const editor = makeGuest("Z6e");
   trips.joinByCode(trip.inviteCode, editor.id);
 
-  const editorRes = call(routes["POST /api/trips/:tripId/invite/regenerate"], { user: editor, params: { tripId: trip.id } });
+  const editorRes = await call(routes["POST /api/trips/:tripId/invite/regenerate"], { user: editor, params: { tripId: trip.id } });
   assert.equal(editorRes.statusCode, 403);
 
-  const ownerRes = call(routes["POST /api/trips/:tripId/invite/regenerate"], { user: owner, params: { tripId: trip.id } });
+  const ownerRes = await call(routes["POST /api/trips/:tripId/invite/regenerate"], { user: owner, params: { tripId: trip.id } });
   assert.equal(ownerRes.statusCode, 200);
   assert.ok(ownerRes.body.inviteCode);
 });
 
 // ---------- owner vs editor: member removal ----------
-test("DELETE /api/trips/:tripId/members/:userId: editor cannot remove another member, owner can; a member can self-leave", () => {
+test("DELETE /api/trips/:tripId/members/:userId: editor cannot remove another member, owner can; a member can self-leave", async () => {
   const routes = buildHarness();
   const { trip, owner } = makeTrip("Z7");
   const editorA = makeGuest("Z7a");
@@ -152,70 +160,70 @@ test("DELETE /api/trips/:tripId/members/:userId: editor cannot remove another me
   trips.joinByCode(trip.inviteCode, editorA.id);
   trips.joinByCode(trip.inviteCode, editorB.id);
 
-  const denied = call(routes["DELETE /api/trips/:tripId/members/:userId"], {
+  const denied = await call(routes["DELETE /api/trips/:tripId/members/:userId"], {
     user: editorA, params: { tripId: trip.id, userId: editorB.id },
   });
   assert.equal(denied.statusCode, 403);
 
-  const selfLeave = call(routes["DELETE /api/trips/:tripId/members/:userId"], {
+  const selfLeave = await call(routes["DELETE /api/trips/:tripId/members/:userId"], {
     user: editorA, params: { tripId: trip.id, userId: editorA.id },
   });
   assert.equal(selfLeave.statusCode, 200);
 
-  const ownerRemoves = call(routes["DELETE /api/trips/:tripId/members/:userId"], {
+  const ownerRemoves = await call(routes["DELETE /api/trips/:tripId/members/:userId"], {
     user: owner, params: { tripId: trip.id, userId: editorB.id },
   });
   assert.equal(ownerRemoves.statusCode, 200);
 
-  const unknownMember = call(routes["DELETE /api/trips/:tripId/members/:userId"], {
+  const unknownMember = await call(routes["DELETE /api/trips/:tripId/members/:userId"], {
     user: owner, params: { tripId: trip.id, userId: "u_bogus" },
   });
   assert.equal(unknownMember.statusCode, 404);
 });
 
 // ---------- owner vs editor: trip delete ----------
-test("DELETE /api/trips/:tripId: editor 403, owner 200", () => {
+test("DELETE /api/trips/:tripId: editor 403, owner 200", async () => {
   const routes = buildHarness();
   const { trip, owner } = makeTrip("Z8");
   const editor = makeGuest("Z8e");
   trips.joinByCode(trip.inviteCode, editor.id);
 
-  const editorRes = call(routes["DELETE /api/trips/:tripId"], { user: editor, params: { tripId: trip.id } });
+  const editorRes = await call(routes["DELETE /api/trips/:tripId"], { user: editor, params: { tripId: trip.id } });
   assert.equal(editorRes.statusCode, 403);
 
-  const ownerRes = call(routes["DELETE /api/trips/:tripId"], { user: owner, params: { tripId: trip.id } });
+  const ownerRes = await call(routes["DELETE /api/trips/:tripId"], { user: owner, params: { tripId: trip.id } });
   assert.equal(ownerRes.statusCode, 200);
   assert.equal(trips.getTrip(trip.id), null);
 });
 
 // ---------- join flow ----------
-test("GET then POST /api/trips/join/:code: preview, then join adds the user as editor", () => {
+test("GET then POST /api/trips/join/:code: preview, then join adds the user as editor", async () => {
   const routes = buildHarness();
   const { trip } = makeTrip("Z9");
   const joiner = makeGuest("Z9j");
 
-  const preview = call(routes["GET /api/trips/join/:code"], { user: joiner, params: { code: trip.inviteCode } });
+  const preview = await call(routes["GET /api/trips/join/:code"], { user: joiner, params: { code: trip.inviteCode } });
   assert.equal(preview.statusCode, 200);
   assert.equal(preview.body.trip.id, trip.id);
 
-  const joined = call(routes["POST /api/trips/join/:code"], { user: joiner, params: { code: trip.inviteCode } });
+  const joined = await call(routes["POST /api/trips/join/:code"], { user: joiner, params: { code: trip.inviteCode } });
   assert.equal(joined.statusCode, 200);
   assert.equal(joined.body.trip.myRole, "editor");
   assert.equal(trips.memberRole(trips.getTrip(trip.id), joiner.id), "editor");
 });
 
-test("GET /api/trips/join/:code: an invalid code 404s without leaking existence", () => {
+test("GET /api/trips/join/:code: an invalid code 404s without leaking existence", async () => {
   const routes = buildHarness();
   const someone = makeGuest("Z10");
-  const res = call(routes["GET /api/trips/join/:code"], { user: someone, params: { code: "NOPE" } });
+  const res = await call(routes["GET /api/trips/join/:code"], { user: someone, params: { code: "NOPE" } });
   assert.equal(res.statusCode, 404);
 });
 
 // ---------- list shape ----------
-test("GET /api/trips: list includes role + counts + memberFaces for a member trip", () => {
+test("GET /api/trips: list includes role + counts + memberFaces for a member trip", async () => {
   const routes = buildHarness();
   const { trip, owner } = makeTrip("Z11");
-  const res = call(routes["GET /api/trips"], { user: owner });
+  const res = await call(routes["GET /api/trips"], { user: owner });
   assert.equal(res.statusCode, 200);
   const row = res.body.trips.find((t) => t.id === trip.id);
   assert.ok(row);

@@ -15,6 +15,7 @@ process.env.DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
 
 const store = require("../lib/store");
 const family = require("../lib/family");
+const trips = require("../lib/trips");
 const chat = require("../lib/chat");
 const chatRoutes = require("../lib/routes/chat");
 
@@ -189,6 +190,8 @@ function buildChatRouteHarness() {
     chat,
     notifications: { notifyChatMessage: async () => {} },
     store,
+    family,
+    trips,
     gifs: {},
     requireAuth: (req, res, next) => next(),
     requireParent: (req, res, next) => next(),
