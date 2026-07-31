@@ -71,6 +71,32 @@ struct ChatMessage: Codable, Identifiable {
     var flagged: Bool
     var flagReason: String?
     var flaggedBy: String?
+    /// Trips (docs/TRIPS-PLAN.md): "family" or "trip:<tripId>". Optional so old
+    /// cached/decoded messages (pre-Trips) keep decoding — treat a missing value
+    /// as the family room.
+    var roomId: String? = nil
+    /// Server-resolved sender display name — set for trip rooms, where the
+    /// sender may be a guest the client can't resolve via `family.parents`/
+    /// `family.kids`. Optional/back-compat; family-room messages may also carry
+    /// it (harmless — `AppStore.senderName(for:)` prefers it when present).
+    var senderName: String? = nil
+}
+
+/// The room id for the always-present family chat thread (docs/TRIPS-PLAN.md).
+/// Every existing family-chat call site defaults to this room, so a build with
+/// no trips behaves exactly as before.
+let familyRoomId = "family"
+
+/// One chat room (`GET /api/chat/rooms`): the family thread, or a per-trip
+/// thread scoped `"trip:<tripId>"`. Drives the iOS Chat tab's room list once a
+/// user has more than the family room.
+struct ChatRoom: Decodable, Identifiable {
+    let roomId: String
+    var tripId: String? = nil
+    var title: String
+    var memberCount: Int? = nil
+
+    var id: String { roomId }
 }
 
 /// A pending kid sign-in request awaiting a parent's approval. Mirrors the

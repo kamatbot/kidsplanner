@@ -5,33 +5,41 @@ import SwiftUI
 // Fam ETC leans on Chat being "always nearby" the way a family group chat is,
 // so the layout isn't a plain 1:1 port of RetireOdds's iPhone-only tab bar:
 //
-//   iPhone (any orientation)          → FloatingTabBar (5 tabs), same pill /
+//   iPhone (any orientation)          → FloatingTabBar (6 tabs — Trips added
+//                                        for docs/TRIPS-PLAN.md), same pill /
 //                                        matchedGeometryEffect / glass-material
 //                                        pattern as RetireOdds. Chat is a full
 //                                        tab like the others.
 //
-//   iPad landscape, PARENT session    → nav rail (Today/Calendar/Homework/Notes
-//                                        — no Chat entry) + main content + a
-//                                        DOCKED family-chat column on the
+//   iPad landscape, PARENT session    → nav rail (Today/Calendar/Homework/
+//                                        Notes/Trips — no Chat entry) + main
+//                                        content + a DOCKED chat column on the
 //                                        trailing edge (canvas-1f) — so chat is
-//                                        always visible while browsing.
+//                                        always visible while browsing. The
+//                                        docked column defaults to the family
+//                                        room, with a Menu room-switcher once
+//                                        Trips adds more rooms.
 //
-//   iPad portrait, OR any kid         → nav rail (all 5 tabs) + full-width main
+//   iPad portrait, OR any kid         → nav rail (all 6 tabs) + full-width main
 //   session (any orientation)           content; tapping the Chat rail item
-//                                        opens ChatScreen as a slide-over sheet
-//                                        instead of docking a column (canvas-1g)
-//                                        — there isn't width to spare for a
-//                                        permanent 3rd column at kid-friendly
-//                                        scale or in portrait.
+//                                        opens the Chat surface as a slide-over
+//                                        sheet instead of docking a column
+//                                        (canvas-1g) — there isn't width to
+//                                        spare for a permanent 3rd column at
+//                                        kid-friendly scale or in portrait.
 //
 // iPad size classes are regular×regular in BOTH orientations, so orientation is
 // read from actual geometry (`onGeometryChange`), not size classes.
 //
+// Chat's own tab content is `ChatTabHost`: the plain single-room `ChatScreen`
+// until the signed-in user is on a trip, then a room list
+// (docs/TRIPS-PLAN.md "iOS" §2) — so a family with no trips sees no change.
+//
 // Settings/Goals/Activities are NOT native tabs — they're reached from a "More"
 // entry inside Today, hosted by `HybridWebView`. That "More" sheet/menu is out
-// of scope for this scaffold; only the 5-tab native surface is wired here.
+// of scope for this scaffold; only the 6-tab native surface is wired here.
 enum Tab: String, CaseIterable, Identifiable {
-    case today, chat, calendar, homework, notes
+    case today, chat, calendar, homework, notes, trips
     var id: String { rawValue }
 
     var label: String {
@@ -41,6 +49,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .calendar: return "Calendar"
         case .homework: return "Homework"
         case .notes: return "Notes"
+        case .trips: return "Trips"
         }
     }
     var icon: String {
@@ -50,6 +59,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .calendar: return "calendar"
         case .homework: return "book.closed.fill"
         case .notes: return "note.text"
+        case .trips: return "airplane"
         }
     }
 }
@@ -60,6 +70,10 @@ struct RootView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selection: Tab = .today
     @State private var showChatSlideOver = false
+    /// iPad docked chat column's own room selection (Trips room switcher) —
+    /// independent of `selection`/`showChatSlideOver`, which the docked layout
+    /// doesn't use for chat at all.
+    @State private var dockedRoomId: String = familyRoomId
     // iPad size classes are regular×regular in BOTH orientations, so they can't
     // tell landscape from portrait — read it from the actual geometry.
     @State private var isLandscape = true
@@ -111,6 +125,21 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await store.refreshKidRequests() }
         }
+        // Trips (docs/TRIPS-PLAN.md) push routing, v1: surface the Chat tab/
+        // room. `ChatRoomListScreen` finishes the job (pushes into the exact
+        // trip room) once `store.pendingChatRoomId` matches a room it knows
+        // about — see `AppStore.pendingChatRoomId`.
+        .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToTripChat)) { note in
+            guard let tripId = note.userInfo?["tripId"] as? String else { return }
+            let roomId = "trip:\(tripId)"
+            if showDockedChat {
+                dockedRoomId = roomId
+            } else {
+                selection = .chat
+                if isPad { showChatSlideOver = true }
+                store.pendingChatRoomId = roomId
+            }
+        }
         .overlay { if store.needsAuth { ReauthOverlay() } }
         .onAppear {
             #if DEBUG
@@ -128,15 +157,16 @@ struct RootView: View {
         }
     }
 
-    // MARK: iPhone — floating pill tab bar (4 tabs)
+    // MARK: iPhone — floating pill tab bar (6 tabs)
 
     private var iPhoneLayout: some View {
         TabView(selection: $selection) {
             TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
-            ChatScreen().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
+            ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
             CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
             HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
             NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+            TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FloatingTabBar(selection: $selection)
@@ -150,8 +180,10 @@ struct RootView: View {
 
     /// Nav rail (no Chat entry — it's docked, not tabbed) + main content +
     /// a fixed-width `ChatScreen` column pinned to the trailing edge, per
-    /// canvas-1f. `ChatScreen` is used as-is (unmodified) — it already renders
-    /// its own header/composer and adapts its bottom inset via horizontalSizeClass.
+    /// canvas-1f. The docked column always keeps the family room as its base
+    /// (`ChatScreen` itself is otherwise unmodified — same header/composer,
+    /// same horizontalSizeClass-driven bottom inset); Trips adds a compact
+    /// Menu room-switcher in its header when the user has more than one room.
     private var iPadDockedChatLayout: some View {
         HStack(spacing: 0) {
             NavRailList(selection: $selection, tabs: mainTabs)
@@ -162,18 +194,38 @@ struct RootView: View {
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
                 NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+                TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
             }
             .frame(maxWidth: .infinity)
             Divider()
-            ChatScreen()
-                .frame(width: 300)
+            ChatScreen(roomId: dockedRoomId, title: dockedRoomTitle) {
+                if store.chatRooms.count > 1 {
+                    Menu {
+                        ForEach(store.chatRooms) { room in
+                            Button(room.title) { dockedRoomId = room.roomId }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.up.chevron.down.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Palette.accent)
+                    }
+                    .accessibilityLabel("Switch chat room")
+                }
+            }
+            .frame(width: 300)
         }
+    }
+
+    /// nil for the family room (falls back to `ChatScreen`'s own default
+    /// title); the matching trip's title otherwise.
+    private var dockedRoomTitle: String? {
+        dockedRoomId == familyRoomId ? nil : store.chatRooms.first { $0.roomId == dockedRoomId }?.title
     }
 
     // MARK: iPad portrait, or any kid session — nav rail + slide-over chat
 
-    /// Nav rail with all 5 tabs (including Chat); tapping Chat opens
-    /// `ChatScreen` as a large sheet instead of swapping the main content,
+    /// Nav rail with all 6 tabs (including Chat); tapping Chat opens
+    /// `ChatTabHost` as a large sheet instead of swapping the main content,
     /// since there isn't width to spare for a permanent chat column here
     /// (canvas-1g). Main `TabView` only carries the non-chat screens, so
     /// `selection` never actually becomes `.chat` in this layout.
@@ -190,11 +242,12 @@ struct RootView: View {
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
                 NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+                TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
             }
             .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $showChatSlideOver) {
-            ChatScreen().presentationDetents([.large])
+            ChatTabHost().presentationDetents([.large])
         }
     }
 }
@@ -294,14 +347,17 @@ struct FloatingTabBar: View {
                         selection = tab
                     }
                 } label: {
-                    VStack(spacing: 3) {
+                    // Icon size / label font trimmed slightly (17→16, 10→9) so
+                    // all 6 tabs (Trips added) still fit one capsule width
+                    // comfortably on the smallest supported iPhone.
+                    VStack(spacing: 2) {
                         Image(systemName: tab.icon)
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .overlay(alignment: .topTrailing) {
                                 if tab == .chat && store.unreadChatCount > 0 { unreadBadge(store.unreadChatCount) }
                             }
                         Text(tab.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 9, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -328,7 +384,7 @@ struct FloatingTabBar: View {
         .background(Palette.panel.opacity(0.55), in: Capsule())
         .overlay(Capsule().strokeBorder(Palette.border.opacity(0.85), lineWidth: 1))
         .shadow(color: .black.opacity(0.14), radius: 18, x: 0, y: 8)
-        .padding(.horizontal, Space.lg)
+        .padding(.horizontal, Space.md)   // was Space.lg — 6 tabs need the extra width
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tab bar")
     }

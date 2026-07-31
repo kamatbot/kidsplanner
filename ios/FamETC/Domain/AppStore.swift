@@ -11,18 +11,37 @@ import Observation
 @Observable
 final class AppStore {
     // State
+
+    /// Chat threads keyed by room id ("family" or "trip:<tripId>" — see
+    /// `familyRoomId`/`ChatRoom`, docs/TRIPS-PLAN.md). `messages` below is a
+    /// convenience mirror of the family room so pre-Trips call sites (and
+    /// ChatMergeTests) keep working unchanged.
+    var messagesByRoom: [String: [ChatMessage]] = [:]
     var me: User?
     var family: Family?
-    var messages: [ChatMessage] = []
     var kidRequests: [KidAccessRequest] = []   // pending kid sign-ins (parents approve)
     var events: [CalendarEvent] = []           // school-feed events (read-only)
     var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
     var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
-    var lastSeenChatId: String?                // for the Chat-tab unread badge
+    /// Chat rooms this session can see (`GET /api/chat/rooms`) — just the
+    /// family room until the user is on a trip. Failing soft leaves this at
+    /// just the family room so the Chat tab behaves exactly as before.
+    var chatRooms: [ChatRoom] = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
+    /// Set by a `trip_chat_message`/`trip_update` push deep link; consumed
+    /// (and cleared) by `ChatRoomListScreen` to programmatically push into that
+    /// trip's room the next time it appears.
+    var pendingChatRoomId: String?
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
+
+    /// Family-room convenience so existing call sites (and ChatMergeTests)
+    /// keep working unchanged — every other room goes through `messagesByRoom`.
+    var messages: [ChatMessage] {
+        get { messagesByRoom[familyRoomId] ?? [] }
+        set { messagesByRoom[familyRoomId] = newValue }
+    }
 
     var kids: [Kid] { family?.kids ?? [] }
     /// Kids never approve anyone; only parents see/act on access requests.
@@ -76,9 +95,13 @@ final class AppStore {
         return m.senderId == me?.id
     }
 
-    /// Display name for a message's sender, resolved from the family (messages
-    /// carry only ids). Kids resolve via kid profiles; parents via `family.parents`.
+    /// Display name for a message's sender. Prefers the wire's `senderName`
+    /// (set for trip rooms, where the sender may be a guest the client can't
+    /// resolve locally) and falls back to the family-scoped resolution
+    /// (messages otherwise carry only ids). Kids resolve via kid profiles;
+    /// parents via `family.parents`.
     func senderName(for m: ChatMessage) -> String {
+        if let name = m.senderName, !name.isEmpty { return name }
         if m.senderType == "kid" {
             return family?.kids.first { $0.id == m.senderId }?.name ?? "Kid"
         }
@@ -88,7 +111,8 @@ final class AppStore {
     // Collaborators
     private let api = APIClient.shared
     private let cache = DiskCache()
-    private var chatLoopTask: Task<Void, Never>?
+    private var chatLoopTask: Task<Void, Never>?      // near-live loop for the on-screen room
+    private var familyPollTask: Task<Void, Never>?    // always-on 8s background poll, family room only
     private var chatAppBackgrounded = false
 
     // MARK: Lifecycle
@@ -96,26 +120,30 @@ final class AppStore {
     /// Render from cache immediately (if present), then refresh from the network.
     func load() async {
         loadTheme()
-        lastSeenChatId = UserDefaults.standard.string(forKey: lastSeenChatKey)
+        lastSeenChatIdByRoom[familyRoomId] = loadLastSeen(familyRoomId)
         if family == nil, let cached = cache.load() {
             me = cached.me
             family = cached.family
-            messages = Self.dedupe(cached.messages)  // heal caches poisoned by build 24
+            if let byRoom = cached.messagesByRoom, !byRoom.isEmpty {
+                messagesByRoom = byRoom.mapValues(Self.dedupe)  // heal caches poisoned by build 24
+            } else {
+                messages = Self.dedupe(cached.messages)  // pre-Trips cache: family room only
+            }
         }
         await refresh()
     }
 
     func refresh() async {
         isRefreshing = true
-        // Restart the chat loop unconditionally — including on a thrown 401 or
+        // Restart the chat loops unconditionally — including on a thrown 401 or
         // transport error — so a failed initial network call (cold-start cookie
         // race, slow DNS/TLS warmup, expired session) can never permanently
         // stall chat with zero pending requests. Previously this only ran in
         // the success path below, so a single flaky first fetch left chat dead
-        // until something else (e.g. the Chat tab's `chatActive` toggle)
+        // until something else (e.g. the Chat tab's `activeRoomId` toggle)
         // happened to kick a poll — surfacing as "messages don't load until I
         // tap the screen".
-        defer { isRefreshing = false; restartChatLoop() }
+        defer { isRefreshing = false; restartChatLoop(); startFamilyPollLoopIfNeeded() }
         do {
             me = try await api.me().user
             let fams = try await api.families()
@@ -127,9 +155,18 @@ final class AppStore {
                 async let kids: Void = refreshKidRequests()
                 async let calHw: Void = loadCalendarAndHomework()
                 async let notesLoad: Void = loadNotes()
+                async let rooms = api.chatRooms()
                 messages = Self.dedupe(try await msgs)
-                updateChatSeen()
+                updateChatSeen(familyRoomId)
                 _ = await (kids, calHw, notesLoad)
+                // Fail soft to just the family room (Trips-unaware/unreachable server).
+                chatRooms = (try? await rooms) ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
+            } else {
+                // A guest with zero families can still be on a trip.
+                chatRooms = (try? await api.chatRooms()) ?? []
+            }
+            for room in chatRooms where lastSeenChatIdByRoom[room.roomId] == nil {
+                lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
             }
             syncError = nil
             needsAuth = false
@@ -143,10 +180,15 @@ final class AppStore {
 
     func signedOut() {
         stopChatLoop()
+        familyPollTask?.cancel()
+        familyPollTask = nil
         cache.clear()
         me = nil
         family = nil
-        messages = []
+        messagesByRoom = [:]
+        lastSeenChatIdByRoom = [:]
+        chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
+        activeRoomId = nil
         needsAuth = true
     }
 
@@ -216,24 +258,29 @@ final class AppStore {
 
     // MARK: Chat
 
-    /// Whether the Chat surface (native tab, iPad docked column, or slide-over)
-    /// is currently on-screen. Toggling this restarts the loop below so the
-    /// switch between the near-live long-poll cadence and the slower
-    /// off-screen badge poll takes effect immediately.
-    var chatActive = false {
-        didSet { if chatActive != oldValue { restartChatLoop() } }
+    /// The chat room currently on-screen (native tab, iPad docked column, or
+    /// slide-over) — `nil` when no chat surface is visible. Trips
+    /// (docs/TRIPS-PLAN.md) generalized the old `chatActive: Bool` (family-only)
+    /// into this: setting it restarts the near-live long-poll loop below for
+    /// THAT room. The family room additionally always gets the slower 8s
+    /// background poll (`familyPollTask`) regardless of what's active, so its
+    /// unread badge / kid-approval banner stay live while browsing other tabs
+    /// or another room's chat.
+    var activeRoomId: String? = nil {
+        didSet { if activeRoomId != oldValue { restartChatLoop() } }
     }
 
-    /// Cancels any in-flight iteration and starts a fresh loop, whose very
-    /// first iteration is always an immediate plain fetch — this is what makes
-    /// chat render right away on cold start, on entering the Chat surface, and
-    /// on returning from the background, with no tap required. A no-op while
-    /// the app is OS-backgrounded (`chatDidEnterBackground` clears that gate).
+    /// Cancels any in-flight iteration and starts a fresh loop for
+    /// `activeRoomId`, whose very first iteration is always an immediate plain
+    /// fetch — this is what makes chat render right away on cold start, on
+    /// entering a chat surface, and on returning from the background, with no
+    /// tap required. A no-op while the app is OS-backgrounded
+    /// (`chatDidEnterBackground` clears that gate) or no room is on-screen.
     func restartChatLoop() {
         stopChatLoop()
-        guard !chatAppBackgrounded else { return }
+        guard !chatAppBackgrounded, let roomId = activeRoomId else { return }
         chatLoopTask = Task { [weak self] in
-            await self?.runChatLoop()
+            await self?.runActiveRoomLoop(roomId)
         }
     }
 
@@ -242,12 +289,24 @@ final class AppStore {
         chatLoopTask = nil
     }
 
+    /// Starts the always-on family-room background poll once (idempotent —
+    /// safe to call from every `refresh()`). Only `signedOut`/backgrounding
+    /// tear it down.
+    private func startFamilyPollLoopIfNeeded() {
+        guard familyPollTask == nil, !chatAppBackgrounded else { return }
+        familyPollTask = Task { [weak self] in
+            await self?.runFamilyPollLoop()
+        }
+    }
+
     /// Suspend polling — cancels the in-flight request/sleep via structured
     /// Task cancellation (URLSession's async APIs abort the underlying request
     /// when their enclosing Task is cancelled, so this doesn't leak a request).
     func chatDidEnterBackground() {
         chatAppBackgrounded = true
         stopChatLoop()
+        familyPollTask?.cancel()
+        familyPollTask = nil
     }
 
     /// Resume with an immediate fetch, mirroring cold start / surface-appear.
@@ -255,26 +314,20 @@ final class AppStore {
         guard chatAppBackgrounded else { return }
         chatAppBackgrounded = false
         restartChatLoop()
+        startFamilyPollLoopIfNeeded()
     }
 
-    /// The chat refresh loop. Two cadences, chosen per iteration off the live
-    /// `chatActive` flag (so switching surfaces mid-loop takes effect on the
-    /// very next iteration, not just at restart):
-    ///
-    /// - **On-screen** (`chatActive`): near-live long-poll against the new
-    ///   contract — `GET /api/chat/messages?afterId=<lastId>&wait=1`, which a
-    ///   NEW server holds open up to ~25s and returns the moment newer
-    ///   messages exist, and an OLD server just answers immediately (ignoring
-    ///   the params). Either way we enforce a minimum 2s spacing between
-    ///   iterations so an old server's instant empty replies don't spin in a
-    ///   tight loop — this is what keeps the app correct against both.
-    /// - **Off-screen**: the previous plain 8s poll, so the unread badge and
-    ///   kid-approval banner stay live while browsing other tabs.
-    ///
+    /// Near-live long-poll loop for whichever room is on-screen. Contract
+    /// unchanged from the pre-Trips single-room loop, just parametrized by
+    /// room: `GET .../chat/messages?afterId=<lastId>&wait=1`, which a NEW
+    /// server holds open up to ~25s and returns the moment newer messages
+    /// exist, and an OLD server just answers immediately (ignoring the
+    /// params). Either way we enforce a minimum 2s spacing between iterations
+    /// so an old server's instant empty replies don't spin in a tight loop.
     /// The very first iteration after every (re)start is always a plain full
     /// GET — works unchanged against the CURRENT production server and is
     /// what makes chat render immediately with no tap needed.
-    private func runChatLoop() async {
+    func runActiveRoomLoop(_ roomId: String) async {  // internal for FamETCTests
         #if DEBUG
         // UI-test hook (FAM_MOCK_CHAT_DELAY_MS): hermetically reproduce the
         // messages-arrive-after-layout timing with no server, then stop.
@@ -287,27 +340,26 @@ final class AppStore {
         #endif
         var first = true
         while !Task.isCancelled {
-            guard family != nil else {
-                try? await Task.sleep(for: .seconds(chatActive ? 2 : 8))
-                continue
-            }
-            guard chatActive else {
-                await refreshChatNow()
-                guard !Task.isCancelled else { return }
-                try? await Task.sleep(for: .seconds(8))
+            // The family room needs a family to exist server-side; a guest (or
+            // a parent mid-onboarding) with none yet just idles here instead of
+            // spinning against an endpoint that will only ever 4xx. Trip rooms
+            // have no such precondition (guests join with zero families).
+            if roomId == familyRoomId, family == nil {
+                try? await Task.sleep(for: .seconds(2))
                 continue
             }
             let iterationStart = ContinuousClock.now
-            if first || messages.last?.id == nil {
-                await refreshChatNow()
+            let lastId = messagesByRoom[roomId]?.last?.id
+            if first || lastId == nil {
+                await refreshRoomNow(roomId)
                 first = false
-            } else if let afterId = messages.last?.id {
-                if let fresh = try? await api.chatMessages(afterId: afterId, wait: true), !fresh.isEmpty {
-                    mergeIncoming(fresh)
+            } else if let afterId = lastId {
+                if let fresh = try? await api.chatMessages(roomId: roomId, afterId: afterId, wait: true), !fresh.isEmpty {
+                    mergeIncoming(fresh, roomId: roomId)
                     persist()
                 }
-                updateChatSeen()
-                await refreshKidRequests() // surface new kid sign-in requests app-wide
+                updateChatSeen(roomId)
+                if roomId == familyRoomId { await refreshKidRequests() } // surface new kid sign-in requests app-wide
             }
             guard !Task.isCancelled else { return }
             let elapsed = iterationStart.duration(to: .now)
@@ -317,28 +369,51 @@ final class AppStore {
         }
     }
 
-    /// Merges a long-poll response into the in-memory thread by message id.
-    /// Handles both server shapes without needing to know which one answered:
-    /// a NEW server's `afterId` response is just the delta (ids we don't have
-    /// yet), an OLD server ignoring `afterId` re-sends the latest full page
-    /// (ids we already have) — either way, union-by-id + sort keeps the result
-    /// correct, and an id already present gets its latest copy (edits/flags).
-    /// THE single upsert path for chat messages — every source (long-poll
-    /// deltas, full refreshes, sent text, sent GIFs, disk cache) must land in
-    /// `messages` through this or through `Self.dedupe`. Build 24 crashed
-    /// because send paths blind-appended while the long-poll merged the same
-    /// message: `messages` held a duplicate id, `persist()` poisoned the disk
-    /// cache with it, and the next `Dictionary(uniqueKeysWithValues:)` call
-    /// (or next LAUNCH, via the poisoned cache) trapped — AppStore.swift:306
-    /// in the TestFlight crash log.
-    func mergeIncoming(_ fresh: [ChatMessage]) {  // internal for FamETCTests
+    /// Always-on background poll for the family room ONLY (badge + kid-approval
+    /// banner), independent of `activeRoomId` — trip rooms only refresh while
+    /// their own surface is on-screen (`runActiveRoomLoop`), matching the plan's
+    /// "one loop for the active room plus the existing 8s family poll".
+    private func runFamilyPollLoop() async {
+        while !Task.isCancelled {
+            guard family != nil else {
+                try? await Task.sleep(for: .seconds(8))
+                continue
+            }
+            // The active-room loop already keeps the family room near-live —
+            // don't double-poll it here.
+            if activeRoomId != familyRoomId {
+                await refreshRoomNow(familyRoomId)
+                await refreshKidRequests()
+            }
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(for: .seconds(8))
+        }
+    }
+
+    /// Merges a long-poll response into one room's in-memory thread by message
+    /// id. Handles both server shapes without needing to know which one
+    /// answered: a NEW server's `afterId` response is just the delta (ids we
+    /// don't have yet), an OLD server ignoring `afterId` re-sends the latest
+    /// full page (ids we already have) — either way, union-by-id + sort keeps
+    /// the result correct, and an id already present gets its latest copy
+    /// (edits/flags). THE single upsert path for chat messages — every source
+    /// (long-poll deltas, full refreshes, sent text, sent GIFs, disk cache)
+    /// must land in `messagesByRoom` through this or through `Self.dedupe`.
+    /// Build 24 crashed because send paths blind-appended while the long-poll
+    /// merged the same message: `messages` held a duplicate id, `persist()`
+    /// poisoned the disk cache with it, and the next
+    /// `Dictionary(uniqueKeysWithValues:)` call (or next LAUNCH, via the
+    /// poisoned cache) trapped — AppStore.swift:306 in the TestFlight crash log.
+    func mergeIncoming(_ fresh: [ChatMessage], roomId: String = familyRoomId) {  // internal for FamETCTests
         guard !fresh.isEmpty else { return }
-        messages = Self.dedupe(messages + fresh)
+        let current = messagesByRoom[roomId] ?? []
+        messagesByRoom[roomId] = Self.dedupe(current + fresh)
     }
 
     /// Collapse duplicate ids (last occurrence wins — later elements are the
     /// fresher copies) and order by createdAt. Tolerates already-corrupt
-    /// input, so build-24-poisoned disk caches self-heal on load.
+    /// input, so build-24-poisoned disk caches self-heal on load. Operates on
+    /// one room's list at a time — callers apply it per room.
     static func dedupe(_ msgs: [ChatMessage]) -> [ChatMessage] {
         var byId: [String: ChatMessage] = [:]
         for m in msgs { byId[m.id] = m }
@@ -499,10 +574,10 @@ final class AppStore {
         }
     }
 
-    func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String) async {
+    func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String, roomId: String = familyRoomId) async {
         do {
-            let msg = try await api.sendChatMessage(text: text, card: card, senderType: senderType, senderId: senderId)
-            mergeIncoming([msg])   // NEVER append: the long-poll may already have delivered this id
+            let msg = try await api.sendChatMessage(text: text, card: card, senderType: senderType, senderId: senderId, roomId: roomId)
+            mergeIncoming([msg], roomId: roomId)   // NEVER append: the long-poll may already have delivered this id
             persist()
         } catch { handle(error) }
     }
@@ -510,14 +585,14 @@ final class AppStore {
     /// Convenience used by the native Chat screen — sends as the signed-in user.
     /// (The server derives the real sender from the session; these are for the
     /// API shape only.)
-    func send(text: String) async {
+    func send(text: String, roomId: String = familyRoomId) async {
         let sType = me?.role == "kid" ? "kid" : "parent"
         let sId = (me?.role == "kid" ? me?.kidId : me?.id) ?? me?.id ?? ""
-        await sendMessage(text: text, senderType: sType, senderId: sId)
+        await sendMessage(text: text, senderType: sType, senderId: sId, roomId: roomId)
     }
 
-    /// Send a GIF (Giphy) to the family chat.
-    func sendGif(_ gif: GifResult) async {
+    /// Send a GIF (Giphy) to a chat room (defaults to family).
+    func sendGif(_ gif: GifResult, roomId: String = familyRoomId) async {
         let sType = me?.role == "kid" ? "kid" : "parent"
         let sId = (me?.role == "kid" ? me?.kidId : me?.id) ?? me?.id ?? ""
         let media: [String: Any] = [
@@ -525,61 +600,90 @@ final class AppStore {
             "width": gif.width ?? 0, "height": gif.height ?? 0,
         ]
         do {
-            let msg = try await api.sendChatMessage(text: "", card: nil, media: media, senderType: sType, senderId: sId)
-            mergeIncoming([msg])   // NEVER append: the long-poll may already have delivered this id
+            let msg = try await api.sendChatMessage(text: "", card: nil, media: media, senderType: sType, senderId: sId, roomId: roomId)
+            mergeIncoming([msg], roomId: roomId)   // NEVER append: the long-poll may already have delivered this id
             persist()
         } catch { handle(error) }
     }
 
-    /// Immediate one-shot plain fetch — full authoritative list, so it also
-    /// picks up edits/deletes/flags the delta long-poll wouldn't. Used as the
-    /// first iteration of every chat-loop (re)start (cold start, Chat surface
-    /// appearing, foreground return) so new cross-device messages show without
-    /// waiting on the poll cadence.
-    func refreshChatNow() async {
-        guard family != nil else { return }
-        if let fresh = try? await api.chatMessages(limit: 50) {
-            messages = Self.dedupe(fresh)
+    /// Immediate one-shot plain fetch for one room — full authoritative list,
+    /// so it also picks up edits/deletes/flags the delta long-poll wouldn't.
+    /// Used as the first iteration of every per-room chat loop (re)start (cold
+    /// start, a chat surface appearing, foreground return) so new cross-device
+    /// messages show without waiting on the poll cadence.
+    private func refreshRoomNow(_ roomId: String) async {
+        if let fresh = try? await api.chatMessages(roomId: roomId, limit: 50) {
+            messagesByRoom[roomId] = Self.dedupe(fresh)
             persist()
         }
-        updateChatSeen()
-        await refreshKidRequests()
+        updateChatSeen(roomId)
     }
 
     // MARK: Unread chat badge
 
-    private let lastSeenChatKey = "fam_last_seen_chat"
+    private func lastSeenChatKey(_ roomId: String) -> String { "fam_last_seen_chat_\(roomId)" }
+    /// Pre-Trips key (family room only) — migrated to `lastSeenChatKey(familyRoomId)`.
+    private let legacyLastSeenChatKey = "fam_last_seen_chat"
 
-    /// Messages after the last-seen one that someone else sent (drives the Chat
-    /// tab badge). Zero while the Chat tab is open (we keep marking it read).
+    /// Per-room last-seen message id, persisted under `fam_last_seen_chat_<roomId>`.
+    var lastSeenChatIdByRoom: [String: String] = [:]
+
+    /// Reads (and migrates) a room's persisted last-seen id. The single
+    /// pre-Trips key held only the family room's value — copied over to that
+    /// room's namespaced key on first read so history isn't misread as unread.
+    private func loadLastSeen(_ roomId: String) -> String? {
+        let key = lastSeenChatKey(roomId)
+        if let v = UserDefaults.standard.string(forKey: key) { return v }
+        guard roomId == familyRoomId,
+              let legacy = UserDefaults.standard.string(forKey: legacyLastSeenChatKey) else { return nil }
+        UserDefaults.standard.set(legacy, forKey: key)
+        return legacy
+    }
+
+    /// Messages after the last-seen one (across every room whose messages are
+    /// loaded) that someone else sent — drives the Chat tab badge. A room stays
+    /// at 0 while it's on-screen (we keep marking it read).
     var unreadChatCount: Int {
-        guard let seen = lastSeenChatId,
-              let idx = messages.firstIndex(where: { $0.id == seen }),
-              idx + 1 < messages.count else { return 0 }
-        return messages[(idx + 1)...].filter { !isMine($0) }.count
+        messagesByRoom.keys.reduce(0) { $0 + unreadCount(for: $1) }
     }
 
-    func markChatRead() {
-        lastSeenChatId = messages.last?.id
-        if let id = lastSeenChatId { UserDefaults.standard.set(id, forKey: lastSeenChatKey) }
+    /// Unread count for one room (used by the room-list badges too).
+    func unreadCount(for roomId: String) -> Int {
+        guard let seen = lastSeenChatIdByRoom[roomId],
+              let msgs = messagesByRoom[roomId],
+              let idx = msgs.firstIndex(where: { $0.id == seen }),
+              idx + 1 < msgs.count else { return 0 }
+        return msgs[(idx + 1)...].filter { !isMine($0) }.count
     }
 
-    /// Keep the badge at 0 while chat is on-screen; establish a baseline on the
-    /// very first load so existing history doesn't show as unread.
-    private func updateChatSeen() {
-        if chatActive || lastSeenChatId == nil { markChatRead() }
+    func markChatRead(_ roomId: String = familyRoomId) {
+        let last = messagesByRoom[roomId]?.last?.id
+        lastSeenChatIdByRoom[roomId] = last
+        if let last { UserDefaults.standard.set(last, forKey: lastSeenChatKey(roomId)) }
     }
-    func deleteMessage(_ id: String) async {
+
+    /// Keep a room's badge at 0 while it's on-screen; establish a baseline on
+    /// its very first load so existing history doesn't show as unread.
+    private func updateChatSeen(_ roomId: String) {
+        if activeRoomId == roomId || lastSeenChatIdByRoom[roomId] == nil { markChatRead(roomId) }
+    }
+    func deleteMessage(_ id: String, roomId: String = familyRoomId) async {
         do {
-            let updated = try await api.deleteChatMessage(id)
-            if let idx = messages.firstIndex(where: { $0.id == id }) { messages[idx] = updated }
+            let updated = try await api.deleteChatMessage(id, roomId: roomId)
+            if var msgs = messagesByRoom[roomId], let idx = msgs.firstIndex(where: { $0.id == id }) {
+                msgs[idx] = updated
+                messagesByRoom[roomId] = msgs
+            }
             persist()
         } catch { handle(error) }
     }
-    func flagMessage(_ id: String, reason: String) async {
+    func flagMessage(_ id: String, reason: String, roomId: String = familyRoomId) async {
         do {
-            let updated = try await api.flagChatMessage(id, reason: reason)
-            if let idx = messages.firstIndex(where: { $0.id == id }) { messages[idx] = updated }
+            let updated = try await api.flagChatMessage(id, reason: reason, roomId: roomId)
+            if var msgs = messagesByRoom[roomId], let idx = msgs.firstIndex(where: { $0.id == id }) {
+                msgs[idx] = updated
+                messagesByRoom[roomId] = msgs
+            }
             persist()
         } catch { handle(error) }
     }
@@ -587,7 +691,9 @@ final class AppStore {
     // MARK: Persistence / errors
 
     private func persist() {
-        cache.save(CachedAppData(family: family, messages: messages, me: me))
+        // `messages` (family room) written alongside `messagesByRoom` for
+        // downgrade safety — see CachedAppData.messagesByRoom.
+        cache.save(CachedAppData(family: family, messages: messages, me: me, messagesByRoom: messagesByRoom))
     }
 
     private func handle(_ error: Error) {

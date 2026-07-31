@@ -4,8 +4,15 @@ import Foundation
 /// recent slice of chat.
 struct CachedAppData: Codable {
     var family: Family?
-    var messages: [ChatMessage]
+    var messages: [ChatMessage]   // family room only — kept for downgrade safety (see messagesByRoom)
     var me: User?   // optional for back-compat with caches written before this field
+    /// Trips (docs/TRIPS-PLAN.md) multi-room chat cache, keyed by room id.
+    /// Optional for back-compat: a cache written before Trips shipped decodes
+    /// this as nil, and `AppStore.load()` falls back to `messages` (the family
+    /// room) in that case. The app keeps writing `messages` alongside this
+    /// field so a build predating this field (a TestFlight rollback) still
+    /// finds its family-room history.
+    var messagesByRoom: [String: [ChatMessage]]? = nil
 }
 
 /// Persists the last-known family/chat data so the app renders instantly on cold

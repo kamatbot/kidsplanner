@@ -53,7 +53,15 @@ struct AgendaRow: View {
         case .deadline:
             icon("flag.fill", Palette.coral)
         case .event:
-            icon("calendar", Palette.accent)
+            // Trips (docs/TRIPS-PLAN.md): read-only trip-derived events arrive
+            // through the same `FamilyEvent`/`canEdit:false` shape, tagged
+            // `category == "trip"` — flag them with an airplane instead of the
+            // generic calendar glyph.
+            if item.familyEvent?.category == "trip" {
+                icon("airplane", Palette.teal)
+            } else {
+                icon("calendar", Palette.accent)
+            }
         }
     }
 

@@ -88,9 +88,11 @@ enum Agenda {
         }
         var items = [first]
         var cur = start
-        // ponytail: 62-day span cap — guards a malformed/huge endDate from
-        // looping forever; raise if a real multi-week trip event needs more.
-        for _ in 0..<62 {
+        // 120-day span cap (was 62 — raised for Trips, docs/TRIPS-PLAN.md: the
+        // synthetic `trip_ev_<tripId>` calendar event spans a whole vacation,
+        // start to end date) — guards a malformed/huge endDate from looping
+        // forever, not a real expected length.
+        for _ in 0..<120 {
             guard let next = Calendar.current.date(byAdding: .day, value: 1, to: cur) else { break }
             cur = next
             if cur > end { break }

@@ -7,6 +7,12 @@ import XCTest
 /// inside `mergeIncoming` trapped on the next merge — or on the next LAUNCH,
 /// via the poisoned cache (AppStore.swift:306 in the symbolicated log).
 /// Every message source must now land through one deduplicating path.
+///
+/// Trips (docs/TRIPS-PLAN.md) generalized `mergeIncoming`/`store.messages` to
+/// be per-room (`roomId` param, default `familyRoomId`) — every test below
+/// still exercises the family room via that default, so the original
+/// build-24 assertions are unchanged; `testMergeIncomingIsolatesRoomsById`
+/// covers the new per-room behavior itself.
 @MainActor
 final class ChatMergeTests: XCTestCase {
 
@@ -72,5 +78,15 @@ final class ChatMergeTests: XCTestCase {
                              msg("m3", at: "2026-01-01T10:02:00.000Z")])
         XCTAssertEqual(store.messages.map(\.id), ["m1", "m2", "m3"])
         XCTAssertEqual(store.messages[1].text, "updated", "fresh copy wins for an existing id")
+    }
+
+    /// Trips: a trip room's messages must never leak into (or collide with) the
+    /// family room's, even when both hold a message with the same id.
+    func testMergeIncomingIsolatesRoomsById() {
+        let store = AppStore()
+        store.mergeIncoming([msg("m1", text: "family hello")])   // defaults to the family room
+        store.mergeIncoming([msg("m1", text: "trip hello")], roomId: "trip:t1")
+        XCTAssertEqual(store.messages.map(\.text), ["family hello"], "family room untouched by the trip merge")
+        XCTAssertEqual(store.messagesByRoom["trip:t1"]?.map(\.text), ["trip hello"])
     }
 }

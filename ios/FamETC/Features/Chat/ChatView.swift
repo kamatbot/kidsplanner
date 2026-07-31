@@ -8,10 +8,22 @@ import SwiftUI
 // messages, GIFs (Giphy), and distinct animated cards for homework/calendar
 // system messages that deep-link to the item.
 //
+// Trips (docs/TRIPS-PLAN.md) generalized this from a single family thread to
+// one screen per ROOM ("family" or "trip:<tripId>", see `familyRoomId`) —
+// `roomId`/`title` default to the family room, so every pre-Trips call site
+// (`ChatScreen()`) renders exactly as before.
+//
 // Keyboard note: SwiftUI's automatic keyboard avoidance lifts the column so the
 // composer rides flush on top of the keyboard; we only drop the tab-bar
 // clearance to zero while the keyboard is up.
-struct ChatScreen: View {
+struct ChatScreen<HeaderAccessory: View>: View {
+    var roomId: String = familyRoomId
+    var title: String? = nil
+    /// Extra header control, trailing the title — e.g. the iPad docked
+    /// column's room-switcher `Menu`. Same generic-with-default-EmptyView
+    /// shape as `SurfaceScaffold`'s `Trailing`.
+    @ViewBuilder var headerAccessory: () -> HeaderAccessory
+
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var draft = ""
@@ -25,6 +37,8 @@ struct ChatScreen: View {
 
     private var baseInset: CGFloat { hSize == .compact ? Layout.tabBarClearance : Space.lg }
     private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
+    private var isFamilyRoom: Bool { roomId == familyRoomId }
+    private var currentMessages: [ChatMessage] { store.messagesByRoom[roomId] ?? [] }
 
     var body: some View {
         ZStack {
@@ -39,12 +53,15 @@ struct ChatScreen: View {
             .padding(.bottom, bottomInset)
             .animation(.easeOut(duration: 0.25), value: keyboardVisible)
         }
-        // chatActive's didSet restarts the chat loop with an immediate plain
+        // activeRoomId's didSet restarts the chat loop with an immediate plain
         // fetch as its first iteration — see AppStore.restartChatLoop — so
         // messages render right away with no tap needed, whether this is a
         // native tab page, the iPad docked column, or the slide-over sheet.
-        .onAppear { store.chatActive = true }
-        .onDisappear { store.chatActive = false }
+        // The onChange covers the iPad docked column, where a room switch
+        // changes `roomId` on an already-appeared screen (no onAppear refires).
+        .onAppear { store.activeRoomId = roomId }
+        .onChange(of: roomId) { _, newValue in store.activeRoomId = newValue }
+        .onDisappear { if store.activeRoomId == roomId { store.activeRoomId = nil } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             store.chatDidEnterBackground()
         }
@@ -54,7 +71,7 @@ struct ChatScreen: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
         .sheet(isPresented: $showGifPicker) {
-            GifPickerSheet { gif in Task { await store.sendGif(gif) } }
+            GifPickerSheet { gif in Task { await store.sendGif(gif, roomId: roomId) } }
         }
         .sheet(item: $hwRef) { ref in HomeworkDetailSheet(homeworkId: ref.id) }
         .sheet(item: $eventRef) { ref in EventDetailSheet(eventId: ref.id) }
@@ -66,10 +83,12 @@ struct ChatScreen: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                MicroLabel(text: "Family chat")
-                Text(store.family?.name ?? "Chat").font(Typography.cardTitle).foregroundStyle(Palette.text)
+                MicroLabel(text: isFamilyRoom ? "Family chat" : "Trip chat")
+                Text(title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : "Trip"))
+                    .font(Typography.cardTitle).foregroundStyle(Palette.text)
             }
             Spacer()
+            headerAccessory()
         }
         .padding(.horizontal, Space.lg).padding(.top, Space.md).padding(.bottom, Space.sm)
     }
@@ -87,7 +106,7 @@ struct ChatScreen: View {
     private var messages: some View {
         ScrollView {
             VStack(spacing: Space.md) {
-                ForEach(store.messages) { m in
+                ForEach(currentMessages) { m in
                     ChatMessageRow(message: m,
                                    isMine: store.isMine(m),
                                    senderName: store.senderName(for: m),
@@ -109,7 +128,7 @@ struct ChatScreen: View {
         // card/button tap without blocking it).
         .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
         .overlay { emptyOrLoading }
-        .onChange(of: store.messages.count) { oldCount, _ in
+        .onChange(of: currentMessages.count) { oldCount, _ in
             scrollToBottom(animated: oldCount > 0)
         }
         .onChange(of: keyboardVisible) { _, v in if v { scrollToBottom(animated: true) } }
@@ -117,11 +136,15 @@ struct ChatScreen: View {
     }
 
     @ViewBuilder private var emptyOrLoading: some View {
-        if store.family == nil {
+        if isFamilyRoom && store.family == nil {
             emptyState(icon: "person.2.slash", title: "No family yet", detail: "Join or create a family to start chatting.")
-        } else if store.messages.isEmpty {
+        } else if currentMessages.isEmpty {
             if store.isRefreshing { ProgressView().tint(Palette.accent) }
-            else { emptyState(icon: "bubble.left.and.bubble.right", title: "No messages yet", detail: "Say hi to the family! 👋") }
+            else if isFamilyRoom {
+                emptyState(icon: "bubble.left.and.bubble.right", title: "No messages yet", detail: "Say hi to the family! 👋")
+            } else {
+                emptyState(icon: "airplane", title: "No messages yet", detail: "Say hi to the crew! ✈️")
+            }
         }
     }
 
@@ -168,7 +191,7 @@ struct ChatScreen: View {
             }
             .accessibilityLabel("Add a GIF")
 
-            TextField("Message the family…", text: $draft, axis: .vertical)
+            TextField(isFamilyRoom ? "Message the family…" : "Message the trip…", text: $draft, axis: .vertical)
                 .font(.system(size: 17))
                 .foregroundStyle(Palette.text)
                 .lineLimit(1...5)
@@ -197,7 +220,7 @@ struct ChatScreen: View {
         guard !text.isEmpty else { return }
         draft = ""
         Haptics.selection()
-        Task { await store.send(text: text) }
+        Task { await store.send(text: text, roomId: roomId) }
     }
 
     private func emptyState(icon: String, title: String, detail: String) -> some View {
@@ -207,6 +230,96 @@ struct ChatScreen: View {
             Text(detail).font(Typography.body).foregroundStyle(Palette.textSecond).multilineTextAlignment(.center)
         }
         .padding(Space.xl)
+    }
+}
+
+/// Convenience: no header accessory (the common case — every pre-Trips call
+/// site, plus every trip room pushed from `ChatRoomListScreen`). Mirrors
+/// `SurfaceScaffold`'s `Trailing == EmptyView` extension.
+extension ChatScreen where HeaderAccessory == EmptyView {
+    init(roomId: String = familyRoomId, title: String? = nil) {
+        self.init(roomId: roomId, title: title, headerAccessory: { EmptyView() })
+    }
+}
+
+// MARK: - Chat tab entry point (room list vs. direct family chat)
+
+/// The Chat tab's actual root: a room LIST once the signed-in user has more
+/// than the family room (Trips adds one per trip they're on), otherwise
+/// today's direct family `ChatScreen` unchanged — so a family with no trips
+/// sees zero difference (`ChatFirstLoadUITests` stays green).
+struct ChatTabHost: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        if store.chatRooms.count > 1 {
+            ChatRoomListScreen()
+        } else {
+            ChatScreen()
+        }
+    }
+}
+
+/// Room picker: Family first, then one row per trip (`GET /api/chat/rooms`
+/// order), each with a last-message preview (only known once that room's been
+/// opened at least once — v1 simplification) and its own unread badge.
+struct ChatRoomListScreen: View {
+    @Environment(AppStore.self) private var store
+    @State private var path = NavigationPath()
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List(store.chatRooms) { room in
+                NavigationLink(value: room.roomId) {
+                    roomRow(room)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(ScreenBackground())
+            .navigationTitle("Chat")
+            .navigationDestination(for: String.self) { roomId in
+                ChatScreen(roomId: roomId, title: store.chatRooms.first { $0.roomId == roomId }?.title)
+            }
+        }
+        .onAppear { consumePendingRoom() }
+        .onChange(of: store.pendingChatRoomId) { _, _ in consumePendingRoom() }
+    }
+
+    /// A `trip_chat_message`/`trip_update` push sets `store.pendingChatRoomId`
+    /// (see `NotificationHandler`); once that room is actually in our list,
+    /// push straight into it.
+    private func consumePendingRoom() {
+        guard let roomId = store.pendingChatRoomId,
+              store.chatRooms.contains(where: { $0.roomId == roomId }) else { return }
+        path = NavigationPath([roomId])
+        store.pendingChatRoomId = nil
+    }
+
+    private func roomRow(_ room: ChatRoom) -> some View {
+        let unread = store.unreadCount(for: room.roomId)
+        return HStack(spacing: Space.md) {
+            Image(systemName: room.roomId == familyRoomId ? "person.2.fill" : "airplane")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 32, height: 32)
+                .background(Palette.accentSoft, in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(room.title).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                if let preview = store.messagesByRoom[room.roomId]?.last?.text, !preview.isEmpty {
+                    Text(preview).font(Typography.caption).foregroundStyle(Palette.textSecond).lineLimit(1)
+                }
+            }
+            Spacer()
+            if unread > 0 {
+                Text(unread > 9 ? "9+" : "\(unread)")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Palette.coral, in: Capsule())
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -211,4 +211,51 @@ final class ModelDecodingTests: XCTestCase {
         let r = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(payload.utf8))
         XCTAssertNil(r.event.canEdit)
     }
+
+    // MARK: - Trips (docs/TRIPS-PLAN.md)
+
+    /// A trip chat message carries `roomId`/`senderName` (server can't resolve
+    /// a guest's name via `family.parents`, so it's sent pre-resolved).
+    func testDecodesChatMessageWithRoomIdAndSenderName() throws {
+        let payload = """
+        {
+          "message": {
+            "id": "m_5", "familyId": "f_1", "senderType": "parent", "senderId": "u_9",
+            "postedByUserId": "u_9", "text": "See you at the gate!", "card": null,
+            "createdAt": "2026-07-04T09:00:00.000Z",
+            "deleted": false, "deletedBy": null, "flagged": false, "flagReason": null, "flaggedBy": null,
+            "roomId": "trip:t_1", "senderName": "Jamie (guest)"
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(MessageResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.message.roomId, "trip:t_1")
+        XCTAssertEqual(r.message.senderName, "Jamie (guest)")
+    }
+
+    /// A message from a pre-Trips server (or old cache) omits `roomId`/
+    /// `senderName` entirely — both must decode to nil, never fail decoding.
+    func testDecodesChatMessageMissingRoomIdAndSenderNameAsNil() throws {
+        let r = try JSONDecoder().decode(MessagesResponse.self, from: Data(chatPayload.utf8))
+        XCTAssertNil(r.messages[0].roomId)
+        XCTAssertNil(r.messages[0].senderName)
+    }
+
+    /// `GET /api/chat/rooms` is a bare array (no wrapper object); the family
+    /// entry has no `tripId`/`memberCount`, the trip entry has both.
+    func testDecodesChatRoomsArray() throws {
+        let payload = """
+        [
+          { "roomId": "family", "title": "The Smiths" },
+          { "roomId": "trip:t_1", "tripId": "t_1", "title": "Lisbon 2026", "memberCount": 4 }
+        ]
+        """
+        let rooms = try JSONDecoder().decode([ChatRoom].self, from: Data(payload.utf8))
+        XCTAssertEqual(rooms.count, 2)
+        XCTAssertEqual(rooms[0].roomId, "family")
+        XCTAssertNil(rooms[0].tripId)
+        XCTAssertEqual(rooms[1].tripId, "t_1")
+        XCTAssertEqual(rooms[1].memberCount, 4)
+        XCTAssertEqual(rooms[1].id, "trip:t_1")
+    }
 }
