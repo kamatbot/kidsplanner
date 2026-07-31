@@ -1,0 +1,344 @@
+/* ============================================================
+   TRIPS.CSS — Trips (Phase C, fametc.com/trips + /trips/<id>)
+   Feature-scoped stylesheet for public/trips.html + public/trip-join.html
+   (both loaded standalone, outside the main app shell). Ports the
+   "Waypoint" UX reference mock 1:1 in layout/spacing/typography, but as
+   real classes (not the mock's inline styles) so this file is the single
+   place to tweak it. Horizon tokens only (--panel, --border, --accent,
+   --text, --text-2, --muted, --panel-2, --accent-soft, --hover, --shadow,
+   --radius, --radius-sm, --c-*) so dark mode stays correct — see
+   horizon.css. JetBrains Mono is used the same way the rest of the app
+   uses it (.micro-label, mono numerics) via the family already loaded by
+   fonts.css.
+============================================================ */
+
+/* ---------- shared page container (mirrors the mock's 900px column) ---------- */
+.trip-main {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+}
+
+/* ---------- trips LIST ---------- */
+.trip-list-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.trip-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+.trip-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.trip-card:hover { transform: translateY(-2px); }
+.trip-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.trip-card-name { font-size: 16.5px; font-weight: 700; letter-spacing: -.02em; }
+.trip-card-meta { margin-top: 6px; }
+.trip-card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.trip-card-counts { font-size: 12.5px; color: var(--text-2); }
+
+.trip-empty {
+  text-align: center;
+  padding: 70px 20px;
+  color: var(--text-2);
+  max-width: 420px;
+  margin: 0 auto;
+}
+.trip-empty-icon { font-size: 42px; margin-bottom: 12px; }
+.trip-empty h3 { color: var(--text); font-size: 18px; margin-bottom: 8px; }
+.trip-empty p { margin-bottom: 18px; line-height: 1.5; }
+
+/* ---------- trip HUB header + tabs (sticky, like the mock) ---------- */
+.trip-hub-header {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.trip-hub-title { min-width: 0; }
+.trip-hub-name-row { display: flex; align-items: center; gap: 6px; }
+.trip-hub-name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+.trip-hub-meta { margin-top: 2px; }
+.trip-hub-header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.trip-tabs {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  position: sticky;
+  top: 63px;
+  z-index: 19;
+  -webkit-overflow-scrolling: touch;
+}
+.trip-tab-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-2);
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color .15s;
+}
+.trip-tab-btn:hover { color: var(--text); }
+.trip-tab-btn.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ---------- avatars ---------- */
+.avatar-stack { display: flex; align-items: center; }
+.trip-avatar {
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex: none;
+  border: 2px solid var(--panel);
+}
+.trip-you-tag { font-weight: 400; color: var(--text-2); }
+
+/* ---------- role chips ---------- */
+.role-chip {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 4px 11px;
+  flex: none;
+  color: var(--text-2);
+  background: var(--panel-2);
+}
+.role-chip.role-owner { color: var(--accent); background: var(--accent-soft); }
+
+/* ---------- overview tab ---------- */
+.trip-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.trip-stat-card { padding: 16px 18px; }
+.trip-stat-val { font-family: "JetBrains Mono", monospace; font-size: 26px; font-weight: 700; margin-top: 4px; }
+.trip-overview-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 12px;
+}
+.trip-panel-title { margin-bottom: 10px; }
+.trip-next-flight-route { font-family: "JetBrains Mono", monospace; font-size: 22px; font-weight: 700; }
+.trip-next-flight-sub { font-size: 13px; color: var(--text-2); }
+.trip-next-flight-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.trip-next-flight-times { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--text-2); margin-top: 6px; }
+.trip-homebase-name { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.trip-homebase-addr { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+.trip-homebase-times { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--text-2); margin-top: 6px; }
+.trip-link-more { font-size: 13px; font-weight: 600; display: inline-block; margin-top: 10px; color: var(--accent); text-decoration: none; }
+.trip-link-more:hover { text-decoration: underline; }
+
+.trip-favorites-list { display: flex; flex-direction: column; gap: 12px; }
+.trip-favorite-row { display: flex; align-items: center; gap: 10px; }
+.trip-favorite-rank { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--muted); width: 18px; flex: none; }
+.trip-favorite-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-favorite-count { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--accent); font-weight: 700; flex: none; }
+
+.trip-feed-list { display: flex; flex-direction: column; gap: 13px; }
+.trip-feed-row { display: flex; align-items: flex-start; gap: 10px; }
+.trip-feed-text { flex: 1; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
+.trip-feed-text strong { color: var(--text); }
+.trip-feed-when { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); flex: none; }
+
+/* ---------- itinerary tab ---------- */
+.trip-itin-toolbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.trip-section-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.trip-itin-hint { font-size: 12.5px; color: var(--muted); }
+.trip-days { display: flex; flex-direction: column; gap: 26px; margin-top: 14px; }
+.trip-day-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.trip-day-badge { color: var(--accent); font-weight: 700; background: var(--accent-soft); padding: 4px 9px; border-radius: 7px; }
+.trip-day-label { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+.trip-day-count { color: var(--muted); }
+.trip-day-items { display: flex; flex-direction: column; gap: 8px; }
+
+.trip-drop-indicator { display: none; height: 3px; background: var(--accent); border-radius: 2px; margin: 0 0 8px; }
+.trip-drop-indicator.show { display: block; }
+
+.trip-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.trip-item[draggable="true"] { cursor: grab; }
+.trip-item[draggable="true"]:hover { box-shadow: var(--shadow); }
+.trip-item-drag { flex: none; margin-top: 4px; color: var(--muted); }
+.trip-item-time { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--text-2); width: 44px; flex: none; margin-top: 2px; }
+.trip-item-body { flex: 1; min-width: 0; }
+.trip-item-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.trip-item-title { font-size: 14.5px; font-weight: 600; }
+.trip-item-note { font-size: 13px; color: var(--text-2); margin-top: 3px; line-height: 1.45; }
+.trip-item-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.cat-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+}
+.cat-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+.trip-vote-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
+  border-radius: 999px; padding: 5px 10px; cursor: pointer;
+  font-size: 12.5px; font-weight: 700; font-family: "JetBrains Mono", monospace;
+}
+.trip-vote-btn.voted { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.trip-thread-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
+  border-radius: 999px; padding: 5px 10px; cursor: pointer;
+  font-size: 12.5px; font-weight: 700; font-family: "JetBrains Mono", monospace;
+}
+.trip-thread-btn:hover { background: var(--hover); }
+
+.trip-icon-btn { border: none; background: none; color: var(--muted); cursor: pointer; padding: 5px; border-radius: 7px; }
+.trip-icon-btn:hover { background: var(--hover); color: var(--text); }
+.trip-icon-btn.danger:hover { background: rgba(214, 87, 69, .1); color: #c0392b; }
+.trip-icon-btn.small { padding: 2px 5px; font-size: 12px; }
+
+.trip-thread-panel {
+  margin: 6px 0 4px 66px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.trip-comment-row { display: flex; align-items: flex-start; gap: 9px; }
+.trip-comment-body { font-size: 13px; line-height: 1.45; flex: 1; min-width: 0; }
+.trip-comment-body span { color: var(--text-2); }
+.trip-comment-actions { display: flex; gap: 2px; flex: none; }
+.trip-comment-form { display: flex; gap: 8px; }
+.trip-comment-form .trip-input { flex: 1; }
+
+.trip-add-place-btn {
+  width: 100%; border: 1.5px dashed var(--border); background: none; color: var(--text-2);
+  border-radius: 12px; padding: 10px 10px 10px 16px; cursor: pointer; font-size: 13.5px; font-weight: 600;
+  text-align: left; font-family: inherit;
+}
+.trip-add-place-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.trip-day-enddrop { display: flex; flex-direction: column; }
+
+/* ---------- inline forms (itinerary add/edit, flights, lodging, new trip) ---------- */
+.trip-inline-form {
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.trip-form-row, .trip-form-grid { display: flex; gap: 10px; flex-wrap: wrap; }
+.trip-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.trip-form-actions { display: flex; gap: 8px; align-items: center; }
+.trip-input, .trip-select {
+  font-family: inherit; font-size: 13.5px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--panel); color: var(--text); outline: none; width: 100%;
+}
+.trip-input:focus, .trip-select:focus { border-color: var(--accent); }
+.trip-input-mono { font-family: "JetBrains Mono", monospace; font-size: 13px; }
+.trip-input-time { width: 82px; flex: none; }
+.trip-input-grow { flex: 1; min-width: 180px; }
+
+/* ---------- flights + lodging tabs ---------- */
+.trip-section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.trip-section-sub { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.trip-card-list { display: flex; flex-direction: column; gap: 12px; }
+
+.trip-flight-card, .trip-lodging-card { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.trip-lodging-card { align-items: flex-start; gap: 16px; }
+.trip-flight-icon, .trip-lodging-icon {
+  flex: none; width: 42px; height: 42px; border-radius: 12px;
+  background: var(--accent-soft); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.trip-flight-main { min-width: 150px; }
+.trip-flight-route { font-family: "JetBrains Mono", monospace; font-size: 19px; font-weight: 700; }
+.trip-flight-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+.trip-mono { font-family: "JetBrains Mono", monospace; }
+.trip-flight-details { flex: 1; min-width: 170px; }
+.trip-flight-times { font-family: "JetBrains Mono", monospace; font-size: 13px; }
+.trip-conf-chip { color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; }
+
+.trip-lodging-main { flex: 1; min-width: 200px; }
+.trip-lodging-name { font-size: 16.5px; font-weight: 700; letter-spacing: -.02em; }
+.trip-lodging-addr { font-size: 13px; color: var(--text-2); margin-top: 3px; }
+.trip-lodging-cols { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+.trip-mono-val { font-family: "JetBrains Mono", monospace; font-size: 13px; margin-top: 2px; }
+.trip-note-chip {
+  font-size: 13px; color: var(--text-2); margin-top: 10px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 8px 12px; display: inline-block;
+}
+
+/* ---------- people tab ---------- */
+.trip-invite-card { margin-bottom: 16px; }
+.trip-invite-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.trip-invite-link {
+  flex: 1; min-width: 220px; font-family: "JetBrains Mono", monospace; font-size: 13.5px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 11px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.trip-invite-hint { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.trip-invite-admin { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.trip-member-list { display: flex; flex-direction: column; gap: 10px; }
+.trip-member-row {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  padding: 13px 16px; display: flex; align-items: center; gap: 13px;
+}
+.trip-member-info { flex: 1; min-width: 0; }
+.trip-member-name { font-size: 14.5px; font-weight: 600; }
+
+/* ---------- chat tab ---------- */
+.trip-chat-card { display: flex; flex-direction: column; padding: 0; height: min(560px, 65vh); }
+.trip-chat-card .chat-messages { padding: 18px; }
+.trip-chat-card .chat-send-row { padding: 14px 18px; }
+.chat-msg-avatar-row { display: flex; align-items: center; gap: 6px; margin: 0 0 3px 4px; }
+.chat-msg-avatar-row .chat-msg-sender { margin: 0; }
+
+/* ---------- trip-join.html ---------- */
+.trip-join-card { max-width: 440px; margin: 60px auto; padding: 32px; text-align: center; }
+.trip-join-icon { font-size: 42px; margin-bottom: 10px; }
+.trip-join-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 640px) {
+  .trip-hub-header { padding: 12px 14px; }
+  .trip-tabs { padding: 0 14px; }
+  .trip-main { padding: 18px 14px 60px; }
+  .trip-thread-panel { margin-left: 0; }
+  .trip-item-time { width: 38px; }
+}

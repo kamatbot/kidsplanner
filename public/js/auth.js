@@ -615,6 +615,187 @@
     });
   }
 
+  /* ---------- trips (Phase C — see docs/TRIPS-PLAN.md "API surface") ----------
+     One-liner wrappers over the trips API, same style as every wrapper above.
+     The trip chat LONG-POLL is the one exception: public/js/trips.js hits
+     /api/trips/:id/chat/messages with a raw fetch + AbortController (mirrors
+     app.js's chatLongPollFetch), so it isn't wrapped here — getTripChatMessages
+     below is only for one-shot fetches (initial load, post-send catch-up). */
+  async function getTrips() {
+    const data = await api("/api/trips", { method: "GET" });
+    return (data && data.trips) || [];
+  }
+
+  async function createTrip(payload) {
+    return api("/api/trips", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function getTrip(tripId) {
+    return api("/api/trips/" + encodeURIComponent(tripId), { method: "GET" });
+  }
+
+  async function updateTrip(tripId, patch) {
+    return api("/api/trips/" + encodeURIComponent(tripId), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteTrip(tripId) {
+    return api("/api/trips/" + encodeURIComponent(tripId), { method: "DELETE" });
+  }
+
+  async function regenerateTripInvite(tripId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/invite/regenerate", { method: "POST" });
+  }
+
+  async function disableTripInvite(tripId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/invite/disable", { method: "POST" });
+  }
+
+  async function joinTripPreview(code) {
+    return api("/api/trips/join/" + encodeURIComponent(code), { method: "GET" });
+  }
+
+  async function joinTrip(code) {
+    return api("/api/trips/join/" + encodeURIComponent(code), { method: "POST" });
+  }
+
+  async function removeTripMember(tripId, userId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/members/" + encodeURIComponent(userId), {
+      method: "DELETE",
+    });
+  }
+
+  async function addTripItineraryItem(tripId, payload) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/itinerary", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  async function updateTripItineraryItem(tripId, itemId, patch) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function moveTripItineraryItem(tripId, itemId, payload) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId) + "/move", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  async function deleteTripItineraryItem(tripId, itemId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId), {
+      method: "DELETE",
+    });
+  }
+
+  async function voteTripItineraryItem(tripId, itemId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId) + "/vote", {
+      method: "POST",
+    });
+  }
+
+  async function addTripComment(tripId, itemId, text) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId) + "/comments",
+      { method: "POST", body: JSON.stringify({ text: text || "" }) }
+    );
+  }
+
+  async function deleteTripComment(tripId, itemId, commentId) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId) +
+        "/comments/" + encodeURIComponent(commentId),
+      { method: "DELETE" }
+    );
+  }
+
+  async function flagTripComment(tripId, itemId, commentId, reason) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId) +
+        "/comments/" + encodeURIComponent(commentId) + "/flag",
+      { method: "POST", body: JSON.stringify({ reason: reason || "" }) }
+    );
+  }
+
+  async function addTripFlight(tripId, payload) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/flights", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  async function updateTripFlight(tripId, flightId, patch) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/flights/" + encodeURIComponent(flightId), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteTripFlight(tripId, flightId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/flights/" + encodeURIComponent(flightId), {
+      method: "DELETE",
+    });
+  }
+
+  async function addTripLodging(tripId, payload) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/lodging", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  async function updateTripLodging(tripId, lodgingId, patch) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/lodging/" + encodeURIComponent(lodgingId), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteTripLodging(tripId, lodgingId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/lodging/" + encodeURIComponent(lodgingId), {
+      method: "DELETE",
+    });
+  }
+
+  async function getTripChatMessages(tripId, opts) {
+    const params = new URLSearchParams();
+    if (opts && opts.afterId) params.set("afterId", opts.afterId);
+    if (opts && opts.wait) params.set("wait", "1");
+    if (opts && opts.since) params.set("since", opts.since);
+    if (opts && opts.limit) params.set("limit", opts.limit);
+    const qs = params.toString() ? ("?" + params.toString()) : "";
+    const data = await api("/api/trips/" + encodeURIComponent(tripId) + "/chat/messages" + qs, { method: "GET" });
+    return (data && data.messages) || [];
+  }
+
+  async function sendTripChatMessage(tripId, text, media) {
+    const body = { text: text || "" };
+    if (media) body.media = media;
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/chat/messages", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function deleteTripChatMessage(tripId, msgId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/chat/messages/" + encodeURIComponent(msgId), {
+      method: "DELETE",
+    });
+  }
+
+  async function flagTripChatMessage(tripId, msgId, reason) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/chat/messages/" + encodeURIComponent(msgId) + "/flag", {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || "" }),
+    });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -694,5 +875,33 @@
     getBrainTeaserToday,
     answerBrainTeaser,
     parseWithAI,
+    getTrips,
+    createTrip,
+    getTrip,
+    updateTrip,
+    deleteTrip,
+    regenerateTripInvite,
+    disableTripInvite,
+    joinTripPreview,
+    joinTrip,
+    removeTripMember,
+    addTripItineraryItem,
+    updateTripItineraryItem,
+    moveTripItineraryItem,
+    deleteTripItineraryItem,
+    voteTripItineraryItem,
+    addTripComment,
+    deleteTripComment,
+    flagTripComment,
+    addTripFlight,
+    updateTripFlight,
+    deleteTripFlight,
+    addTripLodging,
+    updateTripLodging,
+    deleteTripLodging,
+    getTripChatMessages,
+    sendTripChatMessage,
+    deleteTripChatMessage,
+    flagTripChatMessage,
   };
 })();
