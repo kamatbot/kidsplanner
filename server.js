@@ -38,6 +38,7 @@ const gifs = require("./lib/gifs");
 const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
 const goals = require("./lib/goals");
+const trips = require("./lib/trips");
 const activities = require("./lib/activities");
 const notes = require("./lib/notes");
 const wordbank = require("./lib/wordbank");
@@ -515,7 +516,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
+  schoolFeeds, homework, goals, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -530,6 +531,7 @@ require("./lib/routes/chat")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/goals")(app, routeDeps);
+require("./lib/routes/trips")(app, routeDeps);
 require("./lib/routes/activities")(app, routeDeps);
 require("./lib/routes/learning")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
@@ -618,6 +620,12 @@ app.get("/pricing", (req, res) => sendPage(req, res, "pricing.html", PUB));
 app.get("/help", (req, res) => sendPage(req, res, "help.html", PUB));
 app.get("/security", requireAuth, (req, res) => sendPage(req, res, "security.html"));
 app.get("/billing", requireAuth, requireParent, (req, res) => sendPage(req, res, "billing.html"));
+// Trips: a member-scoped hub, not family-scoped — parents, kids (read-only),
+// and guest accounts all pass requireAuth here; the page itself scopes what
+// renders. /trips/join/:code is the invite-link landing page and must stay
+// PUBLIC (signed-out visitors need to see it before signing up/in).
+app.get(["/trips", "/trips/:id"], requireAuth, (req, res) => sendPage(req, res, "trips.html"));
+app.get("/trips/join/:code", (req, res) => sendPage(req, res, "trip-join.html", PUB));
 app.get("/", (req, res) => {
   if (!currentUser(req)) return sendPage(req, res, "landing.html", PUB);
   sendPage(req, res, "index.html");
