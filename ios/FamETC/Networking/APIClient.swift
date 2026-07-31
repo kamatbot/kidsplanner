@@ -207,17 +207,28 @@ final class APIClient {
 
     // MARK: Chat
 
+    /// Trips (docs/TRIPS-PLAN.md): the family room keeps the EXACT legacy
+    /// `/api/chat/messages` endpoints (zero behavior change for the common
+    /// case); any `"trip:<tripId>"` room routes to that trip's own chat
+    /// endpoints instead. Every chat method below takes `roomId` with this
+    /// same default, so an un-migrated call site (family room) is unaffected.
+    private func chatBasePath(_ roomId: String) -> String {
+        guard roomId.hasPrefix("trip:") else { return "/api/chat/messages" }
+        let tripId = String(roomId.dropFirst("trip:".count))
+        return "/api/trips/\(tripId)/chat/messages"
+    }
+
     /// `afterId` + `wait` adopt the server's long-poll contract: with both set,
     /// a server that supports it holds the connection open (up to ~25s) and
     /// returns the moment a message newer than `afterId` exists, else answers
     /// with an empty list once the hold expires. A server that doesn't know
     /// these params simply ignores them and answers immediately with its plain
     /// `limit`-bounded list, same as calling this with neither — callers loop
-    /// this and degrade gracefully either way (see `AppStore.runChatLoop`).
+    /// this and degrade gracefully either way (see `AppStore.runActiveRoomLoop`).
     /// `wait` requests a client-side timeout longer than the server's hold so
     /// the request doesn't get cut off right as new messages would arrive.
-    func chatMessages(since: String? = nil, limit: Int? = nil, afterId: String? = nil, wait: Bool = false) async throws -> [ChatMessage] {
-        var path = "/api/chat/messages"
+    func chatMessages(roomId: String = familyRoomId, since: String? = nil, limit: Int? = nil, afterId: String? = nil, wait: Bool = false) async throws -> [ChatMessage] {
+        var path = chatBasePath(roomId)
         var query: [String] = []
         if let since { query.append("since=\(since)") }
         if let limit { query.append("limit=\(limit)") }
@@ -230,11 +241,11 @@ final class APIClient {
         let r: MessagesResponse = try await request(path, timeout: wait ? 35 : nil)
         return r.messages
     }
-    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String) async throws -> ChatMessage {
+    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String, roomId: String = familyRoomId) async throws -> ChatMessage {
         var body: [String: Any] = ["text": text, "senderType": senderType, "senderId": senderId]
         if let card { body["card"] = card }
         if let media { body["media"] = media }
-        let r: MessageResponse = try await request("/api/chat/messages", method: "POST", body: body)
+        let r: MessageResponse = try await request(chatBasePath(roomId), method: "POST", body: body)
         return r.message
     }
     func trendingGifs(limit: Int = 24) async throws -> [GifResult] {
@@ -246,13 +257,19 @@ final class APIClient {
         let r: GifsResponse = try await request("/api/gifs/search?q=\(q)&limit=\(limit)")
         return r.gifs
     }
-    func deleteChatMessage(_ id: String) async throws -> ChatMessage {
-        let r: MessageResponse = try await request("/api/chat/messages/\(id)", method: "DELETE")
+    func deleteChatMessage(_ id: String, roomId: String = familyRoomId) async throws -> ChatMessage {
+        let r: MessageResponse = try await request("\(chatBasePath(roomId))/\(id)", method: "DELETE")
         return r.message
     }
-    func flagChatMessage(_ id: String, reason: String) async throws -> ChatMessage {
-        let r: MessageResponse = try await request("/api/chat/messages/\(id)/flag", method: "POST", body: ["reason": reason])
+    func flagChatMessage(_ id: String, reason: String, roomId: String = familyRoomId) async throws -> ChatMessage {
+        let r: MessageResponse = try await request("\(chatBasePath(roomId))/\(id)/flag", method: "POST", body: ["reason": reason])
         return r.message
+    }
+    /// `GET /api/chat/rooms` — the family room (omitted for guests with no
+    /// family) plus one entry per trip the signed-in user is a member of.
+    /// Drives the Chat tab's room list; a plain array response (not wrapped).
+    func chatRooms() async throws -> [ChatRoom] {
+        try await request("/api/chat/rooms")
     }
 
     // MARK: Push

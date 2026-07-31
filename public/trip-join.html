@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join a trip — Fam ETC</title>
+  <!-- Dark mode must be applied before first paint (no flash) — same snippet
+       as index.html/trips.html so fam_theme applies consistently. -->
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/trips.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+        <span class="app-logo">🗂️</span>
+        <span class="app-name">Fam ETC</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="join-root" class="trip-main"></main>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    /* ============================================================
+       TRIP-JOIN.HTML — public landing for /trips/join/<code>.
+       Small inline script per docs/TRIPS-PLAN.md "Web UI": GET the preview,
+       branch on whether the visitor is signed in, then POST to join.
+
+       Contract note (resolved ambiguity — see task report): the plan's API
+       table marks GET /api/trips/join/:code as requireAuth, so a signed-out
+       visitor gets a 401 with no trip data at all, not a trip preview. That
+       makes "show the trip preview alongside Sign in / Create account" only
+       possible once the join endpoint is hit while already authenticated.
+       So: preview succeeds -> already signed in -> show real trip details +
+       a "Join trip" button. Preview 401s -> not signed in -> show a generic
+       invite message + Sign in / Create account buttons with next=<this
+       URL>, so landing back here after auth immediately shows the real
+       preview and a one-tap join.
+    ============================================================ */
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function getCodeFromPath() {
+      const m = location.pathname.match(/\/trips\/join\/([^/]+)/);
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    // Minimal local date-range formatter (this page intentionally doesn't
+    // load util.js — it's a single small inline script per the plan).
+    function formatDateRange(startISO, endISO) {
+      if (!startISO || !endISO) return '';
+      const s = new Date(startISO + 'T00:00:00');
+      const e = new Date(endISO + 'T00:00:00');
+      const sMonth = s.toLocaleDateString('en-US', { month: 'short' });
+      const eMonth = e.toLocaleDateString('en-US', { month: 'short' });
+      if (s.getFullYear() === e.getFullYear() && sMonth === eMonth) {
+        return `${sMonth} ${s.getDate()} – ${e.getDate()}, ${e.getFullYear()}`;
+      }
+      return `${sMonth} ${s.getDate()}, ${s.getFullYear()} – ${eMonth} ${e.getDate()}, ${e.getFullYear()}`;
+    }
+
+    function renderError(msg) {
+      document.getElementById('join-root').innerHTML = `
+        <div class="card trip-join-card">
+          <div class="trip-join-icon">✈️</div>
+          <h1>Hmm, that link didn't work</h1>
+          <p class="text-muted">${esc(msg)}</p>
+          <a class="btn-primary" href="/trips" style="display:inline-block;text-decoration:none;margin-top:14px">Go to your trips</a>
+        </div>`;
+    }
+
+    function renderSignedOut() {
+      const here = location.href;
+      const loginUrl = '/login?next=' + encodeURIComponent(here);
+      const signupUrl = '/signup?next=' + encodeURIComponent(here);
+      document.getElementById('join-root').innerHTML = `
+        <div class="card trip-join-card">
+          <div class="trip-join-icon">✈️</div>
+          <h1>You've been invited on a trip</h1>
+          <p class="text-muted">Sign in or create a free Fam ETC account to see the details and join.</p>
+          <div class="trip-join-actions">
+            <a class="btn-primary" href="${esc(loginUrl)}" style="text-decoration:none;text-align:center">Sign in</a>
+            <a class="btn-secondary" href="${esc(signupUrl)}" style="text-decoration:none;text-align:center">Create free account</a>
+          </div>
+        </div>`;
+    }
+
+    function renderSignedIn(code, trip) {
+      const startDate = trip.startDate || (trip.dates && trip.dates.startDate) || '';
+      const endDate = trip.endDate || (trip.dates && trip.dates.endDate) || '';
+      const dates = formatDateRange(startDate, endDate);
+      const memberCount = trip.memberCount || 0;
+      document.getElementById('join-root').innerHTML = `
+        <div class="card trip-join-card">
+          <div class="trip-join-icon">✈️</div>
+          <h1>${esc(trip.name || 'A trip')}</h1>
+          <div class="micro-label" style="margin:8px 0 4px">${esc(dates)}${trip.destination ? ' · ' + esc(trip.destination) : ''}</div>
+          <p class="text-muted">${esc(String(memberCount))} ${memberCount === 1 ? 'person is' : 'people are'} already planning this trip.</p>
+          <button type="button" class="btn-primary" id="join-btn" onclick="handleJoin('${esc(code)}')" style="margin-top:14px;width:100%">Join trip</button>
+          <div id="join-error" class="error-msg" style="margin-top:8px"></div>
+        </div>`;
+    }
+
+    async function handleJoin(code) {
+      const btn = document.getElementById('join-btn');
+      const errEl = document.getElementById('join-error');
+      if (btn) btn.disabled = true;
+      if (errEl) errEl.textContent = '';
+      try {
+        const res = await window.auth.joinTrip(code);
+        const id = res && res.trip && res.trip.id;
+        location.href = id ? ('/trips/' + id) : '/trips';
+      } catch (err) {
+        if (errEl) errEl.textContent = err.message;
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function boot() {
+      const code = getCodeFromPath();
+      if (!code) { renderError('This invite link is missing a code.'); return; }
+      try {
+        const preview = await window.auth.joinTripPreview(code);
+        const trip = preview && preview.trip;
+        if (!trip) { renderError('This invite link is invalid or has expired.'); return; }
+        renderSignedIn(code, trip);
+      } catch (err) {
+        if (err && err.status === 401) { renderSignedOut(); return; }
+        renderError((err && err.message) || 'This invite link is invalid or has expired.');
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

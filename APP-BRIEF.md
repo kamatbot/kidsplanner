@@ -99,6 +99,20 @@
 | Team B4F73U5RGR | Team B4F73U5RGR (unchanged — same Apple account) |
 | (existing KidsPlanner) kp_ localStorage keys | fam_ |
 
+## Trips (feature addendum, decided 2026-07-31)
+Collaborative vacation planning at fametc.com/trips — a parent invites OTHER
+ADULTS (outside the family) to plan together. Additive: no Identity or Design
+row changes. Full decisions + contract: [docs/TRIPS-PLAN.md](docs/TRIPS-PLAN.md).
+| Decision | Value |
+|---|---|
+| Scope model | A trip is its own scope object (member list, max 12) — never routed through the family model; `requireTrip` middleware, not `requireFamily`. |
+| Guest access | Invite link (24-char revocable code) → free passkey account with no family; guests see only their trips. No email invites (no mail infra). |
+| Kids | Read-only view of trips their family is on; no votes/edits/trip chat. |
+| Chat | Per-trip room on the existing chat engine (scope key `trip:<tripId>`, encrypted at rest); owner-or-author delete + flag (Apple UGC 1.2). |
+| Calendar | Server merges read-only trip events into GET /api/calendar/events — native iOS calendar needs no changes. |
+| iOS | Trip chat native (multi-room Chat tab), trip events native; trips UI is the first live HybridWebView surface (/trips). |
+| Billing | No paywall on trips in v1. |
+
 ## Launch checklist
 - [ ] ⚠ Confirm Apple Developer enrollment active on team B4F73U5RGR (blocks build/sign/TestFlight)
 - [ ] Server foundation boots, /api/health ok, passkey signup works (dev-login)

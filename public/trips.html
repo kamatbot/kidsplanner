@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trips — Fam ETC</title>
+  <!-- Dark mode must be applied before first paint (no flash): read the saved
+       preference or fall back to the OS setting. Mirrors the exact snippet in
+       index.html so fam_theme applies consistently across every page. -->
+  <script>
+    (function () {
+      try {
+        // fam_theme is stored JSON-encoded (see save() in util.js) — mirror
+        // that here so this pre-paint check agrees with applyThemeChoice().
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Trips (Phase C) — standalone shell for BOTH the trips list (/trips)
+       and the trip hub (/trips/<id>); trips.js reads location.pathname to
+       decide which to render and uses history.pushState to move between
+       them without a reload. See docs/TRIPS-PLAN.md "Web UI". -->
+  <link rel="stylesheet" href="/css/trips.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <a href="/trips" onclick="event.preventDefault();tripsGoList()" style="text-decoration:none;display:flex;align-items:center;gap:10px">
+        <span class="app-logo">🗂️</span>
+        <span class="app-name">Fam ETC</span>
+      </a>
+    </div>
+    <div class="header-right">
+      <a href="/" style="color:var(--accent);font-weight:800;text-decoration:none">← Back to app</a>
+    </div>
+  </header>
+
+  <main id="trips-root"></main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/util.js"></script>
+  <script src="/js/trips.js"></script>
+</body>
+</html>

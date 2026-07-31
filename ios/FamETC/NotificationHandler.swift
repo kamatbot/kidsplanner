@@ -19,6 +19,13 @@ extension Notification.Name {
     /// carries the family. (Approval UI is currently a web surface; the push at
     /// least brings the parent into the app.)
     static let famDeepLinkToKidApproval = Notification.Name("famDeepLinkToKidApproval")
+    /// Posted when a `trip_chat_message` or `trip_update` push is received/
+    /// tapped (lib/fam-notifications.js `notifyTripChatMessage`/
+    /// `notifyTripEvent`, docs/TRIPS-PLAN.md). `userInfo["tripId"]` carries the
+    /// trip to deep-link into. v1 routing is coarse — surface the Chat tab and,
+    /// once its room list has loaded, push into that trip's room; a full
+    /// `/trips/<id>` native deep link (the Trips webview tab) is a follow-up.
+    static let famDeepLinkToTripChat = Notification.Name("famDeepLinkToTripChat")
 }
 
 /// Reference payload shapes (lib/fam-notifications.js):
@@ -32,6 +39,13 @@ extension Notification.Name {
 ///   { aps: { alert: { title: "<kidName>: Homework due soon", body: title },
 ///            sound: "default" },
 ///     famType: "homework_reminder", homeworkId, dueDate }
+///
+///   // trip_chat_message / trip_update (docs/TRIPS-PLAN.md) — `tripId` read
+///   // as a top-level field to match the existing convention above (familyId/
+///   // homeworkId), not nested under a "data" key.
+///   { aps: { alert: { title: senderName, body: text }, sound: "default",
+///            "thread-id": "trip-<tripId>" },
+///     famType: "trip_chat_message" | "trip_update", tripId, url }
 final class NotificationHandler {
     static let shared = NotificationHandler()
 
@@ -53,6 +67,9 @@ final class NotificationHandler {
         case "kid_access_request":
             let familyId = (userInfo["familyId"] as? String) ?? ""
             NotificationCenter.default.post(name: .famDeepLinkToKidApproval, object: nil, userInfo: ["familyId": familyId])
+        case "trip_chat_message", "trip_update":
+            guard let tripId = userInfo["tripId"] as? String else { return }
+            NotificationCenter.default.post(name: .famDeepLinkToTripChat, object: nil, userInfo: ["tripId": tripId])
         default:
             break
         }

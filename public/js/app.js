@@ -370,7 +370,19 @@ async function bootstrapSession() {
     if (isKidSession()) {
       toast('❌ No family found for this account. Ask a parent to check your device setup.');
     } else {
-      showFirstRunPanel();
+      // Guests with zero families but at least one trip live in /trips, not
+      // the create-family first-run panel (Phase C — docs/TRIPS-PLAN.md "Web
+      // UI"). A trips API failure here must never break bootstrap, hence the
+      // try/catch swallowing everything but a successful, non-empty result.
+      let redirectedToTrips = false;
+      try {
+        const trips = await window.auth.getTrips();
+        if (trips && trips.length > 0) {
+          redirectedToTrips = true;
+          location.href = '/trips';
+        }
+      } catch (e) { /* ignore — fall through to the first-run panel */ }
+      if (!redirectedToTrips) showFirstRunPanel();
     }
   } else {
     hideFirstRunPanel();

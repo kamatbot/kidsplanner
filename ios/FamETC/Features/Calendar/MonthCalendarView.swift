@@ -153,8 +153,11 @@ private struct DayCell: View {
     @ViewBuilder private func chip(_ item: AgendaItem) -> some View {
         // Kid-color bar when the item is tied to a specific kid (matches the
         // Today schedule + canvas-1b), otherwise falls back to a kind color.
+        // Trips (docs/TRIPS-PLAN.md): read-only trip-derived events carry
+        // `category == "trip"` — teal, matching AgendaRow's airplane icon.
         let color: Color = Agenda.kidColor(item.kidId, kids: store.kids)
-            ?? (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent))
+            ?? (item.familyEvent?.category == "trip" ? Palette.teal
+                : (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent)))
         let titleText = (item.familyEvent?.isRecurring == true ? "↻ " : "") + item.title
         let label = HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 2.5)

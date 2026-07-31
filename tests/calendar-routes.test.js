@@ -21,6 +21,7 @@ process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-calrout
 const store = require("../lib/store");
 const family = require("../lib/family");
 const events = require("../lib/events");
+const trips = require("../lib/trips");
 const calendarRoutes = require("../lib/routes/calendar");
 
 function buildHarness() {
@@ -30,7 +31,7 @@ function buildHarness() {
 
   const chatPosts = [];
   calendarRoutes(app, {
-    schoolFeeds: {}, homework: {}, events,
+    schoolFeeds: {}, homework: {}, events, trips,
     chat: { sendMessage: (familyId, msg) => chatPosts.push({ familyId, msg }) },
     requireAuth: (req, res, next) => next(),
     requireParent: (req, res, next) => next(),
