@@ -52,6 +52,26 @@ let tripChatPollAbort = null;
 let tripChatNudgeReady = false;
 const TRIP_CHAT_BACKOFF_MS = [2000, 5000, 10000];
 
+// lib/trips.js publicTrip()/memberFaces() hand back a PALETTE NAME (see
+// lib/trips.js PALETTE — "accent"|"teal"|"blue"|"amber"|"green"|"violet"|
+// "orange"), not a CSS value, so the server never bakes a hex/light-vs-dark
+// decision into stored data. Map it to this app's Horizon token here, at the
+// single point every avatar renders through (avatarHtml below) — "amber"/
+// "violet" aren't valid CSS color keywords, so this isn't just cosmetic.
+const PALETTE_COLORS = {
+  accent: 'var(--accent)',
+  teal: 'var(--c-teal)',
+  blue: 'var(--c-blue)',
+  amber: 'var(--c-amber)',
+  green: 'var(--c-green)',
+  violet: 'var(--c-violet)',
+  orange: 'var(--c-orange)',
+};
+function paletteColor(name) {
+  if (!name) return 'var(--accent)';
+  return PALETTE_COLORS[name] || name; // already a CSS value (e.g. memberFor's 'var(--muted)' fallback)
+}
+
 const CATS = {
   food:     { label: 'Food',     color: 'var(--c-amber)' },
   sight:    { label: 'Sight',    color: 'var(--c-blue)' },
@@ -136,7 +156,7 @@ function memberFor(userId) {
 function avatarHtml(initial, color, size, overlap) {
   const s = size || 28;
   const ml = overlap ? Math.round(s * -0.22) : 0;
-  return `<div class="trip-avatar" style="width:${s}px;height:${s}px;font-size:${Math.round(s * 0.42)}px;background:${esc(color || 'var(--accent)')};margin-left:${ml}px" title="${esc(initial || '?')}">${esc(initial || '?')}</div>`;
+  return `<div class="trip-avatar" style="width:${s}px;height:${s}px;font-size:${Math.round(s * 0.42)}px;background:${esc(paletteColor(color))};margin-left:${ml}px" title="${esc(initial || '?')}">${esc(initial || '?')}</div>`;
 }
 
 function renderAvatarStack(faces, size) {
