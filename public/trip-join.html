@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Join a trip — Fam ETC</title>
   <!-- Dark mode must be applied before first paint (no flash) — same snippet
-       as index.html/trips.html so fam_theme applies consistently. -->
+       as index.html/trips.html so fam_theme applies consistently. (The scene
+       backgrounds are self-colored like imagery; only the card re-themes.) -->
   <script>
     (function () {
       try {
@@ -18,129 +19,368 @@
   </script>
   <link rel="stylesheet" href="/fonts/fonts.css">
   <link rel="stylesheet" href="/css/horizon.css">
-  <link rel="stylesheet" href="/css/styles.css">
-  <link rel="stylesheet" href="/css/trips.css">
+  <style>
+    /* Self-contained on purpose: this page owns its whole look (scene +
+       card), so it never fights trips.css/styles.css over shared classes.
+       Strict CSP means no external imagery — every "photo" here is an
+       inline SVG scene picked from the trip's destination keywords. */
+    html, body { height: 100%; }
+    body { margin: 0; overflow-x: hidden; }
+
+    .scene {
+      position: fixed; inset: 0; z-index: 0; overflow: hidden;
+      background: linear-gradient(180deg, #6f43d6 0%, #a4538f 45%, #f0704f 100%);
+    }
+    .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    .join-brand {
+      position: relative; z-index: 2;
+      display: inline-flex; align-items: center; gap: 9px;
+      margin: 18px 0 0 20px; text-decoration: none;
+    }
+    .join-brand-tile {
+      width: 30px; height: 30px; border-radius: 9px; background: rgba(255,255,255,.18);
+      display: flex; align-items: center; justify-content: center; font-size: 15px;
+      backdrop-filter: none; border: 1px solid rgba(255,255,255,.28);
+    }
+    .join-brand-name { color: #fff; font-weight: 700; font-size: 15px; letter-spacing: -.01em; text-shadow: 0 1px 8px rgba(0,0,0,.25); }
+
+    .join-wrap {
+      position: relative; z-index: 1;
+      min-height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      padding: 70px 18px 46px;
+      box-sizing: border-box;
+    }
+    .join-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.18), 0 30px 80px rgba(0,0,0,.28);
+      padding: 30px 30px 26px;
+      width: 100%; max-width: 480px;
+      text-align: center;
+      animation: joinRise .45s cubic-bezier(.16,1,.3,1) both;
+    }
+    @keyframes joinRise { from { opacity: 0; transform: translateY(18px) scale(.98); } to { opacity: 1; transform: none; } }
+
+    .join-inviter {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      margin-bottom: 14px;
+    }
+    .join-inviter-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--accent); color: var(--on-accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 700; flex: none;
+    }
+    .join-inviter-line { font-size: 14px; color: var(--text-2); text-align: left; line-height: 1.35; }
+    .join-inviter-line strong { color: var(--text); }
+
+    .join-trip-name {
+      font-size: clamp(26px, 6vw, 36px);
+      font-weight: 700; letter-spacing: -.03em; line-height: 1.1;
+      margin: 2px 0 14px; color: var(--text);
+    }
+    .join-chips { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .join-chip {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+      color: var(--text-2); background: var(--panel-2);
+      border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px;
+    }
+    .join-chip.accent { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+
+    .join-faces { display: flex; justify-content: center; margin-bottom: 6px; }
+    .join-face {
+      width: 30px; height: 30px; border-radius: 50%;
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; border: 2px solid var(--panel); margin-left: -7px;
+    }
+    .join-members { font-size: 13.5px; color: var(--text-2); margin: 0 0 18px; }
+
+    .join-actions { display: flex; flex-direction: column; gap: 9px; }
+    .join-btn {
+      display: block; width: 100%; box-sizing: border-box;
+      font-family: inherit; font-size: 15px; font-weight: 700;
+      border-radius: 12px; padding: 13px 16px; cursor: pointer;
+      text-decoration: none; text-align: center; border: none;
+      transition: transform .1s ease, filter .12s ease;
+    }
+    .join-btn:active { transform: scale(.985); }
+    .join-btn-primary { background: var(--accent); color: var(--on-accent); }
+    .join-btn-primary:hover { filter: brightness(1.07); }
+    .join-btn-primary:disabled { opacity: .6; cursor: default; }
+    .join-btn-secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+    .join-btn-secondary:hover { background: var(--hover); }
+
+    .join-fineprint { font-size: 12px; color: var(--muted); margin: 14px 0 0; }
+    .join-error { color: var(--c-red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+    .join-icon { font-size: 40px; margin-bottom: 10px; }
+    .join-sub { font-size: 14px; color: var(--text-2); line-height: 1.5; margin: 6px 0 18px; }
+  </style>
 </head>
 <body>
-  <header class="app-header">
-    <div class="header-left">
-      <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px">
-        <span class="app-logo">🗂️</span>
-        <span class="app-name">Fam ETC</span>
-      </a>
-    </div>
-  </header>
-
-  <main id="join-root" class="trip-main"></main>
+  <div class="scene" id="scene" aria-hidden="true"></div>
+  <a class="join-brand" href="/">
+    <span class="join-brand-tile">🗂️</span>
+    <span class="join-brand-name">Fam ETC</span>
+  </a>
+  <div class="join-wrap">
+    <main id="join-root" style="width:100%;display:flex;justify-content:center"></main>
+  </div>
 
   <script src="/js/auth.js"></script>
   <script>
     /* ============================================================
        TRIP-JOIN.HTML — public landing for /trips/join/<code>.
-       Small inline script per docs/TRIPS-PLAN.md "Web UI": GET the preview,
-       branch on whether the visitor is signed in, then POST to join.
-
-       Contract note (resolved ambiguity — see task report): the plan's API
-       table marks GET /api/trips/join/:code as requireAuth, so a signed-out
-       visitor gets a 401 with no trip data at all, not a trip preview. That
-       makes "show the trip preview alongside Sign in / Create account" only
-       possible once the join endpoint is hit while already authenticated.
-       So: preview succeeds -> already signed in -> show real trip details +
-       a "Join trip" button. Preview 401s -> not signed in -> show a generic
-       invite message + Sign in / Create account buttons with next=<this
-       URL>, so landing back here after auth immediately shows the real
-       preview and a one-tap join.
+       The trip preview is PUBLIC (anyone holding the link can join anyway,
+       so hiding the name/dates/inviter behind auth only made the landing
+       worse, not safer — errors still never reveal whether a code exists).
+       Falls back to a generic invite card if the server still requires auth
+       for the preview (older deploy).
     ============================================================ */
     function esc(s) {
       return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
-
     function getCodeFromPath() {
       const m = location.pathname.match(/\/trips\/join\/([^/]+)/);
       return m ? decodeURIComponent(m[1]) : '';
     }
-
-    // Minimal local date-range formatter (this page intentionally doesn't
-    // load util.js — it's a single small inline script per the plan).
     function formatDateRange(startISO, endISO) {
       if (!startISO || !endISO) return '';
       const s = new Date(startISO + 'T00:00:00');
       const e = new Date(endISO + 'T00:00:00');
-      const sMonth = s.toLocaleDateString('en-US', { month: 'short' });
-      const eMonth = e.toLocaleDateString('en-US', { month: 'short' });
-      if (s.getFullYear() === e.getFullYear() && sMonth === eMonth) {
-        return `${sMonth} ${s.getDate()} – ${e.getDate()}, ${e.getFullYear()}`;
-      }
-      return `${sMonth} ${s.getDate()}, ${s.getFullYear()} – ${eMonth} ${e.getDate()}, ${e.getFullYear()}`;
+      const sM = s.toLocaleDateString('en-US', { month: 'short' });
+      const eM = e.toLocaleDateString('en-US', { month: 'short' });
+      if (s.getFullYear() === e.getFullYear() && sM === eM) return `${sM} ${s.getDate()} – ${e.getDate()}, ${e.getFullYear()}`;
+      return `${sM} ${s.getDate()}, ${s.getFullYear()} – ${eM} ${e.getDate()}, ${e.getFullYear()}`;
+    }
+    function countdownLabel(startISO, endISO) {
+      if (!startISO) return '';
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const s = new Date(startISO + 'T00:00:00'), e = new Date((endISO || startISO) + 'T00:00:00');
+      if (today >= s && today <= e) return 'happening now ✈';
+      if (today > e) return '';
+      const days = Math.round((s - today) / 86400000);
+      return days === 1 ? 'tomorrow ✈' : `in ${days} days ✈`;
+    }
+
+    /* ---------- scenes: destination keywords -> inline SVG "photo" ---------- */
+    const SCENES = {
+      beach:    /beach|island|coast|sea|bay|phuket|bali|maldive|hawaii|cancun|samui|krabi|philippin|boracay|palawan|fiji|ibiza|santorini|riviera|cabo|tulum|okinawa/i,
+      mountain: /mountain|alp|ski|snow|aspen|whistler|banff|rockies|nepal|himalaya|andes|hike|trek|patagonia|dolomite|zermatt|hokkaido/i,
+      city:     /city|tokyo|new york|nyc|london|paris|rome|singapore|hong kong|seoul|shanghai|berlin|madrid|chicago|dubai|osaka|bangkok|taipei/i,
+    };
+    function sceneFor(trip) {
+      const hay = `${(trip && trip.destination) || ''} ${(trip && trip.name) || ''}`;
+      for (const kind of ['beach', 'mountain', 'city']) if (SCENES[kind].test(hay)) return kind;
+      return 'flight';
+    }
+    const SCENE_SVG = {
+      beach: `
+        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice">
+          <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#5b34c9"/><stop offset=".42" stop-color="#c25a7e"/>
+              <stop offset=".68" stop-color="#f0704f"/><stop offset=".82" stop-color="#ffb35c"/>
+            </linearGradient>
+            <linearGradient id="seaG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#d96a52"/><stop offset=".25" stop-color="#8a4a92"/><stop offset="1" stop-color="#3b2470"/>
+            </linearGradient>
+            <radialGradient id="sunG"><stop offset="0" stop-color="#fff3c4"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient>
+          </defs>
+          <rect width="1440" height="740" fill="url(#sky)"/>
+          <circle cx="880" cy="640" r="230" fill="url(#sunG)" opacity=".9"/>
+          <circle cx="880" cy="640" r="86" fill="#ffe9a8"/>
+          <rect y="700" width="1440" height="200" fill="url(#seaG)"/>
+          <path d="M0 710 Q 360 690 720 710 T 1440 710 V 740 Q 1080 722 720 738 T 0 740 Z" fill="#ffd28a" opacity=".35"/>
+          <path d="M0 780 Q 300 764 640 782 T 1440 778 V 806 Q 1100 792 720 806 T 0 804 Z" fill="#ffffff" opacity=".14"/>
+          <path d="M0 850 Q 420 834 860 852 T 1440 848 V 900 H 0 Z" fill="#2a1a52" opacity=".8"/>
+          <g fill="#241242">
+            <path d="M170 900 C 168 810 158 760 138 716 L 158 722 C 172 762 180 812 184 900 Z"/>
+            <g transform="translate(148,716)">
+              <path d="M0 0 C -52 -34 -104 -30 -138 -6 C -92 -22 -44 -16 0 6 Z"/>
+              <path d="M0 0 C -20 -56 -60 -84 -104 -88 C -62 -70 -28 -40 2 4 Z"/>
+              <path d="M0 0 C 18 -58 58 -88 104 -92 C 62 -72 28 -40 -2 4 Z"/>
+              <path d="M0 0 C 50 -38 104 -36 140 -10 C 94 -28 46 -20 0 6 Z"/>
+              <path d="M0 2 C 8 -62 2 -96 -18 -122 C -2 -92 4 -52 -6 2 Z"/>
+            </g>
+          </g>
+          <path d="M980 856 l 44 -26 6 26 Z" fill="#241242" opacity=".85"/>
+          <path d="M978 858 h 56 l -8 12 h -40 Z" fill="#1a0d33" opacity=".9"/>
+        </svg>`,
+      mountain: `
+        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice">
+          <defs>
+            <linearGradient id="mSky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#170f38"/><stop offset=".45" stop-color="#5b34c9"/>
+              <stop offset=".78" stop-color="#c25a7e"/><stop offset=".95" stop-color="#f0704f"/>
+            </linearGradient>
+          </defs>
+          <rect width="1440" height="900" fill="url(#mSky)"/>
+          <g fill="#fff" opacity=".85">
+            <circle cx="150" cy="120" r="2"/><circle cx="420" cy="70" r="1.6"/><circle cx="700" cy="150" r="2.2"/>
+            <circle cx="960" cy="90" r="1.5"/><circle cx="1220" cy="140" r="2"/><circle cx="1350" cy="60" r="1.4"/>
+            <circle cx="260" cy="220" r="1.4"/><circle cx="840" cy="240" r="1.6"/><circle cx="1100" cy="200" r="1.3"/>
+          </g>
+          <circle cx="1150" cy="200" r="52" fill="#ffe9a8" opacity=".95"/>
+          <path d="M0 640 L 300 330 L 520 560 L 700 400 L 980 660 L 1180 470 L 1440 680 V 900 H 0 Z" fill="#3b2470"/>
+          <path d="M300 330 l 56 58 -34 6 -30 -22 -32 26 Z" fill="#f4ecff"/>
+          <path d="M700 400 l 48 50 -30 4 -24 -18 -28 22 Z" fill="#f4ecff"/>
+          <path d="M1180 470 l 42 44 -26 4 -22 -16 -24 20 Z" fill="#f4ecff"/>
+          <path d="M0 760 L 260 560 L 560 780 L 880 580 L 1160 790 L 1440 620 V 900 H 0 Z" fill="#241242"/>
+          <path d="M0 900 L 340 720 L 720 900 Z M 720 900 L 1080 700 L 1440 900 Z" fill="#180b30"/>
+        </svg>`,
+      city: `
+        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice">
+          <defs>
+            <linearGradient id="cSky" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#120b2e"/><stop offset=".55" stop-color="#3b2470"/>
+              <stop offset=".9" stop-color="#8a4a92"/>
+            </linearGradient>
+          </defs>
+          <rect width="1440" height="900" fill="url(#cSky)"/>
+          <g fill="#fff" opacity=".8">
+            <circle cx="200" cy="140" r="1.8"/><circle cx="520" cy="90" r="1.4"/><circle cx="880" cy="130" r="2"/>
+            <circle cx="1160" cy="80" r="1.5"/><circle cx="1340" cy="170" r="1.8"/><circle cx="680" cy="200" r="1.3"/>
+          </g>
+          <circle cx="1130" cy="190" r="64" fill="#ffe9a8"/>
+          <circle cx="1104" cy="172" r="58" fill="#1c1240"/>
+          <g fill="#1c1040">
+            <rect x="40" y="520" width="130" height="380"/><rect x="200" y="430" width="110" height="470"/>
+            <rect x="340" y="560" width="150" height="340"/><rect x="520" y="380" width="120" height="520"/>
+            <rect x="670" y="500" width="140" height="400"/><rect x="840" y="330" width="110" height="570"/>
+            <rect x="980" y="540" width="150" height="360"/><rect x="1160" y="440" width="120" height="460"/>
+            <rect x="1310" y="580" width="120" height="320"/>
+            <path d="M560 380 h 40 l -20 -70 Z M 875 330 h 40 l -20 -80 Z"/>
+          </g>
+          <g fill="#ffd76e" opacity=".92">
+            <rect x="222" y="460" width="14" height="18"/><rect x="256" y="500" width="14" height="18"/><rect x="222" y="560" width="14" height="18"/>
+            <rect x="545" y="420" width="13" height="16"/><rect x="575" y="470" width="13" height="16"/><rect x="545" y="540" width="13" height="16"/><rect x="575" y="620" width="13" height="16"/>
+            <rect x="862" y="370" width="13" height="16"/><rect x="895" y="430" width="13" height="16"/><rect x="862" y="520" width="13" height="16"/>
+            <rect x="1185" y="480" width="14" height="17"/><rect x="1220" y="540" width="14" height="17"/><rect x="1185" y="640" width="14" height="17"/>
+            <rect x="66" y="560" width="14" height="17"/><rect x="110" y="620" width="14" height="17"/>
+            <rect x="700" y="540" width="13" height="16"/><rect x="740" y="600" width="13" height="16"/><rect x="1010" y="580" width="14" height="17"/>
+          </g>
+        </svg>`,
+      flight: `
+        <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMax slice">
+          <defs>
+            <linearGradient id="fSky" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#6f43d6"/><stop offset=".55" stop-color="#b0567d"/><stop offset="1" stop-color="#f0704f"/>
+            </linearGradient>
+          </defs>
+          <rect width="1440" height="900" fill="url(#fSky)"/>
+          <circle cx="1120" cy="250" r="120" fill="#ffe9a8" opacity=".22"/>
+          <circle cx="1120" cy="250" r="70" fill="#ffe9a8" opacity=".9"/>
+          <g fill="#fff">
+            <ellipse cx="260" cy="620" rx="150" ry="34" opacity=".2"/><ellipse cx="360" cy="596" rx="120" ry="28" opacity=".16"/>
+            <ellipse cx="1060" cy="700" rx="190" ry="40" opacity=".18"/><ellipse cx="940" cy="672" rx="120" ry="26" opacity=".13"/>
+            <ellipse cx="720" cy="330" rx="110" ry="24" opacity=".14"/>
+          </g>
+          <path d="M 140 760 Q 620 380 1250 210" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="2 14" stroke-linecap="round" opacity=".75"/>
+          <g transform="translate(1250,210) rotate(-18)" fill="#fff">
+            <path d="M0 0 c 26 -4 44 -4 58 0 c -14 5 -32 5 -58 2 l -36 22 l -10 -3 l 26 -20 l -44 -6 l -12 8 l -8 -2 l 10 -12 l -10 -12 l 8 -2 l 12 8 l 44 -6 l -26 -20 l 10 -3 z"/>
+          </g>
+        </svg>`,
+    };
+    function paintScene(kind) {
+      document.getElementById('scene').innerHTML = SCENE_SVG[kind] || SCENE_SVG.flight;
+    }
+
+    /* ---------- render states ---------- */
+    function facesHtml(faces) {
+      const COLORS = { accent: '#6f43d6', teal: '#0d9488', blue: '#2563eb', amber: '#f59e0b', green: '#16a34a', violet: '#7c3aed', orange: '#ea580c' };
+      return (faces || []).map((f) => `<span class="join-face" style="background:${COLORS[f.color] || '#6f43d6'}">${esc(f.initial || '?')}</span>`).join('');
+    }
+
+    function renderPreview(code, trip, signedIn) {
+      const dates = formatDateRange(trip.startDate, trip.endDate);
+      const cd = countdownLabel(trip.startDate, trip.endDate);
+      const inviter = trip.inviterName || null;
+      const memberCount = trip.memberCount || 0;
+      const here = location.href;
+      const actions = signedIn
+        ? `<button type="button" class="join-btn join-btn-primary" id="join-btn" onclick="handleJoin('${esc(code)}')">Count me in — join the trip</button>`
+        : `<a class="join-btn join-btn-primary" href="/signup?next=${encodeURIComponent(here)}">Create a free account &amp; join</a>
+           <a class="join-btn join-btn-secondary" href="/login?next=${encodeURIComponent(here)}">I already have an account</a>`;
+      document.getElementById('join-root').innerHTML = `
+        <div class="join-card">
+          <div class="join-inviter">
+            <span class="join-inviter-avatar">${esc((inviter || 'A')[0].toUpperCase())}</span>
+            <span class="join-inviter-line"><strong>${esc(inviter || 'A friend')}</strong> invited you to</span>
+          </div>
+          <h1 class="join-trip-name">${esc(trip.name || 'A trip')}</h1>
+          <div class="join-chips">
+            ${dates ? `<span class="join-chip">${esc(dates)}</span>` : ''}
+            ${trip.destination ? `<span class="join-chip">${esc(trip.destination)}</span>` : ''}
+            ${cd ? `<span class="join-chip accent">${esc(cd)}</span>` : ''}
+          </div>
+          ${(trip.memberFaces && trip.memberFaces.length) ? `<div class="join-faces">${facesHtml(trip.memberFaces)}</div>` : ''}
+          <p class="join-members">${esc(String(memberCount))} ${memberCount === 1 ? 'person is' : 'people are'} already planning — the itinerary, flights, and group chat are waiting.</p>
+          <div class="join-actions">${actions}</div>
+          <div class="join-error" id="join-error"></div>
+          ${signedIn ? '' : `<p class="join-fineprint">Free to join · passkey sign-in, no passwords</p>`}
+        </div>`;
+    }
+
+    // Older server (auth-gated preview): generic card, still on a scene.
+    function renderSignedOutGeneric() {
+      const here = location.href;
+      document.getElementById('join-root').innerHTML = `
+        <div class="join-card">
+          <div class="join-icon">✈️</div>
+          <h1 class="join-trip-name" style="font-size:26px">You've been invited on a trip</h1>
+          <p class="join-sub">Sign in or create a free Fam ETC account to see the details and join.</p>
+          <div class="join-actions">
+            <a class="join-btn join-btn-primary" href="/signup?next=${encodeURIComponent(here)}">Create a free account</a>
+            <a class="join-btn join-btn-secondary" href="/login?next=${encodeURIComponent(here)}">Sign in</a>
+          </div>
+          <p class="join-fineprint">Free to join · passkey sign-in, no passwords</p>
+        </div>`;
     }
 
     function renderError(msg) {
       document.getElementById('join-root').innerHTML = `
-        <div class="card trip-join-card">
-          <div class="trip-join-icon">✈️</div>
-          <h1>Hmm, that link didn't work</h1>
-          <p class="text-muted">${esc(msg)}</p>
-          <a class="btn-primary" href="/trips" style="display:inline-block;text-decoration:none;margin-top:14px">Go to your trips</a>
-        </div>`;
-    }
-
-    function renderSignedOut() {
-      const here = location.href;
-      const loginUrl = '/login?next=' + encodeURIComponent(here);
-      const signupUrl = '/signup?next=' + encodeURIComponent(here);
-      document.getElementById('join-root').innerHTML = `
-        <div class="card trip-join-card">
-          <div class="trip-join-icon">✈️</div>
-          <h1>You've been invited on a trip</h1>
-          <p class="text-muted">Sign in or create a free Fam ETC account to see the details and join.</p>
-          <div class="trip-join-actions">
-            <a class="btn-primary" href="${esc(loginUrl)}" style="text-decoration:none;text-align:center">Sign in</a>
-            <a class="btn-secondary" href="${esc(signupUrl)}" style="text-decoration:none;text-align:center">Create free account</a>
-          </div>
-        </div>`;
-    }
-
-    function renderSignedIn(code, trip) {
-      const startDate = trip.startDate || (trip.dates && trip.dates.startDate) || '';
-      const endDate = trip.endDate || (trip.dates && trip.dates.endDate) || '';
-      const dates = formatDateRange(startDate, endDate);
-      const memberCount = trip.memberCount || 0;
-      document.getElementById('join-root').innerHTML = `
-        <div class="card trip-join-card">
-          <div class="trip-join-icon">✈️</div>
-          <h1>${esc(trip.name || 'A trip')}</h1>
-          <div class="micro-label" style="margin:8px 0 4px">${esc(dates)}${trip.destination ? ' · ' + esc(trip.destination) : ''}</div>
-          <p class="text-muted">${esc(String(memberCount))} ${memberCount === 1 ? 'person is' : 'people are'} already planning this trip.</p>
-          <button type="button" class="btn-primary" id="join-btn" onclick="handleJoin('${esc(code)}')" style="margin-top:14px;width:100%">Join trip</button>
-          <div id="join-error" class="error-msg" style="margin-top:8px"></div>
+        <div class="join-card">
+          <div class="join-icon">🧭</div>
+          <h1 class="join-trip-name" style="font-size:26px">Hmm, that link didn't work</h1>
+          <p class="join-sub">${esc(msg)}</p>
+          <a class="join-btn join-btn-secondary" href="/trips">Go to your trips</a>
         </div>`;
     }
 
     async function handleJoin(code) {
       const btn = document.getElementById('join-btn');
       const errEl = document.getElementById('join-error');
-      if (btn) btn.disabled = true;
+      if (btn) { btn.disabled = true; btn.textContent = 'Joining…'; }
       if (errEl) errEl.textContent = '';
       try {
         const res = await window.auth.joinTrip(code);
         const id = res && res.trip && res.trip.id;
         location.href = id ? ('/trips/' + id) : '/trips';
       } catch (err) {
+        if (err && err.status === 401) { location.href = '/login?next=' + encodeURIComponent(location.href); return; }
         if (errEl) errEl.textContent = err.message;
-        if (btn) btn.disabled = false;
+        if (btn) { btn.disabled = false; btn.textContent = 'Count me in — join the trip'; }
       }
     }
 
     async function boot() {
+      paintScene('flight');
       const code = getCodeFromPath();
       if (!code) { renderError('This invite link is missing a code.'); return; }
+      let signedIn = false;
+      try { signedIn = !!(await window.auth.getMe()); } catch (e) { signedIn = false; }
       try {
         const preview = await window.auth.joinTripPreview(code);
         const trip = preview && preview.trip;
         if (!trip) { renderError('This invite link is invalid or has expired.'); return; }
-        renderSignedIn(code, trip);
+        paintScene(sceneFor(trip));
+        renderPreview(code, trip, signedIn);
       } catch (err) {
-        if (err && err.status === 401) { renderSignedOut(); return; }
+        if (err && err.status === 401) { renderSignedOutGeneric(); return; }
         renderError((err && err.message) || 'This invite link is invalid or has expired.');
       }
     }
