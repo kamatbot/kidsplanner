@@ -12,10 +12,10 @@
    fonts.css.
 ============================================================ */
 
-/* ---------- shared page container (mirrors the mock's 900px column) ---------- */
+/* ---------- shared page container (matches the 1160px hub chrome) ---------- */
 .trip-main {
   width: 100%;
-  max-width: 900px;
+  max-width: 1160px;
   margin: 0 auto;
   padding: 24px 20px 80px;
 }
