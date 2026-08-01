@@ -2365,10 +2365,11 @@ async function handleSendChatMessage(e) {
   try {
     const res = await window.auth.sendChatMessage(text);
     if (input) input.value = '';
+    // Merge (id-dedupe), never raw-push: the server emits to long-poll
+    // waiters before this POST returns, so the in-flight poll can deliver
+    // the same message first and a push would render it twice.
     if (res && res.message) {
-      chatMessages.push(res.message);
-      chatLastAt = res.message.createdAt;
-      renderChatMessages();
+      mergeChatMessages([res.message]);
     } else {
       await pollChatMessages();
     }
@@ -2506,10 +2507,9 @@ async function handleSendGif(url, previewUrl, width, height) {
   closeChatPickers();
   try {
     const res = await window.auth.sendChatMessage('', { type: 'gif', url, previewUrl, width, height });
+    // Merge, never raw-push — same long-poll race as handleSendChatMessage.
     if (res && res.message) {
-      chatMessages.push(res.message);
-      chatLastAt = res.message.createdAt;
-      renderChatMessages();
+      mergeChatMessages([res.message]);
     } else {
       await pollChatMessages();
     }
