@@ -1964,6 +1964,35 @@ function tripChatAvatarFor(userId) {
   return memberFor(userId);
 }
 
+function tripChatUpdateMeta(type) {
+  if (type === 'trip-flight') return { kind: 'flight', label: 'Flight', icon: '✈️' };
+  if (type === 'trip-lodging') return { kind: 'lodging', label: 'Stay', icon: '🛏️' };
+  if (type === 'trip-itinerary') return { kind: 'itinerary', label: 'Itinerary', icon: '🗺️' };
+  if (type === 'trip-packing') return { kind: 'packing', label: 'Packing', icon: '🧳' };
+  if (type === 'trip-member') return { kind: 'member', label: 'Crew', icon: '👋' };
+  return null;
+}
+
+function renderTripChatUpdate(message, senderName, time, controls) {
+  const card = message.card;
+  const meta = card && tripChatUpdateMeta(card.type);
+  if (!meta) return '';
+  const title = card.title || message.text || 'Trip update';
+  const detail = card.title && message.text ? `<div class="trip-chat-update-detail">${esc(message.text)}</div>` : '';
+  const actor = card.type === 'trip-member' ? '' : `<span>${esc(senderName || 'Trip member')}</span><span aria-hidden="true">•</span>`;
+  return `<div class="trip-chat-update trip-chat-update-${meta.kind}">
+    <div class="trip-chat-update-icon" aria-hidden="true">${meta.icon}</div>
+    <div class="trip-chat-update-body">
+      <div class="trip-chat-update-kind">${meta.label}</div>
+      <div class="trip-chat-update-title">${esc(title)}</div>
+      ${detail}
+      <div class="trip-chat-update-meta">
+        ${actor}<time>${esc(time)}</time>${controls}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderTripChatMessages() {
   const el = document.getElementById('trip-chat-messages');
   if (!el) return;
@@ -1979,6 +2008,8 @@ function renderTripChatMessages() {
         ${canDelete ? `<button type="button" class="chat-msg-ctrl" onclick="tripDeleteChatMsg('${esc(m.id)}')" title="Delete">🗑️</button>` : ''}
         <button type="button" class="chat-msg-ctrl" onclick="tripFlagChatMsg('${esc(m.id)}')" title="Report / flag message">🚩</button>
       </div>`;
+    const updateCard = renderTripChatUpdate(m, senderName, time, controls);
+    if (updateCard) return updateCard;
     return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
       ${!own ? `<div class="chat-msg-avatar-row">${avatarHtml(face.initial, face.color, 16, false)}<span class="chat-msg-sender">${esc(senderName)}</span></div>` : ''}
       <div class="chat-msg-bubble">
