@@ -2118,11 +2118,11 @@ async function tripSendChatMessage(e) {
   try {
     const res = await window.auth.sendTripChatMessage(currentTripId, text);
     if (input) input.value = '';
-    if (res && res.message) {
-      tripChatMessages.push(res.message);
-      tripChatLastId = res.message.id;
-      renderTripChatMessages();
-    }
+    // MUST go through the id-deduping merge, never a raw push: the server
+    // emits to long-poll waiters BEFORE the POST response returns, so the
+    // in-flight poll usually delivers this same message first — a raw push
+    // here rendered every sent message twice.
+    if (res && res.message) tripMergeChatMessages([res.message]);
     tripScrollChatToBottom();
   } catch (err) {
     toast('❌ ' + err.message);
