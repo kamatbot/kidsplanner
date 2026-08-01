@@ -219,6 +219,191 @@ test("GET /api/trips/join/:code: an invalid code 404s without leaking existence"
   assert.equal(res.statusCode, 404);
 });
 
+// ---------- ideas bucket move (v1.1) ----------
+test("POST /api/trips/:tripId/itinerary/:id/move: date:null moves the item to Ideas without rejection", async () => {
+  const routes = buildHarness();
+  const { trip, owner } = makeTrip("Z12");
+  const item = trips.addItineraryItem(trip.id, owner.id, { date: "2026-08-01", title: "Museum", category: "sight" }).item;
+  const res = await call(routes["POST /api/trips/:tripId/itinerary/:id/move"], {
+    user: owner, params: { tripId: trip.id, id: item.id }, body: { date: null },
+  });
+  assert.equal(res.statusCode, 200);
+  const moved = res.body.trip.itinerary.find((i) => i.id === item.id);
+  assert.equal(moved.date, null);
+});
+
+// ---------- checklists (v1.1) ----------
+function checklistHarness(label) {
+  const routes = buildHarness();
+  const { trip, owner, fam } = makeTrip(label);
+  const editor = makeGuest(`${label}e`);
+  trips.joinByCode(trip.inviteCode, editor.id);
+  const { kid } = family.addKid(fam.id, fam.parentIds[0], { name: "Kiddo" });
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
+  return { routes, trip, owner, editor, kidUser };
+}
+
+test("checklists: GET-blocked-for-kid route gate does NOT apply — a kid can reach checklist routes (per-handler checks decide)", async () => {
+  const { routes, trip, kidUser } = checklistHarness("CKR1");
+  // A kid hitting the SHARED create route is still 403'd, but by the
+  // per-handler member check, not by a method-based 403 from requireTrip.
+  const res = await call(routes["POST /api/trips/:tripId/checklists"], {
+    user: kidUser, params: { tripId: trip.id }, body: { title: "Beach gear" },
+  });
+  assert.equal(res.statusCode, 403);
+  assert.match(res.body.error, /members/);
+});
+
+test("POST .../checklists: member creates a shared list; a kid is blocked", async () => {
+  const { routes, trip, owner, editor, kidUser } = checklistHarness("CKR2");
+  const ownerRes = await call(routes["POST /api/trips/:tripId/checklists"], {
+    user: owner, params: { tripId: trip.id }, body: { title: "Beach gear" },
+  });
+  assert.equal(ownerRes.statusCode, 200);
+  assert.equal(ownerRes.body.checklist.kind, "shared");
+
+  const editorRes = await call(routes["POST /api/trips/:tripId/checklists"], {
+    user: editor, params: { tripId: trip.id }, body: { title: "Snorkels" },
+  });
+  assert.equal(editorRes.statusCode, 200);
+
+  const kidRes = await call(routes["POST /api/trips/:tripId/checklists"], {
+    user: kidUser, params: { tripId: trip.id }, body: { title: "Nope" },
+  });
+  assert.equal(kidRes.statusCode, 403);
+});
+
+test("POST .../checklists/personal: get-or-create is idempotent and works for a kid (own list)", async () => {
+  const { routes, trip, kidUser } = checklistHarness("CKR3");
+  const first = await call(routes["POST /api/trips/:tripId/checklists/personal"], { user: kidUser, params: { tripId: trip.id } });
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.body.checklist.kind, "personal");
+  assert.equal(first.body.checklist.ownerUserId, kidUser.id);
+  const second = await call(routes["POST /api/trips/:tripId/checklists/personal"], { user: kidUser, params: { tripId: trip.id } });
+  assert.equal(second.body.checklist.id, first.body.checklist.id);
+});
+
+test("shared list items: member can add/toggle/delete; a kid is blocked on every mutation", async () => {
+  const { routes, trip, owner, kidUser } = checklistHarness("CKR4");
+  const list = (await call(routes["POST /api/trips/:tripId/checklists"], {
+    user: owner, params: { tripId: trip.id }, body: { title: "Packing" },
+  })).body.checklist;
+
+  const kidAdd = await call(routes["POST /api/trips/:tripId/checklists/:lid/items"], {
+    user: kidUser, params: { tripId: trip.id, lid: list.id }, body: { text: "Sunscreen" },
+  });
+  assert.equal(kidAdd.statusCode, 403);
+
+  const added = await call(routes["POST /api/trips/:tripId/checklists/:lid/items"], {
+    user: owner, params: { tripId: trip.id, lid: list.id }, body: { text: "Sunscreen" },
+  });
+  assert.equal(added.statusCode, 200);
+  assert.equal(added.body.item.doneBy, null);
+
+  const kidToggle = await call(routes["PATCH /api/trips/:tripId/checklists/:lid/items/:iid"], {
+    user: kidUser, params: { tripId: trip.id, lid: list.id, iid: added.body.item.id }, body: { done: true },
+  });
+  assert.equal(kidToggle.statusCode, 403);
+
+  const toggled = await call(routes["PATCH /api/trips/:tripId/checklists/:lid/items/:iid"], {
+    user: owner, params: { tripId: trip.id, lid: list.id, iid: added.body.item.id }, body: { done: true },
+  });
+  assert.equal(toggled.statusCode, 200);
+  assert.equal(toggled.body.item.doneBy, owner.id);
+
+  const kidDelete = await call(routes["DELETE /api/trips/:tripId/checklists/:lid/items/:iid"], {
+    user: kidUser, params: { tripId: trip.id, lid: list.id, iid: added.body.item.id },
+  });
+  assert.equal(kidDelete.statusCode, 403);
+
+  const deleted = await call(routes["DELETE /api/trips/:tripId/checklists/:lid/items/:iid"], {
+    user: owner, params: { tripId: trip.id, lid: list.id, iid: added.body.item.id },
+  });
+  assert.equal(deleted.statusCode, 200);
+});
+
+test("personal list items: a kid has full control of their OWN list, and is blocked from another user's personal list", async () => {
+  const { routes, trip, owner, kidUser } = checklistHarness("CKR5");
+  const kidList = (await call(routes["POST /api/trips/:tripId/checklists/personal"], { user: kidUser, params: { tripId: trip.id } })).body.checklist;
+  const ownerList = (await call(routes["POST /api/trips/:tripId/checklists/personal"], { user: owner, params: { tripId: trip.id } })).body.checklist;
+
+  // kid can add/toggle/delete on their OWN list
+  const kidAdd = await call(routes["POST /api/trips/:tripId/checklists/:lid/items"], {
+    user: kidUser, params: { tripId: trip.id, lid: kidList.id }, body: { text: "Teddy bear" },
+  });
+  assert.equal(kidAdd.statusCode, 200);
+  const kidToggle = await call(routes["PATCH /api/trips/:tripId/checklists/:lid/items/:iid"], {
+    user: kidUser, params: { tripId: trip.id, lid: kidList.id, iid: kidAdd.body.item.id }, body: { done: true },
+  });
+  assert.equal(kidToggle.statusCode, 200);
+  assert.equal(kidToggle.body.item.doneBy, kidUser.id);
+  const kidDelete = await call(routes["DELETE /api/trips/:tripId/checklists/:lid/items/:iid"], {
+    user: kidUser, params: { tripId: trip.id, lid: kidList.id, iid: kidAdd.body.item.id },
+  });
+  assert.equal(kidDelete.statusCode, 200);
+
+  // kid is blocked from adding to the OWNER's personal list
+  const blocked = await call(routes["POST /api/trips/:tripId/checklists/:lid/items"], {
+    user: kidUser, params: { tripId: trip.id, lid: ownerList.id }, body: { text: "Sneaky" },
+  });
+  assert.equal(blocked.statusCode, 403);
+});
+
+test("PATCH .../checklists/:lid title: shared requires membership, personal requires the owner", async () => {
+  const { routes, trip, owner, editor, kidUser } = checklistHarness("CKR6");
+  const shared = (await call(routes["POST /api/trips/:tripId/checklists"], { user: owner, params: { tripId: trip.id }, body: { title: "Packing" } })).body.checklist;
+  const renamedByEditor = await call(routes["PATCH /api/trips/:tripId/checklists/:lid"], {
+    user: editor, params: { tripId: trip.id, lid: shared.id }, body: { title: "Group packing" },
+  });
+  assert.equal(renamedByEditor.statusCode, 200);
+  const kidRename = await call(routes["PATCH /api/trips/:tripId/checklists/:lid"], {
+    user: kidUser, params: { tripId: trip.id, lid: shared.id }, body: { title: "Nope" },
+  });
+  assert.equal(kidRename.statusCode, 403);
+
+  const personal = (await call(routes["POST /api/trips/:tripId/checklists/personal"], { user: kidUser, params: { tripId: trip.id } })).body.checklist;
+  const ownerRenamesKidList = await call(routes["PATCH /api/trips/:tripId/checklists/:lid"], {
+    user: owner, params: { tripId: trip.id, lid: personal.id }, body: { title: "Nope" },
+  });
+  assert.equal(ownerRenamesKidList.statusCode, 403);
+  const kidRenamesOwn = await call(routes["PATCH /api/trips/:tripId/checklists/:lid"], {
+    user: kidUser, params: { tripId: trip.id, lid: personal.id }, body: { title: "Kiddo's packing" },
+  });
+  assert.equal(kidRenamesOwn.statusCode, 200);
+});
+
+test("DELETE .../checklists/:lid: shared = trip owner or list creator; personal = owner only", async () => {
+  const { routes, trip, owner, editor, kidUser } = checklistHarness("CKR7");
+  // shared list created by editor: editor (creator) can delete it
+  const sharedByEditor = (await call(routes["POST /api/trips/:tripId/checklists"], { user: editor, params: { tripId: trip.id }, body: { title: "Snacks" } })).body.checklist;
+  const strangerDelete = await call(routes["DELETE /api/trips/:tripId/checklists/:lid"], {
+    user: kidUser, params: { tripId: trip.id, lid: sharedByEditor.id },
+  });
+  assert.equal(strangerDelete.statusCode, 403);
+  const creatorDelete = await call(routes["DELETE /api/trips/:tripId/checklists/:lid"], {
+    user: editor, params: { tripId: trip.id, lid: sharedByEditor.id },
+  });
+  assert.equal(creatorDelete.statusCode, 200);
+
+  // shared list created by editor, deleted by the trip OWNER (not the creator)
+  const sharedByEditor2 = (await call(routes["POST /api/trips/:tripId/checklists"], { user: editor, params: { tripId: trip.id }, body: { title: "Games" } })).body.checklist;
+  const ownerDeletesOthers = await call(routes["DELETE /api/trips/:tripId/checklists/:lid"], {
+    user: owner, params: { tripId: trip.id, lid: sharedByEditor2.id },
+  });
+  assert.equal(ownerDeletesOthers.statusCode, 200);
+
+  // personal list: only its own owner may delete it, even the trip owner cannot
+  const kidPersonal = (await call(routes["POST /api/trips/:tripId/checklists/personal"], { user: kidUser, params: { tripId: trip.id } })).body.checklist;
+  const ownerDeletesKidPersonal = await call(routes["DELETE /api/trips/:tripId/checklists/:lid"], {
+    user: owner, params: { tripId: trip.id, lid: kidPersonal.id },
+  });
+  assert.equal(ownerDeletesKidPersonal.statusCode, 403);
+  const kidDeletesOwn = await call(routes["DELETE /api/trips/:tripId/checklists/:lid"], {
+    user: kidUser, params: { tripId: trip.id, lid: kidPersonal.id },
+  });
+  assert.equal(kidDeletesOwn.statusCode, 200);
+});
+
 // ---------- list shape ----------
 test("GET /api/trips: list includes role + counts + memberFaces for a member trip", async () => {
   const routes = buildHarness();

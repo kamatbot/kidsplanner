@@ -257,6 +257,115 @@ test("itinerary: delete removes the item and reindexes the remaining day", () =>
   assert.ok(trips.removeItineraryItem(trip.id, "ti_bogus").error);
 });
 
+// ---------- ideas bucket (v1.1) ----------
+test("itinerary: addItineraryItem with no date creates an idea (date: null)", () => {
+  const { trip, owner } = makeTrip("H2");
+  const idea = trips.addItineraryItem(trip.id, owner.id, { title: "Rent bikes", category: "activity" });
+  assert.ok(!idea.error, idea.error);
+  assert.equal(idea.item.date, null);
+  const idea2 = trips.addItineraryItem(trip.id, owner.id, { date: "", title: "Try the market", category: "food" });
+  assert.ok(!idea2.error, idea2.error);
+  assert.equal(idea2.item.date, null);
+  assert.equal(idea2.item.order, 1); // shares the null-date group's own order sequence
+  assert.ok(trips.addItineraryItem(trip.id, owner.id, { date: "not-a-date", title: "X", category: "food" }).error);
+});
+
+test("itinerary: updateItineraryItem can clear a date to null (empty string) and set one", () => {
+  const { trip, owner } = makeTrip("H3");
+  const scheduled = trips.addItineraryItem(trip.id, owner.id, { date: "2026-08-01", title: "Museum", category: "sight" }).item;
+  const cleared = trips.updateItineraryItem(trip.id, scheduled.id, { date: "" });
+  assert.ok(!cleared.error, cleared.error);
+  assert.equal(cleared.item.date, null);
+  const rescheduled = trips.updateItineraryItem(trip.id, scheduled.id, { date: "2026-08-02" });
+  assert.ok(!rescheduled.error, rescheduled.error);
+  assert.equal(rescheduled.item.date, "2026-08-02");
+  assert.ok(trips.updateItineraryItem(trip.id, scheduled.id, { date: "bogus" }).error);
+});
+
+test("itinerary: moveItineraryItem(date: null) moves a scheduled item to the ideas group and back, keeping order integrity", () => {
+  const { trip, owner } = makeTrip("H4");
+  const a = trips.addItineraryItem(trip.id, owner.id, { date: "2026-08-01", title: "A", category: "sight" }).item;
+  const b = trips.addItineraryItem(trip.id, owner.id, { date: "2026-08-01", title: "B", category: "sight" }).item;
+  const idea = trips.addItineraryItem(trip.id, owner.id, { title: "Idea1", category: "activity" }).item;
+
+  // day -> ideas
+  const toIdeas = trips.moveItineraryItem(trip.id, a.id, { date: null, beforeId: idea.id });
+  assert.ok(!toIdeas.error, toIdeas.error);
+  const ideasGroup = toIdeas.trip.itinerary.filter((i) => i.date === null).sort((x, y) => x.order - y.order);
+  assert.deepEqual(ideasGroup.map((i) => i.id), [a.id, idea.id]);
+  // source day reindexed to stay contiguous
+  const day1 = toIdeas.trip.itinerary.filter((i) => i.date === "2026-08-01").sort((x, y) => x.order - y.order);
+  assert.deepEqual(day1.map((i) => [i.id, i.order]), [[b.id, 0]]);
+
+  // ideas -> day
+  const backToDay = trips.moveItineraryItem(trip.id, a.id, { date: "2026-08-03", beforeId: null });
+  assert.ok(!backToDay.error, backToDay.error);
+  assert.equal(trips.getItineraryItem(backToDay.trip, a.id).date, "2026-08-03");
+  const ideasAfter = backToDay.trip.itinerary.filter((i) => i.date === null);
+  assert.deepEqual(ideasAfter.map((i) => [i.id, i.order]), [[idea.id, 0]]); // reindexed
+});
+
+// ---------- checklists (v1.1) ----------
+test("checklists: shared list create/rename/delete, default-init on a trip predating the field", () => {
+  const { trip, owner } = makeTrip("CK1");
+  delete trips.getTrip(trip.id).checklists; // simulate a trip that predates v1.1
+  const created = trips.addSharedChecklist(trip.id, owner.id, "Beach gear");
+  assert.ok(!created.error, created.error);
+  assert.equal(created.checklist.kind, "shared");
+  assert.equal(created.checklist.title, "Beach gear");
+  assert.equal(created.checklist.ownerUserId, null);
+  assert.match(trips.getTrip(trip.id).activity.slice(-1)[0].text, /Beach gear/);
+
+  const renamed = trips.updateChecklistTitle(trip.id, created.checklist.id, "Beach & pool gear");
+  assert.ok(!renamed.error);
+  assert.equal(renamed.checklist.title, "Beach & pool gear");
+  assert.equal(trips.updateChecklistTitle(trip.id, created.checklist.id, "  ").error, "Checklist title cannot be empty.");
+
+  const removed = trips.removeChecklist(trip.id, created.checklist.id);
+  assert.ok(!removed.error);
+  assert.equal(trips.getChecklist(trips.getTrip(trip.id), created.checklist.id), null);
+});
+
+test("checklists: get-or-create personal list is idempotent and titled from the given name", () => {
+  const { trip, owner } = makeTrip("CK2");
+  const first = trips.getOrCreatePersonalChecklist(trip.id, owner.id, "Owner's packing");
+  assert.ok(!first.error, first.error);
+  assert.equal(first.checklist.kind, "personal");
+  assert.equal(first.checklist.ownerUserId, owner.id);
+  assert.equal(first.checklist.title, "Owner's packing");
+  const second = trips.getOrCreatePersonalChecklist(trip.id, owner.id, "Owner's packing");
+  assert.equal(second.checklist.id, first.checklist.id);
+  assert.equal(trips.getTrip(trip.id).checklists.filter((c) => c.ownerUserId === owner.id).length, 1);
+  // no activity entry for personal-list creation (shared-only)
+  assert.equal(trips.getTrip(trip.id).activity.length, 0);
+});
+
+test("checklists: items add/toggle (doneBy stamping)/remove", () => {
+  const { trip, owner } = makeTrip("CK3");
+  const editor = makeGuest("CK3e");
+  trips.joinByCode(trip.inviteCode, editor.id);
+  const list = trips.addSharedChecklist(trip.id, owner.id, "Packing").checklist;
+
+  const added = trips.addChecklistItem(trip.id, list.id, owner.id, { text: "Passports" });
+  assert.ok(!added.error, added.error);
+  assert.equal(added.item.done, false);
+  assert.equal(added.item.doneBy, null);
+  assert.ok(trips.addChecklistItem(trip.id, list.id, owner.id, { text: "  " }).error);
+
+  const toggledOn = trips.updateChecklistItem(trip.id, list.id, added.item.id, editor.id, { done: true });
+  assert.ok(!toggledOn.error, toggledOn.error);
+  assert.equal(toggledOn.item.done, true);
+  assert.equal(toggledOn.item.doneBy, editor.id);
+
+  const toggledOff = trips.updateChecklistItem(trip.id, list.id, added.item.id, owner.id, { done: false });
+  assert.equal(toggledOff.item.done, false);
+  assert.equal(toggledOff.item.doneBy, null);
+
+  const removed = trips.removeChecklistItem(trip.id, list.id, added.item.id);
+  assert.ok(!removed.error);
+  assert.equal(trips.getChecklistItem(trips.getTrip(trip.id), list.id, added.item.id), null);
+});
+
 // ---------- flights / lodging CRUD ----------
 test("flights: add/update/remove, requires at least airline or flight number", () => {
   const { trip, owner } = makeTrip("N");

@@ -4,8 +4,10 @@
    (/trips/<id>) live in this one script — location.pathname decides which
    to render, history.pushState navigates between them without a reload.
    Ports the "Waypoint" UX reference mock (Overview / Itinerary / Flights /
-   Lodging / Chat / People) using this app's Horizon design tokens via
-   public/css/trips.css.
+   Lodging / Packing / Chat / People) using this app's Horizon design tokens
+   via public/css/trips.css. Packing, the Ideas bucket atop Itinerary, and
+   paste-to-import on Flights/Lodging are v1.1 additions — see the
+   "v1.1 — Wanderlog-gap features" section of docs/TRIPS-PLAN.md.
 
    Fetches go through window.auth.trips* wrappers (see auth.js), EXCEPT the
    trip chat long-poll, which needs raw fetch + AbortController — that part
@@ -41,7 +43,7 @@ let tripCreateRotorTimer = null;
 let tripCreateRotorIdx = 0;
 const TRIP_CREATE_CITIES = ['Lisbon', 'Tokyo', 'Rome', 'Barcelona', 'Kyoto', 'Phuket', 'New York', 'Queenstown'];
 
-let tripFormState = null;     // itinerary add/edit form: {dayDate, itemId|null}
+let tripFormState = null;     // itinerary add/edit/schedule form: {dayDate, itemId|null, scheduling}
 let tripOpenThreads = new Set();
 let tripFlightFormOpen = false;
 let tripLodgingFormOpen = false;
@@ -50,6 +52,19 @@ let tripInviteCopied = false;
 
 let dragItemId = null;
 let dragFromDate = null;
+
+// Packing tab (v1.1) state.
+let tripChecklistFormOpen = false;
+let tripChecklistRenameId = null;
+const PACKING_PRESETS = ['Passport', 'Chargers', 'Meds', 'Swimwear', 'Snacks', 'Headphones'];
+
+// Paste-to-import (v1.1) state — one shared panel for Flights + Lodging tabs
+// since a single parse can surface both kinds of bookings at once.
+let tripPasteOpen = false;
+let tripPasteText = '';
+let tripPasteParsing = false;
+let tripPasteAdding = false;
+let tripPasteResult = null;   // { flights: [...], lodging: [...] } — each item gets a local _selected flag
 
 // Trip chat long-poll state (mirrors app.js's chat* globals, trip-scoped).
 let tripChatMessages = [];
@@ -247,12 +262,18 @@ function renderTripsList() {
   const firstRun = !trips.length;
   const formOpen = tripsNewFormOpen || firstRun;
   root.innerHTML = `
-    <div class="trip-main">
-      <div class="trip-list-header">
-        <h1 class="page-title">Trips</h1>
-        <div class="page-header-spacer"></div>
-        ${formOpen ? '' : '<button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ New trip</button>'}
+    <div class="trip-hub-header">
+      <div class="trip-hub-inner">
+        ${tripBrandHtml()}
+        <div class="trip-hub-title">
+          <div class="trip-hub-name-row"><div class="trip-hub-name">Trips</div></div>
+        </div>
+        <div class="trip-hub-header-right">
+          ${formOpen ? '' : '<button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ New trip</button>'}
+        </div>
       </div>
+    </div>
+    <div class="trip-main">
       ${formOpen ? renderNewTripForm(firstRun) : ''}
       ${trips.length ? `<div class="trip-list-grid">${trips.map(renderTripCard).join('')}</div>` : ''}
     </div>
@@ -449,6 +470,13 @@ async function tripsLoadHub(id) {
   tripLodgingFormOpen = false;
   tripEditFormOpen = false;
   tripInviteCopied = false;
+  tripChecklistFormOpen = false;
+  tripChecklistRenameId = null;
+  tripPasteOpen = false;
+  tripPasteText = '';
+  tripPasteParsing = false;
+  tripPasteAdding = false;
+  tripPasteResult = null;
   try {
     const res = await window.auth.getTrip(id);
     currentTrip = res && res.trip;
@@ -467,7 +495,7 @@ function renderHub() {
   if (!currentTrip) return;
   const kid = isKidRole();
   if (kid && currentTab === 'chat') currentTab = 'overview';
-  const tabsDef = [['overview', 'Overview'], ['itinerary', 'Itinerary'], ['flights', 'Flights'], ['lodging', 'Lodging']];
+  const tabsDef = [['overview', 'Overview'], ['itinerary', 'Itinerary'], ['flights', 'Flights'], ['lodging', 'Lodging'], ['packing', 'Packing']];
   if (!kid) tabsDef.push(['chat', 'Chat']);
   tabsDef.push(['people', 'People']);
 
@@ -476,7 +504,9 @@ function renderHub() {
   root.innerHTML = `
     ${tripHubHeaderHtml()}
     <nav class="trip-tabs">
-      ${tabsDef.map(([id, label]) => `<button type="button" class="trip-tab-btn${currentTab === id ? ' active' : ''}" onclick="tripsGoTab('${id}')">${esc(label)}</button>`).join('')}
+      <div class="trip-tabs-inner">
+        ${tabsDef.map(([id, label]) => `<button type="button" class="trip-tab-btn${currentTab === id ? ' active' : ''}" onclick="tripsGoTab('${id}')">${esc(label)}</button>`).join('')}
+      </div>
     </nav>
     <div class="trip-main" id="trip-tab-content"></div>
   `;
@@ -487,6 +517,7 @@ function renderHub() {
     tripStartChatPolling();
   } else {
     tripStopChatPolling();
+    if (currentTab === 'packing') tripEnsurePacking();
   }
 }
 
@@ -497,8 +528,21 @@ function rerenderTab() {
   else if (currentTab === 'itinerary') el.innerHTML = renderItineraryTabHtml();
   else if (currentTab === 'flights') el.innerHTML = renderFlightsTabHtml();
   else if (currentTab === 'lodging') el.innerHTML = renderLodgingTabHtml();
+  else if (currentTab === 'packing') el.innerHTML = renderPackingTabHtml();
   else if (currentTab === 'chat') el.innerHTML = renderChatTabHtml();
   else if (currentTab === 'people') el.innerHTML = renderPeopleTabHtml();
+}
+
+// The brand tile doubles as the back-to-app link (Waypoint mock: logo tile +
+// wordmark + divider + trip title, all in ONE sticky row — no separate chrome
+// bar). Used by both the hub header and the trips-list top bar.
+function tripBrandHtml() {
+  return `
+    <a class="trip-brand" href="/" title="Back to Fam ETC" aria-label="Back to Fam ETC">
+      <span class="trip-brand-tile">${ICON_PLANE}</span>
+      <span class="trip-brand-name">Fam ETC</span>
+    </a>
+    <div class="trip-brand-divider"></div>`;
 }
 
 function tripHubHeaderHtml() {
@@ -508,16 +552,19 @@ function tripHubHeaderHtml() {
   const members = t.members || [];
   return `
     <div class="trip-hub-header">
-      <div class="trip-hub-title">
-        <div class="trip-hub-name-row">
-          <div class="trip-hub-name">${esc(t.name)}</div>
-          ${!kid ? `<button type="button" class="trip-icon-btn" title="Edit trip" onclick="tripToggleEditForm()">${ICON_EDIT}</button>` : ''}
+      <div class="trip-hub-inner">
+        ${tripBrandHtml()}
+        <div class="trip-hub-title">
+          <div class="trip-hub-name-row">
+            <div class="trip-hub-name">${esc(t.name)}</div>
+            ${!kid ? `<button type="button" class="trip-icon-btn" title="Edit trip" onclick="tripToggleEditForm()">${ICON_EDIT}</button>` : ''}
+          </div>
+          <div class="micro-label trip-hub-meta">${esc(dates)}${t.destination ? ' · ' + esc(t.destination) : ''}</div>
         </div>
-        <div class="micro-label trip-hub-meta">${esc(dates)}${t.destination ? ' · ' + esc(t.destination) : ''}</div>
-      </div>
-      <div class="trip-hub-header-right">
-        <div class="avatar-stack">${renderAvatarStack(members, 30)}</div>
-        ${!kid ? `<button type="button" class="btn-primary" onclick="tripsGoTab('people')">Invite friends</button>` : ''}
+        <div class="trip-hub-header-right">
+          <div class="avatar-stack">${renderAvatarStack(members, 30)}</div>
+          ${!kid ? `<button type="button" class="btn-primary" onclick="tripsGoTab('people')">Invite friends</button>` : ''}
+        </div>
       </div>
     </div>
     ${!kid && tripEditFormOpen ? `<div class="trip-main" style="padding-bottom:0">${tripEditFormHtml()}</div>` : ''}
@@ -680,8 +727,22 @@ function buildDays(trip) {
   }));
 }
 
+// Unscheduled itinerary items (date === null) — sorted votes desc, then order.
+function buildIdeas(trip) {
+  return (trip.itinerary || [])
+    .filter((it) => !it.date)
+    .slice()
+    .sort((a, b) => ((b.votes || []).length - (a.votes || []).length) || ((a.order || 0) - (b.order || 0)));
+}
+
 function findItineraryItem(id) {
   return (currentTrip.itinerary || []).find((i) => i.id === id);
+}
+
+// Inline JS argument for a possibly-null date inside an onclick/ondrag attribute
+// (esc(null) would render the literal string "null", not the value null).
+function tripDateArg(d) {
+  return d === null || d === undefined ? 'null' : `'${esc(d)}'`;
 }
 
 function tripReplaceItem(item) {
@@ -695,6 +756,7 @@ function renderItineraryTabHtml() {
   const kid = isKidRole();
   const days = buildDays(currentTrip);
   return `
+    ${renderIdeasPanel(kid)}
     <div class="trip-itin-toolbar">
       <div class="trip-section-title">Itinerary</div>
       <div class="trip-itin-hint">${kid ? 'View only' : 'Drag places to reorder or move between days · tap ♥ to vote'}</div>
@@ -705,11 +767,34 @@ function renderItineraryTabHtml() {
   `;
 }
 
+function renderIdeasPanel(kid) {
+  const ideas = buildIdeas(currentTrip);
+  const addFormHere = !kid && tripFormState && tripFormState.dayDate === null && !tripFormState.itemId && !tripFormState.scheduling;
+  return `
+    <section class="trip-ideas-panel">
+      <div class="trip-ideas-head">
+        <div class="trip-ideas-title">💡 Ideas</div>
+        <div class="trip-ideas-sub micro-label">Unscheduled — vote first, pick a day later</div>
+      </div>
+      <div class="trip-ideas-items">
+        ${ideas.length ? ideas.map((it) => renderItineraryItem(it, null, kid, true)).join('') : (addFormHere ? '' : '<p class="text-muted" style="margin:0">No ideas yet — drag a place here, or add one below.</p>')}
+        ${addFormHere ? renderIdeaFormHtml(null) : ''}
+        ${!kid ? `
+          <div class="trip-ideas-enddrop" ondragover="tripIdeasEndDragOver(event)" ondrop="tripIdeasEndDrop(event)">
+            <div class="trip-drop-indicator" id="drop-end-ideas"></div>
+            <button type="button" class="trip-add-place-btn" onclick="tripOpenAddIdeaForm()">+ Add an idea</button>
+          </div>
+        ` : ''}
+      </div>
+    </section>
+  `;
+}
+
 function renderDaySection(day, kid) {
   const d = parseIso(day.date);
   const dateBadge = formatShort(d).toUpperCase();
   const weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
-  const formHere = !kid && tripFormState && tripFormState.dayDate === day.date && !tripFormState.itemId;
+  const formHere = !kid && tripFormState && tripFormState.dayDate === day.date && !tripFormState.itemId && !tripFormState.scheduling;
   return `
     <section>
       <div class="trip-day-head">
@@ -731,22 +816,26 @@ function renderDaySection(day, kid) {
   `;
 }
 
-function renderItineraryItem(it, dayDate, kid) {
+function renderItineraryItem(it, dayDate, kid, isIdea) {
   const cat = CATS[it.category] || CATS.activity;
   const voted = !kid && (it.votes || []).includes(currentUserId);
-  const editingHere = !kid && tripFormState && tripFormState.itemId === it.id;
+  const editingHere = !kid && tripFormState && tripFormState.itemId === it.id && !tripFormState.scheduling;
+  const schedulingHere = !kid && tripFormState && tripFormState.itemId === it.id && tripFormState.scheduling;
   const threadOpen = tripOpenThreads.has(it.id);
   const comments = it.comments || [];
   const dragAttrs = !kid
-    ? ` draggable="true" ondragstart="tripItemDragStart(event,'${esc(it.id)}','${esc(dayDate)}')" ondragover="tripItemDragOver(event,'${esc(it.id)}')" ondrop="tripItemDrop(event,'${esc(dayDate)}','${esc(it.id)}')" ondragend="tripDragEnd()"`
+    ? ` draggable="true" ondragstart="tripItemDragStart(event,'${esc(it.id)}',${tripDateArg(dayDate)})" ondragover="tripItemDragOver(event,'${esc(it.id)}')" ondrop="tripItemDrop(event,${tripDateArg(dayDate)},'${esc(it.id)}')" ondragend="tripDragEnd()"`
     : '';
+  let formHtml = '';
+  if (schedulingHere) formHtml = renderScheduleFormHtml(it);
+  else if (editingHere) formHtml = isIdea ? renderIdeaFormHtml(it) : renderItineraryForm(dayDate, it);
   return `
     <div>
       <div class="trip-drop-indicator" id="drop-${esc(it.id)}"></div>
-      ${editingHere ? renderItineraryForm(dayDate, it) : `
+      ${(editingHere || schedulingHere) ? formHtml : `
       <div class="trip-item"${dragAttrs}>
         ${!kid ? ICON_DRAG : ''}
-        <div class="trip-item-time">${esc(it.time || '')}</div>
+        ${!isIdea ? `<div class="trip-item-time">${esc(it.time || '')}</div>` : ''}
         <div class="trip-item-body">
           <div class="trip-item-title-row">
             <div class="trip-item-title">${esc(it.title)}</div>
@@ -757,6 +846,7 @@ function renderItineraryItem(it, dayDate, kid) {
         <div class="trip-item-actions">
           ${!kid ? `<button type="button" class="trip-vote-btn${voted ? ' voted' : ''}" onclick="tripToggleVote('${esc(it.id)}')" title="Vote for this">${ICON_HEART.replace('{{FILL}}', voted ? 'currentColor' : 'none')}${(it.votes || []).length}</button>` : ''}
           <button type="button" class="trip-thread-btn" onclick="tripToggleThread('${esc(it.id)}')" title="Comments">${ICON_THREAD}${comments.length}</button>
+          ${!kid && isIdea ? `<button type="button" class="trip-schedule-btn" onclick="tripOpenScheduleForm('${esc(it.id)}')">Schedule →</button>` : ''}
           ${!kid ? `
             <button type="button" class="trip-icon-btn" title="Edit" onclick="tripOpenEditForm('${esc(it.id)}')">${ICON_EDIT}</button>
             <button type="button" class="trip-icon-btn danger" title="Remove" onclick="tripDeleteItem('${esc(it.id)}')">${ICON_TRASH}</button>
@@ -813,15 +903,67 @@ function renderItineraryForm(dayDate, item) {
   `;
 }
 
+// Idea add/edit form: title, category, note only — no date/time (v1.1 §1).
+function renderIdeaFormHtml(item) {
+  const v = item || {};
+  const cats = Object.keys(CATS);
+  return `
+    <form class="trip-inline-form" onsubmit="tripSubmitIdeaForm(event${item ? `,'${esc(item.id)}'` : ''})">
+      <div class="trip-form-row">
+        <input class="trip-input trip-input-grow" name="title" value="${esc(v.title || '')}" placeholder="Add an idea… e.g. Try the pastel de nata place" autocomplete="off" maxlength="200">
+        <select class="trip-select" name="cat">
+          ${cats.map((c) => `<option value="${c}"${(v.category ? v.category === c : c === 'activity') ? ' selected' : ''}>${CATS[c].label}</option>`).join('')}
+        </select>
+      </div>
+      <input class="trip-input" name="note" value="${esc(v.note || '')}" placeholder="Notes for the crew (optional)" autocomplete="off" maxlength="1000">
+      <div class="trip-form-actions">
+        <button type="submit" class="btn-primary">${item ? 'Save changes' : 'Add idea'}</button>
+        <button type="button" class="btn-secondary" onclick="tripCancelForm()">Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+// "Schedule →" form: picks a real date (+ optional time) for an idea.
+function renderScheduleFormHtml(item) {
+  const v = item || {};
+  const min = (currentTrip && currentTrip.startDate) || '';
+  const max = (currentTrip && currentTrip.endDate) || '';
+  return `
+    <form class="trip-inline-form" onsubmit="tripSubmitScheduleForm(event,'${esc(item.id)}')">
+      <div class="trip-form-row">
+        <input class="trip-input" type="date" name="date" value="${esc(v.date || min)}" min="${esc(min)}" max="${esc(max)}" required>
+        <input class="trip-input trip-input-mono trip-input-time" name="time" value="${esc(v.time || '')}" placeholder="10:30" autocomplete="off">
+      </div>
+      <div class="trip-form-actions">
+        <button type="submit" class="btn-primary">Schedule</button>
+        <button type="button" class="btn-secondary" onclick="tripCancelForm()">Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
 function tripOpenAddForm(dayDate) {
-  tripFormState = { dayDate, itemId: null };
+  tripFormState = { dayDate, itemId: null, scheduling: false };
   rerenderTab();
 }
 
 function tripOpenEditForm(itemId) {
   const item = findItineraryItem(itemId);
   if (!item) return;
-  tripFormState = { dayDate: item.date, itemId: item.id };
+  tripFormState = { dayDate: item.date, itemId: item.id, scheduling: false };
+  rerenderTab();
+}
+
+function tripOpenAddIdeaForm() {
+  tripFormState = { dayDate: null, itemId: null, scheduling: false };
+  rerenderTab();
+}
+
+function tripOpenScheduleForm(itemId) {
+  const item = findItineraryItem(itemId);
+  if (!item) return;
+  tripFormState = { dayDate: null, itemId: item.id, scheduling: true };
   rerenderTab();
 }
 
@@ -849,6 +991,44 @@ async function tripSubmitItineraryForm(e, dayDate) {
     } else {
       res = await window.auth.addTripItineraryItem(currentTripId, payload);
     }
+    if (res && res.item) tripReplaceItem(res.item);
+    tripFormState = null;
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripSubmitIdeaForm(e, itemId) {
+  e.preventDefault();
+  const f = e.target;
+  const title = f.title.value.trim();
+  if (!title) { toast('Give it a title first.'); return; }
+  const payload = { title, category: f.cat.value, note: f.note.value.trim() };
+  try {
+    let res;
+    if (itemId) {
+      res = await window.auth.updateTripItineraryItem(currentTripId, itemId, payload);
+    } else {
+      payload.date = null;
+      payload.time = '';
+      res = await window.auth.addTripItineraryItem(currentTripId, payload);
+    }
+    if (res && res.item) tripReplaceItem(res.item);
+    tripFormState = null;
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripSubmitScheduleForm(e, itemId) {
+  e.preventDefault();
+  const f = e.target;
+  const date = f.date.value;
+  if (!date) { toast('Pick a date first.'); return; }
+  try {
+    const res = await window.auth.updateTripItineraryItem(currentTripId, itemId, { date, time: f.time.value.trim() });
     if (res && res.item) tripReplaceItem(res.item);
     tripFormState = null;
     rerenderTab();
@@ -965,6 +1145,19 @@ async function tripDayEndDrop(e, date) {
   await tripMoveItem(date, null);
 }
 
+function tripIdeasEndDragOver(e) {
+  if (!dragItemId) return;
+  e.preventDefault();
+  tripClearDropIndicators();
+  const ind = document.getElementById('drop-end-ideas');
+  if (ind) ind.classList.add('show');
+}
+
+async function tripIdeasEndDrop(e) {
+  e.preventDefault();
+  await tripMoveItem(null, null);
+}
+
 async function tripMoveItem(date, beforeId) {
   if (!dragItemId) return;
   const itemId = dragItemId;
@@ -996,8 +1189,14 @@ function renderFlightsTabHtml() {
         <div class="trip-section-title">Flights</div>
         <div class="trip-section-sub">Paste details from your confirmation email — everyone can see them.</div>
       </div>
-      ${!kid ? `<button type="button" class="btn-primary" onclick="tripToggleFlightForm()">+ Add flight</button>` : ''}
+      ${!kid ? `
+        <div class="trip-section-header-actions">
+          <button type="button" class="btn-secondary" onclick="tripTogglePastePanel()">✨ Paste confirmation</button>
+          <button type="button" class="btn-primary" onclick="tripToggleFlightForm()">+ Add flight</button>
+        </div>
+      ` : ''}
     </div>
+    ${!kid ? renderPasteImportPanel() : ''}
     ${!kid && tripFlightFormOpen ? renderFlightForm() : ''}
     <div class="trip-card-list">
       ${flights.length ? flights.map((fl) => renderFlightCard(fl, kid)).join('') : `<p class="text-muted">No flights yet.</p>`}
@@ -1098,8 +1297,14 @@ function renderLodgingTabHtml() {
         <div class="trip-section-title">Lodging</div>
         <div class="trip-section-sub">Hotels, rentals, that friend's aunt's place — keep it all here.</div>
       </div>
-      ${!kid ? `<button type="button" class="btn-primary" onclick="tripToggleLodgingForm()">+ Add lodging</button>` : ''}
+      ${!kid ? `
+        <div class="trip-section-header-actions">
+          <button type="button" class="btn-secondary" onclick="tripTogglePastePanel()">✨ Paste confirmation</button>
+          <button type="button" class="btn-primary" onclick="tripToggleLodgingForm()">+ Add lodging</button>
+        </div>
+      ` : ''}
     </div>
+    ${!kid ? renderPasteImportPanel() : ''}
     ${!kid && tripLodgingFormOpen ? renderLodgingForm() : ''}
     <div class="trip-card-list">
       ${lodging.length ? lodging.map((ho) => renderLodgingCard(ho, kid)).join('') : `<p class="text-muted">No lodging yet.</p>`}
@@ -1180,6 +1385,465 @@ async function tripDeleteLodging(id) {
   try {
     await window.auth.deleteTripLodging(currentTripId, id);
     currentTrip.lodging = (currentTrip.lodging || []).filter((h) => h.id !== id);
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+/* ============================================================
+   PASTE-TO-IMPORT (v1.1 §3) — shared panel for Flights + Lodging tabs.
+   Paste an email → window.auth.parseBooking → preview cards (flights AND
+   lodging together, since one parse can find both) → "Add N selected" adds
+   each via the normal addTripFlight/addTripLodging wrappers.
+============================================================ */
+function renderSpinner() {
+  return '<span class="trip-spinner" aria-hidden="true"></span>';
+}
+
+function renderPasteImportPanel() {
+  if (!tripPasteOpen) return '';
+  if (!tripPasteResult) {
+    return `
+      <div class="card trip-paste-panel">
+        <div class="trip-panel-title micro-label">✨ Paste confirmation</div>
+        <div class="trip-section-sub" style="margin-bottom:10px">Paste the confirmation email here — flights, hotels, anything.</div>
+        <form onsubmit="tripSubmitPasteParse(event)">
+          <textarea class="trip-input trip-paste-textarea" name="text" placeholder="Paste the confirmation email here — flights, hotels, anything" ${tripPasteParsing ? 'disabled' : ''}>${esc(tripPasteText)}</textarea>
+          <div class="trip-form-actions" style="margin-top:10px">
+            <button type="submit" class="btn-primary" ${tripPasteParsing ? 'disabled' : ''}>${tripPasteParsing ? renderSpinner() + 'Parsing…' : 'Parse'}</button>
+            <button type="button" class="btn-secondary" onclick="tripClosePastePanel()">Cancel</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+  const flights = tripPasteResult.flights || [];
+  const lodging = tripPasteResult.lodging || [];
+  const total = flights.length + lodging.length;
+  const selectedCount = flights.filter((f) => f._selected).length + lodging.filter((l) => l._selected).length;
+  return `
+    <div class="card trip-paste-panel">
+      <div class="trip-panel-title micro-label">✨ Found ${total} booking${total === 1 ? '' : 's'}</div>
+      <div class="trip-paste-preview-list">
+        ${flights.map((f, i) => renderPasteFlightPreview(f, i)).join('')}
+        ${lodging.map((l, i) => renderPasteLodgingPreview(l, i)).join('')}
+      </div>
+      <div class="trip-form-actions" style="margin-top:12px">
+        <button type="button" class="btn-primary" ${(tripPasteAdding || !selectedCount) ? 'disabled' : ''} onclick="tripAddSelectedPasteItems()">${tripPasteAdding ? renderSpinner() + 'Adding…' : `Add ${selectedCount} selected`}</button>
+        <button type="button" class="btn-secondary" onclick="tripClosePastePanel()">Cancel</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderPasteFlightPreview(f, i) {
+  return `
+    <label class="trip-paste-card">
+      <input type="checkbox" ${f._selected ? 'checked' : ''} onchange="tripTogglePasteSelect('flights',${i},this.checked)">
+      <div class="trip-paste-card-body">
+        <div class="trip-paste-card-kind micro-label">✈ Flight</div>
+        <div class="trip-paste-card-title">${esc((f.from || '—') + ' → ' + (f.to || '—'))}</div>
+        <div class="trip-paste-card-sub">${esc(f.airline || '')}${f.flightNo ? ' · ' + esc(f.flightNo) : ''}${f.confirmation ? ' · Conf ' + esc(f.confirmation) : ''}</div>
+        <div class="trip-paste-card-sub">${esc(f.departs || '')}${f.arrives ? ' → ' + esc(f.arrives) : ''}</div>
+      </div>
+    </label>
+  `;
+}
+
+function renderPasteLodgingPreview(l, i) {
+  return `
+    <label class="trip-paste-card">
+      <input type="checkbox" ${l._selected ? 'checked' : ''} onchange="tripTogglePasteSelect('lodging',${i},this.checked)">
+      <div class="trip-paste-card-body">
+        <div class="trip-paste-card-kind micro-label">🛏 Lodging</div>
+        <div class="trip-paste-card-title">${esc(l.name || 'Untitled')}</div>
+        <div class="trip-paste-card-sub">${esc(l.address || '')}</div>
+        <div class="trip-paste-card-sub">${esc(l.checkIn || '')}${l.checkOut ? ' → ' + esc(l.checkOut) : ''}${l.confirmation ? ' · Conf ' + esc(l.confirmation) : ''}</div>
+      </div>
+    </label>
+  `;
+}
+
+function tripTogglePastePanel() {
+  tripPasteOpen = !tripPasteOpen;
+  if (!tripPasteOpen) { tripPasteResult = null; tripPasteText = ''; }
+  rerenderTab();
+}
+
+function tripClosePastePanel() {
+  tripPasteOpen = false;
+  tripPasteResult = null;
+  tripPasteText = '';
+  tripPasteParsing = false;
+  rerenderTab();
+}
+
+function tripTogglePasteSelect(kind, idx, checked) {
+  if (!tripPasteResult || !tripPasteResult[kind] || !tripPasteResult[kind][idx]) return;
+  tripPasteResult[kind][idx]._selected = !!checked;
+  rerenderTab();
+}
+
+async function tripSubmitPasteParse(e) {
+  e.preventDefault();
+  const text = e.target.text.value.trim();
+  if (!text) { toast('Paste some text first.'); return; }
+  tripPasteText = text;
+  tripPasteParsing = true;
+  rerenderTab();
+  try {
+    const res = await window.auth.parseBooking({ text });
+    const flights = (res && res.flights) || [];
+    const lodging = (res && res.lodging) || [];
+    if (!flights.length && !lodging.length) throw new Error("Couldn't find any bookings in that text.");
+    flights.forEach((f) => { f._selected = true; });
+    lodging.forEach((l) => { l._selected = true; });
+    tripPasteResult = { flights, lodging };
+  } catch (err) {
+    let msg;
+    if (err.status === 503) msg = "AI parsing isn't set up on this server yet.";
+    else if (err.status === 422) msg = "Couldn't find any bookings in that text.";
+    else msg = err.message; // 429 (or anything else) — pass the server's own message through
+    toast('❌ ' + msg);
+  } finally {
+    tripPasteParsing = false;
+    rerenderTab();
+  }
+}
+
+async function tripAddSelectedPasteItems() {
+  if (!tripPasteResult) return;
+  const flights = (tripPasteResult.flights || []).filter((f) => f._selected);
+  const lodging = (tripPasteResult.lodging || []).filter((l) => l._selected);
+  if (!flights.length && !lodging.length) { toast('Select at least one to add.'); return; }
+  tripPasteAdding = true;
+  rerenderTab();
+  let added = 0;
+  for (const f of flights) {
+    try {
+      await window.auth.addTripFlight(currentTripId, {
+        airline: f.airline || '',
+        flightNo: (f.flightNo || '').toUpperCase(),
+        confirmation: (f.confirmation || '').toUpperCase(),
+        from: (f.from || '').toUpperCase(),
+        to: (f.to || '').toUpperCase(),
+        departs: f.departs || '',
+        arrives: f.arrives || '',
+      });
+      added++;
+      toast(`✅ Added flight ${(f.from || '?')} → ${(f.to || '?')}`);
+    } catch (err) {
+      toast('❌ ' + err.message);
+    }
+  }
+  for (const l of lodging) {
+    try {
+      await window.auth.addTripLodging(currentTripId, {
+        name: l.name || '',
+        address: l.address || '',
+        confirmation: l.confirmation || '',
+        checkIn: l.checkIn || '',
+        checkOut: l.checkOut || '',
+        note: l.note || '',
+      });
+      added++;
+      toast(`✅ Added ${l.name || 'lodging'}`);
+    } catch (err) {
+      toast('❌ ' + err.message);
+    }
+  }
+  tripPasteAdding = false;
+  tripPasteOpen = false;
+  tripPasteResult = null;
+  tripPasteText = '';
+  try {
+    const res = await window.auth.getTrip(currentTripId);
+    if (res && res.trip) currentTrip = res.trip;
+  } catch (err) { /* keep local state if the refresh fails — mutations already landed */ }
+  rerenderTab();
+}
+
+/* ============================================================
+   PACKING TAB (v1.1 §2) — "My packing" (lazy get-or-create, the one
+   kid-write surface in trips) + shared checklists with assignee chips.
+============================================================ */
+function tripMyChecklist() {
+  return (currentTrip.checklists || []).find((c) => c.kind === 'personal' && c.ownerUserId === currentUserId);
+}
+
+function tripFindChecklist(listId) {
+  return (currentTrip.checklists || []).find((c) => c.id === listId);
+}
+
+function tripReplaceChecklistItem(listId, item) {
+  if (!item) return;
+  const list = tripFindChecklist(listId);
+  if (!list) return;
+  list.items = list.items || [];
+  const idx = list.items.findIndex((i) => i.id === item.id);
+  if (idx !== -1) list.items[idx] = item;
+  else list.items.push(item);
+}
+
+async function tripEnsurePacking() {
+  if (tripMyChecklist()) return;
+  try {
+    const res = await window.auth.getOrCreateMyPacking(currentTripId);
+    if (res && res.checklist) {
+      currentTrip.checklists = currentTrip.checklists || [];
+      currentTrip.checklists.push(res.checklist);
+      if (currentTab === 'packing') rerenderTab();
+    }
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+function renderPackingTabHtml() {
+  const kid = isKidRole();
+  const mine = tripMyChecklist();
+  const shared = (currentTrip.checklists || []).filter((c) => c.kind === 'shared');
+  return `
+    <div class="trip-section-title" style="margin-bottom:4px">Packing</div>
+    <div class="trip-section-sub" style="margin-bottom:16px">Quick-add the essentials, then split up shared lists with the crew.</div>
+    ${mine ? renderPersonalChecklistCard(mine) : `<div class="card trip-packing-card"><p class="text-muted" style="margin:0">Loading your packing list…</p></div>`}
+    <div class="trip-section-header" style="margin-top:22px">
+      <div class="trip-panel-title micro-label" style="margin:0">Shared lists</div>
+      ${!kid ? `<button type="button" class="btn-secondary" onclick="tripToggleChecklistForm()">+ New list</button>` : ''}
+    </div>
+    ${!kid && tripChecklistFormOpen ? renderNewChecklistForm() : ''}
+    <div class="trip-checklist-grid">
+      ${shared.length ? shared.map((c) => renderSharedChecklistCard(c, kid)).join('') : `<p class="text-muted">No shared lists yet.</p>`}
+    </div>
+  `;
+}
+
+function renderChecklistItemRow(list, item, isShared) {
+  const kid = isKidRole();
+  const mineOwn = list.kind === 'personal'; // the one kid-write surface: owner always may touch their own personal items
+  const canToggle = mineOwn || !kid;
+  const canDelete = mineOwn || !kid;
+  const doneByFace = item.doneBy ? memberFor(item.doneBy) : null;
+  return `
+    <div class="trip-checklist-row${item.done ? ' done' : ''}">
+      <label class="trip-checklist-check">
+        <input type="checkbox" ${item.done ? 'checked' : ''} ${canToggle ? '' : 'disabled'} onchange="tripToggleChecklistItem('${esc(list.id)}','${esc(item.id)}',this.checked)">
+        <span class="trip-checklist-text">${esc(item.text)}</span>
+      </label>
+      <div class="trip-checklist-row-meta">
+        ${isShared ? renderAssigneeChip(list, item, kid) : ''}
+        ${isShared && item.done && doneByFace ? avatarHtml(doneByFace.initial, doneByFace.color, 20, false) : ''}
+        ${canDelete ? `<button type="button" class="trip-icon-btn small" title="Remove" onclick="tripDeleteChecklistItem('${esc(list.id)}','${esc(item.id)}')">${ICON_TRASH}</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderAssigneeChip(list, item, kid) {
+  const members = currentTrip.members || [];
+  if (kid) {
+    if (!item.assigneeUserId) return '';
+    const f = memberFor(item.assigneeUserId);
+    return avatarHtml(f.initial, f.color, 20, false);
+  }
+  return `<div class="trip-assignee-picker">
+    ${members.map((m) => {
+      const active = item.assigneeUserId === m.userId;
+      return `<button type="button" class="trip-assignee-btn${active ? ' active' : ''}" title="${active ? 'Unassign' : 'Assign to '}${esc(m.name)}" onclick="tripSetAssignee('${esc(list.id)}','${esc(item.id)}','${esc(m.userId)}')">${avatarHtml(m.initial, m.color, 18, false)}</button>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderPersonalChecklistCard(list) {
+  const items = list.items || [];
+  const done = items.filter((i) => i.done).length;
+  const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+  return `
+    <div class="card trip-packing-card trip-packing-mine">
+      <div class="trip-packing-head">
+        <div class="trip-panel-title micro-label" style="margin:0">${esc(list.title || 'My packing')}</div>
+        <div class="trip-packing-count micro-label">${done}/${items.length} packed</div>
+      </div>
+      <div class="trip-progress-track"><div class="trip-progress-fill" style="width:${pct}%"></div></div>
+      <div class="trip-packing-presets">
+        ${PACKING_PRESETS.map((p) => `<button type="button" class="trip-preset-chip" onclick="tripAddPresetItem('${esc(list.id)}','${esc(p)}')">+ ${esc(p)}</button>`).join('')}
+      </div>
+      <div class="trip-checklist-items">
+        ${items.length ? items.map((it) => renderChecklistItemRow(list, it, false)).join('') : `<p class="text-muted" style="margin:4px 0">Nothing packed yet — tap a chip above or add your own.</p>`}
+      </div>
+      <form class="trip-checklist-add-form" onsubmit="tripSubmitChecklistItem(event,'${esc(list.id)}')">
+        <input class="trip-input" id="packing-add-${esc(list.id)}" name="text" placeholder="Add an item…" autocomplete="off" maxlength="200">
+        <button type="submit" class="btn-secondary">Add</button>
+      </form>
+    </div>
+  `;
+}
+
+function renderSharedChecklistCard(list, kid) {
+  const items = list.items || [];
+  const done = items.filter((i) => i.done).length;
+  const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+  const canManageList = !kid && (isOwnerRole() || list.createdBy === currentUserId);
+  const renamingHere = tripChecklistRenameId === list.id;
+  return `
+    <div class="card trip-checklist-card">
+      <div class="trip-packing-head">
+        ${renamingHere ? `
+          <form class="trip-checklist-rename-form" onsubmit="tripSubmitRenameChecklist(event,'${esc(list.id)}')">
+            <input class="trip-input" name="title" value="${esc(list.title)}" maxlength="80" autocomplete="off" autofocus>
+            <button type="submit" class="btn-secondary">Save</button>
+            <button type="button" class="btn-secondary" onclick="tripCancelRenameChecklist()">Cancel</button>
+          </form>
+        ` : `<div class="trip-panel-title micro-label" style="margin:0">${esc(list.title)}</div>`}
+        <div class="trip-packing-count micro-label">${done}/${items.length} packed</div>
+      </div>
+      <div class="trip-progress-track"><div class="trip-progress-fill" style="width:${pct}%"></div></div>
+      <div class="trip-checklist-items">
+        ${items.length ? items.map((it) => renderChecklistItemRow(list, it, true)).join('') : `<p class="text-muted" style="margin:4px 0">No items yet.</p>`}
+      </div>
+      ${!kid ? `
+        <form class="trip-checklist-add-form" onsubmit="tripSubmitChecklistItem(event,'${esc(list.id)}')">
+          <input class="trip-input" id="packing-add-${esc(list.id)}" name="text" placeholder="Add an item…" autocomplete="off" maxlength="200">
+          <button type="submit" class="btn-secondary">Add</button>
+        </form>
+      ` : ''}
+      ${canManageList ? `
+        <div class="trip-checklist-admin">
+          <button type="button" class="trip-icon-btn small" title="Rename list" onclick="tripStartRenameChecklist('${esc(list.id)}')">${ICON_EDIT}</button>
+          <button type="button" class="trip-icon-btn danger small" title="Delete list" onclick="tripDeleteChecklist('${esc(list.id)}')">${ICON_TRASH}</button>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function tripToggleChecklistForm() {
+  tripChecklistFormOpen = !tripChecklistFormOpen;
+  rerenderTab();
+}
+
+function renderNewChecklistForm() {
+  return `
+    <form class="trip-inline-form" onsubmit="tripSubmitNewChecklist(event)" style="margin-bottom:16px">
+      <input class="trip-input" name="title" placeholder="List name · Beach day, Ski gear…" autocomplete="off" maxlength="80" autofocus>
+      <div class="trip-form-actions">
+        <button type="submit" class="btn-primary">Create list</button>
+        <button type="button" class="btn-secondary" onclick="tripToggleChecklistForm()">Cancel</button>
+      </div>
+    </form>
+  `;
+}
+
+async function tripSubmitNewChecklist(e) {
+  e.preventDefault();
+  const title = e.target.title.value.trim();
+  if (!title) { toast('Give the list a name first.'); return; }
+  try {
+    const res = await window.auth.createTripChecklist(currentTripId, { title });
+    if (res && res.checklist) { currentTrip.checklists = currentTrip.checklists || []; currentTrip.checklists.push(res.checklist); }
+    tripChecklistFormOpen = false;
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+function tripStartRenameChecklist(listId) {
+  tripChecklistRenameId = listId;
+  rerenderTab();
+}
+
+function tripCancelRenameChecklist() {
+  tripChecklistRenameId = null;
+  rerenderTab();
+}
+
+async function tripSubmitRenameChecklist(e, listId) {
+  e.preventDefault();
+  const title = e.target.title.value.trim();
+  if (!title) return;
+  try {
+    const res = await window.auth.renameTripChecklist(currentTripId, listId, { title });
+    const list = tripFindChecklist(listId);
+    if (list && res && res.checklist) Object.assign(list, res.checklist);
+    tripChecklistRenameId = null;
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripDeleteChecklist(listId) {
+  if (!confirm('Delete this packing list for everyone?')) return;
+  try {
+    await window.auth.deleteTripChecklist(currentTripId, listId);
+    currentTrip.checklists = (currentTrip.checklists || []).filter((c) => c.id !== listId);
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripSubmitChecklistItem(e, listId) {
+  e.preventDefault();
+  const text = e.target.text.value.trim();
+  if (!text) return;
+  try {
+    const res = await window.auth.addTripChecklistItem(currentTripId, listId, { text });
+    if (res && res.item) {
+      const list = tripFindChecklist(listId);
+      if (list) { list.items = list.items || []; list.items.push(res.item); }
+    }
+    rerenderTab();
+    const input = document.getElementById('packing-add-' + listId);
+    if (input) input.focus();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripAddPresetItem(listId, text) {
+  try {
+    const res = await window.auth.addTripChecklistItem(currentTripId, listId, { text });
+    if (res && res.item) {
+      const list = tripFindChecklist(listId);
+      if (list) { list.items = list.items || []; list.items.push(res.item); }
+    }
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripToggleChecklistItem(listId, itemId, checked) {
+  try {
+    const res = await window.auth.updateTripChecklistItem(currentTripId, listId, itemId, { done: !!checked });
+    tripReplaceChecklistItem(listId, res && res.item);
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripSetAssignee(listId, itemId, userId) {
+  const list = tripFindChecklist(listId);
+  const item = list && (list.items || []).find((i) => i.id === itemId);
+  const next = item && item.assigneeUserId === userId ? null : userId;
+  try {
+    const res = await window.auth.updateTripChecklistItem(currentTripId, listId, itemId, { assigneeUserId: next });
+    tripReplaceChecklistItem(listId, res && res.item);
+    rerenderTab();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+async function tripDeleteChecklistItem(listId, itemId) {
+  try {
+    await window.auth.deleteTripChecklistItem(currentTripId, listId, itemId);
+    const list = tripFindChecklist(listId);
+    if (list) list.items = (list.items || []).filter((i) => i.id !== itemId);
     rerenderTab();
   } catch (err) {
     toast('❌ ' + err.message);

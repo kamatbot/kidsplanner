@@ -29,18 +29,9 @@
   <link rel="stylesheet" href="/css/trips.css">
 </head>
 <body>
-  <header class="app-header">
-    <div class="header-left">
-      <a href="/trips" onclick="event.preventDefault();tripsGoList()" style="text-decoration:none;display:flex;align-items:center;gap:10px">
-        <span class="app-logo">🗂️</span>
-        <span class="app-name">Fam ETC</span>
-      </a>
-    </div>
-    <div class="header-right">
-      <a href="/" style="color:var(--accent);font-weight:800;text-decoration:none">← Back to app</a>
-    </div>
-  </header>
-
+  <!-- No static chrome: the list/hub headers rendered by trips.js carry the
+       brand tile (which is also the back-to-app link), per the Waypoint mock's
+       single-row header. -->
   <main id="trips-root"></main>
 
   <!-- Toast -->
