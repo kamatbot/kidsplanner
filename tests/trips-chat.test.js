@@ -184,16 +184,28 @@ test("trip activity updates are mirrored into the trip chat room", async () => {
     body: { title: "Shared packing" },
   });
 
-  assert.deepEqual(
-    chat.listMessages("trip:" + trip.id).map((message) => message.text),
-    [
-      "joined the trip",
-      "added an itinerary item: Street food tour",
-      "added a flight: TG 401",
-      "added lodging: Riverside Hotel",
-      "started a packing list: Shared packing",
-    ],
-  );
+  const updates = chat.listMessages("trip:" + trip.id);
+  assert.deepEqual(updates.map((message) => message.card.type), [
+    "trip-member",
+    "trip-itinerary",
+    "trip-flight",
+    "trip-lodging",
+    "trip-packing",
+  ]);
+  assert.match(updates[0].card.title, /^User UpdatesGuest/);
+  assert.deepEqual(updates.slice(1).map((message) => message.card.title), [
+    "Street food tour",
+    "TG 401",
+    "Riverside Hotel",
+    "Shared packing",
+  ]);
+  assert.deepEqual(updates.map((message) => message.text), [
+    "Joined the trip",
+    "New itinerary idea",
+    "BKK → SIN",
+    "Lodging added",
+    "Started a shared packing list",
+  ]);
 });
 
 test("POST trip chat message: a member can post; response carries roomId + senderName", async () => {
