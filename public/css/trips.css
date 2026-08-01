@@ -139,36 +139,61 @@
   .trip-create-card .trip-input[type="date"] { flex-basis: 100%; }
 }
 
-/* ---------- trip HUB header + tabs (sticky, like the mock) ---------- */
+/* ---------- trip HUB header + tabs (sticky, like the mock: brand tile +
+   wordmark + divider + trip title + avatars + invite, ONE row). Inner
+   wrappers cap content width so on a wide monitor the title and the Invite
+   button don't drift to opposite screen edges. ---------- */
 .trip-hub-header {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  padding: 14px 20px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  padding: 12px 20px;
   position: sticky;
   top: 0;
   z-index: 20;
 }
+.trip-hub-inner {
+  max-width: 1160px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.trip-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex: none; }
+.trip-brand-tile {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: var(--accent); color: var(--on-accent);
+  display: flex; align-items: center; justify-content: center;
+  transition: filter .12s ease;
+}
+.trip-brand-tile svg { width: 18px; height: 18px; }
+.trip-brand:hover .trip-brand-tile { filter: brightness(1.1); }
+.trip-brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
+.trip-brand-divider { width: 1px; height: 26px; background: var(--border); flex: none; }
 .trip-hub-title { min-width: 0; }
 .trip-hub-name-row { display: flex; align-items: center; gap: 6px; }
-.trip-hub-name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+.trip-hub-name { font-size: 15.5px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trip-hub-meta { margin-top: 2px; }
 .trip-hub-header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+@media (max-width: 700px) {
+  .trip-brand-name { display: none; } /* tile alone is the back-link on phones */
+}
 
 .trip-tabs {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   padding: 0 20px;
+  position: sticky;
+  top: 59px;
+  z-index: 19;
+  -webkit-overflow-scrolling: touch;
+}
+.trip-tabs-inner {
+  max-width: 1160px;
+  margin: 0 auto;
   display: flex;
   gap: 2px;
   overflow-x: auto;
-  position: sticky;
-  top: 63px;
-  z-index: 19;
-  -webkit-overflow-scrolling: touch;
 }
 .trip-tab-btn {
   border: none;
@@ -375,8 +400,31 @@
 
 /* ---------- flights + lodging tabs ---------- */
 .trip-section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.trip-section-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .trip-section-sub { font-size: 13px; color: var(--text-2); margin-top: 2px; }
 .trip-card-list { display: flex; flex-direction: column; gap: 12px; }
+
+/* ---------- paste-to-import (v1.1 §3) ---------- */
+.trip-paste-panel { margin-bottom: 16px; }
+.trip-paste-textarea { min-height: 130px; resize: vertical; line-height: 1.5; }
+.trip-paste-preview-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.trip-paste-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; cursor: pointer;
+}
+.trip-paste-card input[type="checkbox"] { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); flex: none; cursor: pointer; }
+.trip-paste-card-body { flex: 1; min-width: 0; }
+.trip-paste-card-kind { color: var(--accent); margin-bottom: 2px; }
+.trip-paste-card-title { font-size: 14.5px; font-weight: 700; }
+.trip-paste-card-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+.trip-spinner {
+  display: inline-block; width: 12px; height: 12px; margin-right: 6px;
+  border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+  opacity: .85; vertical-align: -2px;
+  animation: trip-spin .7s linear infinite;
+}
+@keyframes trip-spin { to { transform: rotate(360deg); } }
 
 .trip-flight-card, .trip-lodging-card { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .trip-lodging-card { align-items: flex-start; gap: 16px; }
@@ -403,6 +451,44 @@
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
   padding: 8px 12px; display: inline-block;
 }
+
+/* ---------- packing tab (v1.1 §2) ---------- */
+.trip-packing-card, .trip-checklist-card { margin-bottom: 12px; }
+.trip-packing-mine { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.trip-packing-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.trip-packing-count { color: var(--text-2); white-space: nowrap; }
+.trip-progress-track { height: 6px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+.trip-packing-mine .trip-progress-track { background: var(--hover); }
+.trip-progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .2s ease; }
+.trip-packing-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.trip-preset-chip {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px; letter-spacing: .04em;
+  color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 11px; cursor: pointer;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.trip-preset-chip:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+.trip-checklist-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.trip-checklist-items { display: flex; flex-direction: column; gap: 2px; margin: 10px 0; }
+.trip-checklist-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 2px; border-bottom: 1px solid var(--border); }
+.trip-checklist-row:last-child { border-bottom: none; }
+.trip-checklist-check { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; min-width: 0; }
+.trip-checklist-check input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); flex: none; cursor: pointer; }
+.trip-checklist-row.done .trip-checklist-text { text-decoration: line-through; color: var(--muted); }
+.trip-checklist-text { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-checklist-row-meta { display: flex; align-items: center; gap: 8px; flex: none; }
+.trip-checklist-add-form { display: flex; gap: 8px; margin-top: 8px; }
+.trip-checklist-add-form .trip-input { flex: 1; }
+.trip-checklist-rename-form { display: flex; gap: 6px; flex: 1; min-width: 200px; }
+.trip-checklist-rename-form .trip-input { flex: 1; }
+.trip-checklist-admin { display: flex; gap: 4px; justify-content: flex-end; margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; }
+
+.trip-assignee-picker { display: flex; gap: 4px; }
+.trip-assignee-btn { border: none; background: none; padding: 0; cursor: pointer; border-radius: 50%; line-height: 0; opacity: .4; transition: opacity .12s ease, box-shadow .12s ease; }
+.trip-assignee-btn:hover { opacity: .8; }
+.trip-assignee-btn.active { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
 
 /* ---------- people tab ---------- */
 .trip-invite-card { margin-bottom: 16px; }

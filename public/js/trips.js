@@ -4,8 +4,10 @@
    (/trips/<id>) live in this one script — location.pathname decides which
    to render, history.pushState navigates between them without a reload.
    Ports the "Waypoint" UX reference mock (Overview / Itinerary / Flights /
-   Lodging / Chat / People) using this app's Horizon design tokens via
-   public/css/trips.css.
+   Lodging / Packing / Chat / People) using this app's Horizon design tokens
+   via public/css/trips.css. Packing, the Ideas bucket atop Itinerary, and
+   paste-to-import on Flights/Lodging are v1.1 additions — see the
+   "v1.1 — Wanderlog-gap features" section of docs/TRIPS-PLAN.md.
 
    Fetches go through window.auth.trips* wrappers (see auth.js), EXCEPT the
    trip chat long-poll, which needs raw fetch + AbortController — that part
@@ -260,12 +262,18 @@ function renderTripsList() {
   const firstRun = !trips.length;
   const formOpen = tripsNewFormOpen || firstRun;
   root.innerHTML = `
-    <div class="trip-main">
-      <div class="trip-list-header">
-        <h1 class="page-title">Trips</h1>
-        <div class="page-header-spacer"></div>
-        ${formOpen ? '' : '<button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ New trip</button>'}
+    <div class="trip-hub-header">
+      <div class="trip-hub-inner">
+        ${tripBrandHtml()}
+        <div class="trip-hub-title">
+          <div class="trip-hub-name-row"><div class="trip-hub-name">Trips</div></div>
+        </div>
+        <div class="trip-hub-header-right">
+          ${formOpen ? '' : '<button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ New trip</button>'}
+        </div>
       </div>
+    </div>
+    <div class="trip-main">
       ${formOpen ? renderNewTripForm(firstRun) : ''}
       ${trips.length ? `<div class="trip-list-grid">${trips.map(renderTripCard).join('')}</div>` : ''}
     </div>
@@ -496,7 +504,9 @@ function renderHub() {
   root.innerHTML = `
     ${tripHubHeaderHtml()}
     <nav class="trip-tabs">
-      ${tabsDef.map(([id, label]) => `<button type="button" class="trip-tab-btn${currentTab === id ? ' active' : ''}" onclick="tripsGoTab('${id}')">${esc(label)}</button>`).join('')}
+      <div class="trip-tabs-inner">
+        ${tabsDef.map(([id, label]) => `<button type="button" class="trip-tab-btn${currentTab === id ? ' active' : ''}" onclick="tripsGoTab('${id}')">${esc(label)}</button>`).join('')}
+      </div>
     </nav>
     <div class="trip-main" id="trip-tab-content"></div>
   `;
@@ -523,6 +533,18 @@ function rerenderTab() {
   else if (currentTab === 'people') el.innerHTML = renderPeopleTabHtml();
 }
 
+// The brand tile doubles as the back-to-app link (Waypoint mock: logo tile +
+// wordmark + divider + trip title, all in ONE sticky row — no separate chrome
+// bar). Used by both the hub header and the trips-list top bar.
+function tripBrandHtml() {
+  return `
+    <a class="trip-brand" href="/" title="Back to Fam ETC" aria-label="Back to Fam ETC">
+      <span class="trip-brand-tile">${ICON_PLANE}</span>
+      <span class="trip-brand-name">Fam ETC</span>
+    </a>
+    <div class="trip-brand-divider"></div>`;
+}
+
 function tripHubHeaderHtml() {
   const t = currentTrip;
   const kid = isKidRole();
@@ -530,16 +552,19 @@ function tripHubHeaderHtml() {
   const members = t.members || [];
   return `
     <div class="trip-hub-header">
-      <div class="trip-hub-title">
-        <div class="trip-hub-name-row">
-          <div class="trip-hub-name">${esc(t.name)}</div>
-          ${!kid ? `<button type="button" class="trip-icon-btn" title="Edit trip" onclick="tripToggleEditForm()">${ICON_EDIT}</button>` : ''}
+      <div class="trip-hub-inner">
+        ${tripBrandHtml()}
+        <div class="trip-hub-title">
+          <div class="trip-hub-name-row">
+            <div class="trip-hub-name">${esc(t.name)}</div>
+            ${!kid ? `<button type="button" class="trip-icon-btn" title="Edit trip" onclick="tripToggleEditForm()">${ICON_EDIT}</button>` : ''}
+          </div>
+          <div class="micro-label trip-hub-meta">${esc(dates)}${t.destination ? ' · ' + esc(t.destination) : ''}</div>
         </div>
-        <div class="micro-label trip-hub-meta">${esc(dates)}${t.destination ? ' · ' + esc(t.destination) : ''}</div>
-      </div>
-      <div class="trip-hub-header-right">
-        <div class="avatar-stack">${renderAvatarStack(members, 30)}</div>
-        ${!kid ? `<button type="button" class="btn-primary" onclick="tripsGoTab('people')">Invite friends</button>` : ''}
+        <div class="trip-hub-header-right">
+          <div class="avatar-stack">${renderAvatarStack(members, 30)}</div>
+          ${!kid ? `<button type="button" class="btn-primary" onclick="tripsGoTab('people')">Invite friends</button>` : ''}
+        </div>
       </div>
     </div>
     ${!kid && tripEditFormOpen ? `<div class="trip-main" style="padding-bottom:0">${tripEditFormHtml()}</div>` : ''}
