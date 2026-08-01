@@ -796,6 +796,60 @@
     });
   }
 
+  /* ---------- trips v1.1 (Wanderlog-gap features — see docs/TRIPS-PLAN.md
+     "v1.1 — Wanderlog-gap features"): paste-to-import + packing checklists.
+     Same one-liner style as every wrapper above. ---------- */
+  async function parseBooking(payload) {
+    return api("/api/ai/parse-booking", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function createTripChecklist(tripId, payload) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/checklists", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  async function getOrCreateMyPacking(tripId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/checklists/personal", { method: "POST" });
+  }
+
+  async function renameTripChecklist(tripId, listId, patch) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/checklists/" + encodeURIComponent(listId), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteTripChecklist(tripId, listId) {
+    return api("/api/trips/" + encodeURIComponent(tripId) + "/checklists/" + encodeURIComponent(listId), {
+      method: "DELETE",
+    });
+  }
+
+  async function addTripChecklistItem(tripId, listId, payload) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/checklists/" + encodeURIComponent(listId) + "/items",
+      { method: "POST", body: JSON.stringify(payload || {}) }
+    );
+  }
+
+  async function updateTripChecklistItem(tripId, listId, itemId, patch) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/checklists/" + encodeURIComponent(listId) +
+        "/items/" + encodeURIComponent(itemId),
+      { method: "PATCH", body: JSON.stringify(patch || {}) }
+    );
+  }
+
+  async function deleteTripChecklistItem(tripId, listId, itemId) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/checklists/" + encodeURIComponent(listId) +
+        "/items/" + encodeURIComponent(itemId),
+      { method: "DELETE" }
+    );
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -903,5 +957,13 @@
     sendTripChatMessage,
     deleteTripChatMessage,
     flagTripChatMessage,
+    parseBooking,
+    createTripChecklist,
+    getOrCreateMyPacking,
+    renameTripChecklist,
+    deleteTripChecklist,
+    addTripChecklistItem,
+    updateTripChecklistItem,
+    deleteTripChecklistItem,
   };
 })();
