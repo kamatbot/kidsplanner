@@ -278,7 +278,7 @@ test("GET /api/chat/rooms: a guest with no family and no trips sees no rooms", a
   const guest = freshUser("Rooms1");
   const res = await callChat(routes["GET /api/chat/rooms"], guest);
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body.rooms, []);
+  assert.deepEqual(res.body, []);
 });
 
 test("GET /api/chat/rooms: a guest who joined a trip sees ONLY the trip room (no family entry)", async () => {
@@ -287,21 +287,21 @@ test("GET /api/chat/rooms: a guest who joined a trip sees ONLY the trip room (no
   const guest = freshUser("Rooms2g");
   trips.joinByCode(trip.inviteCode, guest.id);
   const res = await callChat(routes["GET /api/chat/rooms"], guest);
-  assert.equal(res.body.rooms.length, 1);
-  assert.equal(res.body.rooms[0].roomId, "trip:" + trip.id);
-  assert.equal(res.body.rooms[0].tripId, trip.id);
-  assert.equal(res.body.rooms[0].title, trip.name);
-  assert.equal(res.body.rooms[0].memberCount, 2);
+  assert.equal(res.body.length, 1);
+  assert.equal(res.body[0].roomId, "trip:" + trip.id);
+  assert.equal(res.body[0].tripId, trip.id);
+  assert.equal(res.body[0].title, trip.name);
+  assert.equal(res.body[0].memberCount, 2);
 });
 
 test("GET /api/chat/rooms: a parent with a family and a trip sees both rooms", async () => {
   const routes = buildChatRoomsHarness();
   const { owner, trip, fam } = makeTrip("Rooms3");
   const res = await callChat(routes["GET /api/chat/rooms"], owner);
-  const roomIds = res.body.rooms.map((r) => r.roomId);
+  const roomIds = res.body.map((r) => r.roomId);
   assert.ok(roomIds.includes("family"));
   assert.ok(roomIds.includes("trip:" + trip.id));
-  const familyRoom = res.body.rooms.find((r) => r.roomId === "family");
+  const familyRoom = res.body.find((r) => r.roomId === "family");
   assert.equal(familyRoom.title, fam.name);
 });
 
@@ -311,7 +311,7 @@ test("GET /api/chat/rooms: a kid sees the family room but NEVER a trip chat room
   const { kid } = family.addKid(fam.id, fam.parentIds[0], { name: "Kiddo" });
   const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
   const res = await callChat(routes["GET /api/chat/rooms"], kidUser);
-  const roomIds = res.body.rooms.map((r) => r.roomId);
+  const roomIds = res.body.map((r) => r.roomId);
   assert.ok(roomIds.includes("family"));
   assert.ok(!roomIds.includes("trip:" + trip.id));
 });
