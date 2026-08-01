@@ -155,6 +155,47 @@ function call(route, { body, params, query, user } = {}) {
   });
 }
 
+test("trip activity updates are mirrored into the trip chat room", async () => {
+  const routes = buildTripsHarness();
+  const { owner, trip } = makeTrip("Updates");
+  const joiner = freshUser("UpdatesGuest");
+
+  await call(routes["POST /api/trips/join/:code"], {
+    user: joiner, params: { code: trip.inviteCode },
+  });
+  await call(routes["POST /api/trips/:tripId/itinerary"], {
+    user: owner,
+    params: { tripId: trip.id },
+    body: { date: null, title: "Street food tour", category: "food" },
+  });
+  await call(routes["POST /api/trips/:tripId/flights"], {
+    user: owner,
+    params: { tripId: trip.id },
+    body: { airline: "TG", flightNo: "401", from: "BKK", to: "SIN" },
+  });
+  await call(routes["POST /api/trips/:tripId/lodging"], {
+    user: owner,
+    params: { tripId: trip.id },
+    body: { name: "Riverside Hotel" },
+  });
+  await call(routes["POST /api/trips/:tripId/checklists"], {
+    user: owner,
+    params: { tripId: trip.id },
+    body: { title: "Shared packing" },
+  });
+
+  assert.deepEqual(
+    chat.listMessages("trip:" + trip.id).map((message) => message.text),
+    [
+      "joined the trip",
+      "added an itinerary item: Street food tour",
+      "added a flight: TG 401",
+      "added lodging: Riverside Hotel",
+      "started a packing list: Shared packing",
+    ],
+  );
+});
+
 test("POST trip chat message: a member can post; response carries roomId + senderName", async () => {
   const notifyCalls = [];
   const routes = buildTripsHarness(notifyCalls);
