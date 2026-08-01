@@ -255,5 +255,62 @@ and must be built + TestFlighted from a Mac.
 | E | integration, full test run, APP-BRIEF.md addendum, commit + push | #6 |
 
 Out of scope for v1 (recorded, not forgotten): flight-status lookups or any
-third-party travel API; itinerary→calendar per-item sync; expense splitting;
+third-party travel API; itinerary→calendar per-item sync; expense splitting
+(owner decision 2026-08-01: handled by retireodds.com/split, never built here);
 trip photos; email invites; iOS native trips UI; billing gate on trips.
+
+---
+
+# v1.1 — Wanderlog-gap features (decided 2026-08-01)
+
+Three additions; iOS untouched (webview picks them up). Maps deferred (CSP).
+
+## 1. Ideas bucket
+Itinerary items may have `date: null` — an unscheduled "idea". Vote/comment/
+edit/delete work unchanged (same item shape). `addItineraryItem`: date now
+optional (empty → null). `moveItineraryItem` accepts `date: null` (back to
+ideas); ordering within the ideas group uses the same `order` ints (null date
+group). Calendar merge ignores itinerary items already — no change. UI: an
+"Ideas" dashed panel atop the Itinerary tab; drag ideas onto days and back;
+vote first, schedule later.
+
+## 2. Packing lists / shared checklists
+`trip.checklists = [{ id:"tk_"+hex, title≤80, kind:"shared"|"personal",
+ownerUserId (personal only), items:[{ id:"tki_"+hex, text≤200, done,
+doneBy|null, assigneeUserId|null, createdBy, createdAt }], createdBy,
+createdAt }]` (default-init `trip.checklists || []` everywhere — existing
+trips predate the field; publicTrip includes it).
+
+Permissions — the ONE kid-write carve-out in trips: a kid may fully manage
+items on their OWN personal list; everything else stays read-only for kids.
+- shared lists: members create/rename/add/toggle/assign/delete items; delete
+  list = trip owner or list creator.
+- personal lists: one per user, get-or-create ("<Name>'s packing"); ONLY the
+  owner touches its items (owner may be a kid-read user); visible to all.
+
+Routes (all under requireAuth; view-level gate passes kid-read for ALL
+methods here — per-handler checks enforce the matrix above):
+```
+POST   /api/trips/:tripId/checklists            {title} → {checklist}        // shared, members only
+POST   /api/trips/:tripId/checklists/personal   → {checklist}                // get-or-create own, any access
+PATCH  /api/trips/:tripId/checklists/:lid       {title} → {checklist}
+DELETE /api/trips/:tripId/checklists/:lid       → {ok}
+POST   /api/trips/:tripId/checklists/:lid/items {text, assigneeUserId?} → {item}
+PATCH  /api/trips/:tripId/checklists/:lid/items/:iid {text?, done?, assigneeUserId?} → {item}  // done sets doneBy
+DELETE /api/trips/:tripId/checklists/:lid/items/:iid → {ok}
+```
+Activity log on shared-list create only; no push (noise). UI: "Packing" tab —
+shared lists with assignee chips + doneBy avatars + per-list progress, a "My
+packing" card with quick-add preset chips (Passport, Chargers, Meds, Swimwear,
+Snacks, Headphones). Kid sessions: everything read-only EXCEPT their own card.
+
+## 3. Paste-to-import bookings (no email infra needed)
+`POST /api/ai/parse-booking` in lib/routes/ai.js (requireAuth only — parsing
+is stateless; the ADD endpoints enforce trip permissions): `{text ≤ 20k
+chars}` → `{flights:[{airline,flightNo,confirmation,from,to,departs,arrives}],
+lodging:[{name,address,confirmation,checkIn,checkOut,note}]}`. Same env-gated
+ANTHROPIC_API_KEY + shared daily quota + fenced-JSON handling as /api/ai/parse;
+text-only Claude message; dates output in the "Jun 3, 21:50" shape the
+calendar merge already parses. 422 when nothing found; 503 unconfigured. UI:
+"✨ Paste confirmation" on Flights + Lodging tabs → textarea → parsed preview
+cards with checkboxes → "Add selected" via the existing add endpoints.
