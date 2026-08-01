@@ -49,16 +49,95 @@
 .trip-card-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
 .trip-card-counts { font-size: 12.5px; color: var(--text-2); }
 
-.trip-empty {
-  text-align: center;
-  padding: 70px 20px;
-  color: var(--text-2);
-  max-width: 420px;
-  margin: 0 auto;
+/* ---------- create-trip hero (the screen's ONE momentum-gradient element,
+   per APP-BRIEF "Hero gradient": coral→violet, destination-first entry.
+   Fixed light-palette gradient stops in BOTH themes — like the auth pages,
+   the band reads as imagery, and the dark theme's pastel accent would wash
+   out white text. ---------- */
+.trip-create-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 24px;
+  animation: fadeUp .35s ease both;
 }
-.trip-empty-icon { font-size: 42px; margin-bottom: 12px; }
-.trip-empty h3 { color: var(--text); font-size: 18px; margin-bottom: 8px; }
-.trip-empty p { margin-bottom: 18px; line-height: 1.5; }
+.trip-create-hero {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f0704f 0%, #6f43d6 78%);
+  padding: 26px 26px 24px;
+}
+.trip-create-blob {
+  position: absolute; border-radius: 50%;
+  opacity: .22; filter: blur(46px); pointer-events: none;
+}
+.trip-create-blob-1 { width: 260px; height: 260px; background: #fff; top: -110px; right: -60px; }
+.trip-create-blob-2 { width: 200px; height: 200px; background: #f59e0b; bottom: -100px; left: 18%; }
+.trip-create-hero-inner { position: relative; }
+.trip-create-kicker {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: rgba(255, 255, 255, .82);
+  margin-bottom: 6px;
+}
+.trip-create-dest {
+  display: block; width: 100%;
+  background: none; border: none; outline: none; padding: 0;
+  font-family: inherit;
+  font-size: clamp(27px, 5.5vw, 40px);
+  font-weight: 700; letter-spacing: -.03em; line-height: 1.15;
+  color: #fff;
+  caret-color: #fff;
+  border-bottom: 2px solid rgba(255, 255, 255, .35);
+  padding-bottom: 6px;
+  transition: border-color .15s ease;
+}
+.trip-create-dest::placeholder { color: rgba(255, 255, 255, .55); }
+.trip-create-dest:focus { border-bottom-color: #fff; }
+.trip-create-hero-sub { font-size: 13px; color: rgba(255, 255, 255, .8); margin-top: 10px; }
+
+.trip-create-body { padding: 20px 26px 24px; display: flex; flex-direction: column; gap: 16px; }
+.trip-create-field { display: flex; flex-direction: column; gap: 7px; }
+.trip-create-dates-arrow { align-self: center; color: var(--muted); font-size: 14px; }
+/* .trip-input defaults to width:100% — in the create card the two date
+   fields must sit inline either side of the arrow, not stack. */
+.trip-create-card .trip-form-row { align-items: center; }
+.trip-create-card .trip-input[type="date"] { width: auto; flex: 0 1 190px; min-width: 150px; }
+.trip-create-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.trip-create-preset {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.trip-create-preset:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.trip-create-meta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent); font-weight: 700;
+  margin-left: auto;
+}
+.trip-create-meta.show { animation: fadeUp .25s ease both; }
+.trip-create-perks {
+  display: flex; gap: 18px; flex-wrap: wrap;
+  border-top: 1px dashed var(--border);
+  padding-top: 14px;
+  font-size: 12.5px; color: var(--text-2);
+}
+@media (max-width: 560px) {
+  .trip-create-hero { padding: 20px 18px 18px; }
+  .trip-create-body { padding: 16px 18px 20px; }
+  .trip-create-perks { gap: 10px; flex-direction: column; }
+  .trip-create-dates-arrow { display: none; } /* dates stack — the arrow would dangle */
+  .trip-create-card .trip-input[type="date"] { flex-basis: 100%; }
+}
 
 /* ---------- trip HUB header + tabs (sticky, like the mock) ---------- */
 .trip-hub-header {

@@ -33,6 +33,13 @@ let currentTab = 'overview';  // overview | itinerary | flights | lodging | chat
 
 let tripsListCache = [];
 let tripsNewFormOpen = false;
+// Create-trip hero state: the name auto-writes itself from the destination
+// until the user edits it by hand; the destination placeholder cycles through
+// real cities until the user starts typing.
+let tripCreateNameTouched = false;
+let tripCreateRotorTimer = null;
+let tripCreateRotorIdx = 0;
+const TRIP_CREATE_CITIES = ['Lisbon', 'Tokyo', 'Rome', 'Barcelona', 'Kyoto', 'Phuket', 'New York', 'Queenstown'];
 
 let tripFormState = null;     // itinerary add/edit form: {dayDate, itemId|null}
 let tripOpenThreads = new Set();
@@ -235,56 +242,148 @@ function renderTripsList() {
   const root = document.getElementById('trips-root');
   if (!root) return;
   const trips = tripsListCache || [];
+  // First visit with zero trips: land straight in the creation hero — the
+  // create card IS the empty state, not a dead-end box with a button in it.
+  const firstRun = !trips.length;
+  const formOpen = tripsNewFormOpen || firstRun;
   root.innerHTML = `
     <div class="trip-main">
       <div class="trip-list-header">
         <h1 class="page-title">Trips</h1>
         <div class="page-header-spacer"></div>
-        <button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ New trip</button>
+        ${formOpen ? '' : '<button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ New trip</button>'}
       </div>
-      ${tripsNewFormOpen ? renderNewTripForm() : ''}
-      ${trips.length
-        ? `<div class="trip-list-grid">${trips.map(renderTripCard).join('')}</div>`
-        : (tripsNewFormOpen ? '' : renderTripsEmptyState())}
+      ${formOpen ? renderNewTripForm(firstRun) : ''}
+      ${trips.length ? `<div class="trip-list-grid">${trips.map(renderTripCard).join('')}</div>` : ''}
     </div>
   `;
+  if (formOpen) tripCreateAfterRender();
+  else tripCreateStopRotor();
 }
 
 function tripsToggleNewForm() {
   tripsNewFormOpen = !tripsNewFormOpen;
+  tripCreateNameTouched = false;
   renderTripsList();
 }
 
-function renderNewTripForm() {
+function renderNewTripForm(firstRun) {
   return `
-    <form class="trip-inline-form" onsubmit="tripsSubmitNew(event)" style="margin-bottom:20px;max-width:520px">
-      <div class="trip-form-row">
-        <input class="trip-input" name="name" placeholder="Trip name · Lisbon with the crew" required autocomplete="off" maxlength="80">
+    <form class="trip-create-card" onsubmit="tripsSubmitNew(event)">
+      <div class="trip-create-hero">
+        <div class="trip-create-blob trip-create-blob-1"></div>
+        <div class="trip-create-blob trip-create-blob-2"></div>
+        <div class="trip-create-hero-inner">
+          <div class="trip-create-kicker">${firstRun ? 'Your first trip' : 'New trip'}</div>
+          <input class="trip-create-dest" name="destination" placeholder="${esc(TRIP_CREATE_CITIES[0])}…"
+                 autocomplete="off" maxlength="120" spellcheck="false" autofocus
+                 oninput="tripCreateOnDestination(this)">
+          <div class="trip-create-hero-sub">Where to next? Type a destination — we'll handle the rest.</div>
+        </div>
       </div>
-      <div class="trip-form-row">
-        <input class="trip-input" name="destination" placeholder="Destination · Lisbon, PT" autocomplete="off" maxlength="120">
-      </div>
-      <div class="trip-form-row">
-        <input class="trip-input" type="date" name="startDate" required>
-        <input class="trip-input" type="date" name="endDate" required>
-      </div>
-      <div class="trip-form-actions">
-        <button type="submit" class="btn-primary">Create trip</button>
-        <button type="button" class="btn-secondary" onclick="tripsToggleNewForm()">Cancel</button>
+      <div class="trip-create-body">
+        <div class="trip-create-field">
+          <label class="micro-label" for="trip-create-name">Trip name</label>
+          <input class="trip-input" id="trip-create-name" name="name" placeholder="Lisbon with the crew"
+                 required autocomplete="off" maxlength="80" oninput="tripCreateNameTouched = true">
+        </div>
+        <div class="trip-create-field">
+          <label class="micro-label">Dates</label>
+          <div class="trip-form-row">
+            <input class="trip-input" type="date" name="startDate" required onchange="tripCreateOnDates(this.form)">
+            <span class="trip-create-dates-arrow">→</span>
+            <input class="trip-input" type="date" name="endDate" required onchange="tripCreateOnDates(this.form)">
+          </div>
+          <div class="trip-create-presets">
+            <button type="button" class="trip-create-preset" onclick="tripCreatePreset(this.form, 3)">Long weekend</button>
+            <button type="button" class="trip-create-preset" onclick="tripCreatePreset(this.form, 6)">One week</button>
+            <button type="button" class="trip-create-preset" onclick="tripCreatePreset(this.form, 13)">Two weeks</button>
+            <span class="trip-create-meta" id="trip-create-meta"></span>
+          </div>
+        </div>
+        <div class="trip-form-actions">
+          <button type="submit" class="btn-primary">Start planning →</button>
+          ${firstRun ? '' : '<button type="button" class="btn-secondary" onclick="tripsToggleNewForm()">Cancel</button>'}
+        </div>
+        ${firstRun ? `
+        <div class="trip-create-perks">
+          <span>🔗 Invite anyone with a link</span>
+          <span>🗳️ Vote on the plan together</span>
+          <span>💬 One chat for the whole crew</span>
+        </div>` : ''}
       </div>
     </form>
   `;
 }
 
-function renderTripsEmptyState() {
-  return `
-    <div class="trip-empty">
-      <div class="trip-empty-icon">✈️</div>
-      <h3>Plan your first trip</h3>
-      <p>Bring in friends and family from outside your household — a shared itinerary, flights, lodging, and a group chat, all in one place.</p>
-      <button type="button" class="btn-primary" onclick="tripsToggleNewForm()">+ Plan a trip</button>
-    </div>
-  `;
+/* ---- create-trip hero behaviors (all direct-DOM: never re-render the list
+   mid-typing, that would eat the user's input state) ---- */
+
+// Cycle the destination placeholder through real cities until typing starts.
+function tripCreateAfterRender() {
+  // autofocus doesn't fire on innerHTML-injected nodes — focus by hand, but
+  // only when the user explicitly opened the form (never on the auto-opened
+  // first-run state, where it would pop the keyboard on mobile uninvited).
+  if (tripsNewFormOpen) {
+    const dest = document.querySelector('.trip-create-dest');
+    if (dest) dest.focus();
+  }
+  tripCreateStopRotor();
+  tripCreateRotorTimer = setInterval(() => {
+    const el = document.querySelector('.trip-create-dest');
+    if (!el) { tripCreateStopRotor(); return; }
+    if (el.value) return; // typing — hold still
+    tripCreateRotorIdx = (tripCreateRotorIdx + 1) % TRIP_CREATE_CITIES.length;
+    el.placeholder = TRIP_CREATE_CITIES[tripCreateRotorIdx] + '…';
+  }, 2200);
+}
+function tripCreateStopRotor() {
+  if (tripCreateRotorTimer) { clearInterval(tripCreateRotorTimer); tripCreateRotorTimer = null; }
+}
+
+// The trip name writes itself ("<City> with the crew") until hand-edited.
+function tripCreateOnDestination(destEl) {
+  const nameEl = destEl.form && destEl.form.name;
+  if (!nameEl) return;
+  const city = destEl.value.split(',')[0].trim();
+  if (!tripCreateNameTouched) nameEl.value = city ? `${city} with the crew` : '';
+}
+
+// Presets: no start date yet → upcoming Friday; end = start + nights.
+function tripCreatePreset(form, nights) {
+  let start = form.startDate.value;
+  if (!start) {
+    const d = new Date();
+    d.setDate(d.getDate() + ((5 - d.getDay() + 7) % 7 || 7)); // next Friday
+    start = isoDate(d);
+    form.startDate.value = start;
+  }
+  const end = parseIso(start);
+  end.setDate(end.getDate() + nights);
+  form.endDate.value = isoDate(end);
+  tripCreateOnDates(form);
+}
+
+// Live "6 DAYS · IN 312 DAYS" chip — updated in place, JetBrains-mono style.
+function tripCreateOnDates(form) {
+  const meta = document.getElementById('trip-create-meta');
+  if (!meta) return;
+  const s = form.startDate.value, e = form.endDate.value;
+  if (s) form.endDate.min = s;
+  if (!s || !e || e < s) { meta.textContent = ''; meta.classList.remove('show'); return; }
+  const days = daysBetweenInclusive(s, e);
+  const today = isoDate(new Date());
+  let when;
+  if (today >= s && today <= e) when = 'happening now ✈';
+  else if (today > e) when = 'a memory now';
+  else {
+    const lead = Math.round((parseIso(s) - parseIso(today)) / 86400000);
+    when = lead === 1 ? 'tomorrow ✈' : `in ${lead} days`;
+  }
+  meta.textContent = `${days} day${days === 1 ? '' : 's'} · ${when}`;
+  meta.classList.remove('show');
+  void meta.offsetWidth; // restart the pop-in animation on every change
+  meta.classList.add('show');
 }
 
 function renderTripCard(t) {
