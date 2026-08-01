@@ -28,19 +28,97 @@ func famAvatar(senderType: String, id: String) -> String {
     return set[abs(stableHash(id)) % set.count]
 }
 
-// MARK: - System card message (homework / event) — distinct + animated + tappable
+// MARK: - System card messages
 
 struct SystemCardRow: View {
     let message: ChatMessage
     var onTapCard: (ChatCard) -> Void
 
+    private var cardType: String { message.card?.type ?? "" }
+    private var isTripUpdate: Bool { cardType.hasPrefix("trip-") }
     private var isEvent: Bool { message.card?.type == "event" }
     private var isDone: Bool { !isEvent && message.text.hasPrefix("✅") }
     private var tint: Color { isDone ? Palette.green : Palette.accent }
     private var emoji: String { isEvent ? "📅" : (isDone ? "✅" : "📚") }
     private var subLabel: String { isEvent ? "Event · tap to view" : "Homework · tap to view" }
 
+    private var tripStyle: (label: String, icon: String, tint: Color) {
+        switch cardType {
+        case "trip-flight": return ("Flight", "airplane", Palette.blue)
+        case "trip-lodging": return ("Stay", "bed.double.fill", Palette.violet)
+        case "trip-itinerary": return ("Itinerary", "map.fill", Palette.teal)
+        case "trip-packing": return ("Packing", "suitcase.fill", Palette.amber)
+        case "trip-member": return ("Crew", "person.badge.plus", Palette.coral)
+        default: return ("Trip update", "sparkles", Palette.accent)
+        }
+    }
+
+    @ViewBuilder
     var body: some View {
+        if isTripUpdate {
+            tripUpdateCard
+        } else {
+            familySystemCard
+        }
+    }
+
+    /// Trip updates are informational, not fake links: category color and a
+    /// familiar SF Symbol make flights/stays/ideas/packing legible at a glance,
+    /// while the actor + timestamp preserve chat context.
+    private var tripUpdateCard: some View {
+        let style = tripStyle
+        return HStack(alignment: .top, spacing: Space.md) {
+            Image(systemName: style.icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(style.tint)
+                .frame(width: 36, height: 36)
+                .background(style.tint.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(style.label.uppercased())
+                    .font(Typography.mono(9.5, .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(style.tint)
+
+                Text(message.card?.title ?? message.text)
+                    .font(Typography.cardTitle)
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if message.card?.title != nil, !message.text.isEmpty {
+                    Text(message.text)
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 5) {
+                    if cardType != "trip-member" {
+                        Text(message.senderName ?? "Trip member")
+                        Text("•")
+                    }
+                    Text(ChatTime.short(message.createdAt))
+                }
+                .font(Typography.mono(9.5))
+                .foregroundStyle(Palette.muted)
+                .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(style.tint.opacity(0.38), lineWidth: 1.25)
+        }
+        .padding(.horizontal, Space.md)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(style.label): \(message.card?.title ?? message.text). \(message.text)")
+    }
+
+    private var familySystemCard: some View {
         Button { if let c = message.card { onTapCard(c) } } label: {
             HStack(spacing: Space.md) {
                 Text(emoji).font(.system(size: 26))

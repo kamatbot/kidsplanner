@@ -39,9 +39,10 @@ struct Family: Codable, Identifiable {
     let createdAt: String
 }
 
-/// A homework|event reference attached to a chat message.
+/// A structured chat card: family homework/event references are tappable;
+/// trip-* cards are informational timeline updates with category styling.
 struct ChatCard: Codable {
-    let type: String   // "homework" | "event"
+    let type: String   // "homework" | "event" | "trip-flight" | ...
     let id: String
     var title: String?
 }
