@@ -19,9 +19,9 @@ import SwiftUI
 struct ChatScreen<HeaderAccessory: View>: View {
     var roomId: String = familyRoomId
     var title: String? = nil
-    /// Extra header control, trailing the title — e.g. the iPad docked
-    /// column's room-switcher `Menu`. Same generic-with-default-EmptyView
-    /// shape as `SurfaceScaffold`'s `Trailing`.
+    /// Extra header control, trailing the title — e.g. the compact circular
+    /// room switcher. Same generic-with-default-EmptyView shape as
+    /// `SurfaceScaffold`'s `Trailing`.
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
 
     @Environment(AppStore.self) private var store
@@ -81,7 +81,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 MicroLabel(text: isFamilyRoom ? "Family chat" : "Trip chat")
                 Text(title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : "Trip"))
@@ -233,93 +233,96 @@ struct ChatScreen<HeaderAccessory: View>: View {
     }
 }
 
-/// Convenience: no header accessory (the common case — every pre-Trips call
-/// site, plus every trip room pushed from `ChatRoomListScreen`). Mirrors
-/// `SurfaceScaffold`'s `Trailing == EmptyView` extension.
+/// Convenience: no header accessory. Mirrors `SurfaceScaffold`'s
+/// `Trailing == EmptyView` extension.
 extension ChatScreen where HeaderAccessory == EmptyView {
     init(roomId: String = familyRoomId, title: String? = nil) {
         self.init(roomId: roomId, title: title, headerAccessory: { EmptyView() })
     }
 }
 
-// MARK: - Chat tab entry point (room list vs. direct family chat)
+// MARK: - Chat tab entry point + compact room switcher
 
-/// The Chat tab's actual root: a room LIST once the signed-in user has more
-/// than the family room (Trips adds one per trip they're on), otherwise
-/// today's direct family `ChatScreen` unchanged — so a family with no trips
-/// sees zero difference (`ChatFirstLoadUITests` stays green).
+/// Chat always opens directly into the family thread. When trip rooms exist,
+/// a compact circular menu swaps rooms in place instead of adding a room-list
+/// navigation layer (and the large navigation header/back button it created).
 struct ChatTabHost: View {
     @Environment(AppStore.self) private var store
+    @State private var selectedRoomId = familyRoomId
 
     var body: some View {
-        if store.chatRooms.count > 1 {
-            ChatRoomListScreen()
-        } else {
-            ChatScreen()
-        }
-    }
-}
-
-/// Room picker: Family first, then one row per trip (`GET /api/chat/rooms`
-/// order), each with a last-message preview (only known once that room's been
-/// opened at least once — v1 simplification) and its own unread badge.
-struct ChatRoomListScreen: View {
-    @Environment(AppStore.self) private var store
-    @State private var path = NavigationPath()
-
-    var body: some View {
-        NavigationStack(path: $path) {
-            List(store.chatRooms) { room in
-                NavigationLink(value: room.roomId) {
-                    roomRow(room)
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(ScreenBackground())
-            .navigationTitle("Chat")
-            .navigationDestination(for: String.self) { roomId in
-                ChatScreen(roomId: roomId, title: store.chatRooms.first { $0.roomId == roomId }?.title)
+        ChatScreen(roomId: selectedRoomId, title: selectedRoomTitle) {
+            if store.chatRooms.count > 1 {
+                ChatRoomSwitcher(rooms: store.chatRooms, selection: $selectedRoomId)
             }
         }
-        .onAppear { consumePendingRoom() }
+        .onAppear {
+            selectDefaultRoomIfNeeded()
+            consumePendingRoom()
+        }
+        .onChange(of: store.chatRooms.map(\.roomId)) { _, _ in
+            selectDefaultRoomIfNeeded()
+            consumePendingRoom()
+        }
         .onChange(of: store.pendingChatRoomId) { _, _ in consumePendingRoom() }
     }
 
-    /// A `trip_chat_message`/`trip_update` push sets `store.pendingChatRoomId`
-    /// (see `NotificationHandler`); once that room is actually in our list,
-    /// push straight into it.
+    private var selectedRoomTitle: String? {
+        guard selectedRoomId != familyRoomId else { return nil }
+        return store.chatRooms.first { $0.roomId == selectedRoomId }?.title
+    }
+
     private func consumePendingRoom() {
         guard let roomId = store.pendingChatRoomId,
               store.chatRooms.contains(where: { $0.roomId == roomId }) else { return }
-        path = NavigationPath([roomId])
+        selectedRoomId = roomId
         store.pendingChatRoomId = nil
     }
 
-    private func roomRow(_ room: ChatRoom) -> some View {
-        let unread = store.unreadCount(for: room.roomId)
-        return HStack(spacing: Space.md) {
-            Image(systemName: room.roomId == familyRoomId ? "person.2.fill" : "airplane")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Palette.accent)
-                .frame(width: 32, height: 32)
-                .background(Palette.accentSoft, in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(room.title).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                if let preview = store.messagesByRoom[room.roomId]?.last?.text, !preview.isEmpty {
-                    Text(preview).font(Typography.caption).foregroundStyle(Palette.textSecond).lineLimit(1)
+    /// Family is the default whenever it exists. A trip-only guest falls back
+    /// to their first available room, and a removed room returns safely home.
+    private func selectDefaultRoomIfNeeded() {
+        guard !store.chatRooms.contains(where: { $0.roomId == selectedRoomId }) else { return }
+        selectedRoomId = store.chatRooms.first(where: { $0.roomId == familyRoomId })?.roomId
+            ?? store.chatRooms.first?.roomId
+            ?? familyRoomId
+    }
+}
+
+/// A 36pt visual circle inside a 44pt touch target. The current room's icon
+/// makes the state legible without consuming header space; the native Menu
+/// scales cleanly from one trip to many and preserves familiar iOS behavior.
+struct ChatRoomSwitcher: View {
+    let rooms: [ChatRoom]
+    @Binding var selection: String
+
+    private var currentRoom: ChatRoom? { rooms.first { $0.roomId == selection } }
+    private var currentIcon: String { selection == familyRoomId ? "person.2.fill" : "airplane" }
+
+    var body: some View {
+        Menu {
+            ForEach(rooms) { room in
+                Button {
+                    Haptics.selection()
+                    selection = room.roomId
+                } label: {
+                    Label(room.title,
+                          systemImage: room.roomId == selection
+                            ? "checkmark.circle.fill"
+                            : (room.roomId == familyRoomId ? "person.2.fill" : "airplane"))
                 }
             }
-            Spacer()
-            if unread > 0 {
-                Text(unread > 9 ? "9+" : "\(unread)")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Palette.coral, in: Capsule())
-            }
+        } label: {
+            Image(systemName: currentIcon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 36, height: 36)
+                .background(Palette.accentSoft, in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
-        .padding(.vertical, 4)
+        .accessibilityLabel("Switch chat room")
+        .accessibilityValue(currentRoom?.title ?? "Chat")
     }
 }
 

@@ -31,9 +31,9 @@ import SwiftUI
 // iPad size classes are regular×regular in BOTH orientations, so orientation is
 // read from actual geometry (`onGeometryChange`), not size classes.
 //
-// Chat's own tab content is `ChatTabHost`: the plain single-room `ChatScreen`
-// until the signed-in user is on a trip, then a room list
-// (docs/TRIPS-PLAN.md "iOS" §2) — so a family with no trips sees no change.
+// Chat's own tab content is `ChatTabHost`: family chat opens immediately and,
+// once the signed-in user is on a trip, a compact header control switches rooms
+// without adding another navigation layer (docs/TRIPS-PLAN.md "iOS" §2).
 //
 // Settings/Goals/Activities are NOT native tabs — they're reached from a "More"
 // entry inside Today, hosted by `HybridWebView`. That "More" sheet/menu is out
@@ -126,9 +126,9 @@ struct RootView: View {
             Task { await store.refreshKidRequests() }
         }
         // Trips (docs/TRIPS-PLAN.md) push routing, v1: surface the Chat tab/
-        // room. `ChatRoomListScreen` finishes the job (pushes into the exact
-        // trip room) once `store.pendingChatRoomId` matches a room it knows
-        // about — see `AppStore.pendingChatRoomId`.
+        // room. `ChatTabHost` finishes the job (switches to the exact trip
+        // room) once `store.pendingChatRoomId` matches a room it knows about —
+        // see `AppStore.pendingChatRoomId`.
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToTripChat)) { note in
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             let roomId = "trip:\(tripId)"
@@ -200,16 +200,7 @@ struct RootView: View {
             Divider()
             ChatScreen(roomId: dockedRoomId, title: dockedRoomTitle) {
                 if store.chatRooms.count > 1 {
-                    Menu {
-                        ForEach(store.chatRooms) { room in
-                            Button(room.title) { dockedRoomId = room.roomId }
-                        }
-                    } label: {
-                        Image(systemName: "chevron.up.chevron.down.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Palette.accent)
-                    }
-                    .accessibilityLabel("Switch chat room")
+                    ChatRoomSwitcher(rooms: store.chatRooms, selection: $dockedRoomId)
                 }
             }
             .frame(width: 300)

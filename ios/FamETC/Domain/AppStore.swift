@@ -29,7 +29,7 @@ final class AppStore {
     /// just the family room so the Chat tab behaves exactly as before.
     var chatRooms: [ChatRoom] = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
     /// Set by a `trip_chat_message`/`trip_update` push deep link; consumed
-    /// (and cleared) by `ChatRoomListScreen` to programmatically push into that
+    /// (and cleared) by `ChatTabHost` to programmatically switch into that
     /// trip's room the next time it appears.
     var pendingChatRoomId: String?
     var isRefreshing = false
