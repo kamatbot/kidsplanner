@@ -112,3 +112,57 @@ test("POST /api/ai/parse: rejects an unsupported media type with 400", async () 
   const res = await call(routes["POST /api/ai/parse"], { kind: "schedule", mediaType: "image/bmp", dataBase64: "abc" });
   assert.equal(res.statusCode, 400);
 });
+
+// ---------- POST /api/ai/parse-booking (v1.1) — validation paths only,
+// never a live Anthropic call (env-gate 503 short-circuits before fetch).
+
+function buildHarnessNoKey() {
+  const routes = {};
+  const register = (method) => (p, ...handlers) => { routes[`${method} ${p}`] = handlers[handlers.length - 1]; };
+  const stubApp = { get: register("GET"), post: register("POST") };
+  aiRoutes(stubApp, {
+    requireAuth: (req, res, next) => next(),
+    requireFamily: (req, res, next) => next(),
+  });
+  return routes;
+}
+
+test("POST /api/ai/parse-booking: requires authentication (401 when not signed in)", async () => {
+  await withServer(async (port) => {
+    const res = await request(
+      port,
+      { method: "POST", path: "/api/ai/parse-booking", headers: { "Content-Type": "application/json" } },
+      { text: "some booking text" }
+    );
+    assert.equal(res.status, 401);
+  });
+});
+
+test("POST /api/ai/parse-booking: 503 when ANTHROPIC_API_KEY isn't configured", async () => {
+  const prevKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const routes = buildHarnessNoKey();
+    const res = await call(routes["POST /api/ai/parse-booking"], { text: "Flight BA283 JFK to LHR" });
+    assert.equal(res.statusCode, 503);
+  } finally {
+    if (prevKey !== undefined) process.env.ANTHROPIC_API_KEY = prevKey;
+  }
+});
+
+test("POST /api/ai/parse-booking: rejects empty text with 400", async () => {
+  const routes = buildHarness();
+  const res = await call(routes["POST /api/ai/parse-booking"], { text: "" });
+  assert.equal(res.statusCode, 400);
+  const res2 = await call(routes["POST /api/ai/parse-booking"], { text: "   " });
+  assert.equal(res2.statusCode, 400);
+  const res3 = await call(routes["POST /api/ai/parse-booking"], {});
+  assert.equal(res3.statusCode, 400);
+});
+
+test("POST /api/ai/parse-booking: rejects text over the 20,000 char cap with 400", async () => {
+  const routes = buildHarness();
+  const oversized = "x".repeat(20001);
+  const res = await call(routes["POST /api/ai/parse-booking"], { text: oversized });
+  assert.equal(res.statusCode, 400);
+});
