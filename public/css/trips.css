@@ -333,6 +333,27 @@
 .trip-add-place-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .trip-day-enddrop { display: flex; flex-direction: column; }
 
+/* ---------- ideas panel (v1.1 §1 — dashed bucket for date:null itinerary
+   items, atop the Itinerary tab) ---------- */
+.trip-ideas-panel {
+  border: 1.5px dashed var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 24px;
+  background: var(--panel-2);
+}
+.trip-ideas-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.trip-ideas-title { font-size: 15px; font-weight: 700; }
+.trip-ideas-sub { color: var(--muted); }
+.trip-ideas-items { display: flex; flex-direction: column; gap: 8px; }
+.trip-ideas-enddrop { display: flex; flex-direction: column; }
+.trip-schedule-btn {
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
+  border-radius: 999px; padding: 5px 10px; cursor: pointer;
+  font-size: 12.5px; font-weight: 700; font-family: inherit;
+}
+.trip-schedule-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
 /* ---------- inline forms (itinerary add/edit, flights, lodging, new trip) ---------- */
 .trip-inline-form {
   background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 14px;
