@@ -38,6 +38,15 @@ const gifs = require("./lib/gifs");
 const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
 const goals = require("./lib/goals");
+const meals = require("./lib/meals");
+// lib/recipes.js (§8b) is owned by another agent building in parallel — guard
+// the require so this server can still boot before that file lands.
+let recipes;
+try {
+  recipes = require("./lib/recipes");
+} catch (e) {
+  recipes = null;
+}
 const trips = require("./lib/trips");
 const activities = require("./lib/activities");
 const notes = require("./lib/notes");
@@ -516,7 +525,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
+  schoolFeeds, homework, goals, meals, recipes, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -531,6 +540,7 @@ require("./lib/routes/chat")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/goals")(app, routeDeps);
+require("./lib/routes/meals")(app, routeDeps);
 require("./lib/routes/trips")(app, routeDeps);
 require("./lib/routes/activities")(app, routeDeps);
 require("./lib/routes/learning")(app, routeDeps);
@@ -626,6 +636,10 @@ app.get("/billing", requireAuth, requireParent, (req, res) => sendPage(req, res,
 // PUBLIC (signed-out visitors need to see it before signing up/in).
 app.get(["/trips", "/trips/:id"], requireAuth, (req, res) => sendPage(req, res, "trips.html"));
 app.get("/trips/join/:code", (req, res) => sendPage(req, res, "trip-join.html", PUB));
+// Meals (docs/MEALS-PLAN.md): family-scoped, same auth gate as Trips.
+// meals.html is built by another agent — sendPage 404s gracefully until then.
+// Meals is a PARENT tool (owner decision 2026-08-03) — kids never see it.
+app.get("/meals", requireAuth, requireParent, (req, res) => sendPage(req, res, "meals.html"));
 app.get("/", (req, res) => {
   if (!currentUser(req)) return sendPage(req, res, "landing.html", PUB);
   sendPage(req, res, "index.html");

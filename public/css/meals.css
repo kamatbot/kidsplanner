@@ -1,0 +1,327 @@
+/* ============================================================
+   MEALS.CSS — Meals (fametc.com/meals)
+   Feature-scoped stylesheet for public/meals.html, loaded standalone
+   outside the main app shell — sibling of trips.css. Horizon tokens ONLY
+   (--panel, --border, --accent, --text, --text-2, --muted, --panel-2,
+   --accent-soft, --hover, --shadow, --radius, --radius-sm, --c-*, --warn)
+   so dark mode stays correct by construction — see horizon.css. The only
+   raw hex/rgba here mirrors trips.css's own established exceptions
+   (white avatar-initial text, danger-hover rgba tint).
+============================================================ */
+
+/* ---------- shared page container (matches trips.css's 1160px hub chrome) ---------- */
+.meal-main {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 24px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- sticky header (brand tile + wordmark + divider + title +
+   household strip, one row — same shell pattern as trips.css) ---------- */
+.meal-hub-header {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.meal-hub-inner {
+  max-width: 1160px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.meal-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex: none; }
+.meal-brand-tile {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: var(--accent); color: var(--on-accent);
+  display: flex; align-items: center; justify-content: center;
+  transition: filter .12s ease;
+}
+.meal-brand-tile svg { width: 18px; height: 18px; }
+.meal-brand:hover .meal-brand-tile { filter: brightness(1.1); }
+.meal-brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
+.meal-brand-divider { width: 1px; height: 26px; background: var(--border); flex: none; }
+.meal-hub-title { min-width: 0; }
+.meal-hub-name { font-size: 15.5px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; }
+.meal-hub-header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+@media (max-width: 700px) {
+  .meal-brand-name { display: none; } /* tile alone is the back-link on phones */
+}
+
+/* ---------- household strip ---------- */
+.meal-household-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.meal-member-chip {
+  position: relative; border: none; background: none; cursor: pointer; padding: 0 6px 0 0;
+  display: flex; align-items: center; border-radius: 999px;
+}
+.meal-member-chip:disabled { cursor: default; }
+.meal-member-chip:hover:not(:disabled) { background: var(--hover); }
+.meal-avatar {
+  border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center;
+  font-weight: 700; flex: none; border: 2px solid var(--panel);
+}
+.meal-member-portion-badge {
+  font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700;
+  color: var(--text-2); margin-left: 3px;
+}
+.meal-total-portions {
+  color: var(--accent); font-weight: 700; white-space: nowrap;
+  background: var(--accent-soft); border-radius: 999px; padding: 5px 11px;
+}
+
+/* ---------- tabs ---------- */
+.meal-tabs {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  position: sticky;
+  top: 59px;
+  z-index: 19;
+  -webkit-overflow-scrolling: touch;
+}
+.meal-tabs-inner {
+  max-width: 1160px;
+  margin: 0 auto;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+}
+.meal-tab-btn {
+  border: none; background: none; cursor: pointer; padding: 12px 14px;
+  font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap;
+  color: var(--text-2); box-shadow: inset 0 -2px 0 transparent; transition: color .15s;
+}
+.meal-tab-btn:hover { color: var(--text); }
+.meal-tab-btn.active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* ---------- generic section header / forms (shared across tabs) ---------- */
+.meal-section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.meal-section-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.meal-section-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.meal-section-sub { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.meal-panel-title { margin-bottom: 10px; }
+
+.meal-inline-form {
+  background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.meal-form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.meal-form-actions { display: flex; gap: 8px; align-items: center; }
+.meal-input, .meal-select {
+  font-family: inherit; font-size: 13.5px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--panel); color: var(--text); outline: none; width: 100%;
+}
+.meal-input:focus, .meal-select:focus { border-color: var(--accent); }
+.meal-input-grow { flex: 1; min-width: 160px; }
+
+.meal-icon-btn { border: none; background: none; color: var(--muted); cursor: pointer; padding: 5px; border-radius: 7px; }
+.meal-icon-btn:hover { background: var(--hover); color: var(--text); }
+.meal-icon-btn.danger:hover { background: rgba(214, 87, 69, .1); color: #c0392b; }
+.meal-icon-btn.small { padding: 2px 5px; font-size: 12px; }
+
+.meal-spinner {
+  display: inline-block; width: 12px; height: 12px; margin-right: 6px;
+  border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+  opacity: .85; vertical-align: -2px; animation: meal-spin .7s linear infinite;
+}
+@keyframes meal-spin { to { transform: rotate(360deg); } }
+
+.meal-chip {
+  font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .04em;
+  color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 11px; cursor: pointer;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+.meal-chip:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.meal-chip.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.meal-chip.small { padding: 2px 8px; font-size: 10px; cursor: default; }
+.meal-chip.small:hover { color: var(--text-2); border-color: var(--border); background: var(--panel-2); }
+.meal-chip.warn { color: var(--warn); background: color-mix(in srgb, var(--c-amber) 16%, var(--panel)); border-color: transparent; }
+.meal-cat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---------- member portion/allergy editor ---------- */
+.meal-portion-radio { display: flex; gap: 8px; flex-wrap: wrap; }
+.meal-portion-opt {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 13px; color: var(--text-2); border: 1px solid var(--border); border-radius: 999px;
+  padding: 6px 12px;
+}
+.meal-portion-opt input { accent-color: var(--accent); }
+.meal-portion-opt:has(input:checked) { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* ---------- empty state ---------- */
+.meal-empty-card { text-align: center; padding: 40px 24px; }
+.meal-empty-icon { font-size: 38px; margin-bottom: 8px; }
+.meal-empty-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+
+/* ---------- Tonight tab ---------- */
+.meal-tonight-title { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.meal-tonight-note { font-size: 13.5px; color: var(--text-2); margin-top: 6px; line-height: 1.5; }
+.meal-tonight-meta { margin-top: 8px; }
+.meal-tonight-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+.meal-prep-list { display: flex; flex-direction: column; gap: 12px; }
+.meal-prep-row { display: flex; align-items: flex-start; gap: 10px; }
+.meal-prep-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-amber); margin-top: 5px; flex: none; }
+.meal-prep-label { font-size: 14px; font-weight: 600; }
+.meal-prep-sub { font-size: 12.5px; margin-top: 2px; }
+.meal-tomorrow-title { font-size: 15px; font-weight: 600; }
+
+/* ---------- Menu tab ---------- */
+.meal-ai-note { padding: 12px 16px; font-size: 13.5px; }
+.meal-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.meal-day-col {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 90px;
+}
+.meal-day-col.today { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.meal-day-head { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.meal-day-dow { color: var(--muted); }
+.meal-day-num { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 700; }
+.meal-entry-card { background: var(--panel-2); border-radius: 9px; padding: 9px 10px; }
+.meal-entry-title { font-size: 13px; font-weight: 600; line-height: 1.35; }
+.meal-entry-prep { color: var(--c-amber); margin-top: 4px; }
+.meal-entry-actions { display: flex; gap: 2px; margin-top: 6px; justify-content: flex-end; }
+.meal-add-day-btn {
+  border: 1.5px dashed var(--border); background: none; color: var(--text-2);
+  border-radius: 9px; padding: 10px 8px; cursor: pointer; font-size: 12.5px; font-weight: 600;
+  font-family: inherit; flex: 1;
+}
+.meal-add-day-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.meal-day-empty { margin: 0; font-size: 12px; }
+
+/* ---------- Pantry tab ---------- */
+.meal-undo-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 12px;
+  padding: 10px 16px; font-size: 13.5px;
+}
+.meal-pantry-section { margin-bottom: 4px; }
+.meal-pantry-cat-label { margin-bottom: 8px; }
+.meal-pantry-rows { display: flex; flex-direction: column; gap: 6px; }
+.meal-pantry-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+}
+.meal-pantry-row-main { min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.meal-pantry-name { font-size: 14px; font-weight: 600; }
+.meal-pantry-unit { font-weight: 400; font-size: 12.5px; }
+.meal-expiry-badge {
+  font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--warn);
+  background: color-mix(in srgb, var(--c-amber) 16%, var(--panel)); border-radius: 999px; padding: 2px 9px;
+}
+.meal-pantry-row-controls { display: flex; align-items: center; gap: 8px; flex: none; }
+.meal-level-seg { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.meal-level-seg-btn {
+  border: none; background: var(--panel); color: var(--text-2); cursor: pointer;
+  font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: .03em;
+  padding: 6px 10px; transition: background .12s ease, color .12s ease;
+}
+.meal-level-seg-btn + .meal-level-seg-btn { border-left: 1px solid var(--border); }
+.meal-level-seg-btn:hover { background: var(--hover); }
+.meal-level-seg-btn.active.meal-level-plenty { background: color-mix(in srgb, var(--c-green) 20%, var(--panel)); color: var(--c-green); }
+.meal-level-seg-btn.active.meal-level-some { background: var(--accent-soft); color: var(--accent); }
+.meal-level-seg-btn.active.meal-level-low { background: color-mix(in srgb, var(--c-amber) 22%, var(--panel)); color: var(--warn); }
+.meal-level-seg-btn.active.meal-level-out { background: color-mix(in srgb, var(--c-red) 18%, var(--panel)); color: var(--c-red); }
+.meal-level-chip {
+  font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: .03em;
+  border-radius: 999px; padding: 5px 11px;
+}
+.meal-level-chip.meal-level-plenty { background: color-mix(in srgb, var(--c-green) 20%, var(--panel)); color: var(--c-green); }
+.meal-level-chip.meal-level-some { background: var(--accent-soft); color: var(--accent); }
+.meal-level-chip.meal-level-low { background: color-mix(in srgb, var(--c-amber) 22%, var(--panel)); color: var(--warn); }
+.meal-level-chip.meal-level-out { background: color-mix(in srgb, var(--c-red) 18%, var(--panel)); color: var(--c-red); }
+
+/* ---------- Shopping tab ---------- */
+.meal-shopping-add-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.meal-shopping-add-form .meal-select { width: auto; flex: 0 1 160px; }
+.meal-shopping-rows { display: flex; flex-direction: column; gap: 2px; }
+.meal-shopping-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 4px; border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.meal-shopping-row:last-child { border-bottom: none; }
+.meal-shopping-check { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; min-width: 160px; }
+.meal-shopping-check input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--accent); flex: none; cursor: pointer; }
+.meal-shopping-row.done .meal-shopping-text { text-decoration: line-through; color: var(--muted); }
+.meal-shopping-text { font-size: 13.5px; }
+.meal-shopping-row-meta { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; }
+.meal-assignee-picker { display: flex; gap: 4px; }
+.meal-assignee-btn { border: none; background: none; padding: 0; cursor: pointer; border-radius: 50%; line-height: 0; opacity: .4; transition: opacity .12s ease, box-shadow .12s ease; }
+.meal-assignee-btn:hover { opacity: .8; }
+.meal-assignee-btn.active { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+
+/* ---------- Recipes tab ---------- */
+.meal-recipe-controls { display: flex; flex-direction: column; gap: 10px; }
+.meal-recipe-search-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.meal-cancook-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.meal-cancook-toggle input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.meal-recipe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.meal-recipe-card { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.meal-recipe-card:hover { transform: translateY(-2px); }
+.meal-recipe-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.meal-recipe-title { font-size: 15px; font-weight: 700; letter-spacing: -.01em; line-height: 1.3; }
+.meal-recipe-meta { margin-top: 6px; }
+.meal-spice-dots { display: flex; gap: 3px; flex: none; margin-top: 3px; }
+.meal-spice-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.meal-spice-dot.filled { background: var(--coral); }
+.meal-allergen-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.meal-coverage-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.meal-coverage-track { flex: 1; height: 5px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+.meal-coverage-fill { height: 100%; background: var(--c-green); border-radius: 99px; }
+
+/* recipe detail sheet */
+.meal-sheet-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.meal-sheet {
+  background: var(--panel); width: 100%; max-width: 560px; max-height: 88vh;
+  border-radius: 20px 20px 0 0; padding: 22px 22px 26px; overflow-y: auto;
+  box-shadow: var(--shadow); animation: fadeUp .2s ease both;
+}
+@media (min-width: 640px) {
+  .meal-sheet-backdrop { align-items: center; }
+  .meal-sheet { border-radius: 20px; max-height: 82vh; }
+}
+.meal-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.meal-sheet-title { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+.meal-sheet-safety-note { font-size: 12px; margin: 10px 0 0; }
+.meal-sheet-section { margin-top: 18px; }
+.meal-ingredient-list { list-style: none; padding: 0; margin: 8px 0 10px; display: flex; flex-direction: column; gap: 5px; }
+.meal-ingredient-list li { font-size: 13.5px; padding-left: 16px; position: relative; }
+.meal-ingredient-list li::before { content: "•"; position: absolute; left: 0; color: var(--muted); }
+.meal-ingredient-list li.missing { color: var(--warn); font-weight: 600; }
+.meal-ingredient-list li.missing::before { content: "✕"; color: var(--warn); font-size: 10px; top: 3px; }
+.meal-steps-list { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.meal-steps-list li { font-size: 13.5px; line-height: 1.5; }
+.meal-day-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.meal-day-picker-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+  border-radius: 9px; padding: 8px 6px; cursor: pointer; font-size: 12.5px; font-weight: 600;
+  font-family: inherit;
+}
+.meal-day-picker-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 720px) {
+  .meal-week-grid { grid-template-columns: 1fr; }
+  .meal-day-col { flex-direction: row; align-items: center; min-height: 0; }
+  .meal-day-head { flex-direction: row; align-items: baseline; gap: 6px; min-width: 64px; }
+}
+@media (max-width: 640px) {
+  .meal-hub-header { padding: 12px 14px; }
+  .meal-tabs { padding: 0 14px; }
+  .meal-main { padding: 18px 14px 60px; }
+  .meal-household-strip { order: 3; width: 100%; }
+  .meal-hub-header-right { width: 100%; }
+}
