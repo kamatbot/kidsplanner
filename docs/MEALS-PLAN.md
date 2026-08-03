@@ -254,6 +254,56 @@ stripping, 503 unconfigured / 422 unusable / 429 over quota).
 
 Portions/allergies (§2) land in M1 as plain profile fields.
 
+## 8b. Recipe library — Indian + Thai first (owner decision 2026-08-01)
+
+The library is deliberately **over-indexed on Indian and Thai food** (this is
+a Bangkok household with an Indian kitchen). Target mix: roughly half North/
+South Indian, a third Thai, the remainder everything-else so a week doesn't
+get monotonous. It ships as seed data in `lib/recipes.js` — no database, no
+network, no user editing in v1 — which is what makes M1/M2 useful with the AI
+switched off entirely.
+
+It also makes the prep-reminder feature earn its place: dal and rajma soak
+overnight, chole wants 8 hours, idli/dosa batter ferments for 12, moong
+sprouts over 2 days, tandoori marinates for 4. Those lead times are the whole
+reason `prep[].leadHours` exists.
+
+```js
+recipe = {
+  id: "rc_dal_tadka",                 // stable, hand-written
+  title: "Dal Tadka",
+  cuisine: "indian"|"thai"|"other",
+  region,                             // "north-indian"|"south-indian"|"thai"|…
+  slots: ["dinner","lunch"],
+  veg: true,
+  spice: 0..3,                        // 0 none … 3 hot
+  kidFriendly: true,                  // drives the kid-safe filter
+  timeMins: 35,                       // active cooking time
+  prep: [{ label: "Soak toor dal", leadHours: 2 }],
+  ingredients: [{ name, category, core: true|false, qtyHint }],
+                                      // `core` = the dish is not itself without it
+  steps: [String],                    // 3–8 short lines, not prose
+  proteinGPerPortion: 14,             // display-only estimate (§6.5)
+  allergens: ["dairy","peanut",…],    // feeds the deterministic filter
+  tags: ["one-pot","weeknight",…],
+}
+```
+
+Exported helpers (pure, no db/network — the deterministic engine behind M2 and
+the fallback when AI is unconfigured):
+
+- `all()` / `byId(id)` / `search({cuisine, veg, slot, kidFriendly, maxTimeMins, query})`
+- `coverage(recipe, pantryItems)` → `{ have, missing, coreMissing, ratio }`
+  where a pantry item matches by normalised name/synonym and `level !== "out"`
+- `suggest(pantryItems, { count, slots, avoid, allergens, kidSafe, cuisineBias })`
+  → recipes ranked by core-coverage, then by how many `low`/near-expiry items
+  they consume, then variety (no cuisine three days running). Allergen and
+  avoid terms are hard filters, never ranking penalties.
+
+`cuisineBias` defaults to Indian+Thai weighting; the AI planner (§6) gets the
+same bias in its prompt, and its output is still filtered through the same
+allergen rules.
+
 ## 9. Open questions
 
 1. **§2 — portion scaling vs. per-kid protein targets.** My recommendation is
