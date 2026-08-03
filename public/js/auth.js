@@ -850,6 +850,109 @@
     );
   }
 
+  /* ---------- meals (see docs/MEALS-PLAN.md "API surface" §5) ----------
+     One-liner wrappers, same style as every wrapper above. getMealsRecipes/
+     getMealsRecipe aren't in §5 (the recipe library ships as pure server-
+     side helpers there) but public/js/meals.js's Recipes tab needs a way to
+     browse/search them, so these assume a thin read route wraps the same
+     library — see the contract-gap note at the top of meals.js; unlike the
+     rest of this section they're unverified against a live route.
+     updateMyMealProfile hits the real, already-landed lib/routes/meals.js
+     route (PATCH /api/meals/profile, self-only — sets the CALLING parent's
+     own portion/allergies/proteinTargetG). A kid's portion/allergies are
+     just fields on the kid record, so that reuses the existing updateKid()
+     above — there is no generic "set any member's prefs by id" route on the
+     server, so meals.js never calls one. */
+  async function getMeals() {
+    return api("/api/meals", { method: "GET" });
+  }
+
+  async function updateMealPrefs(patch) {
+    return api("/api/meals/prefs", { method: "PATCH", body: JSON.stringify(patch || {}) });
+  }
+
+  async function addPantryItem(payload) {
+    return api("/api/meals/pantry", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function updatePantryItem(id, patch) {
+    return api("/api/meals/pantry/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deletePantryItem(id) {
+    return api("/api/meals/pantry/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  async function bulkPantry(items) {
+    return api("/api/meals/pantry/bulk", { method: "POST", body: JSON.stringify({ items: items || [] }) });
+  }
+
+  async function undoPantry(eventId) {
+    return api("/api/meals/pantry/undo", { method: "POST", body: JSON.stringify({ eventId: eventId || "" }) });
+  }
+
+  async function planMenu(payload) {
+    return api("/api/meals/menu/plan", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function addMenuEntry(payload) {
+    return api("/api/meals/menu", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function updateMenuEntry(id, patch) {
+    return api("/api/meals/menu/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteMenuEntry(id) {
+    return api("/api/meals/menu/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  async function markMenuCooked(id) {
+    return api("/api/meals/menu/" + encodeURIComponent(id) + "/cooked", { method: "POST" });
+  }
+
+  async function addShoppingItem(payload) {
+    return api("/api/meals/shopping", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
+  async function updateShoppingItem(id, patch) {
+    return api("/api/meals/shopping/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteShoppingItem(id) {
+    return api("/api/meals/shopping/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
+  async function shoppingFromPantry() {
+    return api("/api/meals/shopping/from-pantry", { method: "POST" });
+  }
+
+  async function restockPantry() {
+    return api("/api/meals/shopping/restock", { method: "POST" });
+  }
+
+  async function updateMyMealProfile(patch) {
+    return api("/api/meals/profile", { method: "PATCH", body: JSON.stringify(patch || {}) });
+  }
+
+  async function getMealsRecipes(params) {
+    const qs = new URLSearchParams(params || {}).toString();
+    return api("/api/meals/recipes" + (qs ? "?" + qs : ""), { method: "GET" });
+  }
+
+  async function getMealsRecipe(id) {
+    return api("/api/meals/recipes/" + encodeURIComponent(id), { method: "GET" });
+  }
+
   window.auth = {
     signUp,
     signIn,
@@ -965,5 +1068,25 @@
     addTripChecklistItem,
     updateTripChecklistItem,
     deleteTripChecklistItem,
+    getMeals,
+    updateMealPrefs,
+    addPantryItem,
+    updatePantryItem,
+    deletePantryItem,
+    bulkPantry,
+    undoPantry,
+    planMenu,
+    addMenuEntry,
+    updateMenuEntry,
+    deleteMenuEntry,
+    markMenuCooked,
+    addShoppingItem,
+    updateShoppingItem,
+    deleteShoppingItem,
+    shoppingFromPantry,
+    restockPantry,
+    updateMyMealProfile,
+    getMealsRecipes,
+    getMealsRecipe,
   };
 })();

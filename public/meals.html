@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meals — Fam ETC</title>
+  <!-- Dark mode must be applied before first paint (no flash): read the saved
+       preference or fall back to the OS setting. Mirrors the exact snippet in
+       index.html/trips.html so fam_theme applies consistently everywhere. -->
+  <script>
+    (function () {
+      try {
+        // fam_theme is stored JSON-encoded (see save() in util.js) — mirror
+        // that here so this pre-paint check agrees with applyThemeChoice().
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Meals — standalone shell for /meals, modelled on trips.html after its
+       header redesign: no static app-header chrome, meals.js renders the
+       sticky brand header + tabs. See docs/MEALS-PLAN.md. -->
+  <link rel="stylesheet" href="/css/meals.css">
+</head>
+<body>
+  <!-- No static chrome: meals.js renders the brand tile (also the
+       back-to-app link), household strip, and tab nav — same shell pattern
+       as trips.html. -->
+  <main id="meals-root"></main>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/util.js"></script>
+  <script src="/js/meals.js"></script>
+</body>
+</html>

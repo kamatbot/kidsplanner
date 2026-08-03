@@ -2774,6 +2774,53 @@ function renderTodayScreen() {
   renderTodaySchedule(todayIso);
   renderTodayHomework(todayIso);
   renderTodayHabitsAndMomentum();
+  famRenderTodayMeals(todayIso);
+}
+
+// Meals "Tonight" card (docs/MEALS-PLAN.md §7 "Today" integration). Best-
+// effort and read-only here for everyone (kids included — the "Cooked it"
+// action lives on /meals itself, gated there): a Meals fetch failure must
+// never break the rest of Today, so any error just leaves the card hidden.
+async function famRenderTodayMeals(todayIso) {
+  const card = document.getElementById('today-meals-card');
+  const body = document.getElementById('today-meals-body');
+  if (!card || !body) return;
+  try {
+    const data = await window.auth.getMeals();
+    const menu = (data && data.menu) || [];
+    const tonight = menu.find((e) => e.date === todayIso && e.slot === 'dinner');
+    if (!tonight) {
+      card.hidden = true;
+      return;
+    }
+    const prefs = (data && data.prefs) || {};
+    const prepDue = famTonightPrepDue(menu, prefs, todayIso);
+    body.innerHTML = `
+      <div class="schedule-title">${esc(tonight.title)}</div>
+      ${prepDue.length ? `<div class="schedule-meta">🕒 ${esc(prepDue.map((p) => p.label).join(' · '))}</div>` : ''}
+    `;
+    card.hidden = false;
+  } catch (err) {
+    card.hidden = true; // Meals unavailable/unset-up — Today keeps working fine without it
+  }
+}
+
+// Mirrors mealPrepDueToday() in public/js/meals.js — kept as a small local
+// copy rather than a shared import since this page never loads meals.js.
+function famTonightPrepDue(menu, prefs, todayIso) {
+  const parts = ((prefs && prefs.dinnerTime) || '18:30').split(':').map(Number);
+  const hh = parts[0] || 18, mm = parts[1] || 0;
+  const out = [];
+  (menu || []).forEach((entry) => {
+    if (!entry.date || !(entry.prep || []).length) return;
+    const dt = parseIso(entry.date);
+    dt.setHours(hh, mm, 0, 0);
+    entry.prep.forEach((p) => {
+      const prepAt = new Date(dt.getTime() - (p.leadHours || 0) * 3600000);
+      if (isoDate(prepAt) === todayIso) out.push(p);
+    });
+  });
+  return out;
 }
 
 function renderTodayScheduleRow(ev) {
