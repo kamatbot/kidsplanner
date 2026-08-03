@@ -3,8 +3,9 @@
 > Adapted 2026-08-01 from a design originally written for FitOdds
 > (`docs/WEEKLY-MENU.md` on that repo). The owner's call: it fits a family hub
 > better than a solo fitness app. This is the FamETC contract — data model,
-> API, permissions, integration points. **Built and merged** except the §7
-> integration pass (calendar/chat/push/AI planner), which is still open.
+> API, permissions, integration points. **Built, integrated and merged** —
+> including the §6 planner, §7 calendar/chat/push integration, and the
+> §8b/§8c recipe library and household diets.
 >
 > Companion docs: [APP-BRIEF.md](../APP-BRIEF.md) (contract),
 > [TRIPS-PLAN.md](TRIPS-PLAN.md) (the patterns this reuses).
