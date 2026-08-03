@@ -638,7 +638,8 @@ app.get(["/trips", "/trips/:id"], requireAuth, (req, res) => sendPage(req, res, 
 app.get("/trips/join/:code", (req, res) => sendPage(req, res, "trip-join.html", PUB));
 // Meals (docs/MEALS-PLAN.md): family-scoped, same auth gate as Trips.
 // meals.html is built by another agent — sendPage 404s gracefully until then.
-app.get("/meals", requireAuth, (req, res) => sendPage(req, res, "meals.html"));
+// Meals is a PARENT tool (owner decision 2026-08-03) — kids never see it.
+app.get("/meals", requireAuth, requireParent, (req, res) => sendPage(req, res, "meals.html"));
 app.get("/", (req, res) => {
   if (!currentUser(req)) return sendPage(req, res, "landing.html", PUB);
   sendPage(req, res, "index.html");

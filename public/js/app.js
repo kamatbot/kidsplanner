@@ -409,6 +409,13 @@ function applyRoleScopingToUI() {
   const billingLink = document.getElementById('nav-billing-link');
   if (billingLink) billingLink.style.display = kid ? 'none' : '';
 
+  // Meals is a parent tool (owner decision 2026-08-03): the server already
+  // 403s/redirects a kid on /meals and every /api/meals route, so this is
+  // UI-layer tidiness — a kid is never shown a door they can't open.
+  document.querySelectorAll('.parent-only').forEach((el) => { el.style.display = kid ? 'none' : ''; });
+  const tonightCard = document.getElementById('today-meals-card');
+  if (tonightCard && kid) tonightCard.hidden = true;
+
   const settingsParentOnly = document.getElementById('settings-parent-only');
   const settingsNotice = document.getElementById('kid-settings-notice');
   if (settingsParentOnly) settingsParentOnly.style.display = kid ? 'none' : '';
@@ -2785,6 +2792,8 @@ async function famRenderTodayMeals(todayIso) {
   const card = document.getElementById('today-meals-card');
   const body = document.getElementById('today-meals-body');
   if (!card || !body) return;
+  // Parent tool — don't even call /api/meals on a kid session (it 403s).
+  if (isKidSession()) { card.hidden = true; return; }
   try {
     const data = await window.auth.getMeals();
     const menu = (data && data.menu) || [];
