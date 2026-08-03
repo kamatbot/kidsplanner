@@ -294,3 +294,84 @@ struct BillingPortalResponse: Codable { var url: String? }
 
 struct HealthResponse: Codable { var ok: Bool?; var status: String? }
 struct MeResponse: Codable { var user: User? }
+
+// MARK: - Meals (parent-gated: /api/meals/*, /api/ai/parse)
+//
+// Mirrors the server's meals shapes. Parent-only feature — kid sessions never
+// call these endpoints (AppStore.loadMeals guards on isParent).
+
+/// `category` ∈ produce, protein, dairy, grain, pantry, frozen, spice, other.
+/// `level` ∈ "plenty" | "some" | "low".
+struct PantryItem: Codable, Identifiable {
+    let id: String
+    var name: String
+    var category: String
+    var level: String
+    var unitHint: String? = nil
+    var expiresOn: String? = nil
+    var updatedAt: String? = nil
+    var updatedBy: String? = nil
+}
+
+/// `slot` is usually "dinner"; unknown/extra server fields are ignored by Codable.
+struct MenuEntry: Codable, Identifiable {
+    let id: String
+    var date: String     // YYYY-MM-DD
+    var slot: String? = nil
+    var title: String
+    var note: String? = nil
+    var recipeId: String? = nil
+    var createdAt: String? = nil
+    var cookedAt: String? = nil
+
+    var isCooked: Bool { cookedAt != nil }
+}
+
+struct ShoppingItem: Codable, Identifiable {
+    let id: String
+    var name: String
+    var category: String? = nil
+    var qty: String? = nil
+    var checked: Bool
+}
+
+struct MealsTargets: Codable {
+    var proteinGPerMeal: Int? = nil
+    var fiberGPerMeal: Int? = nil
+}
+
+struct MealsPrefs: Codable {
+    var dinnerTime: String? = nil
+    var cuisines: [String]? = nil
+    var avoid: [String]? = nil
+    var diets: [String]? = nil
+    var targets: MealsTargets? = nil
+}
+
+/// `GET /api/meals` response body — pantryEvents is server-internal audit data
+/// the app doesn't render, so it's left undeclared (Codable ignores unknown keys).
+struct MealsState: Codable {
+    var pantry: [PantryItem] = []
+    var menu: [MenuEntry] = []
+    var shopping: [ShoppingItem] = []
+    var prefs: MealsPrefs? = nil
+}
+
+/// One item detected from a pantry photo (`POST /api/ai/parse`, kind:"pantry") —
+/// reviewed/edited by the user before bulk-adding to the pantry. `id` is local-only
+/// (not sent to/from the server) so the review list can identify rows for editing.
+struct ScannedPantryItem: Codable, Identifiable {
+    var id = UUID()
+    var name: String
+    var category: String
+    var levelGuess: String
+    var unitHint: String? = nil
+
+    private enum CodingKeys: String, CodingKey { case name, category, levelGuess, unitHint }
+}
+
+struct PantryItemResponse: Codable { var item: PantryItem }
+struct PantryItemsResponse: Codable { var items: [PantryItem] }
+struct MenuEntryResponse: Codable { var entry: MenuEntry }
+struct ShoppingItemResponse: Codable { var item: ShoppingItem }
+struct AIParsePantryResponse: Codable { var items: [ScannedPantryItem] }

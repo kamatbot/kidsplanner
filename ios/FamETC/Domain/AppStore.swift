@@ -24,6 +24,10 @@ final class AppStore {
     var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
     var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
+    /// Pantry/menu/shopping (Meals tab, parent-only — nil for a kid session or
+    /// before the first load). `loadMeals()` guards on `isParent` so a kid
+    /// session never calls the parent-gated `/api/meals` endpoint.
+    var meals: MealsState?
     /// Chat rooms this session can see (`GET /api/chat/rooms`) — just the
     /// family room until the user is on a trip. Failing soft leaves this at
     /// just the family room so the Chat tab behaves exactly as before.
@@ -155,10 +159,11 @@ final class AppStore {
                 async let kids: Void = refreshKidRequests()
                 async let calHw: Void = loadCalendarAndHomework()
                 async let notesLoad: Void = loadNotes()
+                async let mealsLoad: Void = loadMeals()   // no-op for kid sessions (guarded inside)
                 async let rooms = api.chatRooms()
                 messages = Self.dedupe(try await msgs)
                 updateChatSeen(familyRoomId)
-                _ = await (kids, calHw, notesLoad)
+                _ = await (kids, calHw, notesLoad, mealsLoad)
                 // Fail soft to just the family room (Trips-unaware/unreachable server).
                 chatRooms = (try? await rooms) ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
             } else {
@@ -185,6 +190,7 @@ final class AppStore {
         cache.clear()
         me = nil
         family = nil
+        meals = nil
         messagesByRoom = [:]
         lastSeenChatIdByRoom = [:]
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
@@ -463,6 +469,125 @@ final class AppStore {
         if let kidId = me?.kidId, note.authorId == kidId { return true }
         if let uid = me?.id, note.authorId == uid { return true }
         return false
+    }
+
+    // MARK: Meals (Meals tab, parent-only)
+
+    /// Loads pantry/menu/shopping. Guarded on `isParent` so a kid session never
+    /// hits the parent-gated `/api/meals` endpoint (kids keep the Notes tab
+    /// instead — see RootView's role-aware tab list).
+    func loadMeals() async {
+        guard isParent, family != nil else { meals = nil; return }
+        if let m = try? await api.mealsState() { meals = m }
+    }
+
+    func addPantryItem(name: String, category: String, level: String, unitHint: String? = nil, expiresOn: String? = nil) async {
+        do {
+            let item = try await api.addPantryItem(name: name, category: category, level: level, unitHint: unitHint, expiresOn: expiresOn)
+            meals?.pantry.append(item)
+        } catch { handle(error) }
+    }
+
+    func updatePantryItem(_ id: String, _ patch: [String: Any]) async {
+        do {
+            let item = try await api.updatePantryItem(id, patch)
+            if let idx = meals?.pantry.firstIndex(where: { $0.id == id }) { meals?.pantry[idx] = item }
+        } catch { handle(error) }
+    }
+
+    /// Optimistic; reverts the whole pantry array on failure.
+    func deletePantryItem(_ id: String) async {
+        let backup = meals?.pantry
+        meals?.pantry.removeAll { $0.id == id }
+        do {
+            try await api.deletePantryItem(id)
+        } catch {
+            meals?.pantry = backup ?? []
+            handle(error)
+        }
+    }
+
+    /// Confirms the pantry-scan review list: bulk-adds every (possibly edited)
+    /// detected item. Throws so the caller (the review sheet) can keep the sheet
+    /// open and show the error instead of silently losing the scan.
+    func bulkAddScannedPantryItems(_ items: [ScannedPantryItem]) async throws {
+        let added = try await api.bulkAddPantryItems(items)
+        meals?.pantry.append(contentsOf: added)
+    }
+
+    func seedPantryStaples() async {
+        do {
+            try await api.seedPantryStaples()
+            await loadMeals()
+        } catch { handle(error) }
+    }
+
+    func addMenuEntry(date: String, title: String, note: String? = nil) async {
+        do {
+            let entry = try await api.addMenuEntry(date: date, title: title, note: note)
+            meals?.menu.append(entry)
+        } catch { handle(error) }
+    }
+
+    func deleteMenuEntry(_ id: String) async {
+        let backup = meals?.menu
+        meals?.menu.removeAll { $0.id == id }
+        do {
+            try await api.deleteMenuEntry(id)
+        } catch {
+            meals?.menu = backup ?? []
+            handle(error)
+        }
+    }
+
+    /// Marks a dinner cooked, then reloads meals — cooking moves depleted pantry
+    /// items toward shopping restock server-side (see the server contract), which
+    /// only a fresh `GET /api/meals` reflects.
+    func markMenuCooked(_ id: String) async {
+        do {
+            _ = try await api.markMenuCooked(id)
+            await loadMeals()
+        } catch { handle(error) }
+    }
+
+    func addShoppingItem(name: String, category: String? = nil) async {
+        do {
+            let item = try await api.addShoppingItem(name: name, category: category)
+            meals?.shopping.append(item)
+        } catch { handle(error) }
+    }
+
+    /// Optimistic; reverts on failure.
+    func toggleShoppingChecked(_ item: ShoppingItem) async {
+        guard let idx = meals?.shopping.firstIndex(where: { $0.id == item.id }) else { return }
+        let previous = item.checked
+        meals?.shopping[idx].checked = !previous
+        do {
+            let updated = try await api.updateShoppingItem(item.id, ["checked": !previous])
+            if let i = meals?.shopping.firstIndex(where: { $0.id == item.id }) { meals?.shopping[i] = updated }
+        } catch {
+            if let i = meals?.shopping.firstIndex(where: { $0.id == item.id }) { meals?.shopping[i].checked = previous }
+            handle(error)
+        }
+    }
+
+    func deleteShoppingItem(_ id: String) async {
+        let backup = meals?.shopping
+        meals?.shopping.removeAll { $0.id == id }
+        do {
+            try await api.deleteShoppingItem(id)
+        } catch {
+            meals?.shopping = backup ?? []
+            handle(error)
+        }
+    }
+
+    /// Adds low-stock pantry items to the shopping list, then reloads meals.
+    func addShoppingFromLowPantry() async {
+        do {
+            try await api.addShoppingFromPantry()
+            await loadMeals()
+        } catch { handle(error) }
     }
 
     // MARK: Kid access requests

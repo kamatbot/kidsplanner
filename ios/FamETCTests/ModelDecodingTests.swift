@@ -258,4 +258,90 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(rooms[1].memberCount, 4)
         XCTAssertEqual(rooms[1].id, "trip:t_1")
     }
+
+    // MARK: - Meals (parent-gated /api/meals)
+
+    /// `GET /api/meals` — pantry/menu/shopping/prefs, per the Meals feature's
+    /// server contract. `pantryEvents` is present in the real payload but
+    /// undeclared on `MealsState` (server-internal audit data the app doesn't
+    /// render) — Codable must ignore it rather than fail decoding.
+    func testDecodesMealsState() throws {
+        let payload = """
+        {
+          "pantry": [
+            { "id": "p_1", "name": "Milk", "category": "dairy", "level": "low", "unitHint": "1 gallon", "expiresOn": "2026-08-10", "updatedAt": "2026-08-01T00:00:00.000Z", "updatedBy": "u_1" }
+          ],
+          "pantryEvents": [ { "type": "restock", "pantryId": "p_1" } ],
+          "menu": [
+            { "id": "m_1", "date": "2026-08-05", "slot": "dinner", "title": "Tacos", "note": "Kid-friendly", "createdAt": "2026-08-01T00:00:00.000Z" }
+          ],
+          "shopping": [
+            { "id": "s_1", "name": "Eggs", "category": "dairy", "checked": false }
+          ],
+          "prefs": {
+            "dinnerTime": "18:30",
+            "cuisines": ["mexican", "italian"],
+            "avoid": ["peanuts"],
+            "diets": [],
+            "targets": { "proteinGPerMeal": 25, "fiberGPerMeal": 8 }
+          }
+        }
+        """
+        let state = try JSONDecoder().decode(MealsState.self, from: Data(payload.utf8))
+        XCTAssertEqual(state.pantry.count, 1)
+        XCTAssertEqual(state.pantry[0].level, "low")
+        XCTAssertEqual(state.pantry[0].unitHint, "1 gallon")
+        XCTAssertEqual(state.menu.count, 1)
+        XCTAssertEqual(state.menu[0].title, "Tacos")
+        XCTAssertFalse(state.menu[0].isCooked)
+        XCTAssertEqual(state.shopping.count, 1)
+        XCTAssertFalse(state.shopping[0].checked)
+        XCTAssertEqual(state.prefs?.dinnerTime, "18:30")
+        XCTAssertEqual(state.prefs?.targets?.proteinGPerMeal, 25)
+    }
+
+    /// A minimal payload (empty arrays, no prefs) — the shape a brand-new family
+    /// gets before adding anything — must decode without any optional exploding.
+    func testDecodesEmptyMealsState() throws {
+        let payload = """
+        { "pantry": [], "menu": [], "shopping": [] }
+        """
+        let state = try JSONDecoder().decode(MealsState.self, from: Data(payload.utf8))
+        XCTAssertTrue(state.pantry.isEmpty)
+        XCTAssertTrue(state.menu.isEmpty)
+        XCTAssertTrue(state.shopping.isEmpty)
+        XCTAssertNil(state.prefs)
+    }
+
+    /// `POST /api/ai/parse` (kind:"pantry") response — the AI-detected items
+    /// shown in the pantry-scan review list before the user confirms/bulk-adds.
+    func testDecodesAIParsePantryResponse() throws {
+        let payload = """
+        {
+          "items": [
+            { "name": "Carrots", "category": "produce", "levelGuess": "plenty", "unitHint": "1 bag" },
+            { "name": "Chicken breast", "category": "protein", "levelGuess": "some" }
+          ]
+        }
+        """
+        let r = try JSONDecoder().decode(AIParsePantryResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.items.count, 2)
+        XCTAssertEqual(r.items[0].name, "Carrots")
+        XCTAssertEqual(r.items[0].levelGuess, "plenty")
+        XCTAssertEqual(r.items[1].unitHint, nil)
+    }
+
+    /// A cooked menu entry carries `cookedAt`; `isCooked` must reflect it.
+    func testDecodesCookedMenuEntry() throws {
+        let payload = """
+        {
+          "entry": {
+            "id": "m_2", "date": "2026-08-06", "slot": "dinner", "title": "Pasta",
+            "createdAt": "2026-08-01T00:00:00.000Z", "cookedAt": "2026-08-06T19:00:00.000Z"
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(MenuEntryResponse.self, from: Data(payload.utf8))
+        XCTAssertTrue(r.entry.isCooked)
+    }
 }

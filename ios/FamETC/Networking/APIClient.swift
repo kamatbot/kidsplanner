@@ -178,6 +178,87 @@ final class APIClient {
         let _: OKResponse = try await request("/api/notes/\(id)", method: "DELETE")
     }
 
+    // MARK: Meals (parent-gated — 401/403 for a kid session)
+
+    func mealsState() async throws -> MealsState {
+        try await request("/api/meals")
+    }
+    func addPantryItem(name: String, category: String, level: String, unitHint: String? = nil, expiresOn: String? = nil) async throws -> PantryItem {
+        var body: [String: Any] = ["name": name, "category": category, "level": level]
+        if let unitHint, !unitHint.isEmpty { body["unitHint"] = unitHint }
+        if let expiresOn, !expiresOn.isEmpty { body["expiresOn"] = expiresOn }
+        let r: PantryItemResponse = try await request("/api/meals/pantry", method: "POST", body: body)
+        return r.item
+    }
+    func updatePantryItem(_ id: String, _ patch: [String: Any]) async throws -> PantryItem {
+        let r: PantryItemResponse = try await request("/api/meals/pantry/\(id)", method: "PATCH", body: patch)
+        return r.item
+    }
+    func deletePantryItem(_ id: String) async throws {
+        let _: OKResponse = try await request("/api/meals/pantry/\(id)", method: "DELETE")
+    }
+    /// Bulk-adds reviewed scan results. `levelGuess` maps to the server's `level`
+    /// key; the endpoint accepts either, so both are sent through unchanged.
+    func bulkAddPantryItems(_ items: [ScannedPantryItem]) async throws -> [PantryItem] {
+        let payload: [[String: Any]] = items.map {
+            var d: [String: Any] = ["name": $0.name, "category": $0.category, "level": $0.levelGuess, "levelGuess": $0.levelGuess]
+            if let unitHint = $0.unitHint, !unitHint.isEmpty { d["unitHint"] = unitHint }
+            return d
+        }
+        let r: PantryItemsResponse = try await request("/api/meals/pantry/bulk", method: "POST", body: ["items": payload])
+        return r.items
+    }
+    /// Seeds common pantry staples. Response shape is server-defined and unused —
+    /// callers reload `mealsState()` afterward to pick up the authoritative list.
+    func seedPantryStaples() async throws {
+        _ = try await rawSend("/api/meals/pantry/staples", method: "POST", body: [:])
+    }
+
+    func addMenuEntry(date: String, slot: String = "dinner", title: String, note: String? = nil) async throws -> MenuEntry {
+        var body: [String: Any] = ["date": date, "slot": slot, "title": title]
+        if let note, !note.isEmpty { body["note"] = note }
+        let r: MenuEntryResponse = try await request("/api/meals/menu", method: "POST", body: body)
+        return r.entry
+    }
+    func updateMenuEntry(_ id: String, _ patch: [String: Any]) async throws -> MenuEntry {
+        let r: MenuEntryResponse = try await request("/api/meals/menu/\(id)", method: "PATCH", body: patch)
+        return r.entry
+    }
+    func deleteMenuEntry(_ id: String) async throws {
+        let _: OKResponse = try await request("/api/meals/menu/\(id)", method: "DELETE")
+    }
+    func markMenuCooked(_ id: String) async throws -> MenuEntry {
+        let r: MenuEntryResponse = try await request("/api/meals/menu/\(id)/cooked", method: "POST", body: [:])
+        return r.entry
+    }
+
+    func addShoppingItem(name: String, category: String? = nil) async throws -> ShoppingItem {
+        var body: [String: Any] = ["name": name]
+        if let category, !category.isEmpty { body["category"] = category }
+        let r: ShoppingItemResponse = try await request("/api/meals/shopping", method: "POST", body: body)
+        return r.item
+    }
+    func updateShoppingItem(_ id: String, _ patch: [String: Any]) async throws -> ShoppingItem {
+        let r: ShoppingItemResponse = try await request("/api/meals/shopping/\(id)", method: "PATCH", body: patch)
+        return r.item
+    }
+    func deleteShoppingItem(_ id: String) async throws {
+        let _: OKResponse = try await request("/api/meals/shopping/\(id)", method: "DELETE")
+    }
+    /// Adds low-stock pantry items to the shopping list. Response shape unused —
+    /// callers reload `mealsState()` afterward.
+    func addShoppingFromPantry() async throws {
+        _ = try await rawSend("/api/meals/shopping/from-pantry", method: "POST", body: [:])
+    }
+
+    /// Pantry photo → AI-detected items for review (`POST /api/ai/parse`). Uses a
+    /// generous timeout since this round-trips through the server's AI provider.
+    func parsePantryPhoto(base64: String, mediaType: String = "image/jpeg") async throws -> [ScannedPantryItem] {
+        let body: [String: Any] = ["kind": "pantry", "mediaType": mediaType, "dataBase64": base64]
+        let r: AIParsePantryResponse = try await request("/api/ai/parse", method: "POST", body: body, timeout: 35)
+        return r.items
+    }
+
     // MARK: Word bank
 
     func wordBank(kidId: String? = nil) async throws -> WordBankResponse {

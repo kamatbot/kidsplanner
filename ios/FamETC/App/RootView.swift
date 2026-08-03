@@ -39,7 +39,7 @@ import SwiftUI
 // entry inside Today, hosted by `HybridWebView`. That "More" sheet/menu is out
 // of scope for this scaffold; only the 6-tab native surface is wired here.
 enum Tab: String, CaseIterable, Identifiable {
-    case today, chat, calendar, homework, notes, trips
+    case today, chat, calendar, homework, notes, trips, meals
     var id: String { rawValue }
 
     var label: String {
@@ -50,6 +50,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .homework: return "Homework"
         case .notes: return "Notes"
         case .trips: return "Trips"
+        case .meals: return "Meals"
         }
     }
     var icon: String {
@@ -60,6 +61,7 @@ enum Tab: String, CaseIterable, Identifiable {
         case .homework: return "book.closed.fill"
         case .notes: return "note.text"
         case .trips: return "airplane"
+        case .meals: return "fork.knife"
         }
     }
 }
@@ -82,7 +84,14 @@ struct RootView: View {
     /// Docked chat column shows only for parent sessions in iPad landscape —
     /// kid sessions and iPad portrait always use the rail + slide-over instead.
     private var showDockedChat: Bool { isPad && isLandscape && store.isParent }
-    private var mainTabs: [Tab] { Tab.allCases.filter { $0 != .chat } }
+    /// Every tab visible for the CURRENT session's role: parents get Meals
+    /// (not Notes); kids get Notes (not Meals) — the Meals API is parent-gated
+    /// and would 401/403 for a kid, so the tab is hidden entirely rather than
+    /// shown-then-erroring. Every nav rail / tab bar in this file reads from
+    /// this (or `mainTabs`, which additionally excludes Chat), never
+    /// `Tab.allCases` directly, so a kid session can never reach Meals.
+    private var roleTabs: [Tab] { Tab.allCases.filter { $0 != (store.isParent ? .notes : .meals) } }
+    private var mainTabs: [Tab] { roleTabs.filter { $0 != .chat } }
 
     var body: some View {
         Group {
@@ -151,6 +160,7 @@ struct RootView: View {
             case "calendar": selection = .calendar
             case "homework": selection = .homework
             case "notes": selection = .notes
+            case "meals": selection = .meals
             default: break   // today starts on the today tab
             }
             #endif
@@ -165,11 +175,15 @@ struct RootView: View {
             ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
             CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
             HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-            NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+            if store.isParent {
+                MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
+            } else {
+                NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+            }
             TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            FloatingTabBar(selection: $selection)
+            FloatingTabBar(selection: $selection, tabs: roleTabs)
                 .padding(.bottom, 2) // sit a little lower (was Space.md)
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
@@ -193,7 +207,9 @@ struct RootView: View {
                 TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-                NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+                // Docked chat only ever shows for a PARENT session (showDockedChat
+                // requires store.isParent), so this tab is always Meals, never Notes.
+                MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
                 TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
             }
             .frame(maxWidth: .infinity)
@@ -222,7 +238,7 @@ struct RootView: View {
     /// `selection` never actually becomes `.chat` in this layout.
     private var iPadRailLayout: some View {
         HStack(spacing: 0) {
-            NavRailList(selection: $selection, tabs: Tab.allCases, onTapChat: { showChatSlideOver = true })
+            NavRailList(selection: $selection, tabs: roleTabs, onTapChat: { showChatSlideOver = true })
                 .frame(width: 90)
             Divider()
             // A TabView (with its own tab bar hidden) keeps all screens alive,
@@ -232,7 +248,11 @@ struct RootView: View {
                 TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-                NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+                if store.isParent {
+                    MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
+                } else {
+                    NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
+                }
                 TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
             }
             .frame(maxWidth: .infinity)
@@ -324,13 +344,16 @@ private struct NavRailList: View {
 /// (matchedGeometryEffect). Icon-only; VoiceOver reads the full labels.
 struct FloatingTabBar: View {
     @Binding var selection: Tab
+    /// Role-aware tab list (RootView passes `roleTabs`) — Meals/Notes are
+    /// mutually exclusive per session, so callers never pass `Tab.allCases` here.
+    var tabs: [Tab] = Tab.allCases
     @Environment(AppStore.self) private var store
     @Namespace private var pillNS
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Tab.allCases) { tab in
+            ForEach(tabs) { tab in
                 let isOn = selection == tab
                 Button {
                     guard !isOn else { return }
