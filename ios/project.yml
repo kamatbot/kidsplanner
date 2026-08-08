@@ -7,6 +7,7 @@ options:
     # against whatever iOS major is actually current when Xcode is opened —
     # this is a placeholder judgment call, not a hard requirement.
     iOS: "18.0"
+    watchOS: "11.0"
   createIntermediateGroups: true
   groupSortPosition: top
 
@@ -68,3 +69,31 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.uitests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: FamETC
+
+  FamETCWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: FamETCWatch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.watch
+        PRODUCT_NAME: FamETCWatch
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Fam ETC"
+        INFOPLIST_KEY_FAMIOSClientKey: "$(FAM_IOS_CLIENT_KEY)"
+        INFOPLIST_KEY_WKWatchOnly: YES
+        TARGETED_DEVICE_FAMILY: "4"
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
+
+  FamETCWatchTests:
+    type: bundle.unit-test
+    platform: watchOS
+    sources:
+      - path: FamETCWatchTests
+    dependencies:
+      - target: FamETCWatch
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.watch.tests
+        GENERATE_INFOPLIST_FILE: YES
