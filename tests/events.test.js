@@ -27,6 +27,31 @@ test("addEvent: requires a title and a valid date", () => {
   assert.equal(ok.event.source, "manual");
 });
 
+test("addEvent: chat source is persisted and idempotent within a family", () => {
+  const f1 = fam();
+  const f2 = fam();
+  const first = events.addEvent(f1.id, {
+    title: "Soccer practice", date: "2026-07-09", sourceType: "chat", sourceId: "m_family_1",
+  });
+  assert.equal(first.existing, false);
+  assert.equal(first.event.sourceType, "chat");
+  assert.equal(first.event.sourceId, "m_family_1");
+
+  const retry = events.addEvent(f1.id, {
+    title: "Changed title", date: "2026-08-01", sourceType: "chat", sourceId: "m_family_1",
+  });
+  assert.equal(retry.existing, true);
+  assert.equal(retry.event.id, first.event.id);
+  assert.equal(retry.event.title, "Soccer practice");
+  assert.equal(events.getBySource(f1.id, "chat", "m_family_1").id, first.event.id);
+
+  const otherFamily = events.addEvent(f2.id, {
+    title: "Other family event", date: "2026-07-09", sourceType: "chat", sourceId: "m_family_1",
+  });
+  assert.equal(otherFamily.existing, false);
+  assert.notEqual(otherFamily.event.id, first.event.id);
+});
+
 test("addEvent: bad time is dropped, category defaults to other", () => {
   const f = fam();
   const e = events.addEvent(f.id, { title: "Play date", date: "2026-07-10", time: "25:99", category: "bogus" }).event;

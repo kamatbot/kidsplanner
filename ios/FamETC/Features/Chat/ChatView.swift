@@ -75,7 +75,9 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
         .sheet(item: $hwRef) { ref in HomeworkDetailSheet(homeworkId: ref.id) }
         .sheet(item: $eventRef) { ref in EventDetailSheet(eventId: ref.id) }
-        .sheet(item: $newEventReq) { req in AddEventSheet(initialTitle: req.title, initialTime: req.time) }
+        .sheet(item: $newEventReq) { req in
+            ChatAddEventSheet(messageId: req.messageId, initialTitle: req.title, initialTime: req.time)
+        }
     }
 
     // MARK: Header
@@ -111,6 +113,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    isMine: store.isMine(m),
                                    senderName: store.senderName(for: m),
                                    onTapCard: handleCardTap,
+                                   canAddToCalendar: isFamilyRoom,
                                    onAddToCalendar: handleAddToCalendar,
                                    onPinToNotes: handlePinToNotes)
                         .id(m.id)
@@ -152,8 +155,13 @@ struct ChatScreen<HeaderAccessory: View>: View {
         if card.type == "homework" { hwRef = HWRef(id: card.id) }
         else if card.type == "event" { eventRef = EVRef(id: card.id) }
     }
-    private func handleAddToCalendar(_ text: String) {
-        newEventReq = NewEventReq(title: text, time: parseTime(from: text))
+    private func handleAddToCalendar(_ message: ChatMessage) {
+        guard isFamilyRoom, !message.deleted,
+              !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              message.card == nil else { return }
+        newEventReq = NewEventReq(messageId: message.id,
+                                  title: message.text,
+                                  time: parseTime(from: message.text))
     }
     private func handlePinToNotes(_ message: ChatMessage) {
         Haptics.selection()
@@ -329,7 +337,12 @@ struct ChatRoomSwitcher: View {
 /// Wrappers so an id can drive a `.sheet(item:)`.
 struct HWRef: Identifiable { let id: String }
 struct EVRef: Identifiable { let id: String }
-struct NewEventReq: Identifiable { let id = UUID(); let title: String; let time: String? }
+struct NewEventReq: Identifiable {
+    let id = UUID()
+    let messageId: String
+    let title: String
+    let time: String?
+}
 
 /// Best-effort time-of-day parser for message text, e.g. "pick up kids at 5pm"
 /// → "17:00". Returns nil when no recognizable time is found.
@@ -369,6 +382,148 @@ func parseTime(from text: String) -> String? {
     return nil
 }
 
+/// Chat-specific source-aware event confirmation. The regular AddEventSheet
+/// remains the canonical full calendar editor; this smaller sheet keeps the
+/// chat conversion explicit, editable, family-scoped, and able to submit the
+/// source reference directly through APIClient without broadening AppStore's
+/// manual-event surface.
+private struct ChatAddEventSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let messageId: String
+    let initialTitle: String
+    let initialTime: String?
+
+    @State private var title = ""
+    @State private var date = Date()
+    @State private var hasTime = false
+    @State private var time = Date()
+    @State private var notes = ""
+    @State private var category = "other"
+    @State private var kidId: String? = nil
+    @State private var saving = false
+    @State private var alertMessage = ""
+    @State private var alertTitle = "Calendar"
+    @State private var showAlert = false
+    @State private var dismissAfterAlert = false
+
+    private let categories = ["school", "sports", "arts", "social", "other"]
+
+    private var audienceKids: [Kid] {
+        store.isParent ? store.kids : store.kids.filter { $0.id == store.me?.kidId }
+    }
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !saving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Title", text: $title)
+                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                    Toggle("Set a time", isOn: $hasTime.animation())
+                    if hasTime {
+                        DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                    }
+                }
+                Section("For") {
+                    Picker("For", selection: $kidId) {
+                        Text("Whole family").tag(String?.none)
+                        ForEach(audienceKids) { kid in
+                            Text(kid.name).tag(Optional(kid.id))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+                Section("Category") {
+                    Picker("Category", selection: $category) {
+                        ForEach(categories, id: \.self) { Text($0.capitalized).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                }
+                Section("Notes") {
+                    TextField("Optional notes", text: $notes, axis: .vertical).lineLimit(2...5)
+                }
+            }
+            .navigationTitle("Add to Calendar")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { save() }.fontWeight(.bold).disabled(!canSave)
+                }
+            }
+        }
+        .onAppear {
+            title = initialTitle
+            if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
+                let components = Calendar.current.dateComponents([.hour, .minute], from: parsed)
+                if let combined = Calendar.current.date(bySettingHour: components.hour ?? 0,
+                                                        minute: components.minute ?? 0,
+                                                        second: 0,
+                                                        of: Date()) {
+                    hasTime = true
+                    time = combined
+                }
+            }
+        }
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("Done") {
+                if dismissAfterAlert { dismiss() }
+            }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+
+    private func save() {
+        saving = true
+        Haptics.selection()
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let eventDate = EventFmt.ymd.string(from: date)
+        let eventTime = hasTime ? EventFmt.hm.string(from: time) : nil
+
+        Task {
+            do {
+                let result = try await APIClient.shared.addFamilyEventResult(
+                    title: cleanTitle,
+                    date: eventDate,
+                    time: eventTime,
+                    notes: cleanNotes.isEmpty ? nil : cleanNotes,
+                    category: category,
+                    kidId: kidId,
+                    sourceType: "chat",
+                    sourceId: messageId
+                )
+                if let refreshed = try? await APIClient.shared.familyEvents() {
+                    store.familyEvents = refreshed
+                    await NotificationScheduler.reschedule(events: refreshed,
+                                                           homework: store.homework,
+                                                           kids: store.family?.kids ?? [])
+                }
+                alertTitle = "Calendar"
+                alertMessage = result.existing == true
+                    ? "This message was already added to the family calendar."
+                    : "Event added to the family calendar."
+                dismissAfterAlert = true
+                showAlert = true
+            } catch {
+                alertTitle = "Could not add event"
+                alertMessage = error.localizedDescription
+                dismissAfterAlert = false
+                showAlert = true
+            }
+            saving = false
+        }
+    }
+}
+
 // MARK: - One message row (fun bubbles + avatar, or a system card)
 
 struct ChatMessageRow: View {
@@ -376,7 +531,8 @@ struct ChatMessageRow: View {
     let isMine: Bool
     let senderName: String
     var onTapCard: (ChatCard) -> Void
-    var onAddToCalendar: (String) -> Void = { _ in }
+    var canAddToCalendar: Bool = true
+    var onAddToCalendar: (ChatMessage) -> Void = { _ in }
     var onPinToNotes: (ChatMessage) -> Void = { _ in }
 
     private var senderColor: Color { isMine ? Palette.accent : famSenderColor(message.senderId) }
@@ -439,10 +595,12 @@ struct ChatMessageRow: View {
                 .background(bubbleShape.fill(isMine ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Palette.panel2)))
                 .overlay(isMine ? nil : bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
                 .contextMenu {
-                    Button {
-                        onAddToCalendar(message.text)
-                    } label: {
-                        Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                    if canAddToCalendar && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            onAddToCalendar(message)
+                        } label: {
+                            Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                        }
                     }
                     Button {
                         onPinToNotes(message)

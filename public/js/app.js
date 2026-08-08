@@ -170,6 +170,7 @@ let activeEventRecurring = false; // set by showDetail; drives the delete confir
 let activeEventObj  = null;   // the resolved event object from showDetail; source for editCurrentEvent()
 let editingEventId  = null;   // set by editCurrentEvent(); when non-null saveEvent() PATCHes instead of POSTs
 let pendingDate     = null;   // pre-filled date for add-event modal
+let chatEventComposerSource = null; // transient source reference for a chat-created event
 let uploadedFile    = null;
 
 /* Today action queue (phase 2) — server is the source of truth. The list is
@@ -1153,6 +1154,7 @@ function populateEventAudienceOptions(selected) {
 
 function openAddEventModal(ds) {
   editingEventId = null; // adding fresh — make sure a stale edit session can't hijack this save
+  chatEventComposerSource = null;
   pendingDate = ds || null;
   const startDate = ds || isoDate(new Date());
   document.getElementById('event-title').value   = '';
@@ -1169,6 +1171,20 @@ function openAddEventModal(ds) {
   populateEventAudienceOptions('family');
   setAddEventModalMode(false);
   openModal('add-event-modal');
+}
+
+function openAddEventModalFromChatMessage(messageId) {
+  const message = chatMessages.find((m) => m && m.id === messageId);
+  if (!chatMessageCanAddToCalendar(message)) return;
+  openAddEventModal();
+  chatEventComposerSource = { sourceType: 'chat', sourceId: message.id };
+  const titleEl = document.getElementById('event-title');
+  if (titleEl) {
+    titleEl.value = String(message.text || '').trim().slice(0, 200);
+    titleEl.focus();
+  }
+  const other = document.querySelector('input[name="cat"][value="other"]');
+  if (other) other.checked = true;
 }
 
 // Prefills the add/edit modal from an existing event and switches saveEvent()
@@ -1229,6 +1245,7 @@ function onEventRepeatChange() {
    only the offline mirror + pending-upload queue — see loadFamilyEvents(). */
 async function saveEvent(e) {
   e.preventDefault();
+  const chatSource = chatEventComposerSource;
   const audience = document.getElementById('event-audience').value;
   const payload = {
     kidId:    audience === 'family' ? null : audience,
@@ -1242,6 +1259,7 @@ async function saveEvent(e) {
     repeat:   document.getElementById('event-repeat').value,
     repeatUntil: document.getElementById('event-repeat-until').value || null,
   };
+  if (chatSource) Object.assign(payload, chatSource);
 
   if (editingEventId) {
     const id = editingEventId;
@@ -1272,10 +1290,11 @@ async function saveEvent(e) {
 
   let ev;
   try {
-    ev = (await window.auth.addCalendarEvent(payload)).event;
-    toast('Event added! 🎯');
+    const result = await window.auth.addCalendarEvent(payload);
+    ev = result.event;
+    toast(result.existing ? 'That message is already on the calendar.' : 'Event added! 🎯');
   } catch (err) {
-    if (err && err.status) { // server rejected it (bad date, kicked session…) — don't queue garbage
+    if (chatSource || (err && err.status)) { // chat conversions stay server-idempotent; don't queue them offline
       toast(`❌ ${err.message || 'Could not save that event.'}`);
       return;
     }
@@ -1284,7 +1303,11 @@ async function saveEvent(e) {
     ev = { id: uid(), ...payload };
     toast('Saved on this device — will sync when back online. 📴');
   }
-  saveEvents(getEvents().concat([ev]));
+  const localEvents = getEvents();
+  const existingIndex = localEvents.findIndex((item) => item && item.id === ev.id);
+  saveEvents(existingIndex >= 0
+    ? localEvents.map((item, index) => index === existingIndex ? Object.assign({}, item, ev) : item)
+    : localEvents.concat([ev]));
   closeModal('add-event-modal');
   renderCalendar();
   renderMiniCal();
@@ -1984,7 +2007,10 @@ function applyParsedSchedule() {
    MODALS
 ============================================================ */
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'add-event-modal') chatEventComposerSource = null;
+}
 
 function closeModalOnBg(e, id) {
   if (e.target.id === id) closeModal(id);
@@ -2088,6 +2114,12 @@ function chatMessageCanAddToToday(msg) {
     !(msg.card && msg.card.type === 'event');
 }
 
+function chatMessageCanAddToCalendar(msg) {
+  return chatMessageHasAddableText(msg) &&
+    (!msg.roomId || msg.roomId === 'family') &&
+    !(msg.card && msg.card.type === 'event');
+}
+
 function todayActionTitleFromChatMessage(text) {
   return String(text == null ? '' : text).slice(0, 200);
 }
@@ -2133,6 +2165,9 @@ function renderChatMessages() {
     const addToTodayBtn = chatMessageCanAddToToday(m)
       ? `<span class="chat-msg-add-action-wrap"><button type="button" class="chat-msg-ctrl chat-msg-add-action" onclick="openTodayActionComposerFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="today-action-composer" aria-label="Add message to Today" title="Add message to Today"${showAddToTodayTip ? ' aria-describedby="chat-add-today-tip"' : ''}>⊕</button>${showAddToTodayTip ? '<span id="chat-add-today-tip" class="chat-add-today-tip" role="tooltip">Turn this message into a Today action</span>' : ''}</span>`
       : '';
+    const addToCalendarBtn = chatMessageCanAddToCalendar(m)
+      ? `<span class="chat-msg-add-action-wrap"><button type="button" class="chat-msg-ctrl chat-msg-add-action" onclick="openAddEventModalFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="add-event-modal" aria-label="Add message to Calendar" title="Add message to Calendar">📅</button></span>`
+      : '';
     const controls = !isKidSession() ? `
       <div class="chat-msg-controls">
         ${pinBtn}
@@ -2151,6 +2186,7 @@ function renderChatMessages() {
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>
         ${addToTodayBtn}
+        ${addToCalendarBtn}
         ${controls}
       </div>
     </div>`;

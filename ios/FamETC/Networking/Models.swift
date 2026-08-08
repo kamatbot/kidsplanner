@@ -155,6 +155,10 @@ struct FamilyEvent: Codable, Identifiable {
     /// GET /api/calendar/events). Optional for cache/back-compat — treat nil as false
     /// (not editable/deletable) since the app always round-trips through the server.
     var canEdit: Bool?
+    /// Optional opaque source reference. Chat conversions use sourceType="chat"
+    /// and the family-chat message id; the server keeps it immutable.
+    var sourceType: String? = nil
+    var sourceId: String? = nil
 
     /// True for a recurring series or any of its expanded occurrences.
     var isRecurring: Bool { recurring == true || (repeatRule ?? "none") != "none" }
@@ -162,7 +166,7 @@ struct FamilyEvent: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, title, date, time, endTime, endDate, notes, category, kidId
         case repeatRule = "repeat"
-        case repeatUntil, seriesId, recurring, occurrenceDate, canEdit
+        case repeatUntil, seriesId, recurring, occurrenceDate, canEdit, sourceType, sourceId
     }
 }
 
@@ -292,7 +296,7 @@ struct FamiliesResponse: Codable { var families: [Family] }
 struct GifsResponse: Codable { var gifs: [GifResult] }
 struct CalendarSyncResponse: Codable { var events: [CalendarEvent]?; var lastSyncAt: String?; var throttled: Bool? }
 struct FamilyEventsResponse: Codable { var events: [FamilyEvent] }
-struct FamilyEventResponse: Codable { var event: FamilyEvent }
+struct FamilyEventResponse: Codable { var event: FamilyEvent; var existing: Bool? = nil }
 struct HomeworkResponse: Codable { var homework: [HomeworkItem] }
 struct HomeworkItemResponse: Codable { var homework: HomeworkItem }
 struct FamilyActionsResponse: Codable { var actions: [FamilyAction] }

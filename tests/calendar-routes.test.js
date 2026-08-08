@@ -30,9 +30,13 @@ function buildHarness() {
   const app = { get: register("GET"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") };
 
   const chatPosts = [];
+  const chatMessages = new Map();
   calendarRoutes(app, {
     schoolFeeds: {}, homework: {}, events, trips,
-    chat: { sendMessage: (familyId, msg) => chatPosts.push({ familyId, msg }) },
+    chat: {
+      sendMessage: (familyId, msg) => chatPosts.push({ familyId, msg }),
+      getMessage: (familyId, id) => chatMessages.get(`${familyId}:${id}`) || null,
+    },
     requireAuth: (req, res, next) => next(),
     requireParent: (req, res, next) => next(),
     requireFamily: (req, res, next) => next(),
@@ -40,7 +44,7 @@ function buildHarness() {
     kidIdForUser: (req) => req.user.data.kid.kidId,
     friendlyDate: (d) => d,
   });
-  return { routes, chatPosts };
+  return { routes, chatPosts, chatMessages };
 }
 
 function call(handler, { body, params, query, user, familyId } = {}) {
@@ -79,6 +83,79 @@ test("POST /api/calendar/events: creates the event and posts a chat announcement
   assert.equal(chatPosts[0].familyId, fam.id);
   assert.match(chatPosts[0].msg.text, /New event: Dentist/);
   assert.deepEqual(chatPosts[0].msg.card, { type: "event", id: res.body.event.id, title: "Dentist" });
+});
+
+test("POST /api/calendar/events: chat source is persisted and retries are idempotent", () => {
+  const { routes, chatPosts, chatMessages } = buildHarness();
+  const fam = freshFamily();
+  chatMessages.set(`${fam.id}:m_family_123`, { id: "m_family_123", text: "Pick up Ava", deleted: false });
+  const body = {
+    title: "Pick up Ava", date: "2026-07-20", time: "17:00",
+    sourceType: "chat", sourceId: "m_family_123",
+  };
+  const first = call(routes["POST /api/calendar/events"], { familyId: fam.id, body });
+  const second = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { ...body, title: "Changed after confirmation", date: "2026-08-01" },
+  });
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.body.existing, false);
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.body.existing, true);
+  assert.equal(second.body.event.id, first.body.event.id);
+  assert.equal(second.body.event.title, "Pick up Ava");
+  assert.equal(second.body.event.sourceType, "chat");
+  assert.equal(second.body.event.sourceId, "m_family_123");
+  assert.equal(chatPosts.length, 1, "a retry must not post a second announcement");
+});
+
+test("POST /api/calendar/events: chat sources are family-keyed and reject trip/invalid references", () => {
+  const { routes, chatPosts, chatMessages } = buildHarness();
+  const fam = freshFamily();
+  const otherFam = freshFamily();
+  chatMessages.set(`${fam.id}:m_same`, { id: "m_same", text: "Family scoped", deleted: false });
+  chatMessages.set(`${otherFam.id}:m_same`, { id: "m_same", text: "Other scoped", deleted: false });
+  const own = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { familyId: otherFam.id, title: "Family scoped", date: "2026-07-20", sourceType: "chat", sourceId: "m_same" },
+  });
+  const other = call(routes["POST /api/calendar/events"], {
+    familyId: otherFam.id,
+    body: { title: "Other scoped", date: "2026-07-20", sourceType: "chat", sourceId: "m_same" },
+  });
+  assert.equal(own.statusCode, 200);
+  assert.equal(other.statusCode, 200);
+  assert.notEqual(own.body.event.id, other.body.event.id);
+  assert.equal(own.body.event.familyId, fam.id);
+  assert.equal(other.body.event.familyId, otherFam.id);
+
+  const trip = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { title: "Trip source", date: "2026-07-20", sourceType: "trip", sourceId: "m_trip_1" },
+  });
+  const malformed = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { title: "Bad source", date: "2026-07-20", sourceType: "chat", sourceId: "trip_1" },
+  });
+  assert.equal(trip.statusCode, 400);
+  assert.equal(malformed.statusCode, 400);
+  assert.equal(chatPosts.length, 2);
+});
+
+test("POST /api/calendar/events: unavailable or deleted chat source is rejected", () => {
+  const { routes, chatMessages } = buildHarness();
+  const fam = freshFamily();
+  const missing = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { title: "Missing", date: "2026-07-20", sourceType: "chat", sourceId: "m_missing" },
+  });
+  chatMessages.set(`${fam.id}:m_deleted`, { id: "m_deleted", text: "Old message", deleted: true });
+  const deleted = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { title: "Deleted", date: "2026-07-20", sourceType: "chat", sourceId: "m_deleted" },
+  });
+  assert.equal(missing.statusCode, 400);
+  assert.equal(deleted.statusCode, 400);
 });
 
 test("POST /api/calendar/events: silent:true skips the chat announcement (bulk import / migration)", () => {

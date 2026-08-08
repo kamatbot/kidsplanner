@@ -108,7 +108,14 @@ final class APIClient: FamilyActionService {
         let r: FamilyEventsResponse = try await request(path)
         return r.events
     }
-    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async throws -> FamilyEvent {
+    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil) async throws -> FamilyEvent {
+        let r = try await addFamilyEventResult(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId,
+                                               endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil,
+                                               sourceType: sourceType, sourceId: sourceId)
+        return r.event
+    }
+
+    func addFamilyEventResult(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil) async throws -> FamilyEventResponse {
         var body: [String: Any] = ["title": title, "date": date]
         if let time, !time.isEmpty { body["time"] = time }
         if let notes, !notes.isEmpty { body["notes"] = notes }
@@ -117,8 +124,9 @@ final class APIClient: FamilyActionService {
         if let endDate, !endDate.isEmpty { body["endDate"] = endDate }
         if let repeatRule, !repeatRule.isEmpty { body["repeat"] = repeatRule }
         if let repeatUntil, !repeatUntil.isEmpty { body["repeatUntil"] = repeatUntil }
-        let r: FamilyEventResponse = try await request("/api/calendar/events", method: "POST", body: body)
-        return r.event
+        if let sourceType, !sourceType.isEmpty { body["sourceType"] = sourceType }
+        if let sourceId, !sourceId.isEmpty { body["sourceId"] = sourceId }
+        return try await request("/api/calendar/events", method: "POST", body: body)
     }
     /// Deletes the WHOLE series (creator-or-parent server-side — see
     /// DELETE /api/calendar/events/:id; 403 otherwise).

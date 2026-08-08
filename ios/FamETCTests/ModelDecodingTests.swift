@@ -181,6 +181,23 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertFalse(r.event.isRecurring)
     }
 
+    func testDecodesChatSourceAndIdempotentCreationFlag() throws {
+        let payload = """
+        {
+          "event": {
+            "id": "ev_chat_1", "title": "Pick up Ava", "date": "2026-07-15",
+            "time": "17:00", "notes": null, "category": "other", "kidId": null,
+            "sourceType": "chat", "sourceId": "m_family_1"
+          },
+          "existing": true
+        }
+        """
+        let r = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(r.event.sourceType, "chat")
+        XCTAssertEqual(r.event.sourceId, "m_family_1")
+        XCTAssertEqual(r.existing, true)
+    }
+
     /// `canEdit` (GET /api/calendar/events) is true when this user created the
     /// event or is a parent; a kid-created event another kid can't touch omits
     /// it as false. Missing entirely (back-compat/cache) must decode to nil,
