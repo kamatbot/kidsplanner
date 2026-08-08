@@ -261,12 +261,31 @@ html { font-size: 16px; }
 
 /* ---------- chat dock ---------- */
 .chat-dock {
-  width: 318px; flex: none; background: var(--panel); border-left: 1px solid var(--border);
-  display: flex; flex-direction: column; transition: width .18s ease;
+  --chat-dock-width: 360px;
+  width: var(--chat-dock-width); flex: none; background: var(--panel); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; position: relative; transition: width .18s ease;
 }
 /* #id beats every .kid-view/narrow-screen `display:flex` override further
    down, regardless of source order — Notes/Settings must stay hidden. */
 #chat-dock[hidden] { display: none; }
+.chat-dock-resize-handle {
+  position: absolute; top: 0; bottom: 0; left: -12px; z-index: 2;
+  width: 24px; padding: 0; border: 0; background: transparent; cursor: col-resize;
+  display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none;
+}
+.chat-dock-resize-handle::before {
+  content: ''; width: 2px; height: 40px; border-radius: 999px;
+  background: var(--border); opacity: .75; transition: width .15s ease, background .15s ease, opacity .15s ease;
+}
+.chat-dock-resize-handle:hover::before,
+.chat-dock-resize-handle:focus-visible::before {
+  width: 3px; background: var(--accent); opacity: 1;
+}
+.chat-dock-resize-handle:focus-visible {
+  outline: 3px solid var(--accent-soft); outline-offset: -1px; border-radius: 6px;
+}
+.chat-dock.chat-resizing { transition: none; }
+body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-dock-header {
   padding: 18px 20px 14px; border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 10px;
@@ -291,6 +310,7 @@ html { font-size: 16px; }
 .chat-dock.chat-collapsed { width: 56px; cursor: pointer; }
 .chat-dock.chat-collapsed .chat-dock-header { flex-direction: column; padding: 16px 8px; gap: 10px; }
 .chat-dock.chat-collapsed .chat-dock-title { display: none; }
+.chat-dock.chat-collapsed:not(.chat-force-open) .chat-dock-resize-handle { display: none; }
 .chat-dock.chat-collapsed .chat-dock-avatars { flex-direction: column; align-items: center; gap: 4px; }
 .chat-dock.chat-collapsed .chat-avatar-dot { margin-left: 0; }
 .chat-dock.chat-collapsed .chat-messages,
@@ -1047,8 +1067,8 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .sidebar-nav-item { width: 48px; height: 48px; border-radius: 13px; justify-content: center; padding: 0; }
   .sidebar-bottom { border-top: none; align-items: center; }
   .sidebar-user { justify-content: center; }
-  .chat-dock { width: 296px; }
-  .chat-dock.chat-collapsed.chat-force-open { width: 296px; }
+  .chat-dock { width: var(--chat-dock-width); }
+  .chat-dock.chat-collapsed.chat-force-open { width: var(--chat-dock-width); }
 }
 
 @media (max-width: 900px) {
@@ -1075,6 +1095,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
     opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none;
     transition: opacity .18s ease, transform .18s ease;
   }
+  .chat-dock-resize-handle { display: none; }
   .chat-dock.chat-open { opacity: 1; transform: none; pointer-events: auto; }
   .chat-dock.chat-collapsed .chat-messages,
   .chat-dock.chat-collapsed .chat-send-row,

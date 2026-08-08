@@ -162,6 +162,8 @@ let currentView     = 'week';
 let weekStart       = null;   // Monday of displayed week
 let monthDate       = null;   // any date in displayed month
 let miniMonth       = null;   // any date in mini-cal month
+let chatDockWidth   = window.FamChatWidth.DEFAULT_WIDTH;
+let chatDockResizeSession = null;
 let quizIndex       = 0;
 let activeEventId   = null;
 let activeEventRecurring = false; // set by showDetail; drives the delete confirm() copy
@@ -722,6 +724,7 @@ function showDashboard() {
   }
 
   initTheme();
+  initChatDockWidth();
 
   weekStart = mondayOf(now);
   monthDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2239,6 +2242,105 @@ function renderChatDockAvatars() {
       `<span class="chat-avatar-dot${it.isMe ? ' is-me' : ''}" style="${it.isMe ? '' : `background:${it.color}`}">${esc(it.initial)}</span>`
     ).join('');
   });
+}
+
+function chatDockPreferenceUserId() {
+  return sessionUser && sessionUser.id !== undefined && sessionUser.id !== null
+    ? sessionUser.id
+    : null;
+}
+
+function chatDockStorage() {
+  try { return window.localStorage; } catch (e) { return null; }
+}
+
+function applyChatDockWidth(width, persist = true) {
+  chatDockWidth = window.FamChatWidth.clamp(width);
+  const dock = document.getElementById('chat-dock');
+  if (dock) dock.style.setProperty('--chat-dock-width', `${chatDockWidth}px`);
+  const handle = document.getElementById('chat-dock-resize-handle');
+  if (handle) {
+    handle.setAttribute('aria-valuemin', String(window.FamChatWidth.MIN_WIDTH));
+    handle.setAttribute('aria-valuemax', String(window.FamChatWidth.MAX_WIDTH));
+    handle.setAttribute('aria-valuenow', String(chatDockWidth));
+  }
+  if (persist) window.FamChatWidth.write(chatDockStorage(), chatDockPreferenceUserId(), chatDockWidth);
+  return chatDockWidth;
+}
+
+function initChatDockWidth() {
+  const width = window.FamChatWidth.read(chatDockStorage(), chatDockPreferenceUserId());
+  applyChatDockWidth(width);
+}
+
+function chatDockResizeIsDesktop() {
+  if (!window.matchMedia) return true;
+  try { return !window.matchMedia('(max-width: 900px)').matches; } catch (e) { return true; }
+}
+
+function startChatDockResize(event) {
+  const dock = document.getElementById('chat-dock');
+  const handle = event && (event.currentTarget || event.target);
+  if (!dock || !handle || dock.hidden || !chatDockResizeIsDesktop() || chatDockResizeSession) return;
+  if (dock.classList.contains('chat-collapsed') && !dock.classList.contains('chat-force-open')) return;
+  if (event.button !== undefined && event.button !== 0) return;
+
+  const startX = Number(event.clientX);
+  if (!Number.isFinite(startX)) return;
+  const pointerId = event.pointerId;
+  const startWidth = chatDockWidth;
+  event.preventDefault();
+  event.stopPropagation();
+  dock.classList.add('chat-resizing');
+  document.body.classList.add('chat-dock-resizing');
+
+  const cleanup = () => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onEnd);
+    window.removeEventListener('pointercancel', onEnd);
+    if (handle.releasePointerCapture && pointerId !== undefined && handle.hasPointerCapture && handle.hasPointerCapture(pointerId)) {
+      try { handle.releasePointerCapture(pointerId); } catch (e) { /* already released */ }
+    }
+    dock.classList.remove('chat-resizing');
+    document.body.classList.remove('chat-dock-resizing');
+    chatDockResizeSession = null;
+  };
+  const onMove = (moveEvent) => {
+    if (pointerId !== undefined && moveEvent.pointerId !== pointerId) return;
+    moveEvent.preventDefault();
+    // The dock's right edge stays fixed: dragging its left edge left widens it.
+    applyChatDockWidth(startWidth - (Number(moveEvent.clientX) - startX), false);
+  };
+  const onEnd = (endEvent) => {
+    if (pointerId !== undefined && endEvent.pointerId !== pointerId) return;
+    applyChatDockWidth(chatDockWidth);
+    cleanup();
+  };
+
+  chatDockResizeSession = { cleanup };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onEnd);
+  window.addEventListener('pointercancel', onEnd);
+  if (handle.setPointerCapture && pointerId !== undefined) {
+    try { handle.setPointerCapture(pointerId); } catch (e) { /* pointer capture is optional */ }
+  }
+}
+
+function handleChatDockResizeKeydown(event) {
+  const dock = document.getElementById('chat-dock');
+  if (!dock || dock.hidden || !chatDockResizeIsDesktop()) return;
+  if (dock.classList.contains('chat-collapsed') && !dock.classList.contains('chat-force-open')) return;
+
+  let nextWidth;
+  if (event.key === 'ArrowLeft') nextWidth = chatDockWidth + window.FamChatWidth.STEP;
+  else if (event.key === 'ArrowRight') nextWidth = chatDockWidth - window.FamChatWidth.STEP;
+  else if (event.key === 'Home') nextWidth = window.FamChatWidth.MIN_WIDTH;
+  else if (event.key === 'End') nextWidth = window.FamChatWidth.MAX_WIDTH;
+  else return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  applyChatDockWidth(nextWidth);
 }
 
 // fam_chat_seen_at: last time the dock was actually open/visible to this

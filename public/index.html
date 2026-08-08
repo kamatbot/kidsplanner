@@ -693,6 +693,13 @@
            selection. Poll lifecycle is tied to the shell being visible (see
            startChatPolling/stopChatPolling calls in switchNavTab). -->
       <aside class="chat-dock" id="chat-dock" onclick="handleChatDockClick(event)">
+        <div class="chat-dock-resize-handle" id="chat-dock-resize-handle"
+             role="separator" tabindex="0" aria-label="Resize family chat"
+             aria-orientation="vertical" aria-valuemin="296" aria-valuemax="520"
+             aria-valuenow="360" aria-controls="chat-dock" title="Drag to resize family chat"
+             onpointerdown="startChatDockResize(event)"
+             onkeydown="handleChatDockResizeKeydown(event)"
+             onclick="event.stopPropagation()"></div>
         <div class="chat-dock-header">
           <span class="chat-dock-title micro-label">Family chat</span>
           <div class="chat-dock-avatars" id="chat-dock-avatars"></div>
@@ -1336,6 +1343,7 @@
 <script src="/js/auth.js"></script>
 <script src="/js/school-stats.js"></script>
 <script src="/js/util.js"></script>
+<script src="/js/chat-width.js"></script>
 <script src="/js/notes.js"></script>
 <script src="/js/sat.js"></script>
 <script src="/js/school.js"></script>
