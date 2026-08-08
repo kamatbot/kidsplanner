@@ -2036,13 +2036,22 @@ function isOwnMessage(msg) {
 
 function renderChatCard(card) {
   if (!card || !card.type) return '';
-  const icon = card.type === 'homework' ? '📚' : card.type === 'event' ? '📅' : '🔗';
-  const label = card.type === 'homework' ? 'Homework' : card.type === 'event' ? 'Event' : esc(card.type);
+  const mealCard = card.type === 'menu' || card.type === 'meal' || card.sourceType === 'meal';
+  const icon = mealCard ? '🍽️' : card.type === 'homework' ? '📚' : card.type === 'event' ? '📅' : '🔗';
+  const label = mealCard ? 'Meals' : card.type === 'homework' ? 'Homework' : card.type === 'event' ? 'Event' : esc(card.type);
+  const mealSummary = mealCard ? [
+    famMealCardCount(card.prepCount) !== null ? 'Prep ' + famMealCardCount(card.prepCount) : '',
+    famMealCardCount(card.pendingShoppingCount) !== null ? 'Shopping ' + famMealCardCount(card.pendingShoppingCount) + ' pending' : '',
+    famMealCardCount(card.lowPantryCount) !== null ? 'Pantry low/out ' + famMealCardCount(card.lowPantryCount) : '',
+  ].filter(Boolean).join(' · ') : '';
+  const mealLink = mealCard ? '<a href="/meals" class="btn-link" style="font-size:11px">Open Meals →</a>' : '';
   return `<div class="chat-msg-card">
     <span class="chat-card-icon">${icon}</span>
     <div class="chat-card-body">
       <div class="chat-card-label">${label}</div>
       ${card.title ? `<div class="chat-card-title">${esc(card.title)}</div>` : ''}
+      ${mealSummary ? `<div class="chat-card-summary">${esc(mealSummary)}</div>` : ''}
+      ${mealLink}
     </div>
   </div>`;
 }
@@ -3511,14 +3520,32 @@ async function famRenderTodayMeals(todayIso) {
     }
     const prefs = (data && data.prefs) || {};
     const prepDue = famTonightPrepDue(menu, prefs, todayIso);
+    const shopping = Array.isArray(data && data.shopping) ? data.shopping : [];
+    const pantry = Array.isArray(data && data.pantry) ? data.pantry : [];
+    const pendingShoppingCount = famMealCardCount(
+      shopping.filter((item) => item && item.done !== true).length
+    );
+    const lowPantryCount = famMealCardCount(
+      pantry.filter((item) => item && (item.level === 'low' || item.level === 'out')).length
+    );
+    const prepDueCount = famMealCardCount(prepDue.length);
+    const prepLabels = prepDue.slice(0, 3).map((p) => p && p.label).filter(Boolean).join(' · ');
     body.innerHTML = `
       <div class="schedule-title">${esc(tonight.title)}</div>
-      ${prepDue.length ? `<div class="schedule-meta">🕒 ${esc(prepDue.map((p) => p.label).join(' · '))}</div>` : ''}
+      <div class="schedule-meta">🕒 Prep due today: ${prepDueCount}${prepLabels ? ` — ${esc(prepLabels)}` : ''}</div>
+      <div class="schedule-meta">🛒 Shopping: ${pendingShoppingCount} pending · 🥫 Pantry low/out: ${lowPantryCount}</div>
     `;
     card.hidden = false;
   } catch (err) {
     card.hidden = true; // Meals unavailable/unset-up — Today keeps working fine without it
   }
+}
+
+function famMealCardCount(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(99, Math.max(0, Math.floor(n)));
 }
 
 // Mirrors mealPrepDueToday() in public/js/meals.js — kept as a small local

@@ -69,3 +69,12 @@ test("the guard actually catches a duplicate top-level const (self-check)", () =
   const clashing = "const DUP = 1;\n;\nconst DUP = 2;";
   assert.throws(() => new vm.Script(clashing), /already been declared/);
 });
+
+test("meal status stays in Today and meal chat cards", () => {
+  const source = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
+  assert.match(source, /card\.type === 'menu' \|\| card\.type === 'meal' \|\| card\.sourceType === 'meal'/);
+  assert.match(source, /href="\/meals"/);
+  assert.match(source, /Prep due today:/);
+  assert.match(source, /Shopping: \$\{pendingShoppingCount\} pending/);
+  assert.match(source, /Pantry low\/out:/);
+});

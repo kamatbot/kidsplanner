@@ -84,10 +84,37 @@ test("planner posts exactly one chat card for the whole week", async () => {
   const { routes, chatPosts } = harness(mealsRoutes);
   const { parent, fam } = freshFamily("CC");
   meals.seedStaples(fam.id, parent.id);
+  meals.addPantryItem(fam.id, parent.id, { name: "Low onions", category: "produce", level: "low" });
+  meals.addPantryItem(fam.id, parent.id, { name: "Out garlic", category: "produce", level: "out" });
+  const pending = meals.addShoppingItem(fam.id, parent.id, { text: "Coconut milk", category: "dairy" }).item;
+  const bought = meals.addShoppingItem(fam.id, parent.id, { text: "Limes", category: "produce" }).item;
+  meals.updateShoppingItem(fam.id, parent.id, bought.id, { done: true });
 
-  await call(routes["POST /api/meals/menu/plan"], { user: parent, family: fam, body: { days: 7 } });
+  const res = await call(routes["POST /api/meals/menu/plan"], { user: parent, family: fam, body: { days: 7 } });
   assert.equal(chatPosts.length, 1, "one card per plan, never one per meal");
-  assert.equal(chatPosts[0].msg.card.type, "menu");
+  const card = chatPosts[0].msg.card;
+  assert.equal(card.type, "menu");
+  assert.equal(card.id, res.body.menu[0].id, "existing menu card id remains the first written entry");
+  assert.equal(card.title, "This week's menu");
+  assert.equal(card.sourceType, "meal");
+  assert.equal(card.sourceId, card.id);
+  assert.equal(card.pendingShoppingCount, 1);
+  assert.equal(card.lowPantryCount, 2);
+  const expectedPrep = res.body.menu.reduce((count, entry) => count + (entry.prep || []).length, 0);
+  assert.equal(card.prepCount, Math.min(99, expectedPrep));
+  assert.equal(meals.getShoppingItem(fam.id, pending.id).done, false);
+});
+
+test("planner remains successful when the derived meal chat card cannot be posted", async () => {
+  const { routes } = harness(mealsRoutes, {
+    chat: { sendMessage: () => { throw new Error("chat unavailable"); } },
+  });
+  const { parent, fam } = freshFamily("CF");
+  meals.seedStaples(fam.id, parent.id);
+
+  const res = await call(routes["POST /api/meals/menu/plan"], { user: parent, family: fam, body: { days: 1 } });
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.body.menu.length >= 1);
 });
 
 test("planner never plans a dish carrying a household allergen", async () => {
