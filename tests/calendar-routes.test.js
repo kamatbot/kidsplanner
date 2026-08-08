@@ -92,7 +92,10 @@ test("POST /api/calendar/events: silent:true skips the chat announcement (bulk i
   assert.equal(res.body.event.title, "Maths");
   assert.equal(chatPosts.length, 0);
   // ...but the event is still stored and listed like any other.
-  const list = call(routes["GET /api/calendar/events"], { familyId: fam.id });
+  const list = call(routes["GET /api/calendar/events"], {
+    familyId: fam.id,
+    query: { from: "2026-07-21", to: "2026-07-21" },
+  });
   assert.deepEqual(list.body.events.map((e) => e.title), ["Maths"]);
 });
 
