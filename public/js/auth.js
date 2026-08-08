@@ -269,6 +269,22 @@
     return api("/api/family/access-requests/" + encodeURIComponent(requestId) + "/deny", { method: "POST" });
   }
 
+  /* ---------- standalone Apple Watch pairing ---------- */
+  async function startWatchPairing(target, kidId) {
+    return api("/api/watch/pairing/start", {
+      method: "POST",
+      body: JSON.stringify({ target: target || "self", kidId: kidId || undefined }),
+    });
+  }
+
+  async function getWatchDevices() {
+    return api("/api/watch/devices", { method: "GET" });
+  }
+
+  async function revokeWatchDevice(deviceId) {
+    return api("/api/watch/devices/" + encodeURIComponent(deviceId) + "/revoke", { method: "POST" });
+  }
+
   async function issueBackupCodes() {
     return api("/api/auth/backup/issue", { method: "POST" });
   }
@@ -1018,6 +1034,9 @@
     getKidAccessRequests,
     approveKidAccess,
     denyKidAccess,
+    startWatchPairing,
+    getWatchDevices,
+    revokeWatchDevice,
     issueBackupCodes,
     regenerateBackupCodes,
     getBillingStatus,

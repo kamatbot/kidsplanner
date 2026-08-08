@@ -22,6 +22,13 @@ struct WatchCredential: Codable, Equatable {
 /// user-visible disconnected state rather than a reason to attempt auth.
 protocol WatchCredentialStore {
     func credential() throws -> WatchCredential?
+    func save(_ credential: WatchCredential) throws
+}
+
+extension WatchCredentialStore {
+    func save(_ credential: WatchCredential) throws {
+        throw WatchCredentialError.persistenceUnavailable
+    }
 }
 
 /// Read-only Keychain bridge for the standalone watch target. The value may be
@@ -68,11 +75,32 @@ struct KeychainWatchCredentialStore: WatchCredentialStore {
         }
         return WatchCredential(kind: .cookieHeader, value: raw)
     }
+
+    func save(_ credential: WatchCredential) throws {
+        guard !credential.value.isEmpty else { throw WatchCredentialError.invalidValue }
+        let data = try JSONEncoder().encode(credential)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = data
+            let addStatus = SecItemAdd(item as CFDictionary, nil)
+            guard addStatus == errSecSuccess else { throw WatchCredentialError.keychainStatus(addStatus) }
+        } else if status != errSecSuccess {
+            throw WatchCredentialError.keychainStatus(status)
+        }
+    }
 }
 
 enum WatchCredentialError: Error, LocalizedError {
     case keychainStatus(OSStatus)
     case invalidValue
+    case persistenceUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -80,6 +108,8 @@ enum WatchCredentialError: Error, LocalizedError {
             return "The watch credential could not be read."
         case .invalidValue:
             return "The saved watch credential is invalid."
+        case .persistenceUnavailable:
+            return "This watch could not save the Fam ETC credential."
         }
     }
 }

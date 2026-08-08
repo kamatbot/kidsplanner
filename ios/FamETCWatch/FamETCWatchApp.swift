@@ -4,10 +4,19 @@ import SwiftUI
 struct FamETCWatchApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = WatchStore()
+    @State private var isPaired = false
 
     var body: some Scene {
         WindowGroup {
-            MyNextView()
+            Group {
+                if isPaired {
+                    MyNextView()
+                } else {
+                    WatchPairingView {
+                        isPaired = true
+                    }
+                }
+            }
                 .environmentObject(store)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
@@ -18,6 +27,9 @@ struct FamETCWatchApp: App {
                     @unknown default:
                         break
                     }
+                }
+                .onAppear {
+                    isPaired = ((try? KeychainWatchCredentialStore().credential()) ?? nil) != nil
                 }
         }
     }

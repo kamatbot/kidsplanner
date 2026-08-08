@@ -10,6 +10,10 @@ protocol WatchAPIClient {
     func updateShoppingDone(_ id: String, done: Bool) async throws -> WatchShoppingItem
 }
 
+protocol WatchPairingClient {
+    func claimPairing(code: String, deviceLabel: String) async throws -> WatchCredential
+}
+
 enum WatchAPIError: Error, LocalizedError {
     case badURL
     case disconnected
@@ -49,13 +53,14 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
     private struct ActionResponse: Decodable { let action: WatchAction }
     private struct HomeworkItemResponse: Decodable { let homework: WatchHomework }
     private struct ShoppingItemResponse: Decodable { let item: WatchShoppingItem }
+    private struct PairingResponse: Decodable { let token: String; let tokenKind: String }
 
     private let baseURL: URL
     private let session: URLSession
@@ -117,6 +122,20 @@ final class URLSessionWatchAPIClient: WatchAPIClient {
         return response.item
     }
 
+    func claimPairing(code: String, deviceLabel: String) async throws -> WatchCredential {
+        let response: PairingResponse = try await request(
+            "/api/watch/pairing/claim",
+            method: "POST",
+            body: ["code": code, "deviceLabel": deviceLabel],
+            response: PairingResponse.self,
+            requiresCredential: false
+        )
+        guard response.tokenKind == "bearer", !response.token.isEmpty else {
+            throw WatchAPIError.decoding("Fam ETC did not return a watch credential.")
+        }
+        return WatchCredential(kind: .bearerToken, value: response.token)
+    }
+
     private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.httpShouldSetCookies = false
@@ -130,8 +149,9 @@ final class URLSessionWatchAPIClient: WatchAPIClient {
     private func request<Response: Decodable>(_ path: String,
                                                method: String = "GET",
                                                body: [String: Any]? = nil,
-                                               response: Response.Type) async throws -> Response {
-        let data = try await send(path, method: method, body: body)
+                                               response: Response.Type,
+                                               requiresCredential: Bool = true) async throws -> Response {
+        let data = try await send(path, method: method, body: body, requiresCredential: requiresCredential)
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
@@ -141,19 +161,24 @@ final class URLSessionWatchAPIClient: WatchAPIClient {
 
     private func send(_ path: String,
                       method: String,
-                      body: [String: Any]?) async throws -> Data {
+                      body: [String: Any]?,
+                      requiresCredential: Bool = true) async throws -> Data {
         guard let url = URL(string: baseURL.absoluteString + path) else {
             throw WatchAPIError.badURL
         }
 
         let credential: WatchCredential?
-        do {
-            credential = try credentials.credential()
-        } catch {
-            throw WatchAPIError.credential(error.localizedDescription)
-        }
-        guard let credential, !credential.value.isEmpty else {
-            throw WatchAPIError.disconnected
+        if requiresCredential {
+            do {
+                credential = try credentials.credential()
+            } catch {
+                throw WatchAPIError.credential(error.localizedDescription)
+            }
+            guard let credential, !credential.value.isEmpty else {
+                throw WatchAPIError.disconnected
+            }
+        } else {
+            credential = nil
         }
 
         var request = URLRequest(url: url)
@@ -170,11 +195,13 @@ final class URLSessionWatchAPIClient: WatchAPIClient {
             request.setValue(clientKey, forHTTPHeaderField: "X-FamETC-Client-Key")
         }
 
-        switch credential.kind {
-        case .cookieHeader:
-            request.setValue(credential.value, forHTTPHeaderField: "Cookie")
-        case .bearerToken:
-            request.setValue("Bearer \(credential.value)", forHTTPHeaderField: "Authorization")
+        if let credential {
+            switch credential.kind {
+            case .cookieHeader:
+                request.setValue(credential.value, forHTTPHeaderField: "Cookie")
+            case .bearerToken:
+                request.setValue("Bearer \(credential.value)", forHTTPHeaderField: "Authorization")
+            }
         }
 
         if let body {

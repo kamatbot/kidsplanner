@@ -668,6 +668,70 @@ function renderManageFamily() {
       </div>`
     ).join('') || '<p class="text-muted">No kids added yet.</p>';
   }
+  renderWatchDevices();
+}
+
+async function renderWatchDevices() {
+  if (isKidSession() || !window.auth || !window.auth.getWatchDevices) return;
+  const target = document.getElementById('watch-pair-target');
+  const list = document.getElementById('watch-devices-list');
+  if (target) {
+    const options = ['<option value="self">My watch</option>']
+      .concat((currentFamily && currentFamily.kids || []).map((kid) => `<option value="kid:${esc(kid.id)}">${esc(kid.name)}’s watch</option>`));
+    target.innerHTML = options.join('');
+  }
+  if (!list) return;
+  try {
+    const res = await window.auth.getWatchDevices();
+    const devices = (res && res.devices) || [];
+    list.innerHTML = devices.length
+      ? devices.map((device) => `<div class="kid-row">
+          <span class="kid-row-swatch" style="background:#4ECDC4"></span>
+          <span class="kid-row-name">${esc(device.targetName || 'Family member')} — ${esc(device.label || 'Apple Watch')}</span>
+          <span class="kid-row-grade">${device.revokedAt ? 'Revoked' : 'Connected'}</span>
+          ${device.revokedAt ? '' : `<button class="kid-row-remove" onclick="handleRevokeWatchDevice('${esc(device.id)}')" title="Revoke watch">×</button>`}
+        </div>`).join('')
+      : '<p class="text-muted">No watches paired yet.</p>';
+  } catch (err) {
+    list.innerHTML = `<p class="text-muted">${esc(err.message || 'Could not load watches.')}</p>`;
+  }
+}
+
+async function handleStartWatchPairing() {
+  const target = document.getElementById('watch-pair-target');
+  const result = document.getElementById('watch-pairing-result');
+  if (!target || !result || !window.auth || !window.auth.startWatchPairing) return;
+  const value = target.value || 'self';
+  const [kind, kidId] = value.split(':');
+  result.textContent = 'Creating a one-time code…';
+  try {
+    const res = await window.auth.startWatchPairing(kind === 'kid' ? 'kid' : 'self', kidId);
+    const pairing = res && res.pairing;
+    if (!pairing || !pairing.code) throw new Error('The server did not return a pairing code.');
+    result.innerHTML = `<div class="invite-box">
+      <strong>Enter this code on ${esc(pairing.targetName || 'the watch')}</strong>
+      <div class="invite-code-row" style="margin-top:8px">
+        <code class="invite-code">${esc(pairing.code)}</code>
+        <button type="button" class="btn-secondary" onclick="copyTextToClipboard('${esc(pairing.code)}')">Copy</button>
+      </div>
+      <p class="text-muted" style="margin:8px 0 0">It expires in 10 minutes and works once.</p>
+    </div>`;
+    renderWatchDevices();
+  } catch (err) {
+    result.textContent = err.message || 'Could not create a pairing code.';
+  }
+}
+
+async function handleRevokeWatchDevice(deviceId) {
+  if (!deviceId || !window.auth || !window.auth.revokeWatchDevice) return;
+  if (!confirm('Revoke this watch? It will stop syncing until paired again.')) return;
+  try {
+    await window.auth.revokeWatchDevice(deviceId);
+    renderWatchDevices();
+    toast('Watch access revoked.');
+  } catch (err) {
+    toast('❌ ' + (err.message || 'Could not revoke watch access.'));
+  }
 }
 
 /* Kids now sign in from the login screen themselves: they enter the family
@@ -678,12 +742,16 @@ function renderManageFamily() {
 function copyInviteCode() {
   const code = currentFamily && currentFamily.inviteCode;
   if (!code) return;
-  const done = () => toast('Invite code copied! 📋');
+  copyTextToClipboard(code, 'Invite code copied! 📋');
+}
+
+function copyTextToClipboard(text, message) {
+  const done = () => toast(message || 'Copied! 📋');
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(code).then(done).catch(() => done());
+    navigator.clipboard.writeText(text).then(done).catch(() => done());
   } else {
     const t = document.createElement('textarea');
-    t.value = code; document.body.appendChild(t); t.select();
+    t.value = text; document.body.appendChild(t); t.select();
     try { document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(t); done();
   }

@@ -648,6 +648,22 @@
             <h4 style="margin-bottom:10px">Kids</h4>
             <div id="manage-family-kids" style="margin-bottom:24px"></div>
 
+            <section class="settings-subcard" id="watch-devices-card" aria-labelledby="watch-devices-heading">
+              <h4 id="watch-devices-heading" style="margin-bottom:6px">⌚ Apple Watches</h4>
+              <p class="text-muted" style="margin:0 0 12px">
+                Pair a standalone watch for yourself or a kid. The watch can then show My next over Wi‑Fi or cellular.
+              </p>
+              <div class="form-row" style="align-items:end">
+                <div class="form-group" style="margin-bottom:0;flex:1">
+                  <label for="watch-pair-target">Pair watch for</label>
+                  <select id="watch-pair-target"></select>
+                </div>
+                <button type="button" class="btn-primary" onclick="handleStartWatchPairing()">Create watch code</button>
+              </div>
+              <div id="watch-pairing-result" role="status" aria-live="polite" style="margin-top:12px"></div>
+              <div id="watch-devices-list" style="margin-top:12px"></div>
+            </section>
+
             <h4 style="margin-bottom:10px">Add a kid profile</h4>
             <form id="add-kid-form" onsubmit="handleAddKid(event)">
               <div class="form-group">

@@ -258,6 +258,10 @@ html { font-size: 16px; }
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 18px 20px;
 }
+.settings-subcard {
+  margin: 0 0 24px; padding: 14px 16px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: color-mix(in srgb, var(--panel) 82%, var(--accent-soft));
+}
 
 /* ---------- chat dock ---------- */
 .chat-dock {

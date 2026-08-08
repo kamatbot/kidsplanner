@@ -40,6 +40,7 @@ const homework = require("./lib/homework");
 const goals = require("./lib/goals");
 const actions = require("./lib/actions");
 const decisions = require("./lib/decisions");
+const watchAuth = require("./lib/watch-auth");
 const meals = require("./lib/meals");
 // lib/recipes.js (§8b) is owned by another agent building in parallel — guard
 // the require so this server can still boot before that file lands.
@@ -331,8 +332,28 @@ function currentUser(req) {
   return id ? store.getUser(id) : null;
 }
 function requireAuth(req, res, next) {
-  const user = currentUser(req);
-  if (!user) return res.status(401).json({ error: "Not authenticated" });
+  const sessionUser = currentUser(req);
+  if (sessionUser) {
+    req.user = sessionUser;
+    return next();
+  }
+  const authorization = req.get("authorization") || "";
+  const bearer = /^Bearer\s+(.+)$/i.exec(authorization);
+  const watch = bearer && watchAuth.resolveToken(bearer[1]);
+  if (!watch) return res.status(401).json({ error: "Not authenticated" });
+  if (!watchAuth.allowedRequest(req.method, req.path)) {
+    return res.status(403).json({ error: "This watch credential cannot access that surface." });
+  }
+  const user = store.getUser(watch.targetUserId);
+  if (!user) return res.status(401).json({ error: "This watch credential is no longer valid." });
+  if (watch.targetType === "kid") {
+    const kidLink = user.data && user.data.kid;
+    if (!kidLink || kidLink.familyId !== watch.familyId || kidLink.kidId !== watch.targetKidId
+        || !family.kidBelongsToFamily(watch.familyId, watch.targetKidId)) {
+      return res.status(401).json({ error: "This watch credential is no longer valid." });
+    }
+  }
+  req.watchAuth = watch;
   req.user = user;
   next();
 }
@@ -344,6 +365,7 @@ function userRole(user) {
 // itself). See APP-BRIEF.md "Kids' privacy & compliance" — kids are role-
 // scoped to their own calendar/homework/goals + family chat only.
 function requireParent(req, res, next) {
+  if (req.watchAuth) return res.status(403).json({ error: "This action requires an interactive Fam ETC session." });
   if (userRole(req.user) === "kid") return res.status(403).json({ error: "Parents only." });
   next();
 }
@@ -527,7 +549,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, actions, decisions, meals, recipes, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
+  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -543,6 +565,7 @@ require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/actions")(app, routeDeps);
 require("./lib/routes/decisions")(app, routeDeps);
+require("./lib/routes/watch")(app, routeDeps);
 require("./lib/routes/goals")(app, routeDeps);
 require("./lib/routes/meals")(app, routeDeps);
 require("./lib/routes/trips")(app, routeDeps);
