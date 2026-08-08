@@ -210,10 +210,14 @@ final class APIClient: FamilyActionService {
         let _: OKResponse = try await request("/api/notes/\(id)", method: "DELETE")
     }
 
-    // MARK: Meals (parent-gated — 401/403 for a kid session)
+    // MARK: Meals (composite parent-gated; shopping is family-readable)
 
     func mealsState() async throws -> MealsState {
         try await request("/api/meals")
+    }
+    func shoppingItems() async throws -> [ShoppingItem] {
+        let r: ShoppingItemsResponse = try await request("/api/meals/shopping")
+        return r.shopping
     }
     func addPantryItem(name: String, category: String, level: String, unitHint: String? = nil, expiresOn: String? = nil) async throws -> PantryItem {
         var body: [String: Any] = ["name": name, "category": category, "level": level]
@@ -264,11 +268,19 @@ final class APIClient: FamilyActionService {
         return r.entry
     }
 
-    func addShoppingItem(name: String, category: String? = nil) async throws -> ShoppingItem {
-        var body: [String: Any] = ["name": name]
+    func addShoppingItem(text: String, category: String? = nil, assigneeUserId: String? = nil, sourceMessageId: String? = nil) async throws -> ShoppingItem {
+        try await addShoppingItemResult(text: text, category: category, assigneeUserId: assigneeUserId, sourceMessageId: sourceMessageId).item
+    }
+    func addShoppingItemResult(text: String, category: String? = nil, assigneeUserId: String? = nil, sourceMessageId: String? = nil) async throws -> ShoppingItemResponse {
+        var body: [String: Any] = ["text": text]
         if let category, !category.isEmpty { body["category"] = category }
+        if let assigneeUserId, !assigneeUserId.isEmpty { body["assigneeUserId"] = assigneeUserId }
+        if let sourceMessageId, !sourceMessageId.isEmpty {
+            body["sourceType"] = "chat"
+            body["sourceId"] = sourceMessageId
+        }
         let r: ShoppingItemResponse = try await request("/api/meals/shopping", method: "POST", body: body)
-        return r.item
+        return r
     }
     func updateShoppingItem(_ id: String, _ patch: [String: Any]) async throws -> ShoppingItem {
         let r: ShoppingItemResponse = try await request("/api/meals/shopping/\(id)", method: "PATCH", body: patch)

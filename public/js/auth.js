@@ -891,6 +891,10 @@
     return api("/api/meals", { method: "GET" });
   }
 
+  async function getShoppingItems() {
+    return api("/api/meals/shopping", { method: "GET" });
+  }
+
   async function updateMealPrefs(patch) {
     return api("/api/meals/prefs", { method: "PATCH", body: JSON.stringify(patch || {}) });
   }
@@ -1097,6 +1101,7 @@
     updateTripChecklistItem,
     deleteTripChecklistItem,
     getMeals,
+    getShoppingItems,
     updateMealPrefs,
     addPantryItem,
     updatePantryItem,

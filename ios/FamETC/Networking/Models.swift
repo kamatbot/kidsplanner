@@ -326,10 +326,10 @@ struct BillingPortalResponse: Codable { var url: String? }
 struct HealthResponse: Codable { var ok: Bool?; var status: String? }
 struct MeResponse: Codable { var user: User? }
 
-// MARK: - Meals (parent-gated: /api/meals/*, /api/ai/parse)
+// MARK: - Meals (parent composite + family shopping; /api/ai/parse parent-gated)
 //
-// Mirrors the server's meals shapes. Parent-only feature — kid sessions never
-// call these endpoints (AppStore.loadMeals guards on isParent).
+// Mirrors the server's meals shapes. The composite Meals response is
+// parent-only; the shopping projection is family-readable for kids.
 
 /// `category` ∈ produce, protein, dairy, grain, pantry, frozen, spice, other.
 /// `level` ∈ "plenty" | "some" | "low".
@@ -360,10 +360,82 @@ struct MenuEntry: Codable, Identifiable {
 
 struct ShoppingItem: Codable, Identifiable {
     let id: String
-    var name: String
+    var text: String
     var category: String? = nil
-    var qty: String? = nil
-    var checked: Bool
+    var assigneeUserId: String? = nil
+    var done: Bool
+    var doneBy: String? = nil
+    var doneAt: String? = nil
+    var addedBy: String? = nil
+    var createdAt: String? = nil
+    var sourceType: String? = nil
+    var sourceId: String? = nil
+
+    // Compatibility aliases for pre-family-shopping call sites and cached
+    // payloads. New requests/responses use the canonical text/done names.
+    var name: String {
+        get { text }
+        set { text = newValue }
+    }
+    var checked: Bool {
+        get { done }
+        set { done = newValue }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, text, name, category, assigneeUserId, done, checked, doneBy, doneAt, addedBy, createdAt, sourceType, sourceId
+    }
+
+    init(id: String, text: String, category: String? = nil, assigneeUserId: String? = nil,
+         done: Bool = false, doneBy: String? = nil, doneAt: String? = nil,
+         addedBy: String? = nil, createdAt: String? = nil, sourceType: String? = nil,
+         sourceId: String? = nil) {
+        self.id = id
+        self.text = text
+        self.category = category
+        self.assigneeUserId = assigneeUserId
+        self.done = done
+        self.doneBy = doneBy
+        self.doneAt = doneAt
+        self.addedBy = addedBy
+        self.createdAt = createdAt
+        self.sourceType = sourceType
+        self.sourceId = sourceId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        text = try c.decodeIfPresent(String.self, forKey: .text)
+            ?? (try c.decodeIfPresent(String.self, forKey: .name))
+            ?? ""
+        category = try c.decodeIfPresent(String.self, forKey: .category)
+        assigneeUserId = try c.decodeIfPresent(String.self, forKey: .assigneeUserId)
+        done = try c.decodeIfPresent(Bool.self, forKey: .done)
+            ?? (try c.decodeIfPresent(Bool.self, forKey: .checked))
+            ?? false
+        doneBy = try c.decodeIfPresent(String.self, forKey: .doneBy)
+        doneAt = try c.decodeIfPresent(String.self, forKey: .doneAt)
+        addedBy = try c.decodeIfPresent(String.self, forKey: .addedBy)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        sourceType = try c.decodeIfPresent(String.self, forKey: .sourceType)
+        sourceId = try c.decodeIfPresent(String.self, forKey: .sourceId)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(text, forKey: .text)
+        try c.encodeIfPresent(category, forKey: .category)
+        try c.encodeIfPresent(assigneeUserId, forKey: .assigneeUserId)
+        try c.encode(done, forKey: .done)
+        try c.encodeIfPresent(doneBy, forKey: .doneBy)
+        try c.encodeIfPresent(doneAt, forKey: .doneAt)
+        try c.encodeIfPresent(addedBy, forKey: .addedBy)
+        try c.encodeIfPresent(createdAt, forKey: .createdAt)
+        try c.encodeIfPresent(sourceType, forKey: .sourceType)
+        try c.encodeIfPresent(sourceId, forKey: .sourceId)
+    }
 }
 
 struct MealsTargets: Codable {
@@ -404,5 +476,6 @@ struct ScannedPantryItem: Codable, Identifiable {
 struct PantryItemResponse: Codable { var item: PantryItem }
 struct PantryItemsResponse: Codable { var items: [PantryItem] }
 struct MenuEntryResponse: Codable { var entry: MenuEntry }
-struct ShoppingItemResponse: Codable { var item: ShoppingItem }
+struct ShoppingItemsResponse: Codable { var shopping: [ShoppingItem] }
+struct ShoppingItemResponse: Codable { var item: ShoppingItem; var existing: Bool? = nil }
 struct AIParsePantryResponse: Codable { var items: [ScannedPantryItem] }

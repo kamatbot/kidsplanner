@@ -84,13 +84,12 @@ struct RootView: View {
     /// Docked chat column shows only for parent sessions in iPad landscape —
     /// kid sessions and iPad portrait always use the rail + slide-over instead.
     private var showDockedChat: Bool { isPad && isLandscape && store.isParent }
-    /// Every tab visible for the CURRENT session's role: parents get Meals
-    /// (not Notes); kids get Notes (not Meals) — the Meals API is parent-gated
-    /// and would 401/403 for a kid, so the tab is hidden entirely rather than
-    /// shown-then-erroring. Every nav rail / tab bar in this file reads from
-    /// this (or `mainTabs`, which additionally excludes Chat), never
-    /// `Tab.allCases` directly, so a kid session can never reach Meals.
-    private var roleTabs: [Tab] { Tab.allCases.filter { $0 != (store.isParent ? .notes : .meals) } }
+    /// Meals is family-wide for shopping; the parent-only planner sections
+    /// hide themselves inside MealsScreen. Preserve Notes for kids while
+    /// adding the family shopping tab for every member.
+    private var roleTabs: [Tab] {
+        store.isParent ? Tab.allCases.filter { $0 != .notes } : Tab.allCases
+    }
     private var mainTabs: [Tab] { roleTabs.filter { $0 != .chat } }
 
     var body: some View {
@@ -175,11 +174,10 @@ struct RootView: View {
             ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
             CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
             HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-            if store.isParent {
-                MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
-            } else {
+            if !store.isParent {
                 NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
             }
+            MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
             TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -207,8 +205,6 @@ struct RootView: View {
                 TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-                // Docked chat only ever shows for a PARENT session (showDockedChat
-                // requires store.isParent), so this tab is always Meals, never Notes.
                 MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
                 TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
             }
@@ -248,11 +244,10 @@ struct RootView: View {
                 TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-                if store.isParent {
-                    MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
-                } else {
+                if !store.isParent {
                     NotesScreen().toolbar(.hidden, for: .tabBar).tag(Tab.notes)
                 }
+                MealsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.meals)
                 TripsScreen().toolbar(.hidden, for: .tabBar).tag(Tab.trips)
             }
             .frame(maxWidth: .infinity)

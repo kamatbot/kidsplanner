@@ -276,7 +276,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(rooms[1].id, "trip:t_1")
     }
 
-    // MARK: - Meals (parent-gated /api/meals)
+    // MARK: - Meals (parent composite + family shopping projection)
 
     /// `GET /api/meals` — pantry/menu/shopping/prefs, per the Meals feature's
     /// server contract. `pantryEvents` is present in the real payload but
@@ -328,6 +328,32 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertTrue(state.menu.isEmpty)
         XCTAssertTrue(state.shopping.isEmpty)
         XCTAssertNil(state.prefs)
+    }
+
+    func testDecodesCanonicalFamilyShoppingProjection() throws {
+        let payload = """
+        {
+          "shopping": [
+            { "id": "si_1", "text": "Mangoes", "category": "produce", "assigneeUserId": "kid_1", "done": true,
+              "doneBy": "kid_user_1", "doneAt": "2026-08-08T12:00:00.000Z", "addedBy": "parent_1",
+              "createdAt": "2026-08-08T11:00:00.000Z", "sourceType": "chat", "sourceId": "m_chat_1" }
+          ]
+        }
+        """
+        let response = try JSONDecoder().decode(ShoppingItemsResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(response.shopping.count, 1)
+        XCTAssertEqual(response.shopping[0].text, "Mangoes")
+        XCTAssertTrue(response.shopping[0].done)
+        XCTAssertEqual(response.shopping[0].doneBy, "kid_user_1")
+        XCTAssertEqual(response.shopping[0].sourceType, "chat")
+        XCTAssertEqual(response.shopping[0].sourceId, "m_chat_1")
+
+        let encoded = try JSONEncoder().encode(response.shopping[0])
+        let json = try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        XCTAssertTrue(json.contains("\"text\""))
+        XCTAssertTrue(json.contains("\"done\""))
+        XCTAssertFalse(json.contains("\"name\""))
+        XCTAssertFalse(json.contains("\"checked\""))
     }
 
     /// `POST /api/ai/parse` (kind:"pantry") response — the AI-detected items

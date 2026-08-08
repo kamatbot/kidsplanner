@@ -1,11 +1,9 @@
 import SwiftUI
 
-// MARK: - Meals (parent-only tab — replaces Notes for a parent session)
+// MARK: - Meals
 //
-// Pantry / Menu (this week's dinners) / Shopping, backed by the parent-gated
-// /api/meals/* endpoints (see AppStore.loadMeals + APIClient's Meals section).
-// Kids never reach this screen — RootView swaps it for NotesScreen based on
-// `store.isParent` and hides the Meals tab entirely for a kid session.
+// Parents get Pantry / Menu / Shopping. Every family member gets the shopping
+// list, backed by the narrow `/api/meals/shopping` projection for kids.
 
 private enum MealsSection: String, CaseIterable, Identifiable {
     case pantry = "Pantry", menu = "Menu", shopping = "Shopping"
@@ -14,7 +12,7 @@ private enum MealsSection: String, CaseIterable, Identifiable {
 
 struct MealsScreen: View {
     @Environment(AppStore.self) private var store
-    @State private var section: MealsSection = .pantry
+    @State private var section: MealsSection = .shopping
     @State private var showScanner = false
     @State private var showAddPantry = false
     @State private var showAddMenu = false
@@ -26,23 +24,26 @@ struct MealsScreen: View {
         (store.meals?.menu ?? []).sorted { $0.date < $1.date }
     }
     private var shoppingItems: [ShoppingItem] {
-        (store.meals?.shopping ?? []).sorted { $0.checked != $1.checked ? !$0.checked : $0.name < $1.name }
+        (store.meals?.shopping ?? []).sorted { $0.done != $1.done ? !$0.done : $0.text < $1.text }
     }
 
     var body: some View {
         SurfaceScaffold(title: "Meals") {
             Picker("Section", selection: $section) {
-                ForEach(MealsSection.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(store.isParent ? MealsSection.allCases : [.shopping]) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
 
-            switch section {
+            switch store.isParent ? section : .shopping {
             case .pantry: pantryContent
             case .menu: menuContent
             case .shopping: shoppingContent
             }
         }
-        .task { await store.loadMeals() }
+        .task {
+            if store.isParent { section = .pantry }
+            await store.loadMeals()
+        }
         .refreshable { await store.loadMeals() }
         .sheet(isPresented: $showScanner) { PantryScannerView() }
         .sheet(isPresented: $showAddPantry) { AddPantryItemSheet() }
@@ -116,8 +117,10 @@ struct MealsScreen: View {
     private var shoppingContent: some View {
         VStack(alignment: .leading, spacing: Space.md) {
             QuickAddShoppingRow()
-            AccentButton(title: "Add low pantry items", systemImage: "cart.badge.plus") {
-                Task { await store.addShoppingFromLowPantry() }
+            if store.isParent {
+                AccentButton(title: "Add low pantry items", systemImage: "cart.badge.plus") {
+                    Task { await store.addShoppingFromLowPantry() }
+                }
             }
 
             if shoppingItems.isEmpty {
@@ -265,22 +268,25 @@ private struct ShoppingRow: View {
         HStack(spacing: Space.sm) {
             Button {
                 Haptics.selection()
-                Task { await store.toggleShoppingChecked(item) }
+                Task { await store.toggleShoppingDone(item) }
             } label: {
-                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(item.checked ? Palette.accent : Palette.textSecond)
+                Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(item.done ? Palette.accent : Palette.textSecond)
             }
             .buttonStyle(.plain)
-            Text(item.name)
+            .accessibilityLabel(item.done ? "Uncheck \(item.text)" : "Check off \(item.text)")
+            Text(item.text)
                 .font(Typography.body)
-                .foregroundStyle(item.checked ? Palette.textSecond : Palette.text)
-                .strikethrough(item.checked)
+                .foregroundStyle(item.done ? Palette.textSecond : Palette.text)
+                .strikethrough(item.done)
             Spacer()
-            Button(role: .destructive) { Task { await store.deleteShoppingItem(item.id) } } label: {
-                Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.textSecond)
+            if store.isParent {
+                Button(role: .destructive) { Task { await store.deleteShoppingItem(item.id) } } label: {
+                    Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(Palette.textSecond)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(item.text)")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(item.name)")
         }
         .padding(.vertical, Space.xs)
     }
@@ -314,7 +320,7 @@ private struct QuickAddShoppingRow: View {
         let clean = text.trimmingCharacters(in: .whitespaces)
         guard !clean.isEmpty else { return }
         text = ""
-        Task { await store.addShoppingItem(name: clean) }
+        Task { await store.addShoppingItem(text: clean) }
     }
 }
 

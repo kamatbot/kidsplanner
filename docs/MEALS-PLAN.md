@@ -141,24 +141,25 @@ already IS the household):
 No new "household member" concept. A family of 2 parents + 2 kids is already
 modelled; duplicating it would create two sources of truth.
 
-## 4. Permissions — parents only (owner decision 2026-08-03)
+## 4. Permissions — parent planning, family shopping (owner decision 2026-08-08)
 
-**Meals is a parent tool.** `requireParent` gates the `/meals` page and every
-`/api/meals/*` route without exception; `tests/meals-routes.test.js` asserts
-this over the *whole* route surface, so a new route added without the guard
-fails the suite rather than quietly leaking. The sidebar link and the Today
-"Tonight" card are hidden for kid sessions, and the Today card doesn't even
-call the API on a kid session.
+**Meal planning is a parent tool; family shopping is shared.** `requireParent`
+gates the `/meals` page, the composite `/api/meals` response, and all pantry,
+menu, planner, and restock routes. The family-scoped `/api/meals/shopping`
+list and its add/toggle surface are intentionally available to parents and
+kids, with kids limited to adding items and changing completion state. The
+sidebar link and the Today "Tonight" card remain hidden for kid sessions;
+kids use the shopping surface directly and the canonical shopping list on
+their supported clients.
 
-This supersedes the original design, which gave kids a tick-off carve-out on
-the shopping list (the Trips packing-list pattern). That carve-out is removed:
-no role-branching remains inside any handler.
+This supersedes the original design's parent-only shopping decision and restores
+a deliberately narrow family participation scope. No kid access is granted to
+pantry, menu, planner, or composite household data.
 
 Consequences worth knowing:
 - §9.5 ("kid visibility of the menu") is answered: no.
-- The kid-facing charm of "kid ticks off milk at the shop" is gone. If it's
-  ever wanted back, it returns as a *read-plus-tick* scope on the shopping
-  routes only — not as general Meals access.
+- Kids can participate in the shared shopping list without receiving pantry,
+  menu, or meal-planning access.
 
 ## 5. API surface
 
@@ -169,6 +170,7 @@ conventions: `{thing}` / `{error}`, `Cache-Control: no-store` on GETs,
 ```
 GET    /api/meals                          → {pantry, menu, shopping, prefs, household}
                                              // household = portion/allergy summary, no weights
+GET    /api/meals/shopping                  → {shopping}                 // family-wide, no pantry/menu data
 PATCH  /api/meals/prefs                    {dinnerTime?, cuisines?, avoid?} → {prefs}
 
 POST   /api/meals/pantry                   {name, category, level, unitHint?, expiresOn?} → {item}

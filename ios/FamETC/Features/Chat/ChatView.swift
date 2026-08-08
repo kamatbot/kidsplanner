@@ -32,6 +32,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @State private var hwRef: HWRef?
     @State private var eventRef: EVRef?
     @State private var newEventReq: NewEventReq?
+    @State private var newShoppingReq: NewShoppingReq?
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @FocusState private var composerFocused: Bool
 
@@ -78,6 +79,9 @@ struct ChatScreen<HeaderAccessory: View>: View {
         .sheet(item: $newEventReq) { req in
             ChatAddEventSheet(messageId: req.messageId, initialTitle: req.title, initialTime: req.time)
         }
+        .sheet(item: $newShoppingReq) { req in
+            ChatAddShoppingSheet(messageId: req.messageId, initialText: req.text)
+        }
     }
 
     // MARK: Header
@@ -115,6 +119,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    onTapCard: handleCardTap,
                                    canAddToCalendar: isFamilyRoom,
                                    onAddToCalendar: handleAddToCalendar,
+                                   canAddToShopping: isFamilyRoom,
+                                   onAddToShopping: handleAddToShopping,
                                    onPinToNotes: handlePinToNotes)
                         .id(m.id)
                 }
@@ -162,6 +168,12 @@ struct ChatScreen<HeaderAccessory: View>: View {
         newEventReq = NewEventReq(messageId: message.id,
                                   title: message.text,
                                   time: parseTime(from: message.text))
+    }
+    private func handleAddToShopping(_ message: ChatMessage) {
+        guard isFamilyRoom, !message.deleted,
+              !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              message.card == nil else { return }
+        newShoppingReq = NewShoppingReq(messageId: message.id, text: message.text)
     }
     private func handlePinToNotes(_ message: ChatMessage) {
         Haptics.selection()
@@ -343,6 +355,11 @@ struct NewEventReq: Identifiable {
     let title: String
     let time: String?
 }
+struct NewShoppingReq: Identifiable {
+    let id = UUID()
+    let messageId: String
+    let text: String
+}
 
 /// Best-effort time-of-day parser for message text, e.g. "pick up kids at 5pm"
 /// → "17:00". Returns nil when no recognizable time is found.
@@ -380,6 +397,119 @@ func parseTime(from text: String) -> String? {
         return String(format: "%02d:%02d", hour, minute)
     }
     return nil
+}
+
+/// Chat-specific source-aware shopping confirmation. Text/category/assignee
+/// stay editable here; the server derives the family and sender from the
+/// authenticated request and validates the immutable message source.
+private struct ChatAddShoppingSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let messageId: String
+    let initialText: String
+
+    @State private var text = ""
+    @State private var category = "other"
+    @State private var assigneeId: String?
+    @State private var saving = false
+    @State private var alertMessage = ""
+    @State private var alertTitle = "Shopping"
+    @State private var showAlert = false
+    @State private var dismissAfterAlert = false
+
+    private let categories = ["produce", "protein", "dairy", "grain", "pantry", "frozen", "spice", "other"]
+
+    private var assigneeMembers: [ShoppingAssigneeOption] {
+        guard store.isParent else { return [] }
+        let parents = (store.family?.parents ?? store.family?.parentIds.map { Parent(id: $0, name: nil) } ?? [])
+            .map { ShoppingAssigneeOption(id: $0.id, name: $0.name ?? "Parent") }
+        let kids = (store.family?.kids ?? []).map { ShoppingAssigneeOption(id: $0.id, name: $0.name) }
+        var seen = Set<String>()
+        return (parents + kids).filter { seen.insert($0.id).inserted }
+    }
+
+    private var canSave: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !saving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Item", text: $text, axis: .vertical)
+                        .lineLimit(1...3)
+                    Picker("Category", selection: $category) {
+                        ForEach(categories, id: \.self) { Text($0.capitalized).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                }
+                if store.isParent {
+                    Section("Assign") {
+                        Picker("For", selection: $assigneeId) {
+                            Text("No one").tag(String?.none)
+                            ForEach(assigneeMembers) { member in
+                                Text(member.name).tag(Optional(member.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                }
+            }
+            .navigationTitle("Add to Shopping")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { save() }.fontWeight(.bold).disabled(!canSave)
+                }
+            }
+        }
+        .onAppear { text = initialText }
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("Done") {
+                if dismissAfterAlert { dismiss() }
+            }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+
+    private func save() {
+        saving = true
+        Haptics.selection()
+        let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            do {
+                let result = try await APIClient.shared.addShoppingItemResult(
+                    text: cleanText,
+                    category: category,
+                    assigneeUserId: store.isParent ? assigneeId : nil,
+                    sourceMessageId: messageId
+                )
+                await store.loadMeals()
+                alertTitle = "Shopping"
+                alertMessage = result.existing == true
+                    ? "This message was already added to the shopping list."
+                    : "Item added to the family shopping list."
+                dismissAfterAlert = true
+                showAlert = true
+            } catch {
+                alertTitle = "Could not add item"
+                alertMessage = error.localizedDescription
+                dismissAfterAlert = false
+                showAlert = true
+            }
+            saving = false
+        }
+    }
+}
+
+private struct ShoppingAssigneeOption: Identifiable {
+    let id: String
+    let name: String
 }
 
 /// Chat-specific source-aware event confirmation. The regular AddEventSheet
@@ -533,6 +663,8 @@ struct ChatMessageRow: View {
     var onTapCard: (ChatCard) -> Void
     var canAddToCalendar: Bool = true
     var onAddToCalendar: (ChatMessage) -> Void = { _ in }
+    var canAddToShopping: Bool = false
+    var onAddToShopping: (ChatMessage) -> Void = { _ in }
     var onPinToNotes: (ChatMessage) -> Void = { _ in }
 
     private var senderColor: Color { isMine ? Palette.accent : famSenderColor(message.senderId) }
@@ -583,6 +715,18 @@ struct ChatMessageRow: View {
                 .frame(maxWidth: 240, maxHeight: 240)
                 .background(Palette.panel)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contextMenu {
+                    // A GIF with accompanying text is still an eligible
+                    // family message; media-only messages have no text and
+                    // therefore receive no conversion action.
+                    if canAddToShopping && !message.deleted && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            onAddToShopping(message)
+                        } label: {
+                            Label("Add to Shopping", systemImage: "cart.badge.plus")
+                        }
+                    }
+                }
         } else {
             // Own messages: flat violet fill (Horizon --accent), white/onAccent
             // text. Others: neutral panel bg + border — the sender name above
@@ -595,6 +739,13 @@ struct ChatMessageRow: View {
                 .background(bubbleShape.fill(isMine ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Palette.panel2)))
                 .overlay(isMine ? nil : bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
                 .contextMenu {
+                    if canAddToShopping && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            onAddToShopping(message)
+                        } label: {
+                            Label("Add to Shopping", systemImage: "cart.badge.plus")
+                        }
+                    }
                     if canAddToCalendar && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button {
                             onAddToCalendar(message)

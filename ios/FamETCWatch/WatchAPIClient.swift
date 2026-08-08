@@ -52,7 +52,7 @@ enum WatchAPIError: Error, LocalizedError {
 final class URLSessionWatchAPIClient: WatchAPIClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
-    private struct MealsResponse: Decodable { let shopping: [WatchShoppingItem] }
+    private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
     private struct ActionResponse: Decodable { let action: WatchAction }
     private struct HomeworkItemResponse: Decodable { let homework: WatchHomework }
     private struct ShoppingItemResponse: Decodable { let item: WatchShoppingItem }
@@ -84,7 +84,7 @@ final class URLSessionWatchAPIClient: WatchAPIClient {
     }
 
     func fetchShopping() async throws -> [WatchShoppingItem] {
-        try await request("/api/meals", response: MealsResponse.self).shopping
+        try await request("/api/meals/shopping", response: ShoppingResponse.self).shopping
     }
 
     func updateActionStatus(_ id: String, status: String) async throws -> WatchAction {

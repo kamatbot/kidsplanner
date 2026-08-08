@@ -67,6 +67,7 @@ let mealPantryAddOpen = false;
 let mealPantryUndo = null;       // {eventId, label}
 
 let mealShoppingCatFilter = 'all';
+let mealShoppingEditId = null;
 
 let mealsRecipes = null;         // null = not yet loaded
 let mealRecipesLoading = false;
@@ -236,7 +237,20 @@ async function mealsLoadAll() {
   const root = document.getElementById('meals-root');
   if (root && !mealsData) root.innerHTML = '<div class="meal-main"><p class="text-muted">Loading meals…</p></div>';
   try {
-    const res = await window.auth.getMeals();
+    // Kids get only the family-scoped shopping projection. Never request the
+    // parent composite here: it contains pantry/menu/household state.
+    const res = mealIsKid ? await window.auth.getShoppingItems() : await window.auth.getMeals();
+    if (mealIsKid) {
+      mealsData = {
+        pantry: [], menu: [], shopping: (res && res.shopping) || [],
+        prefs: { dinnerTime: '18:30', cuisines: [], avoid: [] },
+        household: { members: [], totalPortions: 0 },
+      };
+      mealsTab = 'shopping';
+      mealsLoadError = null;
+      mealsRender();
+      return;
+    }
     const household = (res && res.household) || { members: [], totalPortions: 0 };
     // Normalize member id/initial/color — see the MEAL_MEMBER_PALETTE note above.
     household.members = (household.members || []).map((m, i) => Object.assign({}, m, {
@@ -280,6 +294,7 @@ function mealsRerenderTab() {
   const el = document.getElementById('meal-tab-content');
   if (!el) return;
   if (!mealsData) { el.innerHTML = '<p class="text-muted">Loading meals…</p>'; return; }
+  if (mealIsKid && mealsTab !== 'shopping') mealsTab = 'shopping';
   if (mealsTab === 'tonight') el.innerHTML = renderMealsTonightTab();
   else if (mealsTab === 'menu') el.innerHTML = renderMealsMenuTab();
   else if (mealsTab === 'pantry') el.innerHTML = renderMealsPantryTab();
@@ -288,6 +303,7 @@ function mealsRerenderTab() {
 }
 
 function mealsGoTab(tab) {
+  if (mealIsKid && tab !== 'shopping') return;
   mealsTab = tab;
   mealMenuFormOpen = null;
   mealPantryAddOpen = false;
@@ -305,6 +321,7 @@ function mealBrandHtml() {
 }
 
 function mealHouseholdStripHtml() {
+  if (mealIsKid) return '';
   const h = (mealsData && mealsData.household) || { members: [], totalPortions: 0 };
   const members = h.members || [];
   const total = h.totalPortions != null ? h.totalPortions : members.reduce((s, m) => s + (m.portionFactor || 1), 0);
@@ -338,6 +355,7 @@ function mealMemberChipHtml(m) {
 }
 
 function mealsHeaderHtml() {
+  const tabs = mealIsKid ? [['shopping', 'Shopping']] : MEAL_TABS;
   return `
     <div class="meal-hub-header">
       <div class="meal-hub-inner">
@@ -352,7 +370,7 @@ function mealsHeaderHtml() {
     </div>
     <nav class="meal-tabs">
       <div class="meal-tabs-inner">
-        ${MEAL_TABS.map(([id, label]) => `<button type="button" class="meal-tab-btn${mealsTab === id ? ' active' : ''}" onclick="mealsGoTab('${id}')">${esc(label)}</button>`).join('')}
+        ${tabs.map(([id, label]) => `<button type="button" class="meal-tab-btn${mealsTab === id ? ' active' : ''}" onclick="mealsGoTab('${id}')">${esc(label)}</button>`).join('')}
       </div>
     </nav>
     ${!mealIsKid && mealMemberEditId ? `<div class="meal-main" style="padding-bottom:0">${mealMemberEditFormHtml()}</div>` : ''}
@@ -873,6 +891,7 @@ function renderMealsShoppingTab() {
 }
 
 function renderMealShoppingRow(it) {
+  if (!mealIsKid && mealShoppingEditId === it.id) return renderMealShoppingEditRow(it);
   const doneByFace = it.doneBy ? mealMemberFor(it.doneBy) : null;
   const assigneeFace = it.assigneeUserId ? mealMemberFor(it.assigneeUserId) : null;
   return `
@@ -885,10 +904,35 @@ function renderMealShoppingRow(it) {
         ${it.category ? `<span class="meal-chip small">${esc(MEAL_CAT_LABEL[it.category] || it.category)}</span>` : ''}
         ${!mealIsKid ? mealAssigneePickerHtml(it) : (assigneeFace ? mealAvatarHtml(assigneeFace, 20) : '')}
         ${it.done && doneByFace ? mealAvatarHtml(doneByFace, 20) : ''}
+        ${!mealIsKid ? `<button type="button" class="meal-icon-btn small" title="Edit" aria-label="Edit ${esc(it.text)}" onclick="mealOpenShoppingEdit('${esc(it.id)}')">${ICON_MEAL_EDIT}</button>` : ''}
         ${!mealIsKid ? `<button type="button" class="meal-icon-btn small" title="Remove" onclick="mealDeleteShoppingItem('${esc(it.id)}')">${ICON_MEAL_X}</button>` : ''}
       </div>
     </div>
   `;
+}
+
+function renderMealShoppingEditRow(it) {
+  return `<form class="meal-shopping-row meal-inline-form" onsubmit="mealSubmitShoppingEdit(event,'${esc(it.id)}')">
+    <input class="meal-input meal-input-grow" name="text" value="${esc(it.text)}" maxlength="200" required aria-label="Shopping item text">
+    <select class="meal-select" name="category" aria-label="Shopping item category">
+      ${MEAL_PANTRY_CATS.map((c) => `<option value="${c}" ${it.category === c ? 'selected' : ''}>${esc(MEAL_CAT_LABEL[c])}</option>`).join('')}
+    </select>
+    <div class="meal-form-actions">
+      <button type="submit" class="btn-primary">Save</button>
+      <button type="button" class="btn-secondary" onclick="mealCloseShoppingEdit()">Cancel</button>
+    </div>
+  </form>`;
+}
+
+function mealOpenShoppingEdit(id) {
+  if (mealIsKid) return;
+  mealShoppingEditId = mealShoppingEditId === id ? null : id;
+  mealsRerenderTab();
+}
+
+function mealCloseShoppingEdit() {
+  mealShoppingEditId = null;
+  mealsRerenderTab();
 }
 
 function mealAssigneePickerHtml(it) {
@@ -925,12 +969,41 @@ async function mealSubmitShoppingAdd(e) {
 }
 
 async function mealToggleShoppingDone(id, checked) {
+  const idx = (mealsData.shopping || []).findIndex((it) => it.id === id);
+  if (idx === -1) return;
+  const previous = Object.assign({}, mealsData.shopping[idx]);
+  mealsData.shopping[idx] = Object.assign({}, previous, {
+    done: !!checked,
+    doneBy: checked ? mealCurrentUserId : null,
+    doneAt: checked ? new Date().toISOString() : null,
+  });
+  mealsRerenderTab();
   try {
     const res = await window.auth.updateShoppingItem(id, { done: checked });
     if (res && res.item) {
-      const idx = (mealsData.shopping || []).findIndex((it) => it.id === id);
-      if (idx !== -1) mealsData.shopping[idx] = res.item;
+      const nextIdx = (mealsData.shopping || []).findIndex((it) => it.id === id);
+      if (nextIdx !== -1) mealsData.shopping[nextIdx] = res.item;
     }
+    mealsRerenderTab();
+  } catch (err) {
+    const rollbackIdx = (mealsData.shopping || []).findIndex((it) => it.id === id);
+    if (rollbackIdx !== -1) mealsData.shopping[rollbackIdx] = previous;
+    mealsRerenderTab();
+    toast('❌ ' + err.message);
+  }
+}
+
+async function mealSubmitShoppingEdit(e, id) {
+  e.preventDefault();
+  if (mealIsKid) return;
+  const f = e.target;
+  const text = f.text.value.trim();
+  if (!text) return;
+  try {
+    const res = await window.auth.updateShoppingItem(id, { text, category: f.category.value });
+    const idx = (mealsData.shopping || []).findIndex((it) => it.id === id);
+    if (idx !== -1 && res && res.item) mealsData.shopping[idx] = res.item;
+    mealShoppingEditId = null;
     mealsRerenderTab();
   } catch (err) {
     toast('❌ ' + err.message);

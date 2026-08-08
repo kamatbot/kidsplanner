@@ -82,4 +82,21 @@ final class WatchAPIClientTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testShoppingUsesFamilyShoppingEndpoint() async throws {
+        StubWatchURLProtocol.responseData = Data("{\"shopping\":[]}".utf8)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubWatchURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let client = URLSessionWatchAPIClient(
+            baseURL: URL(string: "https://example.test")!,
+            session: session,
+            credentials: APIClientTestCredentials()
+        )
+
+        _ = try await client.fetchShopping()
+
+        let request = try XCTUnwrap(StubWatchURLProtocol.requests.first)
+        XCTAssertEqual(request.url?.path, "/api/meals/shopping")
+    }
 }

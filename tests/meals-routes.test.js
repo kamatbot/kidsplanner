@@ -4,7 +4,7 @@
  * {...} registering ABSOLUTE paths (calendar-routes/trips-routes precedent).
  * requireParent/requireFamily are passed in as REAL implementations mirroring
  * server.js (not no-op stubs) so the full permission matrix — parent-only
- * pantry/menu/prefs, the shopping-list kid-write carve-out — is exercised for
+ * pantry/menu/prefs, the family-wide shopping-list carve-out — is exercised for
  * real, same approach as tests/trips-routes.test.js.
  */
 const test = require("node:test");
@@ -18,6 +18,7 @@ process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-meals-r
 const store = require("../lib/store");
 const family = require("../lib/family");
 const meals = require("../lib/meals");
+const chat = require("../lib/chat");
 const mealsRoutes = require("../lib/routes/meals");
 
 function userRole(user) {
@@ -30,7 +31,7 @@ function buildHarness() {
   const app = { get: register("GET"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") };
 
   mealsRoutes(app, {
-    meals, store, family, userRole,
+    meals, store, family, chat, userRole,
     requireAuth: (req, res, next) => (req.user ? next() : res.status(401).json({ error: "Not authenticated" })),
     requireParent: (req, res, next) => (userRole(req.user) === "kid" ? res.status(403).json({ error: "Parents only." }) : next()),
     requireFamily: (req, res, next) => {
@@ -94,6 +95,35 @@ test("GET /api/meals: returns {pantry, menu, shopping, prefs, household}; parent
   // Meals is a parent tool (owner decision 2026-08-03) — a kid can't even read it.
   const kidRes = await call(routes["GET /api/meals"], { user: kidUser });
   assert.equal(kidRes.statusCode, 403);
+});
+
+test("GET /api/meals/shopping: family members read a bounded shopping-only projection", async () => {
+  const routes = buildHarness();
+  const first = freshFamily("SG");
+  const second = freshFamily("SGX");
+  const pantry = meals.addPantryItem(first.fam.id, first.parent.id, { name: "Rice", category: "grain", level: "low" }).item;
+  const added = await call(routes["POST /api/meals/shopping"], {
+    user: first.parent,
+    body: { text: "Rice", category: "grain", pantryItemId: pantry.id, assigneeUserId: first.kid.id },
+  });
+  assert.equal(added.statusCode, 200);
+
+  const parentRes = await call(routes["GET /api/meals/shopping"], { user: first.parent });
+  const kidRes = await call(routes["GET /api/meals/shopping"], { user: first.kidUser });
+  assert.equal(parentRes.statusCode, 200);
+  assert.equal(kidRes.statusCode, 200);
+  for (const response of [parentRes, kidRes]) {
+    assert.deepEqual(Object.keys(response.body), ["shopping"]);
+    assert.equal(response.body.shopping.length, 1);
+    assert.equal(response.body.shopping[0].text, "Rice");
+    assert.equal(response.body.shopping[0].done, false);
+    assert.equal(response.body.shopping[0].pantryItemId, undefined);
+    assert.equal(response.body.shopping[0].family, undefined);
+  }
+
+  const foreign = await call(routes["GET /api/meals/shopping"], { user: second.kidUser });
+  assert.equal(foreign.statusCode, 200);
+  assert.deepEqual(foreign.body.shopping, []);
 });
 
 // ---------- prefs: parent-only ----------
@@ -227,25 +257,48 @@ test("POST /api/meals/menu/:id/cooked: parent-only, steps the pantry down and fl
   assert.equal(pantryRow.level, "low"); // floored — was already low
 });
 
-// ---------- shopping: the kid-write carve-out ----------
+// ---------- shopping: the family-wide write carve-out ----------
 
-test("shopping: parents only — a kid is blocked from adding and from ticking", async () => {
+test("shopping: parents and kids can add/tick; only parents can edit, assign, or delete", async () => {
   const routes = buildHarness();
-  const { parent, kidUser } = freshFamily("SH");
+  const { parent, kid, kidUser } = freshFamily("SH");
 
   const kidAdd = await call(routes["POST /api/meals/shopping"], { user: kidUser, body: { text: "Ice cream", category: "frozen" } });
-  assert.equal(kidAdd.statusCode, 403);
+  assert.equal(kidAdd.statusCode, 200);
+  assert.equal(kidAdd.body.item.text, "Ice cream");
+  assert.equal(kidAdd.body.item.done, false);
+  assert.equal(kidAdd.body.item.pantryItemId, undefined);
+
+  const kidToggle = await call(routes["PATCH /api/meals/shopping/:id"], { user: kidUser, params: { id: kidAdd.body.item.id }, body: { done: true } });
+  assert.equal(kidToggle.statusCode, 200);
+  assert.equal(kidToggle.body.item.done, true);
+  assert.equal(kidToggle.body.item.doneBy, kidUser.id);
+
+  const kidEdit = await call(routes["PATCH /api/meals/shopping/:id"], {
+    user: kidUser, params: { id: kidAdd.body.item.id }, body: { text: "Retargeted", category: "produce", assigneeUserId: kid.id },
+  });
+  assert.equal(kidEdit.statusCode, 403);
+  assert.equal(kidEdit.body.item, undefined);
 
   const parentAdd = await call(routes["POST /api/meals/shopping"], { user: parent, body: { text: "Bread", category: "grain" } });
   assert.equal(parentAdd.statusCode, 200);
 
-  const kidTicks = await call(routes["PATCH /api/meals/shopping/:id"], { user: kidUser, params: { id: parentAdd.body.item.id }, body: { done: true } });
-  assert.equal(kidTicks.statusCode, 403);
+  const parentEdit = await call(routes["PATCH /api/meals/shopping/:id"], {
+    user: parent, params: { id: parentAdd.body.item.id }, body: { text: "Wholegrain bread", category: "grain", assigneeUserId: kid.id },
+  });
+  assert.equal(parentEdit.statusCode, 200);
+  assert.equal(parentEdit.body.item.text, "Wholegrain bread");
+  assert.equal(parentEdit.body.item.assigneeUserId, kid.id);
 
   const parentTicks = await call(routes["PATCH /api/meals/shopping/:id"], { user: parent, params: { id: parentAdd.body.item.id }, body: { done: true } });
   assert.equal(parentTicks.statusCode, 200);
   assert.equal(parentTicks.body.item.done, true);
   assert.equal(parentTicks.body.item.doneBy, parent.id);
+
+  const kidDelete = await call(routes["DELETE /api/meals/shopping/:id"], { user: kidUser, params: { id: parentAdd.body.item.id } });
+  assert.equal(kidDelete.statusCode, 403);
+  const parentDelete = await call(routes["DELETE /api/meals/shopping/:id"], { user: parent, params: { id: parentAdd.body.item.id } });
+  assert.equal(parentDelete.statusCode, 200);
 });
 
 test("POST /api/meals/shopping/from-pantry and /restock: parent-only, full round trip", async () => {
@@ -302,7 +355,7 @@ test("PATCH /api/meals/profile: a parent sets their OWN portion/allergies/protei
 
 // ---------- full §4 permission matrix, end to end ----------
 
-test("permission matrix: EVERY meals route is parent-only", async () => {
+test("permission matrix: parent-only Meals routes stay blocked while shopping stays family-wide", async () => {
   const routes = buildHarness();
   const { parent, kidUser } = freshFamily("PM");
 
@@ -314,6 +367,24 @@ test("permission matrix: EVERY meals route is parent-only", async () => {
   let checked = 0;
   for (const key of Object.keys(routes)) {
     if (!key.includes("/api/meals")) continue;
+    if (key === "GET /api/meals/shopping") {
+      const read = await call(routes[key], { user: kidUser });
+      assert.equal(read.statusCode, 200, `${key} should be kid-readable`);
+      checked++;
+      continue;
+    }
+    if (key === "POST /api/meals/shopping") {
+      const add = await call(routes[key], { user: kidUser, body: { text: "Kid item" } });
+      assert.equal(add.statusCode, 200, `${key} should be kid-writable`);
+      checked++;
+      continue;
+    }
+    if (key === "PATCH /api/meals/shopping/:id") {
+      const toggle = await call(routes[key], { user: kidUser, params: { id: seeded.body.item.id }, body: { done: true } });
+      assert.equal(toggle.statusCode, 200, `${key} should be kid-writable`);
+      checked++;
+      continue;
+    }
     const res = await call(routes[key], {
       user: kidUser,
       params: { id: seeded.body.item.id },
@@ -322,5 +393,5 @@ test("permission matrix: EVERY meals route is parent-only", async () => {
     assert.equal(res.statusCode, 403, `${key} let a kid through`);
     checked++;
   }
-  assert.ok(checked >= 15, `expected the full meals surface, only saw ${checked} routes`);
+  assert.ok(checked >= 16, `expected the full meals surface, only saw ${checked} routes`);
 });

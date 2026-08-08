@@ -28,9 +28,8 @@ final class AppStore {
     var actionError: String?
     var completingActionIDs: Set<String> = []
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
-    /// Pantry/menu/shopping (Meals tab, parent-only — nil for a kid session or
-    /// before the first load). `loadMeals()` guards on `isParent` so a kid
-    /// session never calls the parent-gated `/api/meals` endpoint.
+    /// Parent composite Meals state, or the family shopping projection for a
+    /// kid session. Kids never receive pantry/menu/prefs/household state.
     var meals: MealsState?
     /// Chat rooms this session can see (`GET /api/chat/rooms`) — just the
     /// family room until the user is on a trip. Failing soft leaves this at
@@ -169,7 +168,7 @@ final class AppStore {
                 async let calHw: Void = loadCalendarAndHomework()
                 async let actionLoad: Void = loadFamilyActions()
                 async let notesLoad: Void = loadNotes()
-                async let mealsLoad: Void = loadMeals()   // no-op for kid sessions (guarded inside)
+                async let mealsLoad: Void = loadMeals()
                 async let rooms = api.chatRooms()
                 messages = Self.dedupe(try await msgs)
                 updateChatSeen(familyRoomId)
@@ -485,14 +484,19 @@ final class AppStore {
         return false
     }
 
-    // MARK: Meals (Meals tab, parent-only)
+    // MARK: Meals (parent composite; family shopping for kids)
 
-    /// Loads pantry/menu/shopping. Guarded on `isParent` so a kid session never
-    /// hits the parent-gated `/api/meals` endpoint (kids keep the Notes tab
-    /// instead — see RootView's role-aware tab list).
+    /// Parents load the composite planner; kids load only the shopping
+    /// projection so pantry/menu/household data never crosses the API boundary.
     func loadMeals() async {
-        guard isParent, family != nil else { meals = nil; return }
-        if let m = try? await api.mealsState() { meals = m }
+        guard family != nil else { meals = nil; return }
+        if isParent {
+            if let m = try? await api.mealsState() { meals = m }
+        } else if let shopping = try? await api.shoppingItems() {
+            var state = MealsState()
+            state.shopping = shopping
+            meals = state
+        }
     }
 
     func addPantryItem(name: String, category: String, level: String, unitHint: String? = nil, expiresOn: String? = nil) async {
@@ -564,28 +568,38 @@ final class AppStore {
         } catch { handle(error) }
     }
 
-    func addShoppingItem(name: String, category: String? = nil) async {
+    func addShoppingItem(text: String, category: String? = nil) async {
         do {
-            let item = try await api.addShoppingItem(name: name, category: category)
+            let item = try await api.addShoppingItem(text: text, category: category)
             meals?.shopping.append(item)
         } catch { handle(error) }
     }
 
     /// Optimistic; reverts on failure.
-    func toggleShoppingChecked(_ item: ShoppingItem) async {
+    func toggleShoppingDone(_ item: ShoppingItem) async {
         guard let idx = meals?.shopping.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = item.checked
-        meals?.shopping[idx].checked = !previous
+        let previous = item
+        let nextDone = !previous.done
+        meals?.shopping[idx].done = nextDone
+        meals?.shopping[idx].doneBy = nextDone ? me?.id : nil
+        meals?.shopping[idx].doneAt = nextDone ? ISO8601DateFormatter().string(from: Date()) : nil
         do {
-            let updated = try await api.updateShoppingItem(item.id, ["checked": !previous])
+            let updated = try await api.updateShoppingItem(item.id, ["done": nextDone])
             if let i = meals?.shopping.firstIndex(where: { $0.id == item.id }) { meals?.shopping[i] = updated }
         } catch {
-            if let i = meals?.shopping.firstIndex(where: { $0.id == item.id }) { meals?.shopping[i].checked = previous }
+            if let i = meals?.shopping.firstIndex(where: { $0.id == item.id }) { meals?.shopping[i] = previous }
             handle(error)
         }
     }
 
+    // Kept as a source-compatible alias for older native callers; all state
+    // and wire fields now use the canonical done/doneBy/doneAt contract.
+    func toggleShoppingChecked(_ item: ShoppingItem) async {
+        await toggleShoppingDone(item)
+    }
+
     func deleteShoppingItem(_ id: String) async {
+        guard isParent else { return }
         let backup = meals?.shopping
         meals?.shopping.removeAll { $0.id == id }
         do {
@@ -598,6 +612,7 @@ final class AppStore {
 
     /// Adds low-stock pantry items to the shopping list, then reloads meals.
     func addShoppingFromLowPantry() async {
+        guard isParent else { return }
         do {
             try await api.addShoppingFromPantry()
             await loadMeals()

@@ -84,3 +84,16 @@ test("meals.js does not redeclare any of util.js's top-level bindings", () => {
   }
   assert.deepEqual(clashes, [], `meals.js redeclares util.js top-level name(s): ${clashes.join(", ")}`);
 });
+
+test("shopping client uses canonical text/done fields and rolls back optimistic toggles", () => {
+  const mealsSrc = fs.readFileSync(path.join(PUBLIC, "js", "meals.js"), "utf8");
+  const authSrc = fs.readFileSync(path.join(PUBLIC, "js", "auth.js"), "utf8");
+  assert.match(authSrc, /function getShoppingItems\(\)/);
+  assert.match(authSrc, /api\("\/api\/meals\/shopping", \{ method: "GET" \}\)/);
+  assert.match(mealsSrc, /it\.text/);
+  assert.match(mealsSrc, /it\.done/);
+  assert.match(mealsSrc, /doneBy: checked \? mealCurrentUserId : null/);
+  assert.match(mealsSrc, /window\.auth\.updateShoppingItem\(id, \{ done: checked \}\)/);
+  assert.match(mealsSrc, /const previous = Object\.assign\(\{\}, mealsData\.shopping\[idx\]\)/);
+  assert.match(mealsSrc, /mealsData\.shopping\[rollbackIdx\] = previous/);
+});

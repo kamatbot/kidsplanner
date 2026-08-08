@@ -171,6 +171,7 @@ let activeEventObj  = null;   // the resolved event object from showDetail; sour
 let editingEventId  = null;   // set by editCurrentEvent(); when non-null saveEvent() PATCHes instead of POSTs
 let pendingDate     = null;   // pre-filled date for add-event modal
 let chatEventComposerSource = null; // transient source reference for a chat-created event
+let chatShoppingComposerSource = null; // transient source reference for a chat-created shopping item
 let uploadedFile    = null;
 
 /* Today action queue (phase 2) — server is the source of truth. The list is
@@ -1187,6 +1188,78 @@ function openAddEventModalFromChatMessage(messageId) {
   if (other) other.checked = true;
 }
 
+function chatMessageCanAddToShopping(msg) {
+  return chatMessageHasAddableText(msg) &&
+    (!msg.roomId || msg.roomId === 'family') &&
+    !(msg.familyId && String(msg.familyId).startsWith('trip:')) &&
+    (!msg.media || chatMessageHasAddableText(msg)) &&
+    !msg.card;
+}
+
+function chatShoppingMembers() {
+  if (!currentFamily) return [];
+  const seen = new Set();
+  const members = [];
+  const parents = currentFamily.parents || (currentFamily.parentIds || []).map((id) => ({ id, name: '' }));
+  parents.concat(currentFamily.kids || []).forEach((member) => {
+    if (!member || !member.id || seen.has(member.id)) return;
+    seen.add(member.id);
+    members.push({ id: member.id, name: member.name || 'Member' });
+  });
+  return members;
+}
+
+function populateChatShoppingAssigneeOptions(selected) {
+  const select = document.getElementById('chat-shopping-assignee');
+  const group = document.getElementById('chat-shopping-assignee-group');
+  if (!select || !group) return;
+  const kid = isKidSession();
+  group.style.display = kid ? 'none' : '';
+  select.innerHTML = '<option value="">No assignee</option>' + chatShoppingMembers()
+    .map((member) => `<option value="${esc(member.id)}">${esc(member.name)}</option>`).join('');
+  select.value = selected && Array.from(select.options).some((option) => option.value === selected) ? selected : '';
+}
+
+function openShoppingComposerFromChatMessage(messageId) {
+  const message = chatMessages.find((m) => m && m.id === messageId);
+  if (!chatMessageCanAddToShopping(message)) return;
+  chatShoppingComposerSource = { sourceType: 'chat', sourceId: message.id };
+  const text = document.getElementById('chat-shopping-text');
+  const category = document.getElementById('chat-shopping-category');
+  if (text) text.value = String(message.text || '').trim().slice(0, 200);
+  if (category) category.value = 'other';
+  populateChatShoppingAssigneeOptions('');
+  openModal('chat-shopping-modal');
+  if (text) {
+    text.focus();
+    text.select();
+  }
+}
+
+async function handleChatShoppingSubmit(e) {
+  e.preventDefault();
+  const source = chatShoppingComposerSource;
+  const textEl = document.getElementById('chat-shopping-text');
+  const categoryEl = document.getElementById('chat-shopping-category');
+  const assigneeEl = document.getElementById('chat-shopping-assignee');
+  const text = textEl ? textEl.value.trim() : '';
+  if (!source || !text) return;
+  const payload = {
+    text,
+    category: categoryEl ? categoryEl.value : 'other',
+    sourceType: source.sourceType,
+    sourceId: source.sourceId,
+  };
+  if (!isKidSession() && assigneeEl && assigneeEl.value) payload.assigneeUserId = assigneeEl.value;
+  try {
+    const result = await window.auth.addShoppingItem(payload);
+    closeModal('chat-shopping-modal');
+    toast(result && result.existing ? 'That message is already on the shopping list.' : 'Added to the shopping list. 🛒');
+  } catch (err) {
+    toast(`❌ ${err.message || 'Could not add that item.'}`);
+  }
+}
+
 // Prefills the add/edit modal from an existing event and switches saveEvent()
 // into PATCH mode via editingEventId. Recurring edits apply to the whole
 // series server-side, so surface a one-line hint rather than pretending this
@@ -2010,6 +2083,7 @@ function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
   if (id === 'add-event-modal') chatEventComposerSource = null;
+  if (id === 'chat-shopping-modal') chatShoppingComposerSource = null;
 }
 
 function closeModalOnBg(e, id) {
@@ -2168,6 +2242,9 @@ function renderChatMessages() {
     const addToCalendarBtn = chatMessageCanAddToCalendar(m)
       ? `<span class="chat-msg-add-action-wrap"><button type="button" class="chat-msg-ctrl chat-msg-add-action" onclick="openAddEventModalFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="add-event-modal" aria-label="Add message to Calendar" title="Add message to Calendar">📅</button></span>`
       : '';
+    const addToShoppingBtn = chatMessageCanAddToShopping(m)
+      ? `<span class="chat-msg-add-action-wrap"><button type="button" class="chat-msg-ctrl chat-msg-add-action" onclick="openShoppingComposerFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="chat-shopping-modal" aria-label="Add message to Shopping" title="Add message to Shopping">🛒</button></span>`
+      : '';
     const controls = !isKidSession() ? `
       <div class="chat-msg-controls">
         ${pinBtn}
@@ -2187,6 +2264,7 @@ function renderChatMessages() {
         <span class="chat-msg-time">${time}</span>
         ${addToTodayBtn}
         ${addToCalendarBtn}
+        ${addToShoppingBtn}
         ${controls}
       </div>
     </div>`;
