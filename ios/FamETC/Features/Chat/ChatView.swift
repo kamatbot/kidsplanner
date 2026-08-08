@@ -726,6 +726,13 @@ struct ChatMessageRow: View {
                             Label("Add to Shopping", systemImage: "cart.badge.plus")
                         }
                     }
+                    if canAddToCalendar && !message.deleted && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button {
+                            onAddToCalendar(message)
+                        } label: {
+                            Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                        }
+                    }
                 }
         } else {
             // Own messages: flat violet fill (Horizon --accent), white/onAccent

@@ -129,6 +129,14 @@ test("chat shopping conversion is family-scoped, editable at confirmation, and i
   const itemAfterDelete = meals.getShoppingItem(fam.id, first.body.item.id);
   assert.equal(itemAfterDelete.text, "Mangoes");
   assert.equal(itemAfterDelete.sourceId, source.id);
+  const retryAfterDelete = await call(routes["POST /api/meals/shopping"], {
+    user: kidUser,
+    body: { text: "Pears", category: "produce", sourceType: "chat", sourceId: source.id, assigneeUserId: "not-used" },
+  });
+  assert.equal(retryAfterDelete.statusCode, 200);
+  assert.equal(retryAfterDelete.body.existing, true);
+  assert.equal(retryAfterDelete.body.item.id, first.body.item.id);
+  assert.equal(retryAfterDelete.body.item.text, "Mangoes");
   const afterDelete = await call(routes["GET /api/meals/shopping"], { user: kidUser });
   assert.equal(afterDelete.statusCode, 200, JSON.stringify(afterDelete.body));
   assert.equal(afterDelete.body.shopping[0].text, "Mangoes");

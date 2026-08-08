@@ -2259,7 +2259,8 @@ function chatMessageCanAddToToday(msg) {
 function chatMessageCanAddToCalendar(msg) {
   return chatMessageHasAddableText(msg) &&
     (!msg.roomId || msg.roomId === 'family') &&
-    !(msg.card && msg.card.type === 'event');
+    !(msg.familyId && String(msg.familyId).startsWith('trip:')) &&
+    !msg.card;
 }
 
 function todayActionTitleFromChatMessage(text) {

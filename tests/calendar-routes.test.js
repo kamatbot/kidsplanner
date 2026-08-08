@@ -106,6 +106,17 @@ test("POST /api/calendar/events: chat source is persisted and retries are idempo
   assert.equal(second.body.event.title, "Pick up Ava");
   assert.equal(second.body.event.sourceType, "chat");
   assert.equal(second.body.event.sourceId, "m_family_123");
+  const source = chatMessages.get(`${fam.id}:m_family_123`);
+  source.text = "Pick up Ava later";
+  source.deleted = true;
+  const afterDelete = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    body: { ...body, title: "A different retry", date: "2026-09-01" },
+  });
+  assert.equal(afterDelete.statusCode, 200);
+  assert.equal(afterDelete.body.existing, true);
+  assert.equal(afterDelete.body.event.id, first.body.event.id);
+  assert.equal(afterDelete.body.event.title, "Pick up Ava");
   assert.equal(chatPosts.length, 1, "a retry must not post a second announcement");
 });
 
@@ -137,6 +148,20 @@ test("POST /api/calendar/events: chat sources are family-keyed and reject trip/i
     familyId: fam.id,
     body: { title: "Bad source", date: "2026-07-20", sourceType: "chat", sourceId: "trip_1" },
   });
+  const invalidSources = [
+    { id: "m_trip_room", familyId: fam.id, roomId: "trip:t1", text: "Trip room" },
+    { id: "m_trip_scope", familyId: "trip:t1", text: "Trip scope" },
+    { id: "m_card", familyId: fam.id, text: "Existing event card", card: { type: "event", id: "ev_1" } },
+    { id: "m_foreign", familyId: otherFam.id, text: "Other family" },
+  ];
+  for (const message of invalidSources) {
+    chatMessages.set(`${fam.id}:${message.id}`, message);
+    const rejected = call(routes["POST /api/calendar/events"], {
+      familyId: fam.id,
+      body: { title: "Should reject", date: "2026-07-20", sourceType: "chat", sourceId: message.id },
+    });
+    assert.equal(rejected.statusCode, 400, message.id);
+  }
   assert.equal(trip.statusCode, 400);
   assert.equal(malformed.statusCode, 400);
   assert.equal(chatPosts.length, 2);
@@ -156,6 +181,34 @@ test("POST /api/calendar/events: unavailable or deleted chat source is rejected"
   });
   assert.equal(missing.statusCode, 400);
   assert.equal(deleted.statusCode, 400);
+});
+
+test("POST /api/calendar/events: co-parents and kids may create, with family/creator derived server-side", () => {
+  const { routes } = buildHarness();
+  const fam = freshFamily();
+  const parent = store.getUser(fam.parentIds[0]);
+  const coParent = store.createUser(`co${Math.random()}@example.com`, "Co-parent");
+  family.joinFamilyAsParent(fam.inviteCode, coParent.id);
+  const { kid } = family.addKid(fam.id, parent.id, { name: "Calendar Kid" });
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
+
+  const parentEvent = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    user: coParent,
+    body: { familyId: "attacker-family", title: "Co-parent event", date: "2026-07-23", silent: true },
+  });
+  const kidEvent = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    user: kidUser,
+    body: { title: "Kid event", date: "2026-07-24", kidId: kid.id, silent: true },
+  });
+  assert.equal(parentEvent.statusCode, 200);
+  assert.equal(kidEvent.statusCode, 200);
+  assert.equal(parentEvent.body.event.familyId, fam.id);
+  assert.equal(parentEvent.body.event.createdBy, coParent.id);
+  assert.equal(kidEvent.body.event.familyId, fam.id);
+  assert.equal(kidEvent.body.event.createdBy, kidUser.id);
+  assert.equal(kidEvent.body.event.kidId, kid.id);
 });
 
 test("POST /api/calendar/events: silent:true skips the chat announcement (bulk import / migration)", () => {
