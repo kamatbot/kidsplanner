@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import WidgetKit
 
 enum WatchConnectionState: Equatable {
     case disconnected
@@ -319,6 +320,13 @@ final class WatchStore: ObservableObject {
 
     private func persist() {
         persistence.save(WatchPersistedState(snapshot: snapshot, outbox: outbox))
+        WatchComplicationSnapshotStore.save(FamETCWatchComplicationSnapshot(
+            urgentCount: snapshot.urgentActions.count,
+            homeworkCount: snapshot.openHomework.count,
+            shoppingCount: snapshot.openShopping.count,
+            updatedAt: snapshot.updatedAt
+        ))
+        WidgetCenter.shared.reloadTimelines(ofKind: "FamETCWatchComplication")
     }
 
     private func isForbidden(_ error: Error) -> Bool {

@@ -75,6 +75,7 @@ targets:
     platform: watchOS
     sources:
       - path: FamETCWatch
+      - path: FamETCWatchShared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fametc.watch
@@ -86,6 +87,21 @@ targets:
         TARGETED_DEVICE_FAMILY: "4"
         WATCHOS_DEPLOYMENT_TARGET: "11.0"
         CODE_SIGN_ENTITLEMENTS: FamETCWatch/FamETCWatch.entitlements
+
+  FamETCWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: FamETCWatchWidget
+      - path: FamETCWatchShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.watch.widget
+        PRODUCT_NAME: FamETCWatchWidget
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "Fam ETC"
+        CODE_SIGN_ENTITLEMENTS: FamETCWatchWidget/FamETCWatchWidget.entitlements
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
 
   FamETCWatchTests:
     type: bundle.unit-test
