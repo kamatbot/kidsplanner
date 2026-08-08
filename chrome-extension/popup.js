@@ -18,7 +18,16 @@
    (this happens in background.js, which the popup delegates to).
 ============================================================ */
 
-const { MOODLE_BASE, looksLikeMoodleLoginPage, parseHomeworkHtml, parseTimetableHtml, parseSchoolStatsHtml, moodleHomeworkUrl, moodleTimetableUrl, moodleHomeUrl } = window.famParse;
+const {
+  MOODLE_BASE: popupMoodleBase,
+  looksLikeMoodleLoginPage: popupLooksLikeMoodleLoginPage,
+  parseHomeworkHtml: popupParseHomeworkHtml,
+  parseTimetableHtml: popupParseTimetableHtml,
+  parseSchoolStatsHtml: popupParseSchoolStatsHtml,
+  moodleHomeworkUrl: popupMoodleHomeworkUrl,
+  moodleTimetableUrl: popupMoodleTimetableUrl,
+  moodleHomeUrl: popupMoodleHomeUrl,
+} = window.famParse;
 
 const el = {
   moodleUserId: document.getElementById("moodle-user-id"),
@@ -36,7 +45,7 @@ function setStatus(msg, kind) {
 /* ---------- prefill Moodle user id from the active Moodle tab's URL ---------- */
 async function prefillMoodleUserId() {
   try {
-    const tabs = await chrome.tabs.query({ url: `${MOODLE_BASE}/*` });
+  const tabs = await chrome.tabs.query({ url: `${popupMoodleBase}/*` });
     for (const t of tabs) {
       if (!t.url) continue;
       const u = new URL(t.url);
@@ -83,7 +92,7 @@ async function prefillFromMappings() {
 async function fetchMoodlePage(url) {
   const res = await fetch(url, { credentials: "include" });
   const text = await res.text();
-  if (looksLikeMoodleLoginPage(text)) {
+  if (popupLooksLikeMoodleLoginPage(text)) {
     const err = new Error("MOODLE_LOGIN_REQUIRED");
     err.code = "MOODLE_LOGIN_REQUIRED";
     throw err;
@@ -96,8 +105,8 @@ async function fetchMoodlePage(url) {
    homework/timetable import if it fails. ---------- */
 async function fetchSchoolStats() {
   try {
-    const html = await fetchMoodlePage(moodleHomeUrl());
-    return parseSchoolStatsHtml(html);
+    const html = await fetchMoodlePage(popupMoodleHomeUrl());
+    return popupParseSchoolStatsHtml(html);
   } catch (e) {
     return [];
   }
@@ -119,8 +128,8 @@ async function handleImport() {
   setStatus("Fetching homework & timetable from Moodle…", "info");
 
   try {
-    const hwUrl = moodleHomeworkUrl(moodleUserId);
-    const ttUrl = moodleTimetableUrl(moodleUserId);
+    const hwUrl = popupMoodleHomeworkUrl(moodleUserId);
+    const ttUrl = popupMoodleTimetableUrl(moodleUserId);
 
     let hwHtml, ttHtml;
     try {
@@ -129,7 +138,7 @@ async function handleImport() {
       if (e.code === "MOODLE_LOGIN_REQUIRED") {
         setStatus(
           "Looks like you're not logged into Moodle in this browser. Please log into " +
-            MOODLE_BASE +
+            popupMoodleBase +
             " first, then try again.",
           "error"
         );
@@ -138,8 +147,8 @@ async function handleImport() {
       throw e;
     }
 
-    const homework = parseHomeworkHtml(hwHtml);
-    const { lessons: timetable, twoWeek } = parseTimetableHtml(ttHtml);
+    const homework = popupParseHomeworkHtml(hwHtml);
+    const { lessons: timetable, twoWeek } = popupParseTimetableHtml(ttHtml);
 
     if (!homework.length && !timetable.length) {
       setStatus(
