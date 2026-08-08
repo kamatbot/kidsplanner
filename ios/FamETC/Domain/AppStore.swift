@@ -23,6 +23,10 @@ final class AppStore {
     var events: [CalendarEvent] = []           // school-feed events (read-only)
     var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
     var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
+    var actions: [FamilyAction] = []            // Today / My next action queue
+    var isLoadingActions = false
+    var actionError: String?
+    var completingActionIDs: Set<String> = []
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
     /// Pantry/menu/shopping (Meals tab, parent-only — nil for a kid session or
     /// before the first load). `loadMeals()` guards on `isParent` so a kid
@@ -114,10 +118,15 @@ final class AppStore {
 
     // Collaborators
     private let api = APIClient.shared
+    private let actionService: FamilyActionService
     private let cache = DiskCache()
     private var chatLoopTask: Task<Void, Never>?      // near-live loop for the on-screen room
     private var familyPollTask: Task<Void, Never>?    // always-on 8s background poll, family room only
     private var chatAppBackgrounded = false
+
+    init(actionService: FamilyActionService = APIClient.shared) {
+        self.actionService = actionService
+    }
 
     // MARK: Lifecycle
 
@@ -158,12 +167,13 @@ final class AppStore {
                 async let msgs = api.chatMessages(limit: 50)
                 async let kids: Void = refreshKidRequests()
                 async let calHw: Void = loadCalendarAndHomework()
+                async let actionLoad: Void = loadFamilyActions()
                 async let notesLoad: Void = loadNotes()
                 async let mealsLoad: Void = loadMeals()   // no-op for kid sessions (guarded inside)
                 async let rooms = api.chatRooms()
                 messages = Self.dedupe(try await msgs)
                 updateChatSeen(familyRoomId)
-                _ = await (kids, calHw, notesLoad, mealsLoad)
+                _ = await (kids, calHw, actionLoad, notesLoad, mealsLoad)
                 // Fail soft to just the family room (Trips-unaware/unreachable server).
                 chatRooms = (try? await rooms) ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
             } else {
@@ -191,6 +201,10 @@ final class AppStore {
         me = nil
         family = nil
         meals = nil
+        actions = []
+        isLoadingActions = false
+        actionError = nil
+        completingActionIDs = []
         messagesByRoom = [:]
         lastSeenChatIdByRoom = [:]
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
@@ -626,6 +640,29 @@ final class AppStore {
         Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
     }
 
+    /// Load the server-scoped action queue. Actions are intentionally not put
+    /// in DiskCache: the endpoint is `no-store`, and a stale kid action would
+    /// be a privacy and correctness hazard. Existing rows remain visible while
+    /// a refresh is in flight; an initial failure is kept local to the card.
+    func loadFamilyActions() async {
+        guard family != nil else {
+            actions = []
+            isLoadingActions = false
+            actionError = nil
+            return
+        }
+
+        isLoadingActions = true
+        actionError = nil
+        do {
+            actions = try await actionService.familyActions()
+        } catch {
+            actionError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+        }
+        isLoadingActions = false
+    }
+
     /// Add a family appointment (server posts a chat card; chat updates on poll).
     /// Reloads `familyEvents` from the server afterward rather than appending the
     /// raw response, since a recurring `repeat` expands into multiple occurrences
@@ -664,7 +701,9 @@ final class AppStore {
 
     /// Pull-to-refresh on the Today / Calendar screens — forces a fresh feed sync.
     func refreshDashboard() async {
-        await loadCalendarAndHomework(force: true)
+        async let calendar: Void = loadCalendarAndHomework(force: true)
+        async let actionLoad: Void = loadFamilyActions()
+        _ = await (calendar, actionLoad)
     }
 
     /// Drag-to-reschedule a homework item to a new due date (yyyy-MM-dd).
@@ -697,6 +736,45 @@ final class AppStore {
             if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i].status = previous }
             handle(error)
         }
+    }
+
+    /// Kids may complete only their own assigned actions; shared rows are
+    /// deliberately read-only. Parents may complete any family action. The
+    /// server remains authoritative for the PATCH even after this UI guard.
+    func canCompleteAction(_ action: FamilyAction) -> Bool {
+        guard !action.isDone else { return false }
+        if isParent { return true }
+        guard let ownKidId = me?.kidId else { return false }
+        return action.assigneeType == "kid" &&
+            action.assigneeId == ownKidId && action.kidId == ownKidId
+    }
+
+    /// Optimistically completes an action, then replaces it with the server's
+    /// response. Any failed PATCH restores the exact previous action so the
+    /// row never disappears permanently because of a transient error.
+    func completeAction(_ action: FamilyAction) async {
+        guard canCompleteAction(action), !completingActionIDs.contains(action.id),
+              let index = actions.firstIndex(where: { $0.id == action.id }) else { return }
+
+        let previous = actions[index]
+        completingActionIDs.insert(action.id)
+        actions[index].status = "done"
+        do {
+            let updated = try await actionService.updateFamilyAction(action.id, status: "done")
+            if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
+                actions[currentIndex] = updated
+            }
+            actionError = nil
+        } catch {
+            if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
+                actions[currentIndex] = previous
+            } else {
+                actions.append(previous)
+            }
+            actionError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+        }
+        completingActionIDs.remove(action.id)
     }
 
     func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String, roomId: String = familyRoomId) async {

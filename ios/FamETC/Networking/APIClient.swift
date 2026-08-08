@@ -18,10 +18,18 @@ enum APIError: Error, LocalizedError {
     }
 }
 
+/// The small action surface AppStore needs for the native Today card. Keeping
+/// this seam narrow makes optimistic mutation behavior testable without
+/// changing the shared HTTP client or the server contract.
+protocol FamilyActionService {
+    func familyActions() async throws -> [FamilyAction]
+    func updateFamilyAction(_ id: String, status: String) async throws -> FamilyAction
+}
+
 /// Typed async client for the Fam ETC JSON API. Shares `HTTPCookieStorage.shared`
 /// with `AuthService` and the WKWebView, so once the user signs in (passkey) every
 /// native request carries `fam_sess` and stays in lockstep with any hybrid web tab.
-final class APIClient {
+final class APIClient: FamilyActionService {
     static let shared = APIClient()
 
     private let base = Config.baseURL
@@ -149,6 +157,22 @@ final class APIClient {
     func setHomeworkDueDate(_ id: String, dueDate: String) async throws -> HomeworkItem {
         let r: HomeworkItemResponse = try await request("/api/homework/\(id)", method: "PATCH", body: ["dueDate": dueDate])
         return r.homework
+    }
+
+    // MARK: Family actions (Today / My next)
+
+    /// The server applies the authenticated family and kid visibility scope;
+    /// this method intentionally sends no kid query parameter.
+    func familyActions() async throws -> [FamilyAction] {
+        let r: FamilyActionsResponse = try await request("/api/family/actions")
+        return r.actions
+    }
+
+    /// Native phase 1 only completes an action. Parent creation/edit/delete/
+    /// snooze remains on the web surface until a later native phase.
+    func updateFamilyAction(_ id: String, status: String) async throws -> FamilyAction {
+        let r: FamilyActionResponse = try await request("/api/family/actions/\(id)", method: "PATCH", body: ["status": status])
+        return r.action
     }
 
     // MARK: Notes

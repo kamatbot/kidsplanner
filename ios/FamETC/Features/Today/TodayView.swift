@@ -79,6 +79,7 @@ private struct ParentTodayStack: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
+            ActionCard()
             ScheduleCard()
             if hSize == .compact {
                 VStack(alignment: .leading, spacing: Space.lg) {
@@ -101,7 +102,7 @@ private struct ScheduleCard: View {
     @Environment(AppStore.self) private var store
 
     private var items: [AgendaItem] {
-        Agenda.items(on: Agenda.todayKey(), events: store.events, familyEvents: store.familyEvents, homework: store.homework)
+        Agenda.items(on: Agenda.todayKey(), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework)
             .filter { $0.kind != .homework }
     }
 
@@ -271,13 +272,14 @@ private struct KidTodayStack: View {
     @Environment(AppStore.self) private var store
 
     private var todayItems: [AgendaItem] {
-        Agenda.items(on: Agenda.todayKey(), events: store.events, familyEvents: store.familyEvents, homework: store.homework)
+        Agenda.items(on: Agenda.todayKey(), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework)
             .filter { $0.kind != .homework }
     }
     private var nextUp: AgendaItem? { todayItems.first }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
+            ActionCard()
             if let next = nextUp {
                 HStack(spacing: Space.sm + 2) {
                     Text("⏰").font(.system(size: 20))

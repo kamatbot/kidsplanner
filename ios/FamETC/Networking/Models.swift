@@ -180,6 +180,31 @@ struct HomeworkItem: Codable, Identifiable {
     var isDone: Bool { status == "done" }
 }
 
+/// A family action from `GET /api/family/actions`. The server scopes the list
+/// for kid sessions to shared actions plus actions assigned to that kid. The
+/// native Today card deliberately renders only the display fields; notes and
+/// reference ids stay in the model for wire compatibility but are not shown.
+struct FamilyAction: Codable, Identifiable {
+    let id: String
+    let familyId: String
+    var title: String
+    var notes: String?
+    var status: String       // "open" | "done" | "snoozed"
+    var dueDate: String?
+    var dueTime: String?
+    var assigneeType: String // "parent" | "kid" | "family"
+    var assigneeId: String?
+    var kidId: String?
+    var sourceType: String   // "manual" | "homework" | "calendar" | ...
+    var sourceId: String?
+    var createdBy: String?
+    var createdAt: String
+    var updatedAt: String?
+    var snoozedUntil: String?
+
+    var isDone: Bool { status == "done" }
+}
+
 /// A GIF result from the Giphy proxy (`/api/gifs/*`).
 struct GifResult: Codable, Identifiable {
     let id: String
@@ -270,6 +295,8 @@ struct FamilyEventsResponse: Codable { var events: [FamilyEvent] }
 struct FamilyEventResponse: Codable { var event: FamilyEvent }
 struct HomeworkResponse: Codable { var homework: [HomeworkItem] }
 struct HomeworkItemResponse: Codable { var homework: HomeworkItem }
+struct FamilyActionsResponse: Codable { var actions: [FamilyAction] }
+struct FamilyActionResponse: Codable { var action: FamilyAction }
 struct FamilyResponse: Codable { var family: Family }
 struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
 struct KidAccessRequestsResponse: Codable { var requests: [KidAccessRequest] }
