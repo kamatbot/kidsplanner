@@ -179,6 +179,7 @@ let todayActionItems       = [];
 let todayActionQueueState  = 'loading'; // loading | ready | error
 let todayActionQueueError  = '';
 let todayActionLoadToken   = 0;
+let todayActionComposerSource = null; // transient source reference for the open composer
 
 /* Chat */
 let chatMessages    = [];     // messages currently rendered, oldest-first
@@ -2067,6 +2068,24 @@ function renderChatMedia(media) {
   </a>`;
 }
 
+function chatMessageHasAddableText(msg) {
+  return !!(msg && msg.id != null && !msg.deleted &&
+    typeof msg.text === 'string' && msg.text.trim());
+}
+
+function chatMessageCanAddToToday(msg) {
+  return !isKidSession() && chatMessageHasAddableText(msg);
+}
+
+function todayActionTitleFromChatMessage(text) {
+  return String(text == null ? '' : text).slice(0, 200);
+}
+
+function todayActionSourcePayload(source) {
+  if (!source) return {};
+  return { sourceType: source.sourceType, sourceId: source.sourceId };
+}
+
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
@@ -2080,6 +2099,9 @@ function renderChatMessages() {
     const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--accent)') : 'var(--accent)';
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
     const pinBtn = (!m.deleted && m.text) ? `<button class="chat-msg-ctrl" onclick="handlePinChatMessage('${m.id}')" title="Pin to notes">📌</button>` : '';
+    const addToTodayBtn = chatMessageCanAddToToday(m)
+      ? `<button type="button" class="chat-msg-add-action" onclick="openTodayActionComposerFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="today-action-composer" aria-label="Add message to Today" title="Add message to Today">Add to Today</button>`
+      : '';
     const controls = !isKidSession() ? `
       <div class="chat-msg-controls">
         ${pinBtn}
@@ -2099,6 +2121,7 @@ function renderChatMessages() {
       </div>
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>
+        ${addToTodayBtn}
         ${controls}
       </div>
     </div>`;
@@ -3216,6 +3239,7 @@ async function loadFamilyActions() {
 
 function openTodayActionComposer() {
   if (isKidSession()) return;
+  todayActionComposerSource = null;
   const composer = document.getElementById('today-action-composer');
   const addBtn = document.getElementById('today-action-add-btn');
   if (!composer) return;
@@ -3230,11 +3254,32 @@ function openTodayActionComposer() {
   if (titleEl) titleEl.focus();
 }
 
+function openTodayActionComposerFromChatMessage(id) {
+  if (isKidSession()) return;
+  const message = chatMessages.find((item) => item && String(item.id) === String(id));
+  if (!chatMessageCanAddToToday(message)) return;
+
+  openTodayActionComposer();
+  todayActionComposerSource = { sourceType: 'chat', sourceId: message.id };
+
+  const composer = document.getElementById('today-action-composer');
+  const titleEl = document.getElementById('today-action-title');
+  if (titleEl) {
+    titleEl.value = todayActionTitleFromChatMessage(message.text);
+    titleEl.setAttribute('aria-invalid', 'false');
+  }
+  if (composer && typeof composer.scrollIntoView === 'function') {
+    composer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  if (titleEl && typeof titleEl.focus === 'function') titleEl.focus();
+}
+
 function closeTodayActionComposer() {
   const composer = document.getElementById('today-action-composer');
   const addBtn = document.getElementById('today-action-add-btn');
   if (composer) composer.hidden = true;
   if (addBtn) addBtn.setAttribute('aria-expanded', 'false');
+  todayActionComposerSource = null;
   const form = document.getElementById('today-action-form');
   if (form) form.reset();
   const errorEl = document.getElementById('today-action-form-error');
@@ -3276,6 +3321,7 @@ async function saveTodayAction(event) {
     assigneeType: split[0] || 'family',
   };
   if (split[1]) payload.assigneeId = split.slice(1).join(':');
+  Object.assign(payload, todayActionSourcePayload(todayActionComposerSource));
 
   const saveBtn = document.getElementById('today-action-save-btn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Adding…'; }

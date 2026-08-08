@@ -354,6 +354,13 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-msg:hover .chat-msg-controls { opacity: 1; }
 .chat-msg-ctrl { background: none; border: none; cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
 .chat-msg-ctrl:hover { background: var(--hover); }
+.chat-msg-add-action {
+  min-height: 44px; padding: 7px 10px; border: 1px solid var(--accent); border-radius: 999px;
+  background: var(--panel); color: var(--accent); cursor: pointer; white-space: nowrap;
+  font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1.2;
+}
+.chat-msg-add-action:hover { background: var(--accent-soft); }
+.chat-msg-add-action:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 .chat-msg-deleted { align-self: center; }
 .chat-msg-deleted-text {
   font-size: 12px; font-style: italic; color: var(--text-2);
