@@ -251,6 +251,15 @@ html { font-size: 16px; }
 .main-content-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
 .main-content { flex: 1; min-width: 0; padding: 26px 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
 
+/* Standalone feature pages reuse the dashboard's sidebar vocabulary without
+   mounting the dashboard chat shell. Feature roots own their header/content;
+   this wrapper only supplies the persistent navigation frame. */
+.standalone-app-shell { display: flex; flex-direction: row; width: 100%; min-height: 100vh; overflow: visible; }
+.standalone-app-shell .app-sidebar { min-height: 100vh; }
+.standalone-main-content-wrap { flex: 1; min-width: 0; min-height: 100vh; display: flex; overflow: visible; }
+.standalone-main-content { flex: 1; min-width: 0; padding: 0; overflow: visible; }
+.standalone-app-shell .sidebar-nav-item { text-decoration: none; }
+
 .tab-panel { display: none; flex-direction: column; gap: 18px; }
 .tab-panel.active { display: flex; }
 
@@ -745,44 +754,15 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .cal-page-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
 
 /* ============================================================
-   MINI CALENDAR / UPLOADS — secondary tools rail beside the Calendar grid
-   (not shown in canvas 1b, kept so nothing already shipped gets dropped).
+   CALENDAR SURFACE — one main canvas with header utility actions
 ============================================================ */
-/* Week grid gets the full width; the mini-cal + tools drop into a row
-   beneath it (moved out of the old right-hand rail per the calendar layout
-   change). */
 .calendar-tab-layout { display: flex; flex-direction: column; gap: 16px; }
-.calendar-tools { width: 100%; display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
-.calendar-tools .mini-calendar-card { width: 300px; flex: none; }
-.calendar-tools-actions { display: flex; flex-direction: column; gap: 10px; min-width: 240px; align-items: flex-start; }
 .calendar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.calendar-grid-scroll { overflow-x: auto; }
-
-.mini-calendar-card { padding: 14px; }
-.mini-cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.mini-cal-title { font-size: 13px; font-weight: 700; }
-.mini-nav {
-  background: none; border: none; font-size: 20px; cursor: pointer;
-  color: var(--accent); width: 26px; height: 26px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center; transition: background .15s;
-}
-.mini-nav:hover { background: var(--accent-soft); }
-.mini-cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 1px; text-align: center; }
-.mini-day-hdr { font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; color: var(--text-2); padding: 4px 0; text-transform: uppercase; }
-.mini-day { font-size: 12px; font-weight: 600; padding: 5px 2px; border-radius: 7px; cursor: pointer; transition: all .15s; position: relative; }
-.mini-day:hover { background: var(--accent-soft); color: var(--accent); }
-.mini-day.today { background: var(--accent); color: var(--on-accent); font-weight: 700; }
-.mini-day.other-month { color: var(--border); cursor: default; }
-.mini-day.other-month:hover { background: none; }
-.mini-day.has-event::after { content: ''; display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--coral); margin: 1px auto 0; }
-.mini-day.today.has-event::after { background: var(--on-accent); }
-
-.btn-upload {
-  background: var(--accent); color: var(--on-accent); border: none; padding: 13px; border-radius: var(--radius);
-  font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; text-align: center; transition: filter .15s;
-}
-.btn-upload:hover { filter: brightness(1.08); }
-.btn-upload-secondary { margin-top: 10px; background: var(--accent-soft); color: var(--accent); }
+.calendar-grid-scroll { overflow-x: auto; min-height: var(--calendar-canvas-height); }
+.calendar-upload-history { display: flex; flex-direction: column; gap: 8px; }
+.cal-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.cal-header-action { min-height: 44px; padding: 9px 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cal-header-action:focus-visible, .cal-nav-btn:focus-visible, .view-btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 
 .uploads-list { display: flex; flex-direction: column; gap: 8px; }
 .upload-item {
@@ -805,8 +785,9 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 /* ============================================================
    CALENDAR (week/month) — canvas 1b
 ============================================================ */
+:root { --calendar-canvas-height: 560px; }
 .cal-nav-btn {
-  width: 32px; height: 32px; border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   border: 1.5px solid var(--border); background: var(--panel); font-size: 17px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; transition: all .15s;
 }
@@ -825,8 +806,8 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 .view-btn.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow-sm); }
 
-.week-view { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; min-width: 760px; }
-.week-day-col { border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden; min-width: 0; }
+.week-view { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; min-width: 760px; height: var(--calendar-canvas-height); }
+.week-day-col { border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .week-day-col-hdr { padding: 8px 6px; text-align: center; background: var(--panel-2); border-bottom: 1px solid var(--border); }
 .week-day-col-hdr .wday-name { font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); }
 .week-day-col-hdr .wday-num { font-family: "JetBrains Mono", monospace; font-size: 17px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
@@ -835,7 +816,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .week-day-col.is-today .wday-name, .week-day-col.is-today .wday-num { color: var(--accent); }
 .week-day-col.is-weekend .week-day-col-hdr { background: var(--panel-2); }
 
-.week-day-events { padding: 6px; min-height: 56px; }
+.week-day-events { padding: 6px; min-height: 56px; flex: 1; overflow-y: auto; }
 .week-evt {
   font-size: 12px; font-weight: 600; padding: 6px 8px; border-radius: 6px; margin-bottom: 6px;
   cursor: pointer; line-height: 1.3; transition: opacity .15s;
@@ -861,12 +842,12 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 .week-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
-.month-view { display: grid; grid-template-columns: repeat(7,1fr); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
+.month-view { display: grid; grid-template-columns: repeat(7,1fr); grid-template-rows: auto repeat(6, minmax(0, 1fr)); height: var(--calendar-canvas-height); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
 .month-day-hdr {
   padding: 8px; text-align: center; font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700;
   text-transform: uppercase; color: var(--text-2); background: var(--panel-2); border-bottom: 1px solid var(--border);
 }
-.month-day { min-height: 88px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px 5px; cursor: pointer; transition: background .12s; position: relative; }
+.month-day { min-height: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px 5px; cursor: pointer; transition: background .12s; position: relative; overflow: hidden; }
 .month-day:nth-child(7n) { border-right: none; }
 .month-day:hover { background: var(--hover); }
 .month-day.other-month { background: var(--panel-2); }
@@ -1089,6 +1070,10 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 @media (max-width: 900px) {
   #dashboard-screen.screen.active { height: auto; min-height: 100vh; overflow: visible; }
   .app-shell { height: auto; flex-direction: column; }
+  .standalone-app-shell { flex-direction: column; }
+  .standalone-app-shell .app-sidebar { min-height: auto; }
+  .standalone-main-content-wrap { min-height: 0; }
+  .standalone-main-content { padding: 0; }
   .app-sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 14px; }
   .sidebar-nav { flex-direction: row; overflow-x: auto; }
   .sidebar-spacer { display: none; }
@@ -1119,8 +1104,9 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .chat-dock.chat-collapsed .chat-dock-title { display: block; }
   .chat-dock.chat-collapsed .chat-dock-avatars { flex-direction: row; }
   .chat-fab { display: flex; }
-  .calendar-tools .mini-calendar-card { width: 100%; }
-  .calendar-tools-actions { width: 100%; }
+  .calendar-tab-layout { --calendar-canvas-height: 480px; }
+  .cal-header-actions { width: 100%; margin-left: 0; }
+  .cal-header-action { flex: 1 1 auto; justify-content: center; }
   /* Kid sessions swap the shared horizontal sidebar for their own playful top
      rail on narrow screens; on desktop (>900px) they use the normal sidebar. */
   .kid-view .app-sidebar { display: none; }
@@ -1131,6 +1117,9 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .quiz-options { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
   .cal-page-header, .homework-hub-header { flex-direction: column; align-items: flex-start; }
+  .cal-header-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .cal-header-action { width: 100%; }
+  .calendar-tab-layout { --calendar-canvas-height: 420px; }
   .today-actions-header { flex-direction: column; }
   .today-actions-header-actions { width: 100%; }
   .today-actions-header-actions .btn-primary { width: 100%; }

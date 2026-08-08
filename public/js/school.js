@@ -28,7 +28,6 @@ async function syncSchoolCalendar(opts) {
     schoolEvents = result.events || [];
     schoolSyncErrors = result.errors || [];
     renderCalendar();
-    renderMiniCal();
     renderSchoolSettings();
     scheduleReminders();
     if (typeof renderTodayScreen === 'function') renderTodayScreen();
@@ -443,7 +442,6 @@ async function handleConfirmSchoolImport() {
     await loadHomework();
     renderHomeworkHub();
     renderCalendar();
-    renderMiniCal();
     closeModal('school-account-modal');
     toast(`Imported ${result.homeworkCreated} homework item${result.homeworkCreated === 1 ? '' : 's'} 🎓`);
   } catch (err) {

@@ -78,3 +78,57 @@ test("meal status stays in Today and meal chat cards", () => {
   assert.match(source, /Shopping: \$\{pendingShoppingCount\} pending/);
   assert.match(source, /Pantry low\/out:/);
 });
+
+test("Calendar keeps one main surface and header utility actions", () => {
+  const html = fs.readFileSync(path.join(PUBLIC, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
+  const school = fs.readFileSync(path.join(PUBLIC, "js", "school.js"), "utf8");
+  const css = fs.readFileSync(path.join(PUBLIC, "css", "styles.css"), "utf8");
+
+  assert.doesNotMatch(html, /mini-(?:calendar|cal)|calendar-tools/);
+  assert.match(html, /class="cal-header-actions"/);
+  assert.match(html, /onclick="openUploadModal\(\)"/);
+  assert.match(html, /id="sidebar-add-school-cal"[^>]+onclick="openAddSchoolCalendarModal\(\)"/);
+  assert.match(html, /id="btn-month"/);
+  assert.match(app, /function renderCalendar\(\)/);
+  assert.doesNotMatch(app, /renderMiniCal|miniMonth|miniCalPrev|miniCalNext|eventSpanDates|function jumpTo/);
+  assert.doesNotMatch(school, /renderMiniCal/);
+  assert.match(css, /--calendar-canvas-height:\s*560px/);
+  assert.match(css, /\.week-view[^\n]*height:\s*var\(--calendar-canvas-height\)/);
+  assert.match(css, /\.month-view[^\n]*height:\s*var\(--calendar-canvas-height\)/);
+  assert.match(css, /\.calendar-tab-layout[^\n]*--calendar-canvas-height:\s*480px/);
+  assert.match(css, /\.cal-header-action[^\n]*min-height:\s*44px/);
+});
+
+test("standalone Trips and Meals pages retain the shared navigation shell", () => {
+  const pages = [
+    { file: "trips.html", page: "trips", activeHref: "/trips" },
+    { file: "meals.html", page: "meals", activeHref: "/meals" },
+  ];
+  const expectedLinks = [
+    'href="/"',
+    'href="/?tab=calendar"',
+    'href="/?tab=homework"',
+    'href="/goals?tab=goals"',
+    'href="/activities?tab=activities"',
+    'href="/trips"',
+    'href="/meals"',
+    'href="/?tab=notes"',
+    'href="/settings?tab=settings"',
+  ];
+
+  for (const { file, page, activeHref } of pages) {
+    const html = fs.readFileSync(path.join(PUBLIC, file), "utf8");
+    assert.match(html, new RegExp(`class="standalone-app-shell" data-page="${page}"`));
+    assert.match(html, new RegExp(`class="sidebar-nav-item active" href="${activeHref}" aria-current="page"`));
+    for (const link of expectedLinks) assert.match(html, new RegExp(link.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(html, /class="standalone-main-content-wrap"/);
+    assert.match(html, new RegExp(`id="${page}-root" class="standalone-main-content"`));
+  }
+});
+
+test("shared shell accepts tab deep links from standalone navigation", () => {
+  const app = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
+  assert.match(app, /new URLSearchParams\(window\.location\.search\)\.get\('tab'\)/);
+  assert.match(app, /switchNavTab\(requestedTab\)/);
+});

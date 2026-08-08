@@ -161,7 +161,6 @@ let activeKidId      = null;  // currently selected kid filter ("" = all kids)
 let currentView     = 'week';
 let weekStart       = null;   // Monday of displayed week
 let monthDate       = null;   // any date in displayed month
-let miniMonth       = null;   // any date in mini-cal month
 let chatDockWidth   = window.FamChatWidth.DEFAULT_WIDTH;
 let chatDockResizeSession = null;
 let quizIndex       = 0;
@@ -581,7 +580,6 @@ function setActiveKid(kidId) {
   activeKidId = kidId;
   renderKidSwitcher();
   renderCalendar();
-  renderMiniCal();
   renderSchoolStatsWidget();
   // Homework has its own kid-switcher instance now (canvas 1c) sharing this
   // same state — re-render it too so switching kid from either screen stays
@@ -800,9 +798,7 @@ function showDashboard() {
 
   weekStart = mondayOf(now);
   monthDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  miniMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  renderMiniCal();
   renderCalendar();
   renderWidgets();
   renderUploads();
@@ -854,49 +850,6 @@ function showDashboard() {
   // start/stop lifecycle from here on as the user navigates between tabs.
   loadChatMessages();
   startChatPolling();
-}
-
-/* ============================================================
-   MINI CALENDAR
-============================================================ */
-function renderMiniCal() {
-  const d     = miniMonth;
-  const today = isoDate(new Date());
-  const evDates = new Set(visibleEvents().flatMap(eventSpanDates));
-  const names = ['S','M','T','W','T','F','S'];
-
-  document.getElementById('mini-cal-month').textContent =
-    d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  const grid = document.getElementById('mini-cal-grid');
-  grid.innerHTML = names.map(n => `<div class="mini-day-hdr">${n}</div>`).join('');
-
-  const first = new Date(d.getFullYear(), d.getMonth(), 1);
-  const last  = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-
-  for (let i = 0; i < first.getDay(); i++) grid.innerHTML += '<div></div>';
-
-  for (let day = 1; day <= last.getDate(); day++) {
-    const date = new Date(d.getFullYear(), d.getMonth(), day);
-    const ds   = isoDate(date);
-    let cls = 'mini-day';
-    if (ds === today)        cls += ' today';
-    if (evDates.has(ds))     cls += ' has-event';
-    grid.innerHTML += `<div class="${cls}" onclick="jumpTo('${ds}')">${day}</div>`;
-  }
-}
-
-function miniCalPrev() { miniMonth = new Date(miniMonth.getFullYear(), miniMonth.getMonth() - 1, 1); renderMiniCal(); }
-function miniCalNext() { miniMonth = new Date(miniMonth.getFullYear(), miniMonth.getMonth() + 1, 1); renderMiniCal(); }
-
-function jumpTo(ds) {
-  const d = parseIso(ds);
-  if (currentView === 'week') {
-    weekStart = mondayOf(d);
-  } else {
-    monthDate = new Date(d.getFullYear(), d.getMonth(), 1);
-  }
-  renderCalendar();
 }
 
 /* ============================================================
@@ -990,15 +943,6 @@ function repeatLabel(ev) {
   return label;
 }
 
-// All ISO dates an event spans (date..endDate inclusive) — used by the
-// mini-cal to mark every day a multi-day event covers.
-function eventSpanDates(ev) {
-  const end = ev.endDate || ev.date;
-  if (end <= ev.date) return [ev.date];
-  const out = [];
-  for (let d = parseIso(ev.date); isoDate(d) <= end; d = new Date(+d + 86400000)) out.push(isoDate(d));
-  return out;
-}
 const allDayIconSvg = '<svg class="evt-allday-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"></path><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"></path></svg>';
 
 function renderWeekView() {
@@ -1114,6 +1058,10 @@ function renderMonthView() {
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
   }
+  // Keep the month canvas to six complete week rows so it stays the same
+  // deliberate height as the week view even in shorter months.
+  const usedCells = first.getDay() + last.getDate();
+  for (let i = usedCells; i < 42; i++) html += '<div class="month-day other-month" aria-hidden="true"></div>';
   html += '</div>';
   document.getElementById('calendar-grid').innerHTML = html;
 }
@@ -1423,7 +1371,6 @@ async function saveEvent(e) {
     closeModal('add-event-modal');
     toast('Event updated ✏️');
     renderCalendar();
-    renderMiniCal();
     if (typeof renderTodayScreen === 'function') renderTodayScreen();
     scheduleReminders();
     return;
@@ -1451,7 +1398,6 @@ async function saveEvent(e) {
     : localEvents.concat([ev]));
   closeModal('add-event-modal');
   renderCalendar();
-  renderMiniCal();
   scheduleReminders();
 }
 
@@ -1488,7 +1434,6 @@ function loadFamilyEvents() {
     }
     saveEvents(serverEvents.concat(pending));
     renderCalendar();
-    renderMiniCal();
     renderTodayScreen();
     scheduleReminders();
   };
@@ -1596,7 +1541,6 @@ async function deleteCurrentEvent() {
       schoolEvents = schoolEvents.filter(e => !(e.subscriptionId === ev.subscriptionId && e.uid === ev.uid));
       closeModal('event-detail-modal');
       renderCalendar();
-      renderMiniCal();
       toast('School event removed 🎓');
       activeEventId = null;
       activeEventObj = null;
@@ -1622,7 +1566,6 @@ async function deleteCurrentEvent() {
   saveEvents(getEvents().filter(e => e.id !== activeEventId));
   closeModal('event-detail-modal');
   renderCalendar();
-  renderMiniCal();
   toast('Event deleted.');
   activeEventId = null;
   activeEventObj = null;
@@ -1716,7 +1659,10 @@ function saveSchedule() {
 
 function renderUploads() {
   const list = document.getElementById('uploads-list');
+  if (!list) return;
   const mine = getSchedules().filter(s => s.userId === sessionUser.id);
+  const history = document.getElementById('uploads-history');
+  if (history) history.hidden = !mine.length;
   list.innerHTML = mine.map(s =>
     `<div class="upload-item">
       <span>${s.type === 'application/pdf' ? '📄' : '🖼️'}</span>
@@ -2140,7 +2086,6 @@ function applyParsedSchedule() {
   loadFamilyEvents(); // push the new local events to the server (silent — no chat flood)
   closeModal('parse-modal');
   renderCalendar();
-  renderMiniCal();
   toast(`✅ Added ${added} events to your calendar!`);
 }
 
@@ -5041,7 +4986,6 @@ async function famImportSchoolData(payload) {
         saveEvents(events);
         loadFamilyEvents(); // push to the server (silent — no chat flood)
         renderCalendar();
-        renderMiniCal();
       }
     }
 
@@ -5114,6 +5058,12 @@ async function init() {
   const ok = await bootstrapSession();
   if (!ok) return; // redirected to /login
   showDashboard();
+  // Standalone feature pages link back into the shared shell with a tab query
+  // so the persistent navigation lands on the requested surface directly.
+  const requestedTab = new URLSearchParams(window.location.search).get('tab');
+  if (['today', 'calendar', 'homework', 'goals', 'activities', 'notes', 'settings'].includes(requestedTab)) {
+    switchNavTab(requestedTab);
+  }
   startKidRequestPolling(); // parents: surface pending kid sign-in requests
   registerServiceWorker().then(renderNotificationsControl).then(startReminderLoop);
 }

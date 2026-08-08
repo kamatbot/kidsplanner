@@ -437,14 +437,9 @@
           </div>
         </div>
 
-        <!-- Calendar Tab (canvas 1b) — page header (title + kid chips + view
-             toggle + date pager + Add) above the week/month grid, with a
-             footer legend + sync status row. Mini-cal/Upload Schedule move to
-             a secondary tools rail — the canvas itself doesn't show them, but
-             dropping them would orphan features nothing else replaces (see
-             REDESIGN-PLAN.md "nothing dropped"); the redundant streak card
-             (Today already owns the streak, canvas 1a) was removed as dead
-             duplicate UI. -->
+        <!-- Calendar Tab (canvas 1b) — one calendar surface with the header
+             carrying view/date controls plus compact utility actions, and a
+             footer legend + sync status row. -->
         <div class="tab-panel" id="tab-calendar">
           <div class="cal-page-header">
             <h1 class="page-title">Calendar</h1>
@@ -459,6 +454,14 @@
               <span id="cal-title" class="cal-title micro-label"></span>
               <button class="cal-nav-btn" onclick="calNext()" aria-label="Next">›</button>
             </div>
+            <div class="cal-header-actions" aria-label="Calendar tools">
+              <button type="button" class="btn-secondary cal-header-action" onclick="openUploadModal()">
+                <span aria-hidden="true">📎</span> Upload schedule
+              </button>
+              <button type="button" class="btn-secondary cal-header-action" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">
+                <span aria-hidden="true">🎓</span> Add school calendar
+              </button>
+            </div>
             <button class="btn-primary" onclick="openAddEventModal()">+ Add</button>
           </div>
 
@@ -466,24 +469,11 @@
             <section class="calendar-main">
               <div class="calendar-grid-scroll"><div id="calendar-grid" class="calendar-grid"></div></div>
               <div class="calendar-footer" id="calendar-footer"></div>
-            </section>
-
-            <aside class="calendar-tools">
-              <div class="card mini-calendar-card">
-                <div class="mini-cal-header">
-                  <button class="mini-nav" onclick="miniCalPrev()" aria-label="Previous month">‹</button>
-                  <span id="mini-cal-month" class="mini-cal-title"></span>
-                  <button class="mini-nav" onclick="miniCalNext()" aria-label="Next month">›</button>
-                </div>
-                <div class="mini-cal-grid" id="mini-cal-grid"></div>
-              </div>
-
-              <div class="calendar-tools-actions">
-                <button class="btn-upload" onclick="openUploadModal()">📎 Upload Schedule</button>
-                <button class="btn-upload btn-upload-secondary" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">🎓 Add school calendar</button>
+              <div class="calendar-upload-history" id="uploads-history" hidden>
+                <div class="micro-label">Uploaded schedules</div>
                 <div id="uploads-list" class="uploads-list"></div>
               </div>
-            </aside>
+            </section>
           </div>
         </div>
 
