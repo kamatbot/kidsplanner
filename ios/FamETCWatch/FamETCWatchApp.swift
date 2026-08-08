@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct FamETCWatchApp: App {
+    @WKApplicationDelegateAdaptor(FamETCWatchExtensionDelegate.self) private var extensionDelegate
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = WatchStore()
     @State private var isPaired = false
@@ -14,6 +15,7 @@ struct FamETCWatchApp: App {
                 } else {
                     WatchPairingView {
                         isPaired = true
+                        WatchPushRegistrationService.shared.requestAuthorizationAndRegister()
                     }
                 }
             }
@@ -30,6 +32,9 @@ struct FamETCWatchApp: App {
                 }
                 .onAppear {
                     isPaired = ((try? KeychainWatchCredentialStore().credential()) ?? nil) != nil
+                    if isPaired {
+                        WatchPushRegistrationService.shared.requestAuthorizationAndRegister()
+                    }
                 }
         }
     }

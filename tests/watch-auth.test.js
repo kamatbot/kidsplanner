@@ -13,6 +13,7 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const watchAuth = require("../lib/watch-auth");
 const watchRoutes = require("../lib/routes/watch");
+const notifications = require("../lib/fam-notifications");
 
 function makeFamily(label) {
   const parent = store.createUser(`${label}-parent@example.com`, `Parent ${label}`);
@@ -46,6 +47,7 @@ function buildRoutes() {
     watchAuth,
     store,
     family,
+    notifications,
     authLimiter(req, res, next) { next(); },
     requireAuth(req, res, next) {
       if (!req.user) return res.status(401).json({ error: "Not authenticated" });
@@ -159,6 +161,8 @@ test("watch request allowlist excludes sessions, creation, deletion, and trip su
   assert.equal(watchAuth.allowedRequest("PATCH", "/api/family/actions/a_1"), true);
   assert.equal(watchAuth.allowedRequest("PATCH", "/api/homework/h_1"), true);
   assert.equal(watchAuth.allowedRequest("PATCH", "/api/meals/shopping/s_1"), true);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/watch/push/register"), true);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/watch/push/unregister"), true);
   for (const [method, pathName] of [
     ["GET", "/api/me"],
     ["POST", "/api/family/actions"],
@@ -166,4 +170,30 @@ test("watch request allowlist excludes sessions, creation, deletion, and trip su
     ["GET", "/api/trips"],
     ["GET", "/api/chat/messages"],
   ]) assert.equal(watchAuth.allowedRequest(method, pathName), false, `${method} ${pathName}`);
+});
+
+test("watch push routes require a paired bearer and scope token registration to its target user", () => {
+  const { parent, fam } = makeFamily("push-routes");
+  const routes = buildRoutes();
+  const pairing = watchAuth.createPairing({
+    familyId: fam.id, targetUserId: parent.id, targetType: "parent",
+    targetName: parent.data.profile.name, createdBy: parent.id,
+  });
+  const claimed = watchAuth.claimPairing(pairing.pairing.code, "Push watch");
+  const token = "a".repeat(64);
+  const missingCredential = call(routes["POST /api/watch/push/register"], { user: parent, body: { token } });
+  assert.equal(missingCredential.statusCode, 403);
+  const registered = call(routes["POST /api/watch/push/register"], { user: parent, body: { token } });
+  // The route's requireWatch middleware is the authority; emulate the bearer
+  // resolution that server.js performs before entering the route stack.
+  assert.equal(registered.statusCode, 403);
+  const req = { user: parent, watchAuth: watchAuth.resolveToken(claimed.token), body: { token } };
+  const res = response();
+  let index = 0;
+  const handlers = routes["POST /api/watch/push/register"];
+  const next = () => { const handler = handlers[index++]; if (handler) handler(req, res, next); };
+  next();
+  assert.equal(res.statusCode, 200);
+  assert.equal(db.load().deviceTokens[parent.id][0].kind, "watch");
+  assert.equal(db.load().deviceTokens[parent.id][0].topic, "com.fametc.watch");
 });

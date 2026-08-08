@@ -14,6 +14,11 @@ protocol WatchPairingClient {
     func claimPairing(code: String, deviceLabel: String) async throws -> WatchCredential
 }
 
+protocol WatchPushAPIClient {
+    func registerWatchPushToken(_ token: String) async throws
+    func unregisterWatchPushToken(_ token: String) async throws
+}
+
 enum WatchAPIError: Error, LocalizedError {
     case badURL
     case disconnected
@@ -53,7 +58,7 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
@@ -61,6 +66,7 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient {
     private struct HomeworkItemResponse: Decodable { let homework: WatchHomework }
     private struct ShoppingItemResponse: Decodable { let item: WatchShoppingItem }
     private struct PairingResponse: Decodable { let token: String; let tokenKind: String }
+    private struct EmptyResponse: Decodable {}
 
     private let baseURL: URL
     private let session: URLSession
@@ -134,6 +140,24 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient {
             throw WatchAPIError.decoding("Fam ETC did not return a watch credential.")
         }
         return WatchCredential(kind: .bearerToken, value: response.token)
+    }
+
+    func registerWatchPushToken(_ token: String) async throws {
+        _ = try await request(
+            "/api/watch/push/register",
+            method: "POST",
+            body: ["token": token],
+            response: EmptyResponse.self
+        )
+    }
+
+    func unregisterWatchPushToken(_ token: String) async throws {
+        _ = try await request(
+            "/api/watch/push/unregister",
+            method: "POST",
+            body: ["token": token],
+            response: EmptyResponse.self
+        )
     }
 
     private static func makeSession() -> URLSession {

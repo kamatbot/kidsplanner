@@ -149,6 +149,49 @@ test("notifyChatMessage: APNs fan-out excludes the sender and never includes kid
   }
 });
 
+test("watch notifications use watch tokens and the watch APNs topic", async () => {
+  process.env.APNS_TEAM_ID = "team-watch";
+  process.env.APNS_KEY_ID = "key-watch";
+  process.env.APNS_BUNDLE_ID = "com.example.app";
+  process.env.APNS_KEY = "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----";
+
+  const apnsSender = require("../lib/apns-sender");
+  const originalCreate = apnsSender.createAPNsClient;
+  const sent = [];
+  apnsSender.createAPNsClient = () => ({
+    send: async (request) => {
+      sent.push(request);
+      return { ok: true, status: 200, apnsId: "watch", reason: null, shouldPruneToken: false };
+    },
+  });
+
+  delete require.cache[require.resolve("../lib/fam-notifications")];
+  const freshNotifications = require("../lib/fam-notifications");
+  freshNotifications.registerToken("watch-user", "watch-token", { kind: "watch", topic: "com.fametc.watch" });
+  freshNotifications.registerToken("watch-user", "ios-token");
+  try {
+    const result = await freshNotifications.notifyWatchAction({
+      recipientUserIds: ["watch-user"],
+      familyId: "family-watch",
+      action: { id: "a_watch", title: "Pack homework", status: "open", dueDate: new Date().toISOString().slice(0, 10) },
+    });
+    assert.deepEqual(result, { sent: 1, pruned: 0 });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].deviceToken, "watch-token");
+    assert.equal(sent[0].topic, "com.fametc.watch");
+    assert.equal(sent[0].payload.famType, "watch_sync");
+    assert.equal(sent[0].payload.resource, "actions");
+    assert.equal(sent[0].payload.aps.alert.title, "⚡ My next");
+  } finally {
+    apnsSender.createAPNsClient = originalCreate;
+    delete process.env.APNS_TEAM_ID;
+    delete process.env.APNS_KEY_ID;
+    delete process.env.APNS_BUNDLE_ID;
+    delete process.env.APNS_KEY;
+    delete require.cache[require.resolve("../lib/fam-notifications")];
+  }
+});
+
 test("sendWebToUser: prunes a subscription the sender reports as gone (404/410)", async () => {
   const userId = "user-prune";
   const goneSub = { endpoint: "https://push.example.com/gone", keys: { p256dh: "p", auth: "a" } };

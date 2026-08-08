@@ -85,6 +85,7 @@ targets:
         INFOPLIST_KEY_WKWatchOnly: YES
         TARGETED_DEVICE_FAMILY: "4"
         WATCHOS_DEPLOYMENT_TARGET: "11.0"
+        CODE_SIGN_ENTITLEMENTS: FamETCWatch/FamETCWatch.entitlements
 
   FamETCWatchTests:
     type: bundle.unit-test
