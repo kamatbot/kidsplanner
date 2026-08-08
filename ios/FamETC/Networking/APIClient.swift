@@ -23,7 +23,9 @@ enum APIError: Error, LocalizedError {
 /// changing the shared HTTP client or the server contract.
 protocol FamilyActionService {
     func familyActions() async throws -> [FamilyAction]
-    func updateFamilyAction(_ id: String, status: String) async throws -> FamilyAction
+    /// Updates the existing family-action PATCH contract. `snoozedUntil` is
+    /// only supplied for the existing `status: "snoozed"` transition.
+    func updateFamilyAction(_ id: String, status: String, snoozedUntil: String?) async throws -> FamilyAction
 }
 
 /// Typed async client for the Fam ETC JSON API. Shares `HTTPCookieStorage.shared`
@@ -176,10 +178,13 @@ final class APIClient: FamilyActionService {
         return r.actions
     }
 
-    /// Native phase 1 only completes an action. Parent creation/edit/delete/
-    /// snooze remains on the web surface until a later native phase.
-    func updateFamilyAction(_ id: String, status: String) async throws -> FamilyAction {
-        let r: FamilyActionResponse = try await request("/api/family/actions/\(id)", method: "PATCH", body: ["status": status])
+    /// Uses the same PATCH body as web Today. No native-only endpoint or
+    /// status is introduced; `snoozedUntil` is required by the server only
+    /// when status is `snoozed`.
+    func updateFamilyAction(_ id: String, status: String, snoozedUntil: String? = nil) async throws -> FamilyAction {
+        var body: [String: Any] = ["status": status]
+        if let snoozedUntil { body["snoozedUntil"] = snoozedUntil }
+        let r: FamilyActionResponse = try await request("/api/family/actions/\(id)", method: "PATCH", body: body)
         return r.action
     }
 

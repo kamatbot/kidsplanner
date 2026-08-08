@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The native phase-1 action surface. It is intentionally read-only apart from
-/// completion: parents keep creation/edit/delete/snooze on the web, while kids
-/// can complete only their own server-scoped actions.
+/// The native Today action surface. It reads the same server queue as web and
+/// keeps mutation controls role-scoped: shared/sibling rows are read-only for
+/// kids, while parents retain completion and snooze controls.
 struct ActionCard: View {
     @Environment(AppStore.self) private var store
 
@@ -23,6 +23,12 @@ struct ActionCard: View {
                         Text(store.isParent ? "What matters next" : "Your next steps")
                             .font(Typography.cardTitle)
                             .foregroundStyle(Palette.text)
+                        Text(store.isParent
+                             ? "Small next steps, together — with room for everyone."
+                             : "Your actions are here, plus shared family steps.")
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: Space.sm)
                     if store.isLoadingActions {
@@ -108,7 +114,8 @@ private struct ActionRow: View {
     let action: FamilyAction
 
     private var canComplete: Bool { store.canCompleteAction(action) }
-    private var isCompleting: Bool { store.completingActionIDs.contains(action.id) }
+    private var canSnooze: Bool { store.canSnoozeAction(action) }
+    private var isMutating: Bool { store.completingActionIDs.contains(action.id) }
     private var dueColor: Color {
         guard let due = ActionQueue.effectiveDue(action) else { return Palette.textSecond }
         let today = DateFmt.ymd.string(from: Date())
@@ -118,33 +125,62 @@ private struct ActionRow: View {
     }
 
     var body: some View {
-        Group {
-            if canComplete {
-                Button {
-                    Haptics.selection()
-                    Task { await store.completeAction(action) }
-                } label: {
-                    rowContent
-                }
-                .buttonStyle(.plain)
-                .disabled(isCompleting)
-                .accessibilityLabel("Mark \(action.title) complete")
-            } else {
-                rowContent
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Shared action: \(action.title)")
+        HStack(alignment: .top, spacing: Space.sm) {
+            completionControl
+                .frame(width: 32, height: 32)
+
+            rowContent
+
+            if canSnooze {
+                snoozeMenu
             }
         }
         .padding(.vertical, Space.sm + 2)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var completionControl: some View {
+        if canComplete {
+            Button {
+                Haptics.selection()
+                Task { await store.completeAction(action) }
+            } label: {
+                completionIndicator
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+            .disabled(isMutating)
+            .accessibilityLabel("Mark \(action.title) complete")
+        } else {
+            completionIndicator
+                .accessibilityHidden(true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var snoozeMenu: some View {
+        Menu {
+            ForEach(ActionSnoozePreset.allCases) { preset in
+                Button(preset.label) {
+                    Haptics.selection()
+                    Task { await store.snoozeAction(action, preset: preset) }
+                }
+            }
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Palette.textSecond)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isMutating)
+        .accessibilityLabel("Snooze \(action.title)")
     }
 
     @ViewBuilder private var rowContent: some View {
         HStack(alignment: .top, spacing: Space.md) {
-            completionIndicator
-                .frame(width: 24, height: 24)
-                .padding(.top, 1)
-
             VStack(alignment: .leading, spacing: 5) {
                 Text(action.title)
                     .font(Typography.body.weight(.semibold))
@@ -167,11 +203,13 @@ private struct ActionRow: View {
 
             Spacer(minLength: Space.xs)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(canComplete ? action.title : "Shared action: \(action.title)")
     }
 
     @ViewBuilder private var completionIndicator: some View {
         if canComplete {
-            if isCompleting {
+            if isMutating {
                 ProgressView().tint(Palette.accent)
             } else {
                 Image(systemName: "circle")

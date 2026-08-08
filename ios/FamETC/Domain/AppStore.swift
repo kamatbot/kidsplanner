@@ -657,7 +657,9 @@ final class AppStore {
 
     /// Load the server-scoped action queue. Actions are intentionally not put
     /// in DiskCache: the endpoint is `no-store`, and a stale kid action would
-    /// be a privacy and correctness hazard. Existing rows remain visible while
+    /// be a privacy and correctness hazard. The server applies the canonical
+    /// scope, then this client guard removes any unexpected sibling/cross-family
+    /// rows before they enter native state. Existing rows remain visible while
     /// a refresh is in flight; an initial failure is kept local to the card.
     func loadFamilyActions() async {
         guard family != nil else {
@@ -670,7 +672,7 @@ final class AppStore {
         isLoadingActions = true
         actionError = nil
         do {
-            actions = try await actionService.familyActions()
+            actions = try await actionService.familyActions().filter { canViewAction($0) }
         } catch {
             actionError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
@@ -753,15 +755,33 @@ final class AppStore {
         }
     }
 
-    /// Kids may complete only their own assigned actions; shared rows are
-    /// deliberately read-only. Parents may complete any family action. The
-    /// server remains authoritative for the PATCH even after this UI guard.
-    func canCompleteAction(_ action: FamilyAction) -> Bool {
-        guard !action.isDone else { return false }
+    /// Kids see shared actions plus actions assigned to their linked kid. This
+    /// mirrors the server scope and protects native state if an old/proxy
+    /// response ever contains a sibling or foreign-family row.
+    func canViewAction(_ action: FamilyAction) -> Bool {
+        guard action.familyId == family?.id else { return false }
         if isParent { return true }
         guard let ownKidId = me?.kidId else { return false }
-        return action.assigneeType == "kid" &&
+        return action.assigneeType == "family" || canManageOwnKidAction(action, ownKidId: ownKidId)
+    }
+
+    private func canManageOwnKidAction(_ action: FamilyAction, ownKidId: String) -> Bool {
+        action.assigneeType == "kid" &&
             action.assigneeId == ownKidId && action.kidId == ownKidId
+    }
+
+    /// Shared and sibling rows are intentionally read-only for kids. Parents
+    /// may complete any non-completed action; the server remains authoritative.
+    func canCompleteAction(_ action: FamilyAction) -> Bool {
+        guard canViewAction(action), !action.isDone else { return false }
+        return isParent || (me?.kidId.map { canManageOwnKidAction(action, ownKidId: $0) } ?? false)
+    }
+
+    /// Snoozing uses the same role boundary as completion. The web exposes the
+    /// same three presets and the server validates the resulting timestamp.
+    func canSnoozeAction(_ action: FamilyAction) -> Bool {
+        guard canViewAction(action), !action.isDone else { return false }
+        return isParent || (me?.kidId.map { canManageOwnKidAction(action, ownKidId: $0) } ?? false)
     }
 
     /// Optimistically completes an action, then replaces it with the server's
@@ -774,8 +794,38 @@ final class AppStore {
         let previous = actions[index]
         completingActionIDs.insert(action.id)
         actions[index].status = "done"
+        actions[index].snoozedUntil = nil
         do {
-            let updated = try await actionService.updateFamilyAction(action.id, status: "done")
+            let updated = try await actionService.updateFamilyAction(action.id, status: "done", snoozedUntil: nil)
+            if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
+                actions[currentIndex] = updated
+            }
+            actionError = nil
+        } catch {
+            if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
+                actions[currentIndex] = previous
+            } else {
+                actions.append(previous)
+            }
+            actionError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+        }
+        completingActionIDs.remove(action.id)
+    }
+
+    /// Optimistically snoozes an eligible action using the existing server
+    /// PATCH contract, then reconciles with the authoritative response.
+    func snoozeAction(_ action: FamilyAction, preset: ActionSnoozePreset) async {
+        guard canSnoozeAction(action), !completingActionIDs.contains(action.id),
+              let index = actions.firstIndex(where: { $0.id == action.id }) else { return }
+
+        let previous = actions[index]
+        let snoozedUntil = ActionQueue.snoozeUntil(preset)
+        completingActionIDs.insert(action.id)
+        actions[index].status = "snoozed"
+        actions[index].snoozedUntil = snoozedUntil
+        do {
+            let updated = try await actionService.updateFamilyAction(action.id, status: "snoozed", snoozedUntil: snoozedUntil)
             if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
                 actions[currentIndex] = updated
             }

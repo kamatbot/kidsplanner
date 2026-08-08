@@ -9,6 +9,24 @@ struct ActionDue: Equatable {
     let isSnoozed: Bool
 }
 
+/// The three snooze presets exposed by the web action queue. They remain
+/// client-side conveniences; the server stores only the resulting timestamp.
+enum ActionSnoozePreset: String, CaseIterable, Identifiable {
+    case laterToday = "later-today"
+    case tomorrow
+    case nextWeek = "next-week"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .laterToday: return "Later today"
+        case .tomorrow: return "Tomorrow"
+        case .nextWeek: return "Next week"
+        }
+    }
+}
+
 /// Pure ordering helpers for the native Today / My next card. The buckets match
 /// `public/js/action-queue.js`: overdue/today first, future dated actions next
 /// (including the web queue's later-dated tail), then undated shared actions.
@@ -19,6 +37,42 @@ enum ActionQueue {
         return formatter
     }()
     private static let isoWithoutFractionalSeconds = ISO8601DateFormatter()
+    private static let isoForSnooze: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    /// Produces the same explicit-timezone timestamps as the web presets.
+    /// Keeping this pure makes the native mutation easy to test without a
+    /// server or a wall-clock race.
+    static func snoozeUntil(_ preset: ActionSnoozePreset, now: Date = Date()) -> String {
+        var calendar = Calendar.current
+        calendar.timeZone = .autoupdatingCurrent
+        let target: Date
+
+        switch preset {
+        case .laterToday:
+            let currentHour = calendar.component(.hour, from: now)
+            var later = calendar.date(byAdding: .hour, value: currentHour + 2, to: calendar.startOfDay(for: now)) ?? now
+            later = calendar.date(bySetting: .minute, value: 0, of: later) ?? later
+            later = calendar.date(bySetting: .second, value: 0, of: later) ?? later
+            if calendar.startOfDay(for: later) != calendar.startOfDay(for: now) {
+                later = calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now) ?? later
+            }
+            target = later > now
+                ? later
+                : (calendar.date(byAdding: .minute, value: 30, to: now) ?? now)
+        case .tomorrow:
+            let tomorrow = calendar.date(byAdding: .day, value: 1, to: now) ?? now
+            target = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
+        case .nextWeek:
+            let nextWeek = calendar.date(byAdding: .day, value: 7, to: now) ?? now
+            target = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: nextWeek) ?? nextWeek
+        }
+
+        return isoForSnooze.string(from: target)
+    }
 
     static func effectiveDue(_ action: FamilyAction, now: Date = Date()) -> ActionDue? {
         if action.status == "snoozed",

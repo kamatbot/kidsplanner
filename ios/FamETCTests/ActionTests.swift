@@ -80,6 +80,32 @@ final class ActionQueueTests: XCTestCase {
         XCTAssertEqual(ActionQueue.dueLabel(for: action("overdue", dueDate: "2026-08-07"), now: now), "Overdue")
         XCTAssertEqual(ActionQueue.dueLabel(for: action("none"), now: now), "No date")
     }
+
+    func testSnoozePresetsMatchWebLocalTimes() {
+        let calendar = Calendar.current
+        let day = DateFmt.ymd.date(from: "2026-08-08")!
+        let now = calendar.date(bySettingHour: 10, minute: 15, second: 0, of: day)!
+        let late = calendar.date(bySettingHour: 23, minute: 30, second: 0, of: day)!
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let laterToday = parser.date(from: ActionQueue.snoozeUntil(.laterToday, now: now))!
+        XCTAssertEqual(calendar.component(.hour, from: laterToday), 12)
+        XCTAssertEqual(calendar.component(.minute, from: laterToday), 0)
+
+        let tomorrow = parser.date(from: ActionQueue.snoozeUntil(.tomorrow, now: now))!
+        XCTAssertEqual(calendar.dateComponents([.day], from: tomorrow), calendar.dateComponents([.day], from: calendar.date(byAdding: .day, value: 1, to: now)!))
+        XCTAssertEqual(calendar.component(.hour, from: tomorrow), 9)
+
+        let nextWeek = parser.date(from: ActionQueue.snoozeUntil(.nextWeek, now: now))!
+        XCTAssertEqual(calendar.dateComponents([.day], from: nextWeek), calendar.dateComponents([.day], from: calendar.date(byAdding: .day, value: 7, to: now)!))
+        XCTAssertEqual(calendar.component(.hour, from: nextWeek), 9)
+
+        let lateToday = parser.date(from: ActionQueue.snoozeUntil(.laterToday, now: late))!
+        XCTAssertEqual(calendar.dateComponents([.year, .month, .day], from: lateToday), calendar.dateComponents([.year, .month, .day], from: late))
+        XCTAssertEqual(calendar.component(.hour, from: lateToday), 23)
+        XCTAssertEqual(calendar.component(.minute, from: lateToday), 59)
+    }
 }
 
 @MainActor
@@ -90,16 +116,19 @@ final class ActionStoreTests: XCTestCase {
         var items: [FamilyAction]
         var updateError: Error?
         var updatedIDs: [String] = []
+        var updatedSnoozes: [String: String?] = [:]
 
         init(items: [FamilyAction]) { self.items = items }
 
         func familyActions() async throws -> [FamilyAction] { items }
 
-        func updateFamilyAction(_ id: String, status: String) async throws -> FamilyAction {
+        func updateFamilyAction(_ id: String, status: String, snoozedUntil: String?) async throws -> FamilyAction {
             if let updateError { throw updateError }
             updatedIDs.append(id)
+            updatedSnoozes[id] = snoozedUntil
             guard let index = items.firstIndex(where: { $0.id == id }) else { throw TestError.failed }
             items[index].status = status
+            items[index].snoozedUntil = snoozedUntil
             return items[index]
         }
     }
@@ -155,17 +184,58 @@ final class ActionStoreTests: XCTestCase {
     func testKidCanCompleteOwnActionButSharedActionIsReadOnly() async {
         let shared = action("shared")
         let own = action("own", assigneeType: "kid", kidId: "k1")
-        let service = FakeActionService(items: [shared, own])
+        let sibling = action("sibling", assigneeType: "kid", kidId: "k2")
+        let service = FakeActionService(items: [shared, own, sibling])
         let store = AppStore(actionService: service)
         store.family = family()
         store.me = User(id: "u-k1", email: "", name: "Ava", role: "kid", kidId: "k1")
 
         await store.loadFamilyActions()
+        XCTAssertEqual(store.actions.map(\.id), ["shared", "own"])
         XCTAssertFalse(store.canCompleteAction(shared))
         XCTAssertTrue(store.canCompleteAction(own))
+        XCTAssertFalse(store.canSnoozeAction(shared))
+        XCTAssertTrue(store.canSnoozeAction(own))
         await store.completeAction(shared)
         XCTAssertEqual(service.updatedIDs, [])
         XCTAssertEqual(store.actions.first(where: { $0.id == "shared" })?.status, "open")
+    }
+
+    func testKidCanSnoozeOwnActionAndRestoresOnFailure() async {
+        let own = action("own", assigneeType: "kid", kidId: "k1")
+        let service = FakeActionService(items: [own])
+        let store = AppStore(actionService: service)
+        store.family = family()
+        store.me = User(id: "u-k1", email: "", name: "Ava", role: "kid", kidId: "k1")
+
+        await store.loadFamilyActions()
+        await store.snoozeAction(own, preset: .tomorrow)
+
+        XCTAssertEqual(store.actions.first?.status, "snoozed")
+        XCTAssertNotNil(store.actions.first?.snoozedUntil)
+        XCTAssertEqual(service.updatedIDs, ["own"])
+        XCTAssertEqual(service.updatedSnoozes["own"]!, store.actions.first?.snoozedUntil)
+
+        service.updateError = TestError.failed
+        let snoozed = store.actions[0]
+        await store.snoozeAction(snoozed, preset: .nextWeek)
+        XCTAssertEqual(store.actions.first?.status, "snoozed")
+        XCTAssertEqual(store.actions.first?.snoozedUntil, snoozed.snoozedUntil)
+        XCTAssertNotNil(store.actionError)
+    }
+
+    func testParentCanSnoozeAnyAction() async {
+        let sibling = action("sibling", assigneeType: "kid", kidId: "k2")
+        let service = FakeActionService(items: [sibling])
+        let store = AppStore(actionService: service)
+        store.family = family()
+        store.me = User(id: "p1", email: "parent@example.com", name: "Parent", role: "parent", kidId: nil)
+
+        await store.loadFamilyActions()
+        XCTAssertTrue(store.canSnoozeAction(sibling))
+        await store.snoozeAction(sibling, preset: .laterToday)
+        XCTAssertEqual(service.updatedIDs, ["sibling"])
+        XCTAssertEqual(store.actions.first?.status, "snoozed")
     }
 
     func testKidCalendarVisibilityExcludesSiblingEvents() {
