@@ -1,0 +1,41 @@
+{
+  "errors": [],
+  "expected_dimensions": {
+    "height": 496,
+    "width": 416
+  },
+  "ok": true,
+  "screenshots": [
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 496,
+      "mode": "RGB",
+      "path": "AppStoreAssets/watchOS/Series11/01-my-next-urgent.png",
+      "sha256": "653132e7a038a4af8b69b2579fa20a5658316383252bd24ab58048a35222811b",
+      "width": 416
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 496,
+      "mode": "RGB",
+      "path": "AppStoreAssets/watchOS/Series11/02-homework.png",
+      "sha256": "954bacdb2ac7eceb1c7842d51a56d0a83eba5dfada85cf3081205636bd86c680",
+      "width": 416
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 496,
+      "mode": "RGB",
+      "path": "AppStoreAssets/watchOS/Series11/03-shopping.png",
+      "sha256": "1dee267aa52b05ae0fa8f78e1aa0da192185d756bdf9901e72e5139bc744d4b5",
+      "width": 416
+    }
+  ],
+  "warnings": []
+}

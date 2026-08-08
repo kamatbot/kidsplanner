@@ -1,0 +1,51 @@
+{
+  "errors": [],
+  "expected_dimensions": {
+    "height": 2752,
+    "width": 2064
+  },
+  "ok": true,
+  "screenshots": [
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2752,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPad/13-inch/01-today.png",
+      "sha256": "988be5b25ea2aa5d5e5e520098ffd56519369f9dc06067c8e193d2ec2f76922f",
+      "width": 2064
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2752,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPad/13-inch/02-calendar.png",
+      "sha256": "def642621c0d2e575f4fc49d4e5c89bb73a3851c13751fbafc2bcd9e5fccfd26",
+      "width": 2064
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2752,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPad/13-inch/03-shopping.png",
+      "sha256": "f8cc03e83c1ce4d82b800df5ddec2a2ae371eb03940c875fa9c2101c1b58cb31",
+      "width": 2064
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2752,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPad/13-inch/04-chat.png",
+      "sha256": "0bed5fb1c4b4401e6d9b05d69d9657313689b09a4e7014f05f904bc3b8055777",
+      "width": 2064
+    }
+  ],
+  "warnings": []
+}

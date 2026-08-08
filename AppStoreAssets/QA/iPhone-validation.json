@@ -1,0 +1,51 @@
+{
+  "errors": [],
+  "expected_dimensions": {
+    "height": 2622,
+    "width": 1206
+  },
+  "ok": true,
+  "screenshots": [
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2622,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPhone/6.3-inch/01-today.png",
+      "sha256": "80f172ae4a7e6af7f05f6776ed1e9bded89adbd021f7eda1a057e3d94f543266",
+      "width": 1206
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2622,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPhone/6.3-inch/02-calendar.png",
+      "sha256": "3ee1a0b3552101106b2cd307892543d510bb84e58abefe93ce13c0ba5b611144",
+      "width": 1206
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2622,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPhone/6.3-inch/03-shopping.png",
+      "sha256": "043121a9177f7303e1f43e962e0633ba1a5251d859dc6535d3a3b0e9c5bac9a4",
+      "width": 1206
+    },
+    {
+      "extension": ".png",
+      "format": "PNG",
+      "has_alpha": false,
+      "height": 2622,
+      "mode": "RGB",
+      "path": "AppStoreAssets/iPhone/6.3-inch/04-chat.png",
+      "sha256": "4082063b61fdc392e58c0f74ca30d5d8e76b1bdf94ed3084ffb7a2d362fcf5aa",
+      "width": 1206
+    }
+  ],
+  "warnings": []
+}
