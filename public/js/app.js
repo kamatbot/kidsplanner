@@ -180,6 +180,7 @@ let todayActionQueueState  = 'loading'; // loading | ready | error
 let todayActionQueueError  = '';
 let todayActionLoadToken   = 0;
 let todayActionComposerSource = null; // transient source reference for the open composer
+let chatAddTodayTipShownForUser = null;
 
 /* Chat */
 let chatMessages    = [];     // messages currently rendered, oldest-first
@@ -2086,6 +2087,25 @@ function todayActionSourcePayload(source) {
   return { sourceType: source.sourceType, sourceId: source.sourceId };
 }
 
+function chatAddTodayTipStorageKey() {
+  const userId = sessionUser && sessionUser.id ? String(sessionUser.id) : 'anon';
+  return `fam_chat_add_today_tip_${encodeURIComponent(userId)}`;
+}
+
+function chatAddTodayTipShouldShow() {
+  const userId = sessionUser && sessionUser.id ? String(sessionUser.id) : 'anon';
+  if (chatAddTodayTipShownForUser === userId) return false;
+  try {
+    if (localStorage.getItem(chatAddTodayTipStorageKey()) === '1') {
+      chatAddTodayTipShownForUser = userId;
+      return false;
+    }
+    localStorage.setItem(chatAddTodayTipStorageKey(), '1');
+  } catch (e) { /* first-use guidance remains session-only when storage is unavailable */ }
+  chatAddTodayTipShownForUser = userId;
+  return true;
+}
+
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
@@ -2099,8 +2119,9 @@ function renderChatMessages() {
     const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--accent)') : 'var(--accent)';
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
     const pinBtn = (!m.deleted && m.text) ? `<button class="chat-msg-ctrl" onclick="handlePinChatMessage('${m.id}')" title="Pin to notes">📌</button>` : '';
+    const showAddToTodayTip = chatMessageCanAddToToday(m) && chatAddTodayTipShouldShow();
     const addToTodayBtn = chatMessageCanAddToToday(m)
-      ? `<button type="button" class="chat-msg-add-action" onclick="openTodayActionComposerFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="today-action-composer" aria-label="Add message to Today" title="Add message to Today">Add to Today</button>`
+      ? `<span class="chat-msg-add-action-wrap"><button type="button" class="chat-msg-ctrl chat-msg-add-action" onclick="openTodayActionComposerFromChatMessage('${todayActionIdArg(m.id)}')" aria-controls="today-action-composer" aria-label="Add message to Today" title="Add message to Today"${showAddToTodayTip ? ' aria-describedby="chat-add-today-tip"' : ''}>⊕</button>${showAddToTodayTip ? '<span id="chat-add-today-tip" class="chat-add-today-tip" role="tooltip">Turn this message into a Today action</span>' : ''}</span>`
       : '';
     const controls = !isKidSession() ? `
       <div class="chat-msg-controls">
@@ -3078,12 +3099,27 @@ function todayActionDueLabel(action, now) {
   };
 }
 
-function todayActionCanManage(action) {
+// The server scopes kid responses to shared actions plus the signed-in kid's
+// own actions. Keep this client guard explicit as a presentation/mutation
+// affordance only; the API remains authoritative for every write.
+function todayActionCanManageForViewer(action, kidSession, ownKidId) {
   if (!action) return false;
-  if (!isKidSession()) return true;
-  const ownKidId = sessionUser && sessionUser.kidId;
+  if (!kidSession) return true;
+  if (!ownKidId) return false;
   return action.assigneeType === 'kid' &&
     (action.assigneeId === ownKidId || action.kidId === ownKidId);
+}
+
+function todayActionCanManage(action) {
+  return todayActionCanManageForViewer(
+    action,
+    isKidSession(),
+    sessionUser && sessionUser.kidId
+  );
+}
+
+function todayActionCanDeleteForViewer(kidSession) {
+  return !kidSession;
 }
 
 function todayActionSnoozeOptions(action) {
@@ -3099,6 +3135,7 @@ function todayActionSnoozeOptions(action) {
 
 function renderTodayActionRow(action, now, later) {
   const canManage = todayActionCanManage(action);
+  const canDelete = todayActionCanDeleteForViewer(isKidSession());
   const id = todayActionIdArg(action.id);
   const title = esc(action.title || 'Untitled action');
   const due = todayActionDueLabel(action, now);
@@ -3111,8 +3148,10 @@ function renderTodayActionRow(action, now, later) {
     ? `<button type="button" class="today-action-check" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete" title="Mark complete">○</button>`
     : '<span class="today-action-check" aria-hidden="true">·</span>';
   const controls = canManage
-    ? `${todayActionSnoozeOptions(action)}
+    ? `${todayActionSnoozeOptions(action)}${canDelete
+      ? `
        <button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${id}')" aria-label="Delete ${title}">Delete</button>`
+      : ''}`
     : '';
   return `<article class="today-action-row${later ? ' later' : ''}">
     ${check}
@@ -3157,16 +3196,33 @@ function renderTodayCompletedSection(items) {
         <span class="today-action-completed-mark" aria-hidden="true">✓</span>
         <span>${esc(action.title || 'Untitled action')}</span>
         <span class="today-action-assignee">${esc(todayActionAssigneeLabel(action))}</span>
-        ${!isKidSession() ? `<button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${todayActionIdArg(action.id)}')" aria-label="Delete completed ${esc(action.title || 'action')}">Delete</button>` : ''}
+        ${todayActionCanDeleteForViewer(isKidSession()) ? `<button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${todayActionIdArg(action.id)}')" aria-label="Delete completed ${esc(action.title || 'action')}">Delete</button>` : ''}
       </div>`).join('')}
       ${items.length > visible.length ? `<div class="today-action-more">${items.length - visible.length} more completed</div>` : ''}
     </div>
   </section>`;
 }
 
+function renderTodayActionRoleCopy() {
+  const titleEl = document.getElementById('today-actions-title');
+  const headingEl = titleEl && titleEl.parentElement;
+  if (!headingEl) return;
+  const kid = isKidSession();
+  const eyebrowEl = headingEl.querySelector('.micro-label');
+  const descriptionEl = headingEl.querySelector('p');
+  if (eyebrowEl) eyebrowEl.textContent = kid ? 'My next' : 'Family actions';
+  titleEl.textContent = kid ? 'Your next steps' : 'What matters next';
+  if (descriptionEl) {
+    descriptionEl.textContent = kid
+      ? 'Your actions are here, plus shared family steps.'
+      : 'Small next steps, together — with room for everyone.';
+  }
+}
+
 function renderTodayActionQueue() {
   const listEl = document.getElementById('today-actions-list');
   if (!listEl) return;
+  renderTodayActionRoleCopy();
   renderTodayActionAssigneeOptions();
 
   const addBtn = document.getElementById('today-action-add-btn');

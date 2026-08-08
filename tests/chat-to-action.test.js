@@ -61,12 +61,15 @@ test("chat source payload is transient and carries only the existing action sour
 
 test("render and handoff keep source state scoped to the family chat composer", () => {
   assert.match(appSource, /const addToTodayBtn = chatMessageCanAddToToday\(m\)/);
-  assert.match(appSource, /class="chat-msg-add-action"/);
+  assert.match(appSource, /class="chat-msg-ctrl chat-msg-add-action"/);
   assert.match(appSource, /aria-controls="today-action-composer"/);
   assert.match(appSource, /todayActionComposerSource = \{ sourceType: 'chat', sourceId: message\.id \}/);
   assert.match(appSource, /Object\.assign\(payload, todayActionSourcePayload\(todayActionComposerSource\)\)/);
   assert.match(appSource, /composer\.scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
   assert.match(appSource, /if \(titleEl && typeof titleEl\.focus === 'function'\) titleEl\.focus\(\);/);
-  assert.match(stylesSource, /\.chat-msg-add-action[\s\S]*?min-height: 44px/);
+  assert.match(stylesSource, /\.chat-msg-add-action[\s\S]*?width: 24px/);
+  assert.match(appSource, /Turn this message into a Today action/);
+  assert.match(appSource, /aria-describedby=\"chat-add-today-tip\"/);
+  assert.match(stylesSource, /\.chat-add-today-tip/);
   assert.match(stylesSource, /\.chat-msg-add-action:focus-visible/);
 });
