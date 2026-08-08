@@ -195,6 +195,20 @@
             </button>
           </div>
 
+          <section class="card today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
+            <div class="today-setup-header">
+              <div>
+                <div class="micro-label">Quick setup</div>
+                <h2 id="today-setup-title">Make Fam ETC useful this week</h2>
+                <p id="today-setup-intro">A few small connections now will save time later. You can come back whenever you're ready.</p>
+              </div>
+              <div class="today-setup-header-actions">
+                <button type="button" class="btn-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Skip for now</button>
+              </div>
+            </div>
+            <div id="today-setup-content"></div>
+          </section>
+
           <!-- Today action queue — manual family commitments are the primary
                hierarchy. Supporting schedule/homework/habits cards remain
                below as context; see renderTodayActionQueue() in app.js. -->
@@ -629,7 +643,7 @@
           <div id="settings-parent-only">
             <h4 style="margin-bottom:10px">Parents</h4>
             <div id="manage-family-parents" style="margin-bottom:12px"></div>
-            <div id="co-parent-invite" style="margin-bottom:28px"></div>
+            <div id="co-parent-invite" tabindex="-1" style="margin-bottom:28px"></div>
 
             <h4 style="margin-bottom:10px">Kids</h4>
             <div id="manage-family-kids" style="margin-bottom:24px"></div>
@@ -1326,6 +1340,7 @@
 <script src="/js/sat.js"></script>
 <script src="/js/school.js"></script>
 <script src="/js/action-queue.js"></script>
+<script src="/js/onboarding.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

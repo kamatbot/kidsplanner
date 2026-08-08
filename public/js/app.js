@@ -471,8 +471,11 @@ async function handleCreateFamily(e) {
     save('fam_family', currentFamily);
     hideFirstRunPanel();
     renderKidSwitcher();
+    renderManageFamily();
+    renderTodayScreen();
     toast('Family created! 🎉');
     loadFamilyActions();
+    loadSchoolFeedsInfo().then(() => { renderSchoolSettings(); renderTodayScreen(); });
   } catch (err) {
     if (errEl) errEl.textContent = err.message;
   }
@@ -489,8 +492,11 @@ async function handleJoinFamily(e) {
     save('fam_family', currentFamily);
     hideFirstRunPanel();
     renderKidSwitcher();
+    renderManageFamily();
+    renderTodayScreen();
     toast('Joined family! 🎉');
     loadFamilyActions();
+    loadSchoolFeedsInfo().then(() => { renderSchoolSettings(); renderTodayScreen(); });
   } catch (err) {
     if (errEl) errEl.textContent = err.message;
   }
@@ -514,6 +520,7 @@ async function handleAddKid(e) {
     renderKidSwitcher();
     renderManageFamily();
     renderTodayActionAssigneeOptions();
+    renderTodaySetupCard();
     toast(`${name || 'Kid'} added to the family! 👋`);
     if (errEl) errEl.textContent = '';
   } catch (err) {
@@ -530,6 +537,7 @@ async function handleRemoveKid(kidId) {
     renderKidSwitcher();
     renderManageFamily();
     renderTodayActionAssigneeOptions();
+    renderTodaySetupCard();
     toast('Kid profile removed.');
   } catch (err) {
     toast(`❌ ${err.message}`);
@@ -683,6 +691,7 @@ async function handleRemoveParent(userId) {
     currentFamily = res.family;
     save('fam_family', currentFamily);
     renderManageFamily();
+    renderTodaySetupCard();
     toast('Co-parent removed from the family.');
   } catch (err) {
     toast(`❌ ${err.message}`);
@@ -2340,6 +2349,7 @@ async function handleApproveKid(id) {
       currentFamily = res.family;
       save('fam_family', currentFamily);
       renderKidSwitcher();
+      renderTodaySetupCard();
     }
     toast('Approved! They can finish setting up on their device. ✅');
   } catch (err) { toast(`❌ ${err.message}`); }
@@ -2759,6 +2769,99 @@ async function toggleHomeworkDone(id) {
    empty state instead of invented numbers. The Daily 5 card below reuses
    the existing quote/word/quiz/news widgets verbatim (see index.html).
 ============================================================ */
+function todaySetupFocusTarget(selector) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  if (typeof target.scrollIntoView === 'function') {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const focusable = target.matches && target.matches('button, input, select, textarea, a, [tabindex]')
+    ? target
+    : target.querySelector && target.querySelector('button, input, select, textarea, a, [tabindex]');
+  if (focusable && typeof focusable.focus === 'function') {
+    focusable.focus({ preventScroll: true });
+  }
+}
+
+function takeTodaySetupStep(stepId) {
+  if (isKidSession() || !currentFamily) return;
+  if (stepId === 'action') {
+    openTodayActionComposer();
+    return;
+  }
+  switchNavTab('settings');
+  const target = {
+    kid: '#add-kid-form',
+    parent: '#co-parent-invite',
+    school: '#school-calendars-card',
+  }[stepId];
+  if (target) setTimeout(() => todaySetupFocusTarget(target), 0);
+}
+
+function skipTodaySetup() {
+  if (isKidSession() || !currentFamily || !window.famTodaySetupGuide) return;
+  window.famTodaySetupGuide.setSkipped(currentFamily.id, true);
+  renderTodaySetupCard();
+}
+
+function resumeTodaySetup() {
+  if (isKidSession() || !currentFamily || !window.famTodaySetupGuide) return;
+  window.famTodaySetupGuide.setSkipped(currentFamily.id, false);
+  renderTodaySetupCard();
+}
+
+function renderTodaySetupCard() {
+  const card = document.getElementById('today-setup-card');
+  const content = document.getElementById('today-setup-content');
+  if (!card || !content) return;
+  if (isKidSession() || !currentFamily || !window.famTodaySetupGuide) {
+    card.hidden = true;
+    content.innerHTML = '';
+    return;
+  }
+
+  const guide = window.famTodaySetupGuide;
+  const state = guide.derive(currentFamily, schoolFeedsInfo, todayActionItems, todayActionQueueState);
+  const skipped = !state.complete && guide.isSkipped(currentFamily.id);
+  card.hidden = false;
+  card.classList.toggle('today-setup-complete', state.complete);
+  card.classList.toggle('today-setup-skipped', skipped);
+
+  const skipBtn = document.getElementById('today-setup-skip-btn');
+  if (skipBtn) skipBtn.hidden = state.complete || skipped;
+
+  if (state.complete) {
+    content.innerHTML = `
+      <div class="today-setup-success" role="status" aria-live="polite">
+        <span class="today-setup-success-mark" aria-hidden="true">✓</span>
+        <div><strong>You're ready to save family time.</strong><p>Kids, co-parent, school calendar, and shared actions are connected.</p></div>
+      </div>`;
+    return;
+  }
+
+  if (skipped) {
+    content.innerHTML = `
+      <div class="today-setup-resume" role="status">
+        <div><strong>Setup is paused.</strong><p>Resume whenever you want to finish connecting your family.</p></div>
+        <button type="button" class="btn-secondary today-setup-resume-btn" onclick="resumeTodaySetup()">Finish setup</button>
+      </div>`;
+    return;
+  }
+
+  content.innerHTML = `<ol class="today-setup-steps">${state.steps.map((step) => {
+    const status = step.complete
+      ? '<span class="today-setup-step-status complete" aria-label="Complete">✓</span><span>Complete</span>'
+      : step.pending
+        ? '<span class="today-setup-step-status pending" aria-label="Checking">…</span><span>Checking…</span>'
+        : '<span class="today-setup-step-status" aria-label="Not complete">○</span><span>Not yet</span>';
+    const action = `<button type="button" class="btn-secondary today-setup-step-action" onclick="takeTodaySetupStep('${step.id}')">${step.id === 'action' ? 'Add action' : step.id === 'parent' ? 'Invite parent' : step.id === 'school' ? 'Connect calendar' : 'Add kid'}</button>`;
+    return `<li class="today-setup-step${step.complete ? ' is-complete' : ''}">
+      <div class="today-setup-step-copy"><div class="today-setup-step-title">${step.label}</div><p>${step.description}</p></div>
+      <div class="today-setup-step-meta">${status}${step.complete ? '' : action}</div>
+    </li>`;
+  }).join('')}</ol>`;
+}
+
 function todayActionIdArg(id) {
   return String(id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, '');
 }
@@ -2991,6 +3094,7 @@ async function loadFamilyActions() {
   const token = ++todayActionLoadToken;
   todayActionQueueState = 'loading';
   todayActionQueueError = '';
+  renderTodaySetupCard();
   renderTodayActionQueue();
   try {
     const items = await window.auth.getFamilyActions();
@@ -3003,6 +3107,7 @@ async function loadFamilyActions() {
     todayActionQueueState = 'error';
     todayActionQueueError = (err && err.message) || 'Could not load family actions.';
   }
+  renderTodaySetupCard();
   renderTodayActionQueue();
   return todayActionItems;
 }
@@ -3174,6 +3279,7 @@ function renderTodayScreen() {
     }
   }
 
+  renderTodaySetupCard();
   renderTodayActionQueue();
   renderTodaySchedule(todayIso);
   renderTodayHomework(todayIso);
