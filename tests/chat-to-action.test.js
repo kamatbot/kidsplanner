@@ -8,6 +8,10 @@ const vm = require("vm");
 
 const appSource = fs.readFileSync(path.join(__dirname, "..", "public/js/app.js"), "utf8");
 const stylesSource = fs.readFileSync(path.join(__dirname, "..", "public/css/styles.css"), "utf8");
+const renderChatStart = appSource.indexOf("function renderChatMessages()");
+const renderChatEnd = appSource.indexOf("async function loadChatMessages()");
+assert.ok(renderChatStart >= 0 && renderChatEnd > renderChatStart, "expected renderChatMessages boundaries");
+const renderChatSource = appSource.slice(renderChatStart, renderChatEnd);
 
 function extractFunction(name) {
   const start = appSource.indexOf(`function ${name}(`);
@@ -61,6 +65,10 @@ test("chat source payload is transient and carries only the existing action sour
 });
 
 test("render and handoff keep source state scoped to the family chat composer", () => {
+  assert.doesNotMatch(renderChatSource, /handleFlagChatMessage/);
+  assert.doesNotMatch(renderChatSource, /Report \/ flag message/);
+  assert.match(renderChatSource, /handlePinChatMessage/);
+  assert.match(renderChatSource, /handleDeleteChatMessage/);
   assert.match(appSource, /const addToTodayBtn = chatMessageCanAddToToday\(m\)/);
   assert.match(appSource, /class="chat-msg-ctrl chat-msg-add-action"/);
   assert.match(appSource, /aria-controls="today-action-composer"/);

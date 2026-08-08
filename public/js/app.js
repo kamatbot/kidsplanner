@@ -2137,11 +2137,9 @@ function renderChatMessages() {
       <div class="chat-msg-controls">
         ${pinBtn}
         <button class="chat-msg-ctrl" onclick="handleDeleteChatMessage('${m.id}')" title="Delete message">🗑️</button>
-        <button class="chat-msg-ctrl" onclick="handleFlagChatMessage('${m.id}')" title="Report / flag message">🚩</button>
       </div>` : `
       <div class="chat-msg-controls">
         ${pinBtn}
-        <button class="chat-msg-ctrl" onclick="handleFlagChatMessage('${m.id}')" title="Report / flag message">🚩</button>
       </div>`;
     return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
       ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}</div>` : ''}
