@@ -170,6 +170,14 @@ let editingEventId  = null;   // set by editCurrentEvent(); when non-null saveEv
 let pendingDate     = null;   // pre-filled date for add-event modal
 let uploadedFile    = null;
 
+/* Today action queue (phase 2) — server is the source of truth. The list is
+   intentionally independent from schedule/homework/meals so a queue outage
+   can show a retry state without taking down the rest of Today. */
+let todayActionItems       = [];
+let todayActionQueueState  = 'loading'; // loading | ready | error
+let todayActionQueueError  = '';
+let todayActionLoadToken   = 0;
+
 /* Chat */
 let chatMessages    = [];     // messages currently rendered, oldest-first
 let chatLastAt      = null;   // createdAt cursor (used for the one-shot ?since= fetch)
@@ -464,6 +472,7 @@ async function handleCreateFamily(e) {
     hideFirstRunPanel();
     renderKidSwitcher();
     toast('Family created! 🎉');
+    loadFamilyActions();
   } catch (err) {
     if (errEl) errEl.textContent = err.message;
   }
@@ -481,6 +490,7 @@ async function handleJoinFamily(e) {
     hideFirstRunPanel();
     renderKidSwitcher();
     toast('Joined family! 🎉');
+    loadFamilyActions();
   } catch (err) {
     if (errEl) errEl.textContent = err.message;
   }
@@ -503,6 +513,7 @@ async function handleAddKid(e) {
     document.getElementById('kid-grade').value = '';
     renderKidSwitcher();
     renderManageFamily();
+    renderTodayActionAssigneeOptions();
     toast(`${name || 'Kid'} added to the family! 👋`);
     if (errEl) errEl.textContent = '';
   } catch (err) {
@@ -518,6 +529,7 @@ async function handleRemoveKid(kidId) {
     save('fam_family', currentFamily);
     renderKidSwitcher();
     renderManageFamily();
+    renderTodayActionAssigneeOptions();
     toast('Kid profile removed.');
   } catch (err) {
     toast(`❌ ${err.message}`);
@@ -713,6 +725,7 @@ function showDashboard() {
   renderStreak();
   renderManageFamily();
   renderTodayScreen();
+  loadFamilyActions();
   renderChatDockAvatars();
   applyChatDockState('today');
 
@@ -2746,6 +2759,389 @@ async function toggleHomeworkDone(id) {
    empty state instead of invented numbers. The Daily 5 card below reuses
    the existing quote/word/quiz/news widgets verbatim (see index.html).
 ============================================================ */
+function todayActionIdArg(id) {
+  return String(id || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/[\r\n]/g, '');
+}
+
+function todayActionParentOptions() {
+  const seen = new Set();
+  const parents = [];
+  const source = (currentFamily && currentFamily.parents) ||
+    ((currentFamily && currentFamily.parentIds) || []).map((id) => ({ id, name: '' }));
+  source.forEach((parent) => {
+    if (!parent || !parent.id || seen.has(parent.id)) return;
+    seen.add(parent.id);
+    parents.push({ id: parent.id, name: parent.name || (sessionUser && parent.id === sessionUser.id ? sessionUser.name : '') || 'Parent' });
+  });
+  if (!isKidSession() && sessionUser && !seen.has(sessionUser.id)) {
+    parents.unshift({ id: sessionUser.id, name: sessionUser.name || 'You' });
+  }
+  return parents;
+}
+
+function renderTodayActionAssigneeOptions() {
+  const select = document.getElementById('today-action-assignee');
+  if (!select) return;
+  const previous = select.value || 'family';
+  const parents = todayActionParentOptions();
+  const kids = (currentFamily && currentFamily.kids) || [];
+  let html = '<option value="family">Family / shared</option>';
+  if (parents.length) {
+    html += '<optgroup label="Parents">' + parents.map((parent) =>
+      `<option value="parent:${todayActionIdArg(parent.id)}">${esc(parent.id === (sessionUser && sessionUser.id) ? 'You' : parent.name)}</option>`
+    ).join('') + '</optgroup>';
+  }
+  if (kids.length) {
+    html += '<optgroup label="Kids">' + kids.map((kid) =>
+      `<option value="kid:${todayActionIdArg(kid.id)}">${esc(kid.name)}</option>`
+    ).join('') + '</optgroup>';
+  }
+  select.innerHTML = html;
+  const values = Array.from(select.options).map((option) => option.value);
+  select.value = values.includes(previous) ? previous : 'family';
+}
+
+function todayActionAssigneeLabel(action) {
+  if (!action || action.assigneeType === 'family') return 'Family / shared';
+  if (action.assigneeType === 'parent') {
+    const parent = todayActionParentOptions().find((item) => item.id === action.assigneeId);
+    if (parent && sessionUser && parent.id === sessionUser.id) return 'You';
+    return parent ? parent.name : 'Parent';
+  }
+  const kidId = action.assigneeId || action.kidId;
+  return kidNameFor(kidId) || 'Kid';
+}
+
+function todayActionSourceLabel(sourceType) {
+  const labels = {
+    manual: 'Manual',
+    homework: 'Homework',
+    calendar: 'Calendar',
+    meal: 'Dinner',
+    trip: 'Trip',
+    chat: 'Chat',
+    school: 'School',
+  };
+  return labels[sourceType] || (sourceType ? String(sourceType) : '');
+}
+
+function todayActionDueLabel(action, now) {
+  const due = window.famActionQueue && window.famActionQueue.effectiveDue(action, now);
+  if (!due) return { text: 'No date', className: '' };
+  const today = isoDate(now);
+  const tomorrow = isoDate(new Date(now.getTime() + 86400000));
+  let dayText;
+  let className = '';
+  if (due.date < today) {
+    dayText = 'Overdue';
+    className = 'overdue';
+  } else if (due.date === today) {
+    dayText = 'Today';
+    className = 'today';
+  } else if (due.date === tomorrow) {
+    dayText = 'Tomorrow';
+  } else {
+    dayText = formatShort(parseIso(due.date));
+  }
+  const withTime = due.time ? `${dayText} · ${fmt12(due.time)}` : dayText;
+  return {
+    text: due.snoozed ? `Snoozed until ${withTime}` : withTime,
+    className,
+  };
+}
+
+function todayActionCanManage(action) {
+  if (!action) return false;
+  if (!isKidSession()) return true;
+  const ownKidId = sessionUser && sessionUser.kidId;
+  return action.assigneeType === 'kid' &&
+    (action.assigneeId === ownKidId || action.kidId === ownKidId);
+}
+
+function todayActionSnoozeOptions(action) {
+  const id = todayActionIdArg(action.id);
+  const title = esc(action.title || 'action');
+  return `<select class="today-action-snooze" aria-label="Snooze ${title}" onchange="snoozeTodayActionFromSelect(this,'${id}')">
+    <option value="">Snooze…</option>
+    <option value="later-today">Later today</option>
+    <option value="tomorrow">Tomorrow</option>
+    <option value="next-week">Next week</option>
+  </select>`;
+}
+
+function renderTodayActionRow(action, now, later) {
+  const canManage = todayActionCanManage(action);
+  const id = todayActionIdArg(action.id);
+  const title = esc(action.title || 'Untitled action');
+  const due = todayActionDueLabel(action, now);
+  const source = todayActionSourceLabel(action.sourceType);
+  const snoozed = action.status === 'snoozed' && due.text.indexOf('Snoozed until') === 0;
+  const statusBadge = snoozed
+    ? '<span class="today-action-status-badge snoozed">Snoozed</span>'
+    : '<span class="today-action-status-badge">Open</span>';
+  const check = canManage
+    ? `<button type="button" class="today-action-check" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete" title="Mark complete">○</button>`
+    : '<span class="today-action-check" aria-hidden="true">·</span>';
+  const controls = canManage
+    ? `${todayActionSnoozeOptions(action)}
+       <button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${id}')" aria-label="Delete ${title}">Delete</button>`
+    : '';
+  return `<article class="today-action-row${later ? ' later' : ''}">
+    ${check}
+    <div class="today-action-body">
+      <div class="today-action-main">
+        <span class="today-action-title">${title}</span>
+      </div>
+      <div class="today-action-meta">
+        <span class="today-action-due ${due.className}">${esc(due.text)}</span>
+        <span class="today-action-assignee">${esc(todayActionAssigneeLabel(action))}</span>
+        ${statusBadge}
+        ${source ? `<span class="today-action-source">${esc(source)}</span>` : ''}
+      </div>
+      ${action.notes ? `<div class="today-action-notes">${esc(action.notes)}</div>` : ''}
+    </div>
+    ${controls ? `<div class="today-action-controls">${controls}</div>` : ''}
+  </article>`;
+}
+
+function renderTodayActionSection(title, entries, now, id, laterCount) {
+  if (!entries.length) return '';
+  return `<section class="today-action-section" aria-labelledby="${id}">
+    <div class="today-action-section-header">
+      <h3 class="today-action-section-title" id="${id}">${title}</h3>
+      <span class="today-action-section-count">${entries.length}</span>
+    </div>
+    ${laterCount ? `<div class="today-actions-later-note">${laterCount} action${laterCount === 1 ? '' : 's'} due later</div>` : ''}
+    <div class="today-action-list">${entries.map((entry) => renderTodayActionRow(entry.action || entry, now, !!entry.later)).join('')}</div>
+  </section>`;
+}
+
+function renderTodayCompletedSection(items) {
+  if (!items.length) return '';
+  const visible = items.slice(0, 5);
+  return `<section class="today-action-section" aria-labelledby="today-actions-completed-label">
+    <div class="today-action-section-header">
+      <h3 class="today-action-section-title" id="today-actions-completed-label">Completed</h3>
+      <span class="today-action-section-count">${items.length}</span>
+    </div>
+    <div class="today-action-completed-list">
+      ${visible.map((action) => `<div class="today-action-completed-row">
+        <span class="today-action-completed-mark" aria-hidden="true">✓</span>
+        <span>${esc(action.title || 'Untitled action')}</span>
+        <span class="today-action-assignee">${esc(todayActionAssigneeLabel(action))}</span>
+        ${!isKidSession() ? `<button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${todayActionIdArg(action.id)}')" aria-label="Delete completed ${esc(action.title || 'action')}">Delete</button>` : ''}
+      </div>`).join('')}
+      ${items.length > visible.length ? `<div class="today-action-more">${items.length - visible.length} more completed</div>` : ''}
+    </div>
+  </section>`;
+}
+
+function renderTodayActionQueue() {
+  const listEl = document.getElementById('today-actions-list');
+  if (!listEl) return;
+  renderTodayActionAssigneeOptions();
+
+  const addBtn = document.getElementById('today-action-add-btn');
+  if (addBtn) {
+    addBtn.hidden = isKidSession();
+    addBtn.setAttribute('aria-expanded', String(!document.getElementById('today-action-composer')?.hidden));
+  }
+
+  const statusEl = document.getElementById('today-actions-status');
+  const loadingWithoutData = todayActionQueueState === 'loading' && !todayActionItems.length;
+  if (statusEl) {
+    if (todayActionQueueState === 'error') {
+      const message = todayActionQueueError || 'The action queue is unavailable right now.';
+      statusEl.innerHTML = `<div class="today-actions-error" role="alert"><span>${esc(message)}</span><button type="button" class="btn-secondary" onclick="loadFamilyActions()">Try again</button></div>`;
+    } else if (loadingWithoutData) {
+      statusEl.innerHTML = '<div class="today-actions-state" aria-busy="true">Loading family actions…</div>';
+    } else if (todayActionQueueState === 'loading') {
+      statusEl.innerHTML = '<div class="today-actions-state" aria-busy="true">Updating the family queue…</div>';
+    } else {
+      statusEl.innerHTML = '';
+    }
+  }
+
+  listEl.setAttribute('aria-busy', String(todayActionQueueState === 'loading'));
+  if (!window.famActionQueue) {
+    listEl.innerHTML = '<div class="today-actions-error" role="alert">The action queue could not load. Please refresh and try again.</div>';
+    return;
+  }
+  const groups = window.famActionQueue.groupActions(todayActionItems, new Date());
+  const now = new Date();
+  const nextEntries = groups.next7.map((action) => ({ action, later: false }))
+    .concat(groups.later.map((action) => ({ action, later: true })));
+  const canShowContents = todayActionQueueState === 'ready' || todayActionItems.length > 0;
+  let html = '';
+  html += renderTodayActionSection('Now', groups.now.map((action) => ({ action, later: false })), now, 'today-actions-now-label');
+  html += renderTodayActionSection('Next 7 days', nextEntries, now, 'today-actions-next-label', groups.later.length);
+  html += renderTodayActionSection('Shared / no date', groups.sharedNoDate.map((action) => ({ action, later: false })), now, 'today-actions-shared-label');
+  if (canShowContents && !groups.now.length && !nextEntries.length && !groups.sharedNoDate.length && !groups.completed.length) {
+    html = '<div class="today-actions-empty"><strong>Nothing waiting right now.</strong> Add a small next step when your family needs one.</div>';
+  }
+  if (canShowContents && !groups.now.length && !nextEntries.length && !groups.sharedNoDate.length && groups.completed.length) {
+    html = '<div class="today-actions-empty"><strong>Everyone is caught up.</strong> Your completed actions are below.</div>';
+  }
+  html += renderTodayCompletedSection(groups.completed);
+  listEl.innerHTML = html;
+}
+
+async function loadFamilyActions() {
+  if (!sessionUser || !window.auth || typeof window.auth.getFamilyActions !== 'function') return [];
+  const token = ++todayActionLoadToken;
+  todayActionQueueState = 'loading';
+  todayActionQueueError = '';
+  renderTodayActionQueue();
+  try {
+    const items = await window.auth.getFamilyActions();
+    if (token !== todayActionLoadToken) return todayActionItems;
+    todayActionItems = Array.isArray(items) ? items : [];
+    todayActionQueueState = 'ready';
+    todayActionQueueError = '';
+  } catch (err) {
+    if (token !== todayActionLoadToken) return todayActionItems;
+    todayActionQueueState = 'error';
+    todayActionQueueError = (err && err.message) || 'Could not load family actions.';
+  }
+  renderTodayActionQueue();
+  return todayActionItems;
+}
+
+function openTodayActionComposer() {
+  if (isKidSession()) return;
+  const composer = document.getElementById('today-action-composer');
+  const addBtn = document.getElementById('today-action-add-btn');
+  if (!composer) return;
+  renderTodayActionAssigneeOptions();
+  composer.hidden = false;
+  if (addBtn) addBtn.setAttribute('aria-expanded', 'true');
+  const errorEl = document.getElementById('today-action-form-error');
+  if (errorEl) { errorEl.textContent = ''; errorEl.hidden = true; }
+  const titleInput = document.getElementById('today-action-title');
+  if (titleInput) titleInput.setAttribute('aria-invalid', 'false');
+  const titleEl = document.getElementById('today-action-title');
+  if (titleEl) titleEl.focus();
+}
+
+function closeTodayActionComposer() {
+  const composer = document.getElementById('today-action-composer');
+  const addBtn = document.getElementById('today-action-add-btn');
+  if (composer) composer.hidden = true;
+  if (addBtn) addBtn.setAttribute('aria-expanded', 'false');
+  const form = document.getElementById('today-action-form');
+  if (form) form.reset();
+  const errorEl = document.getElementById('today-action-form-error');
+  if (errorEl) { errorEl.textContent = ''; errorEl.hidden = true; }
+  const titleInput = document.getElementById('today-action-title');
+  if (titleInput) titleInput.setAttribute('aria-invalid', 'false');
+}
+
+function setTodayActionFormError(message) {
+  const errorEl = document.getElementById('today-action-form-error');
+  if (!errorEl) return;
+  errorEl.textContent = message || '';
+  errorEl.hidden = !message;
+  const titleEl = document.getElementById('today-action-title');
+  if (titleEl) titleEl.setAttribute('aria-invalid', String(!!message));
+}
+
+async function saveTodayAction(event) {
+  event.preventDefault();
+  if (isKidSession()) return;
+  const titleEl = document.getElementById('today-action-title');
+  const dueDateEl = document.getElementById('today-action-due-date');
+  const dueTimeEl = document.getElementById('today-action-due-time');
+  const assigneeEl = document.getElementById('today-action-assignee');
+  const notesEl = document.getElementById('today-action-notes');
+  const title = titleEl ? titleEl.value.trim() : '';
+  if (!title) {
+    setTodayActionFormError('Add a short title so everyone knows the next step.');
+    if (titleEl) titleEl.focus();
+    return;
+  }
+  const assigneeValue = assigneeEl ? assigneeEl.value : 'family';
+  const split = assigneeValue.split(':');
+  const payload = {
+    title,
+    notes: notesEl ? notesEl.value.trim() : '',
+    dueDate: dueDateEl && dueDateEl.value ? dueDateEl.value : null,
+    dueTime: dueTimeEl && dueTimeEl.value ? dueTimeEl.value : null,
+    assigneeType: split[0] || 'family',
+  };
+  if (split[1]) payload.assigneeId = split.slice(1).join(':');
+
+  const saveBtn = document.getElementById('today-action-save-btn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Adding…'; }
+  setTodayActionFormError('');
+  try {
+    await window.auth.createFamilyAction(payload);
+    closeTodayActionComposer();
+    toast('Action added to the family queue.');
+    await loadFamilyActions();
+  } catch (err) {
+    setTodayActionFormError((err && err.message) || 'Could not add that action.');
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Add action'; }
+  }
+}
+
+function findTodayAction(id) {
+  return todayActionItems.find((action) => action && action.id === id) || null;
+}
+
+let todayActionMutationIds = new Set();
+
+async function completeTodayAction(id) {
+  const action = findTodayAction(id);
+  if (!action || !todayActionCanManage(action) || todayActionMutationIds.has(id)) return;
+  todayActionMutationIds.add(id);
+  try {
+    await window.auth.updateFamilyAction(id, { status: 'done' });
+    toast('Nice work — action complete.');
+    await loadFamilyActions();
+  } catch (err) {
+    toast(`❌ ${(err && err.message) || 'Could not complete that action.'}`);
+  } finally {
+    todayActionMutationIds.delete(id);
+  }
+}
+
+async function snoozeTodayActionFromSelect(select, id) {
+  const preset = select ? select.value : '';
+  if (select) select.value = '';
+  if (!preset) return;
+  const action = findTodayAction(id);
+  if (!action || !todayActionCanManage(action) || todayActionMutationIds.has(id)) return;
+  const snoozedUntil = window.famActionQueue && window.famActionQueue.snoozeUntil(preset, new Date());
+  if (!snoozedUntil) return;
+  todayActionMutationIds.add(id);
+  try {
+    await window.auth.updateFamilyAction(id, { status: 'snoozed', snoozedUntil });
+    toast('Action snoozed for later.');
+    await loadFamilyActions();
+  } catch (err) {
+    toast(`❌ ${(err && err.message) || 'Could not snooze that action.'}`);
+  } finally {
+    todayActionMutationIds.delete(id);
+  }
+}
+
+async function deleteTodayAction(id) {
+  const action = findTodayAction(id);
+  if (!action || isKidSession() || todayActionMutationIds.has(id)) return;
+  if (!confirm(`Delete “${action.title}” from the family queue?`)) return;
+  todayActionMutationIds.add(id);
+  try {
+    await window.auth.deleteFamilyAction(id);
+    toast('Action removed.');
+    await loadFamilyActions();
+  } catch (err) {
+    toast(`❌ ${(err && err.message) || 'Could not delete that action.'}`);
+  } finally {
+    todayActionMutationIds.delete(id);
+  }
+}
+
 function renderTodayScreen() {
   if (!sessionUser) return;
   const now = new Date();
@@ -2778,6 +3174,7 @@ function renderTodayScreen() {
     }
   }
 
+  renderTodayActionQueue();
   renderTodaySchedule(todayIso);
   renderTodayHomework(todayIso);
   renderTodayHabitsAndMomentum();

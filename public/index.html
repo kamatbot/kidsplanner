@@ -195,6 +195,71 @@
             </button>
           </div>
 
+          <!-- Today action queue — manual family commitments are the primary
+               hierarchy. Supporting schedule/homework/habits cards remain
+               below as context; see renderTodayActionQueue() in app.js. -->
+          <section class="card today-actions-card" id="today-actions-card" aria-labelledby="today-actions-title">
+            <div class="today-actions-header">
+              <div class="today-actions-heading">
+                <div class="micro-label">Family actions</div>
+                <h2 id="today-actions-title">What matters next</h2>
+                <p>Small next steps, together — with room for everyone.</p>
+              </div>
+              <div class="today-actions-header-actions">
+                <button type="button" class="btn-primary parent-only" id="today-action-add-btn"
+                        onclick="openTodayActionComposer()" aria-expanded="false"
+                        aria-controls="today-action-composer">Add action</button>
+              </div>
+            </div>
+
+            <div id="today-actions-status" class="today-actions-status" role="status" aria-live="polite"></div>
+
+            <div id="today-action-composer" class="today-action-composer" hidden>
+              <div class="today-action-composer-header">
+                <div>
+                  <h3>Add a family action</h3>
+                  <p>Give the next step a clear home. You can change the details later.</p>
+                </div>
+                <button type="button" class="today-action-close btn-link" onclick="closeTodayActionComposer()">Cancel</button>
+              </div>
+              <form id="today-action-form" onsubmit="saveTodayAction(event)">
+                <div class="form-group">
+                  <label for="today-action-title">Action</label>
+                  <input type="text" id="today-action-title" maxlength="200" required aria-describedby="today-action-form-error"
+                         placeholder="Pack uniforms for Friday">
+                </div>
+                <div class="today-action-form-grid">
+                  <div class="form-group">
+                    <label for="today-action-due-date">Due date <span>(optional)</span></label>
+                    <input type="date" id="today-action-due-date">
+                  </div>
+                  <div class="form-group">
+                    <label for="today-action-due-time">Time <span>(optional)</span></label>
+                    <input type="time" id="today-action-due-time">
+                  </div>
+                  <div class="form-group">
+                    <label for="today-action-assignee">For</label>
+                    <select id="today-action-assignee" aria-describedby="today-action-assignee-help">
+                      <option value="family">Family / shared</option>
+                    </select>
+                    <span id="today-action-assignee-help" class="today-action-field-help">The whole family can see shared actions.</span>
+                  </div>
+                  <div class="form-group today-action-notes-group">
+                    <label for="today-action-notes">Notes <span>(optional)</span></label>
+                    <textarea id="today-action-notes" rows="2" maxlength="2000" placeholder="Anything helpful to remember"></textarea>
+                  </div>
+                </div>
+                <div id="today-action-form-error" class="error-msg today-action-form-error" role="alert" hidden></div>
+                <div class="today-action-form-actions">
+                  <button type="button" class="btn-secondary" onclick="closeTodayActionComposer()">Cancel</button>
+                  <button type="submit" class="btn-primary" id="today-action-save-btn">Add action</button>
+                </div>
+              </form>
+            </div>
+
+            <div id="today-actions-list" class="today-actions-list"></div>
+          </section>
+
           <div class="today-grid">
             <div class="today-left-col">
             <section class="card today-schedule-card">
@@ -1260,6 +1325,7 @@
 <script src="/js/notes.js"></script>
 <script src="/js/sat.js"></script>
 <script src="/js/school.js"></script>
+<script src="/js/action-queue.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

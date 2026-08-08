@@ -448,6 +448,100 @@ html { font-size: 16px; }
   flex: 1; display: grid; grid-template-columns: 1.45fr 1fr;
   gap: 16px; min-height: 0;
 }
+.today-actions-card { margin-bottom: 16px; }
+.today-actions-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.today-actions-heading { min-width: 0; }
+.today-actions-heading h2 { font-size: 21px; line-height: 1.2; margin-top: 5px; letter-spacing: -.02em; }
+.today-actions-heading p { color: var(--text-2); font-size: 13px; line-height: 1.45; margin-top: 5px; }
+.today-actions-header-actions { display: flex; gap: 8px; flex: none; }
+.today-actions-status { margin-top: 12px; }
+.today-actions-status:empty { display: none; }
+.today-actions-state,
+.today-actions-empty,
+.today-actions-error { color: var(--text-2); font-size: 13.5px; line-height: 1.5; }
+.today-actions-state { padding: 10px 0 2px; }
+.today-actions-error {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 10px 12px; border: 1.5px solid var(--c-red); border-radius: var(--radius-sm);
+  color: var(--text); background: color-mix(in srgb, var(--c-red) 7%, var(--panel));
+}
+.today-actions-empty { padding: 14px 0 2px; }
+.today-actions-empty strong { color: var(--text); }
+.today-action-composer { margin-top: 16px; padding: 16px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.today-action-composer[hidden] { display: none; }
+.today-action-composer-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.today-action-composer-header h3 { font-size: 16px; line-height: 1.25; }
+.today-action-composer-header p { color: var(--text-2); font-size: 12.5px; line-height: 1.45; margin-top: 4px; }
+.today-action-close { flex: none; }
+.today-action-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; }
+.today-action-form-grid .form-group { min-width: 0; }
+.today-action-form-grid label span,
+.today-action-field-help { color: var(--text-2); font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; font-family: inherit; }
+.today-action-field-help { display: block; margin-top: 5px; line-height: 1.35; }
+.today-action-notes-group { grid-column: 1 / -1; }
+.today-action-form-error { min-height: 0; margin: 0 0 8px; }
+.today-action-form-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.today-actions-list { margin-top: 14px; }
+.today-action-section + .today-action-section { margin-top: 18px; }
+.today-action-section-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.today-action-section-title { font-size: 12px; font-family: "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .07em; color: var(--text-2); }
+.today-action-section-count { font-size: 11px; color: var(--text-2); }
+.today-action-list { display: flex; flex-direction: column; }
+.today-action-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  padding: 11px 0; border-top: 1px solid var(--border); min-width: 0;
+}
+.today-action-row:first-child { border-top: none; }
+.today-action-row.completed { opacity: .72; }
+.today-action-check {
+  width: 40px; height: 40px; border: 1.5px solid var(--border); border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  background: var(--panel); color: var(--text-2); cursor: pointer; font-size: 16px; font-weight: 700;
+}
+button.today-action-check:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.today-action-check:not(button) { cursor: default; }
+.today-action-check[disabled] { cursor: default; opacity: .7; }
+.today-action-check.done { border-color: var(--c-green); color: var(--c-green); background: color-mix(in srgb, var(--c-green) 10%, var(--panel)); }
+.today-action-body { min-width: 0; }
+.today-action-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.today-action-title { font-size: 14px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.today-action-row.completed .today-action-title { text-decoration: line-through; }
+.today-action-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 4px; color: var(--text-2); font-size: 12px; line-height: 1.35; }
+.today-action-due { font-weight: 700; color: var(--text-2); }
+.today-action-due.overdue { color: var(--c-red); }
+.today-action-due.today { color: var(--warn); }
+.today-action-status-badge,
+.today-action-source,
+.today-action-assignee { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); }
+.today-action-status-badge { font-size: 10.5px; font-weight: 700; color: var(--text-2); }
+.today-action-status-badge.snoozed { color: var(--accent); border-color: var(--accent); }
+.today-action-source { font-size: 10.5px; }
+.today-action-assignee { font-size: 11px; }
+.today-action-notes { margin-top: 5px; color: var(--text-2); font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.today-action-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.today-action-controls .btn-secondary,
+.today-action-controls .btn-link-danger { min-height: 40px; }
+.today-action-snooze { min-height: 40px; padding: 7px 9px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font: 600 12px inherit; cursor: pointer; }
+.today-action-snooze:hover { border-color: var(--accent); }
+.today-action-delete { white-space: nowrap; }
+.today-actions-later-note { margin: 10px 0 4px; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-2); font-size: 11.5px; font-family: "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .04em; }
+.today-actions-later-note + .today-action-list { margin-top: 4px; }
+.today-action-row.later { padding-top: 8px; padding-bottom: 8px; }
+.today-action-row.later .today-action-title { font-size: 13px; }
+.today-action-row.later .today-action-controls .btn-secondary,
+.today-action-row.later .today-action-controls .today-action-snooze,
+.today-action-row.later .today-action-controls .today-action-delete { min-height: 34px; }
+.today-action-completed-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 7px 0; color: var(--text-2); font-size: 12.5px; }
+.today-action-completed-row .today-action-delete { margin-left: auto; }
+.today-action-completed-mark { color: var(--c-green); font-size: 16px; font-weight: 700; }
+.today-action-more { margin-top: 4px; color: var(--text-2); font-size: 12px; }
+.today-action-check:focus-visible,
+.today-action-snooze:focus-visible,
+.today-action-controls button:focus-visible,
+#today-action-add-btn:focus-visible,
+#today-action-form input:focus-visible,
+#today-action-form select:focus-visible,
+#today-action-form textarea:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 .today-schedule-card { display: flex; flex-direction: column; }
 .today-card-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
 .today-left-col, .today-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
@@ -979,6 +1073,18 @@ html { font-size: 16px; }
   .quiz-options { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
   .cal-page-header, .homework-hub-header { flex-direction: column; align-items: flex-start; }
+  .today-actions-header { flex-direction: column; }
+  .today-actions-header-actions { width: 100%; }
+  .today-actions-header-actions .btn-primary { width: 100%; }
+  .today-action-form-grid { grid-template-columns: 1fr; }
+  .today-action-notes-group { grid-column: auto; }
+  .today-action-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .today-action-controls { grid-column: 2; justify-content: flex-start; }
+  .today-action-controls .btn-secondary,
+  .today-action-controls .btn-link-danger,
+  .today-action-snooze,
+  .today-action-check { min-height: 44px; }
+  .today-action-check { width: 44px; height: 44px; }
 }
 
 @media (max-width: 420px) {

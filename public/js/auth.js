@@ -430,6 +430,30 @@
     });
   }
 
+  /* ---------- family actions (Today queue) ---------- */
+  async function getFamilyActions() {
+    const data = await api("/api/family/actions", { method: "GET" });
+    return (data && data.actions) || [];
+  }
+
+  async function createFamilyAction(payload) {
+    return api("/api/family/actions", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  async function updateFamilyAction(id, patch) {
+    return api("/api/family/actions/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify(patch || {}),
+    });
+  }
+
+  async function deleteFamilyAction(id) {
+    return api("/api/family/actions/" + encodeURIComponent(id), { method: "DELETE" });
+  }
+
   /* ---------- homework (Phase 3) ---------- */
   async function getHomework(opts) {
     const params = new URLSearchParams();
@@ -975,6 +999,10 @@
     addCalendarEvent,
     updateCalendarEvent,
     deleteCalendarEvent,
+    getFamilyActions,
+    createFamilyAction,
+    updateFamilyAction,
+    deleteFamilyAction,
     backupCodeSignIn,
     getCredentials,
     renameCredential,
