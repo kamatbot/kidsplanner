@@ -38,6 +38,7 @@ test("Add to Today is parent-only and excludes deleted or media-only messages", 
   kidSession = false;
   assert.equal(helpers.chatMessageCanAddToToday({ id: "m_text", text: "Please bring snacks" }), true);
   assert.equal(helpers.chatMessageCanAddToToday({ id: "m_text_media", text: "Bring this", media: { type: "gif" } }), true);
+  assert.equal(helpers.chatMessageCanAddToToday({ id: "m_event", text: "Calendar event", card: { type: "event" } }), false);
   assert.equal(helpers.chatMessageCanAddToToday({ id: "m_media", media: { type: "gif" } }), false);
   assert.equal(helpers.chatMessageCanAddToToday({ id: "m_deleted", text: "Do not use", deleted: true }), false);
   assert.equal(helpers.chatMessageCanAddToToday({ id: "m_blank", text: "   " }), false);
@@ -72,4 +73,6 @@ test("render and handoff keep source state scoped to the family chat composer", 
   assert.match(appSource, /aria-describedby=\"chat-add-today-tip\"/);
   assert.match(stylesSource, /\.chat-add-today-tip/);
   assert.match(stylesSource, /\.chat-msg-add-action:focus-visible/);
+  assert.match(stylesSource, /\.chat-msg-add-action-wrap\s*\{[\s\S]*?opacity: 0/);
+  assert.match(stylesSource, /\.chat-msg:hover \.chat-msg-add-action-wrap,[\s\S]*?\.chat-msg:focus-within \.chat-msg-add-action-wrap[\s\S]*?opacity: 1/);
 });

@@ -2084,7 +2084,8 @@ function chatMessageHasAddableText(msg) {
 }
 
 function chatMessageCanAddToToday(msg) {
-  return !isKidSession() && chatMessageHasAddableText(msg);
+  return !isKidSession() && chatMessageHasAddableText(msg) &&
+    !(msg.card && msg.card.type === 'event');
 }
 
 function todayActionTitleFromChatMessage(text) {

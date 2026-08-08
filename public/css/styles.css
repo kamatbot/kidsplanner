@@ -359,7 +359,9 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
   background: transparent; color: var(--accent); cursor: pointer;
   font-family: inherit; font-size: 18px; font-weight: 700; line-height: 1;
 }
-.chat-msg-add-action-wrap { position: relative; display: inline-flex; align-items: center; }
+.chat-msg-add-action-wrap { position: relative; display: inline-flex; align-items: center; opacity: 0; transition: opacity .15s; }
+.chat-msg:hover .chat-msg-add-action-wrap,
+.chat-msg:focus-within .chat-msg-add-action-wrap { opacity: 1; }
 .chat-msg-add-action:hover { background: var(--hover); }
 .chat-msg-add-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-add-today-tip { position: absolute; right: 0; bottom: 30px; z-index: 20; padding: 5px 8px; border-radius: 6px; background: var(--text); color: var(--panel); font-size: 11px; line-height: 1.3; pointer-events: none; }
