@@ -108,7 +108,7 @@ test("notifyChatMessage: web push fan-out excludes the sender, includes kids", a
   }
 });
 
-test("notifyChatMessage: APNs fan-out excludes the sender and never includes kids", async () => {
+test("notifyChatMessage: APNs fan-out includes kid iPads, excludes sender, and skips watch tokens", async () => {
   process.env.APNS_TEAM_ID = "team";
   process.env.APNS_KEY_ID = "key";
   process.env.APNS_BUNDLE_ID = "com.example.app";
@@ -127,7 +127,9 @@ test("notifyChatMessage: APNs fan-out excludes the sender and never includes kid
   delete require.cache[require.resolve("../lib/fam-notifications")];
   const freshNotifications = require("../lib/fam-notifications");
   freshNotifications.registerToken("p1", "token-p1");
+  freshNotifications.registerToken("p1", "watch-p1", { kind: "watch", topic: "com.fametc.watch" });
   freshNotifications.registerToken("p2", "token-p2");
+  freshNotifications.registerToken("k1", "token-k1");
 
   try {
     await freshNotifications.notifyChatMessage({
@@ -138,7 +140,7 @@ test("notifyChatMessage: APNs fan-out excludes the sender and never includes kid
       familyId: "fam1",
       text: "Hi",
     });
-    assert.deepEqual(sentTo, ["token-p1"]);
+    assert.deepEqual(sentTo.sort(), ["token-k1", "token-p1"]);
   } finally {
     apnsSender.createAPNsClient = originalCreate;
     delete process.env.APNS_TEAM_ID;
