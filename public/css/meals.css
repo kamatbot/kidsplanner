@@ -9,10 +9,10 @@
    (white avatar-initial text, danger-hover rgba tint).
 ============================================================ */
 
-/* ---------- shared page container (matches trips.css's 1160px hub chrome) ---------- */
+/* ---------- shared page container (matches trips.css's 1320px planning canvas) ---------- */
 .meal-main {
   width: 100%;
-  max-width: 1160px;
+  max-width: 1320px;
   margin: 0 auto;
   padding: 24px 20px 80px;
   display: flex;
@@ -20,44 +20,59 @@
   gap: 16px;
 }
 
-/* ---------- sticky header (brand tile + wordmark + divider + title +
-   household strip, one row — same shell pattern as trips.css) ---------- */
-.meal-hub-header {
+/* ---------- compact page-local title + section navigation ---------- */
+.meal-local-header {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  padding: 12px 20px;
   position: sticky;
   top: 0;
   z-index: 20;
 }
-.meal-hub-inner {
-  max-width: 1160px;
+.meal-local-header-inner {
+  width: 100%;
+  max-width: 1320px;
   margin: 0 auto;
+  padding: 14px 20px 0;
+}
+.meal-local-heading {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
 }
-.meal-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex: none; }
-.meal-brand-tile {
-  width: 34px; height: 34px; border-radius: 10px;
-  background: var(--accent); color: var(--on-accent);
-  display: flex; align-items: center; justify-content: center;
-  transition: filter .12s ease;
-}
-.meal-brand-tile svg { width: 18px; height: 18px; }
-.meal-brand:hover .meal-brand-tile { filter: brightness(1.1); }
-.meal-brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
-.meal-brand-divider { width: 1px; height: 26px; background: var(--border); flex: none; }
-.meal-hub-title { min-width: 0; }
-.meal-hub-name { font-size: 15.5px; font-weight: 700; letter-spacing: -.02em; white-space: nowrap; }
-.meal-hub-header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-@media (max-width: 700px) {
-  .meal-brand-name { display: none; } /* tile alone is the back-link on phones */
-}
+.meal-local-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.meal-household-toggle { flex: none; }
+.meal-local-header button:focus-visible,
+.meal-tab-btn:focus-visible,
+.meal-member-chip:focus-visible,
+.meal-icon-btn:focus-visible,
+.meal-day-picker-btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 
-/* ---------- household strip ---------- */
-.meal-household-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* ---------- household preferences (progressive disclosure, not page chrome) ---------- */
+.meal-household-panel {
+  width: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 14px 20px 0;
+}
+.meal-household-panel-inner {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.meal-household-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.meal-household-title { margin: 0; font-size: 15px; font-weight: 700; }
+.meal-household-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--text-2); }
+.meal-household-close { flex: none; }
+.meal-household-members { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 .meal-member-chip {
   position: relative; border: none; background: none; cursor: pointer; padding: 0 6px 0 0;
   display: flex; align-items: center; border-radius: 999px;
@@ -79,20 +94,17 @@
 
 /* ---------- tabs ---------- */
 .meal-tabs {
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  padding: 0 20px;
-  position: sticky;
-  top: 59px;
-  z-index: 19;
+  padding: 10px 0 0;
   -webkit-overflow-scrolling: touch;
 }
 .meal-tabs-inner {
-  max-width: 1160px;
+  width: 100%;
+  max-width: 1320px;
   margin: 0 auto;
   display: flex;
   gap: 2px;
   overflow-x: auto;
+  min-width: 0;
 }
 .meal-tab-btn {
   border: none; background: none; cursor: pointer; padding: 12px 14px;
@@ -319,9 +331,21 @@
   .meal-day-head { flex-direction: row; align-items: baseline; gap: 6px; min-width: 64px; }
 }
 @media (max-width: 640px) {
-  .meal-hub-header { padding: 12px 14px; }
-  .meal-tabs { padding: 0 14px; }
+  .meal-local-header-inner { padding: 12px 14px 0; }
+  .meal-tabs { padding-top: 8px; }
   .meal-main { padding: 18px 14px 60px; }
-  .meal-household-strip { order: 3; width: 100%; }
-  .meal-hub-header-right { width: 100%; }
+  .meal-household-panel { padding: 12px 14px 0; }
+  .meal-household-panel-inner { padding: 12px; }
+  .meal-household-panel-head { align-items: center; }
+  .meal-household-sub { max-width: 34ch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meal-spinner,
+  .meal-tab-btn,
+  .meal-chip,
+  .meal-level-seg-btn,
+  .meal-assignee-btn,
+  .meal-recipe-card,
+  .meal-sheet { animation: none; transition: none; transform: none; }
 }

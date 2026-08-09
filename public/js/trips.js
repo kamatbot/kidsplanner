@@ -418,7 +418,7 @@ function renderTripCard(t) {
   const places = counts.itinerary != null ? counts.itinerary : (counts.places || 0);
   const flights = counts.flights || 0;
   return `
-    <div class="trip-card" onclick="tripsGoHub('${esc(t.id)}')">
+    <a class="trip-card" href="/trips/${esc(t.id)}" onclick="event.preventDefault();tripsGoHub('${esc(t.id)}')">
       <div class="trip-card-top">
         <div class="trip-card-name">${esc(t.name || 'Untitled trip')}</div>
         <div class="role-chip role-${esc(role)}">${roleLabel}</div>
@@ -428,7 +428,7 @@ function renderTripCard(t) {
         <div class="avatar-stack">${renderAvatarStack(faces, 26)}</div>
         <div class="trip-card-counts">${places} place${places === 1 ? '' : 's'} · ${flights} flight${flights === 1 ? '' : 's'}</div>
       </div>
-    </div>
+    </a>
   `;
 }
 
