@@ -180,9 +180,19 @@ test("Hermes connection lifecycle is parent-only and never exposes the stored be
   const kid = freshUser("LifecycleKid", "kid");
   const outsider = freshUser("LifecycleOutsider");
   const routes = buildHermesHarness();
+  const discoveryRoute = routes["GET /api/hermes"];
   const connectRoute = routes["POST /api/hermes/connect"];
   const statusRoute = routes["GET /api/hermes/connect"];
   const roomsRoute = routes["GET /api/hermes/rooms"];
+
+  const discovery = await invoke(discoveryRoute);
+  assert.equal(discovery.statusCode, 200);
+  assert.deepEqual(discovery.body, {
+    ok: true,
+    service: "FamETC Hermes bridge",
+    message: "Use this URL as FAMETC_HERMES_API_URL. The adapter adds /rooms automatically.",
+  });
+  assert.equal(JSON.stringify(discovery.body).includes("token"), false);
 
   const connected = await invoke(connectRoute, { user: parent, familyId: fam.id, host: "app.example.test" });
   assert.equal(connected.statusCode, 200);
