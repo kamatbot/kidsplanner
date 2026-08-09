@@ -2,7 +2,7 @@
    MEALS.JS — Fam ETC Meals (see docs/MEALS-PLAN.md — the contract)
    Drives public/meals.html: pantry, weekly dinner menu, one family
    shopping list, and the Indian/Thai-heavy recipe library. Ports the
-   Trips (public/js/trips.js) page-shell pattern: sticky brand header +
+   Trips (public/js/trips.js) page-shell pattern: compact local title +
    tab nav rendered entirely by JS, template-literal innerHTML with esc()
    on every user/recipe string, inline onclick handlers, top-level
    functions, no bundler.
@@ -29,7 +29,7 @@
       mid-task): a parent can only PATCH /api/meals/profile for THEIR OWN
       portion/allergies (self, no id param); a kid's are just fields on the
       kid record, set via the existing PATCH /api/family/kids/:id. So the
-      household strip only lets a parent edit themself or any kid — a
+      household preferences panel only lets a parent edit themself or any kid — a
       co-parent's chip is view-only (no route exists to change it).
    3. Confirmed against the landed lib/meals.js + lib/routes/meals.js: PATCH
       /api/meals/pantry/:id really does return `{item}` only, and
@@ -81,6 +81,7 @@ let mealRecipeDetailLoading = false;
 let mealRecipeDayPicker = false;
 
 let mealMemberEditId = null;
+let mealHouseholdPanelOpen = false;
 
 const MEAL_TABS = [
   ['tonight', 'Tonight'],
@@ -109,7 +110,6 @@ const MEAL_RECIPE_FILTERS = [
 // a hex value. Colors stay theme-correct in both modes since they're vars.
 const MEAL_MEMBER_PALETTE = ['var(--accent)', 'var(--c-teal)', 'var(--c-amber)', 'var(--c-blue)', 'var(--coral)', 'var(--c-violet)', 'var(--c-orange)'];
 
-const ICON_MEAL_BOWL = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13h16a1 1 0 0 1 1 1 7 7 0 0 1-7 7h-4a7 7 0 0 1-7-7 1 1 0 0 1 1-1Z"></path><path d="M4.5 13a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1h.5"></path><path d="M19.5 13a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-.5"></path><path d="M9 8c0-1 1-1.5 1-2.5S9 4 9 3"></path><path d="M14 8c0-1 1-1.5 1-2.5S14 4 14 3"></path></svg>';
 const ICON_MEAL_EDIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>';
 const ICON_MEAL_X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
@@ -311,28 +311,6 @@ function mealsGoTab(tab) {
   if (tab === 'recipes' && mealsRecipes === null && !mealRecipesLoading) mealLoadRecipes();
 }
 
-function mealBrandHtml() {
-  return `
-    <a class="meal-brand" href="/" title="Back to Fam ETC" aria-label="Back to Fam ETC">
-      <span class="meal-brand-tile">${ICON_MEAL_BOWL}</span>
-      <span class="meal-brand-name">Fam ETC</span>
-    </a>
-    <div class="meal-brand-divider"></div>`;
-}
-
-function mealHouseholdStripHtml() {
-  if (mealIsKid) return '';
-  const h = (mealsData && mealsData.household) || { members: [], totalPortions: 0 };
-  const members = h.members || [];
-  const total = h.totalPortions != null ? h.totalPortions : members.reduce((s, m) => s + (m.portionFactor || 1), 0);
-  return `
-    <div class="meal-household-strip">
-      ${members.map(mealMemberChipHtml).join('')}
-      <span class="meal-total-portions micro-label" title="Summed portion factor across the household">cooking for ${esc(String(mealRound1(total)))}</span>
-    </div>
-  `;
-}
-
 // A parent may edit any kid (their portion/allergies live on the kid record,
 // PATCH /api/family/kids/:id) or themself (PATCH /api/meals/profile, which
 // is self-only server-side) — never a co-parent, since no route sets
@@ -354,32 +332,68 @@ function mealMemberChipHtml(m) {
   `;
 }
 
+function mealToggleHouseholdPanel() {
+  if (mealIsKid) return;
+  mealHouseholdPanelOpen = !mealHouseholdPanelOpen;
+  if (!mealHouseholdPanelOpen) mealMemberEditId = null;
+  mealsRender();
+}
+
+function mealCloseHouseholdPanel() {
+  mealHouseholdPanelOpen = false;
+  mealMemberEditId = null;
+  mealsRender();
+}
+
+function mealHouseholdPanelHtml() {
+  if (mealIsKid) return '';
+  const h = (mealsData && mealsData.household) || { members: [], totalPortions: 0 };
+  const members = h.members || [];
+  const total = h.totalPortions != null ? h.totalPortions : members.reduce((s, m) => s + (m.portionFactor || 1), 0);
+  return `
+    <section class="meal-household-panel" id="meal-household-panel" aria-labelledby="meal-household-title">
+      <div class="meal-household-panel-inner">
+        <div class="meal-household-panel-head">
+          <div>
+            <h2 class="meal-household-title" id="meal-household-title">Household</h2>
+            <p class="meal-household-sub">Portions and allergies used when planning meals.</p>
+          </div>
+          <button type="button" class="btn-secondary meal-household-close" onclick="mealCloseHouseholdPanel()">Close</button>
+        </div>
+        <div class="meal-household-members" aria-label="Household members">
+          ${members.map(mealMemberChipHtml).join('')}
+          <span class="meal-total-portions micro-label" title="Summed portion factor across the household">cooking for ${esc(String(mealRound1(total)))}</span>
+        </div>
+        ${mealMemberEditId ? mealMemberEditFormHtml() : ''}
+      </div>
+    </section>
+  `;
+}
+
 function mealsHeaderHtml() {
   const tabs = mealIsKid ? [['shopping', 'Shopping']] : MEAL_TABS;
   return `
-    <div class="meal-hub-header">
-      <div class="meal-hub-inner">
-        ${mealBrandHtml()}
-        <div class="meal-hub-title">
-          <div class="meal-hub-name">Meals</div>
+    <div class="meal-local-header">
+      <div class="meal-local-header-inner">
+        <div class="meal-local-heading">
+          <h1 class="meal-local-title">Meals</h1>
+          ${!mealIsKid ? `<button type="button" class="btn-secondary meal-household-toggle" aria-expanded="${mealHouseholdPanelOpen ? 'true' : 'false'}" aria-controls="meal-household-panel" onclick="mealToggleHouseholdPanel()">${mealHouseholdPanelOpen ? 'Hide household' : 'Household'}</button>` : ''}
         </div>
-        <div class="meal-hub-header-right">
-          ${mealHouseholdStripHtml()}
-        </div>
+        <nav class="meal-tabs" aria-label="Meals sections">
+          <div class="meal-tabs-inner">
+            ${tabs.map(([id, label]) => `<button type="button" class="meal-tab-btn${mealsTab === id ? ' active' : ''}"${mealsTab === id ? ' aria-current="page"' : ''} onclick="mealsGoTab('${id}')">${esc(label)}</button>`).join('')}
+          </div>
+        </nav>
       </div>
     </div>
-    <nav class="meal-tabs">
-      <div class="meal-tabs-inner">
-        ${tabs.map(([id, label]) => `<button type="button" class="meal-tab-btn${mealsTab === id ? ' active' : ''}" onclick="mealsGoTab('${id}')">${esc(label)}</button>`).join('')}
-      </div>
-    </nav>
-    ${!mealIsKid && mealMemberEditId ? `<div class="meal-main" style="padding-bottom:0">${mealMemberEditFormHtml()}</div>` : ''}
+    ${mealHouseholdPanelOpen ? mealHouseholdPanelHtml() : ''}
   `;
 }
 
 /* ---------- household member editor (portion + allergies, parents only) ---------- */
 function mealOpenMemberEditor(id) {
   if (!mealMemberEditable(mealMemberFor(id))) return;
+  mealHouseholdPanelOpen = true;
   mealMemberEditId = mealMemberEditId === id ? null : id;
   mealsRender();
 }

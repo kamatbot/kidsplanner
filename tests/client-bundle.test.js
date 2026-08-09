@@ -127,6 +127,39 @@ test("standalone Trips and Meals pages retain the shared navigation shell", () =
   }
 });
 
+test("standalone Trips and Meals keep their intended headers and wide responsive canvases", () => {
+  const mealsSrc = fs.readFileSync(path.join(PUBLIC, "js", "meals.js"), "utf8");
+  const tripsSrc = fs.readFileSync(path.join(PUBLIC, "js", "trips.js"), "utf8");
+  const mealsCss = fs.readFileSync(path.join(PUBLIC, "css", "meals.css"), "utf8");
+  const tripsCss = fs.readFileSync(path.join(PUBLIC, "css", "trips.css"), "utf8");
+  const stylesCss = fs.readFileSync(path.join(PUBLIC, "css", "styles.css"), "utf8");
+
+  const listRender = tripsSrc.slice(tripsSrc.indexOf("function renderTripsList"), tripsSrc.indexOf("function tripsToggleNewForm"));
+  assert.match(listRender, /class="trip-hub-header"/, "Trips list keeps its guest-facing header");
+  assert.match(tripsSrc, /function tripHubHeaderHtml\(\)/);
+  assert.match(tripsSrc, /tripHubHeaderHtml\(\)/, "Trips hub keeps the collaboration header");
+  assert.match(tripsSrc, /Invite friends/);
+
+  assert.match(mealsSrc, /class="meal-local-header"/);
+  assert.match(mealsSrc, /class="meal-tabs"/);
+  assert.doesNotMatch(mealsSrc, /meal-hub-header|mealBrandHtml|meal-brand|meal-household-strip/);
+  for (const tab of ["tonight", "menu", "pantry", "shopping", "recipes"]) {
+    assert.match(mealsSrc, new RegExp(`['"]${tab}['"]`), `Meals keeps the ${tab} tab contract`);
+  }
+
+  assert.match(mealsCss, /\.meal-main\s*\{[\s\S]*?max-width:\s*1320px/);
+  assert.match(mealsCss, /\.meal-local-header-inner\s*\{[\s\S]*?max-width:\s*1320px/);
+  assert.match(mealsCss, /\.meal-tabs-inner\s*\{[\s\S]*?max-width:\s*1320px/);
+  assert.match(tripsCss, /\.trip-main\s*\{[\s\S]*?max-width:\s*1320px/);
+  assert.match(tripsCss, /\.trip-hub-inner\s*\{[\s\S]*?max-width:\s*1320px/);
+  assert.match(tripsCss, /\.trip-tabs-inner\s*\{[\s\S]*?max-width:\s*1320px/);
+  assert.match(mealsCss, /\.meal-tabs-inner[\s\S]*?overflow-x:\s*auto/);
+  assert.match(tripsCss, /\.trip-tabs-inner[\s\S]*?overflow-x:\s*auto/);
+  assert.match(stylesCss, /@media \(max-width: 900px\)[\s\S]*?\.standalone-app-shell \{ flex-direction: column; \}/);
+  assert.match(mealsCss, /@media \(max-width: 640px\)/);
+  assert.match(tripsCss, /@media \(max-width: 640px\)/);
+});
+
 test("shared shell accepts tab deep links from standalone navigation", () => {
   const app = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
   assert.match(app, /new URLSearchParams\(window\.location\.search\)\.get\('tab'\)/);
