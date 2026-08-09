@@ -9,12 +9,12 @@
    (white avatar-initial text, danger-hover rgba tint).
 ============================================================ */
 
-/* ---------- shared page container (matches trips.css's 1320px planning canvas) ---------- */
+/* ---------- shared page container (matches the app's main canvas) ---------- */
 .meal-main {
   width: 100%;
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 24px 20px 80px;
+  max-width: none;
+  margin: 0;
+  padding: 26px 30px 80px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -22,17 +22,13 @@
 
 /* ---------- compact page-local title + section navigation ---------- */
 .meal-local-header {
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  background: transparent;
 }
 .meal-local-header-inner {
   width: 100%;
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 14px 20px 0;
+  max-width: none;
+  margin: 0;
+  padding: 26px 30px 0;
 }
 .meal-local-heading {
   display: flex;
@@ -52,9 +48,9 @@
 /* ---------- household preferences (progressive disclosure, not page chrome) ---------- */
 .meal-household-panel {
   width: 100%;
-  max-width: 1320px;
-  margin: 0 auto;
-  padding: 14px 20px 0;
+  max-width: none;
+  margin: 0;
+  padding: 14px 30px 0;
 }
 .meal-household-panel-inner {
   background: var(--panel-2);
@@ -99,8 +95,8 @@
 }
 .meal-tabs-inner {
   width: 100%;
-  max-width: 1320px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   display: flex;
   gap: 2px;
   overflow-x: auto;
@@ -329,6 +325,11 @@
   .meal-week-grid { grid-template-columns: 1fr; }
   .meal-day-col { flex-direction: row; align-items: center; min-height: 0; }
   .meal-day-head { flex-direction: row; align-items: baseline; gap: 6px; min-width: 64px; }
+}
+@media (max-width: 900px) {
+  .meal-local-header-inner { padding: 16px 16px 0; }
+  .meal-household-panel { padding: 14px 16px 0; }
+  .meal-main { padding: 16px 16px 60px; }
 }
 @media (max-width: 640px) {
   .meal-local-header-inner { padding: 12px 14px 0; }

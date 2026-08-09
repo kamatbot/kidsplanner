@@ -127,7 +127,7 @@ test("standalone Trips and Meals pages retain the shared navigation shell", () =
   }
 });
 
-test("standalone Trips and Meals keep their intended headers and wide responsive canvases", () => {
+test("Meals uses the shared canvas while Trips retains its feature canvas", () => {
   const mealsSrc = fs.readFileSync(path.join(PUBLIC, "js", "meals.js"), "utf8");
   const tripsSrc = fs.readFileSync(path.join(PUBLIC, "js", "trips.js"), "utf8");
   const mealsCss = fs.readFileSync(path.join(PUBLIC, "css", "meals.css"), "utf8");
@@ -147,9 +147,28 @@ test("standalone Trips and Meals keep their intended headers and wide responsive
     assert.match(mealsSrc, new RegExp(`['"]${tab}['"]`), `Meals keeps the ${tab} tab contract`);
   }
 
-  assert.match(mealsCss, /\.meal-main\s*\{[\s\S]*?max-width:\s*1320px/);
-  assert.match(mealsCss, /\.meal-local-header-inner\s*\{[\s\S]*?max-width:\s*1320px/);
-  assert.match(mealsCss, /\.meal-tabs-inner\s*\{[\s\S]*?max-width:\s*1320px/);
+  const mealMainRule = mealsCss.match(/\.meal-main\s*\{[^}]*\}/)?.[0];
+  const mealHeaderRule = mealsCss.match(/\.meal-local-header\s*\{[^}]*\}/)?.[0];
+  const mealHeaderInnerRule = mealsCss.match(/\.meal-local-header-inner\s*\{[^}]*\}/)?.[0];
+  const mealHouseholdRule = mealsCss.match(/\.meal-household-panel\s*\{[^}]*\}/)?.[0];
+  const mealTabsRule = mealsCss.match(/\.meal-tabs-inner\s*\{[^}]*\}/)?.[0];
+
+  assert.ok(mealMainRule, "Meals keeps a page content frame");
+  assert.ok(mealHeaderRule, "Meals keeps its local header");
+  assert.ok(mealHeaderInnerRule, "Meals keeps its local header inner frame");
+  assert.ok(mealHouseholdRule, "Meals keeps its household panel frame");
+  assert.ok(mealTabsRule, "Meals keeps its tabs frame");
+  assert.match(mealMainRule, /max-width:\s*none/);
+  assert.match(mealMainRule, /padding:\s*26px 30px 80px/);
+  assert.match(mealHeaderRule, /background:\s*transparent/);
+  assert.doesNotMatch(mealHeaderRule, /var\(--panel\)|border-bottom|position:\s*sticky/);
+  assert.match(mealHeaderInnerRule, /max-width:\s*none/);
+  assert.match(mealHeaderInnerRule, /padding:\s*26px 30px 0/);
+  assert.match(mealHouseholdRule, /max-width:\s*none/);
+  assert.match(mealTabsRule, /max-width:\s*none/);
+  assert.match(stylesCss, /\.main-content\s*\{[^}]*padding:\s*26px 30px/);
+  assert.match(mealsCss, /@media \(max-width: 900px\)[\s\S]*?\.meal-main\s*\{[^}]*padding:\s*16px 16px 60px/);
+  assert.match(mealsCss, /@media \(max-width: 640px\)[\s\S]*?\.meal-main\s*\{[^}]*padding:\s*18px 14px 60px/);
   assert.match(tripsCss, /\.trip-main\s*\{[\s\S]*?max-width:\s*1320px/);
   assert.match(tripsCss, /\.trip-hub-inner\s*\{[\s\S]*?max-width:\s*1320px/);
   assert.match(tripsCss, /\.trip-tabs-inner\s*\{[\s\S]*?max-width:\s*1320px/);
