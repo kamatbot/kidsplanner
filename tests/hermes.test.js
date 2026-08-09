@@ -435,6 +435,39 @@ test("Hermes marks only parseable family meal plans and preserves the full reply
   assert.equal(chat.getMessage(`trip:${trip.id}`, tripReply.id).text, table);
 });
 
+test("Hermes marks a natural single-day family meal plan with the existing meal card", () => {
+  const { fam } = makeFamily("NaturalMealPlanCard");
+  const naturalPlan = [
+    "# Tomorrow’s high-protein meal plan",
+    "",
+    "**Breakfast**",
+    "- Greek yogurt with berries and chia",
+    "- Add cinnamon to taste.",
+    "",
+    "**Lunch**",
+    "- Chicken quinoa bowl",
+    "- Use leftover vegetables if available.",
+    "",
+    "**After-school snack**",
+    "- Protein bar or fruit.",
+    "",
+    "**Dinner**",
+    "- Salmon with roasted vegetables",
+    "- Optional rice on the side.",
+    "",
+    "**Quick prep notes**",
+    "- Cook quinoa ahead of time.",
+  ].join("\n");
+
+  const reply = hermes.sendAgentMessage(fam.id, naturalPlan).message;
+  assert.deepEqual(reply.card, {
+    type: "meal-plan-draft",
+    id: "hermes-meal-plan",
+    title: "Meal plan ready",
+  });
+  assert.equal(chat.getMessage(fam.id, reply.id).text, naturalPlan);
+});
+
 test("Hermes marks a parseable Trip itinerary, but not ordinary or meal-only Trip replies", () => {
   const { parent, fam } = makeFamily("TripItineraryCard");
   const trip = createTrip(parent.id, fam.id, "Itinerary card trip");

@@ -2475,12 +2475,33 @@ function mealPlanReviewDateInputValue(date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function mealPlanReviewDateModeFromMessage(msg) {
+  const text = msg && typeof msg.text === 'string' ? msg.text : '';
+  const modes = new Set();
+  text.split(/\r?\n/).forEach((line) => {
+    if (!/^\s{0,3}#{1,6}\s+/.test(line) || !/\bmeal\s+plan\b/i.test(line)) return;
+    const hasToday = /\btoday(?:['’]s)?\b/i.test(line);
+    const hasTomorrow = /\btomorrow(?:['’]s)?\b/i.test(line);
+    if (hasToday === hasTomorrow) return;
+    modes.add(hasToday ? 'today' : 'tomorrow');
+  });
+  return modes.size === 1 ? Array.from(modes)[0] : 'weekly';
+}
+
 function nextMealPlanReviewMonday(now) {
   let d = now instanceof Date ? new Date(now.getTime()) : new Date(now || Date.now());
   if (Number.isNaN(d.getTime())) d = new Date();
   const daysUntilMonday = ((8 - d.getDay()) % 7) || 7;
   d.setDate(d.getDate() + daysUntilMonday);
   return mealPlanReviewDateInputValue(d);
+}
+
+function mealPlanReviewDefaultDate(dateMode, now) {
+  let d = now instanceof Date ? new Date(now.getTime()) : new Date(now || Date.now());
+  if (Number.isNaN(d.getTime())) d = new Date();
+  if (dateMode === 'tomorrow') d.setDate(d.getDate() + 1);
+  if (dateMode === 'today' || dateMode === 'tomorrow') return mealPlanReviewDateInputValue(d);
+  return nextMealPlanReviewMonday(d);
 }
 
 function mealPlanReviewDateLabel(value) {
@@ -2496,13 +2517,25 @@ function mealPlanReviewDateLabel(value) {
   return raw || 'Date not specified';
 }
 
-function mealPlanReviewIsMonday(value) {
+function mealPlanReviewIsSingleDay(dateMode) {
+  return dateMode === 'today' || dateMode === 'tomorrow';
+}
+
+function mealPlanReviewIsValidDate(value) {
   const raw = String(value || '');
   const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
   const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   return !Number.isNaN(d.getTime()) && d.getFullYear() === Number(match[1]) &&
-    d.getMonth() === Number(match[2]) - 1 && d.getDate() === Number(match[3]) && d.getDay() === 1;
+    d.getMonth() === Number(match[2]) - 1 && d.getDate() === Number(match[3]);
+}
+
+function mealPlanReviewIsMonday(value) {
+  if (!mealPlanReviewIsValidDate(value)) return false;
+  const raw = String(value || '');
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return d.getDay() === 1;
 }
 
 function mealPlanReviewItems(preview) {
@@ -2585,12 +2618,13 @@ function renderMealPlanReviewIssues(title, items, detail) {
   </section>`;
 }
 
-function renderMealPlanReviewContent(preview) {
+function renderMealPlanReviewContent(preview, dateMode) {
   if (!preview) return '<p class="text-muted">Loading the meal-plan preview…</p>';
   const items = mealPlanReviewSafeItems(preview);
   const conflicts = mealPlanReviewConflicts(preview);
   const blocked = mealPlanReviewBlocked(preview);
   const imported = preview.imported === true;
+  const planScope = mealPlanReviewIsSingleDay(dateMode) ? 'this single-day plan' : 'this week';
   const safeSummary = imported
     ? `${items.length} ${items.length === 1 ? 'meal is' : 'meals are'} already in Meals.`
     : items.length === 1 ? '1 meal can be added.' : `${items.length} meals can be added.`;
@@ -2599,7 +2633,7 @@ function renderMealPlanReviewContent(preview) {
   if (items.length) {
     content.push(`<h4 style="margin:16px 0 0;font-size:14px">Meals by day</h4>${renderMealPlanReviewEntries(items)}`);
   } else if (!imported) {
-    content.push('<p class="text-muted" style="margin:14px 0 0">No safe meals are available to add for this week.</p>');
+    content.push(`<p class="text-muted" style="margin:14px 0 0">No safe meals are available to add for ${planScope}.</p>`);
   }
   if (blocked.length) {
     content.push(renderMealPlanReviewIssues('Blocked', blocked, (item) => `<li style="margin:4px 0"><strong>${esc(item.title || 'Meal')}</strong> — ${esc(item.slot || 'slot')}<br><span class="text-muted">${esc(item.reason || 'The server cannot add this item.')}</span></li>`));
@@ -2685,19 +2719,32 @@ function renderMealPlanReviewDialog() {
   const replaceInput = mealPlanReviewDialog.querySelector('#meal-plan-review-replace');
   const confirm = mealPlanReviewDialog.querySelector('.meal-plan-review-confirm');
   const conflictCount = mealPlanReviewConflicts(preview).length;
+  const singleDay = mealPlanReviewIsSingleDay(state.dateMode);
+  const dateLabel = mealPlanReviewDialog.querySelector('label[for="meal-plan-review-start-date"]');
+  const dateHelper = dateInput.nextElementSibling;
 
+  if (dateLabel) dateLabel.textContent = singleDay ? 'Meal date' : 'Week starting Monday';
+  if (dateHelper) dateHelper.textContent = singleDay
+    ? 'Choose the date for this single-day meal plan. Changing it refreshes the preview.'
+    : 'Choose the Monday for this meal plan. Changing it refreshes the preview.';
   dateInput.value = state.startDate || '';
   dateInput.disabled = state.status === 'importing';
   replaceInput.checked = state.replaceExisting === true;
   replaceGroup.style.display = conflictCount && !state.imported ? '' : 'none';
   replaceInput.disabled = !conflictCount || state.status === 'loading' || state.status === 'importing' || state.imported === true || (preview && preview.imported === true);
-  content.innerHTML = renderMealPlanReviewContent(preview);
+  content.innerHTML = renderMealPlanReviewContent(preview, state.dateMode);
 
-  if (state.status === 'loading') status.textContent = 'Loading preview for the week starting Monday…';
+  if (state.status === 'loading') status.textContent = singleDay
+    ? 'Loading preview for the single-day meal date…'
+    : 'Loading preview for the week starting Monday…';
   else if (state.status === 'importing') status.textContent = 'Adding meals to Meals…';
   else if (state.status === 'error') status.textContent = 'Preview or import needs attention.';
   else if (state.imported || (preview && preview.imported === true)) status.textContent = 'This meal plan is already in Meals.';
-  else if (preview) status.textContent = `${mealPlanReviewSafeItems(preview).length} safe meal${mealPlanReviewSafeItems(preview).length === 1 ? '' : 's'} in the preview for ${mealPlanReviewDateLabel(state.startDate)}.`;
+  else if (preview) {
+    const safeCount = mealPlanReviewSafeItems(preview).length;
+    const previewScope = singleDay ? 'single-day preview' : 'preview';
+    status.textContent = `${safeCount} safe meal${safeCount === 1 ? '' : 's'} in the ${previewScope} for ${mealPlanReviewDateLabel(state.startDate)}.`;
+  }
   else status.textContent = '';
 
   error.textContent = state.error || '';
@@ -2749,12 +2796,19 @@ function requestMealPlanReviewPreview() {
 
 function handleMealPlanReviewDateChange(value) {
   if (!mealPlanReviewState) return;
-  if (!mealPlanReviewIsMonday(value)) {
+  const singleDay = mealPlanReviewIsSingleDay(mealPlanReviewState.dateMode);
+  let invalidMessage = '';
+  if (!singleDay) {
+    if (!mealPlanReviewIsMonday(value)) invalidMessage = 'Choose a Monday for the week start.';
+  } else if (!mealPlanReviewIsValidDate(value)) {
+    invalidMessage = 'Choose a valid date for this single-day meal plan.';
+  }
+  if (invalidMessage) {
     mealPlanReviewRequestToken++;
     mealPlanReviewState.requestToken = mealPlanReviewRequestToken;
     mealPlanReviewState.startDate = String(value || '');
     mealPlanReviewState.status = 'error';
-    mealPlanReviewState.error = 'Choose a Monday for the week start.';
+    mealPlanReviewState.error = invalidMessage;
     mealPlanReviewState.preview = null;
     mealPlanReviewState.replaceExisting = false;
     renderMealPlanReviewDialog();
@@ -2779,10 +2833,12 @@ function openMealPlanReviewFromChatMessage(messageId) {
   const message = chatMessages.find((item) => item && String(item.id) === String(messageId));
   if (!chatMessageCanReviewMealPlan(message)) return;
   const dialog = ensureMealPlanReviewDialog();
+  const dateMode = mealPlanReviewDateModeFromMessage(message);
   mealPlanReviewRequestToken++;
   mealPlanReviewState = {
     messageId: String(message.id),
-    startDate: nextMealPlanReviewMonday(),
+    dateMode,
+    startDate: mealPlanReviewDefaultDate(dateMode),
     preview: null,
     imported: false,
     replaceExisting: false,

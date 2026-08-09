@@ -86,7 +86,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
             ChatAddShoppingSheet(messageId: req.messageId, initialText: req.text)
         }
         .sheet(item: $mealPlanRef) { ref in
-            MealPlanReviewSheet(messageId: ref.id)
+            MealPlanReviewSheet(messageId: ref.id, dateMode: ref.dateMode)
         }
         .sheet(item: $tripItineraryRef) { ref in
             TripItineraryReviewSheet(tripId: ref.tripId, messageId: ref.messageId)
@@ -193,7 +193,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
     private func handleMealPlanImport(_ message: ChatMessage) {
         guard canImportMealPlan(message) else { return }
         Haptics.selection()
-        mealPlanRef = MealPlanRef(id: message.id)
+        mealPlanRef = MealPlanRef(id: message.id, dateMode: MealPlanDateMode(messageText: message.text))
     }
 
     /// Trip chat responses have carried the room scope in `familyId` since
@@ -421,8 +421,9 @@ struct NewShoppingReq: Identifiable {
     let messageId: String
     let text: String
 }
-struct MealPlanRef: Identifiable {
+private struct MealPlanRef: Identifiable {
     let id: String
+    let dateMode: MealPlanDateMode
 }
 struct TripItineraryRef: Identifiable {
     let tripId: String
@@ -432,6 +433,40 @@ struct TripItineraryRef: Identifiable {
 }
 
 // MARK: - Hermes meal-plan review
+
+private enum MealPlanDateMode: Equatable {
+    case weekly
+    case today
+    case tomorrow
+
+    init(messageText: String) {
+        self = .weekly
+
+        for rawLine in messageText.split(whereSeparator: \.isNewline) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            let hashes = line.prefix(while: { $0 == "#" })
+            guard (1...6).contains(hashes.count),
+                  line.dropFirst(hashes.count).first?.isWhitespace == true else { continue }
+
+            let heading = String(line.dropFirst(hashes.count)).trimmingCharacters(in: .whitespaces)
+            let normalized = heading.lowercased()
+            guard normalized.range(of: "\\bmeal\\s+plan\\b", options: .regularExpression) != nil else { continue }
+
+            let isToday = normalized.range(of: "\\btoday(?:['’]s)?\\b", options: .regularExpression) != nil
+            let isTomorrow = normalized.range(of: "\\btomorrow(?:['’]s)?\\b", options: .regularExpression) != nil
+            switch (isToday, isTomorrow) {
+            case (true, false):
+                self = .today
+                return
+            case (false, true):
+                self = .tomorrow
+                return
+            default:
+                continue
+            }
+        }
+    }
+}
 
 private struct MealPlanDayGroup: Identifiable {
     let date: String
@@ -445,8 +480,9 @@ private struct MealPlanReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let messageId: String
+    let dateMode: MealPlanDateMode
 
-    @State private var selectedStartDate = MealPlanReviewSheet.nextMonday()
+    @State private var selectedStartDate: Date
     @State private var preview: MealPlanPreviewResponse?
     @State private var isLoading = false
     @State private var isSaving = false
@@ -457,7 +493,13 @@ private struct MealPlanReviewSheet: View {
 
     private static let slotOrder = ["breakfast", "lunch", "dinner"]
 
-    private var startDate: String { Self.ymd(for: selectedStartDate) }
+    init(messageId: String, dateMode: MealPlanDateMode) {
+        self.messageId = messageId
+        self.dateMode = dateMode
+        _selectedStartDate = State(initialValue: Self.initialDate(for: dateMode))
+    }
+
+    private var startDate: String { Self.ymd(for: selectedStartDate, calendar: .autoupdatingCurrent) }
     private var blockedKeys: Set<String> {
         Set(preview?.blocked.map { $0.key } ?? [])
     }
@@ -491,25 +533,40 @@ private struct MealPlanReviewSheet: View {
             && (preview.conflicts.isEmpty || replaceExisting)
     }
 
-    private var mondayBinding: Binding<Date> {
+    private var dateBinding: Binding<Date> {
         Binding(
             get: { selectedStartDate },
-            set: { selectedStartDate = Self.monday(on: $0) }
+            set: { selectedStartDate = dateMode == .weekly ? Self.monday(on: $0) : $0 }
         )
+    }
+
+    private var datePickerLabel: String {
+        dateMode == .weekly ? "Week starting Monday" : "Meal date"
+    }
+
+    private var datePickerFooter: String {
+        dateMode == .weekly
+            ? "Choose the Monday for this meal plan. Changing it refreshes the preview."
+            : "Choose a meal date. Changing it refreshes the preview."
+    }
+
+    private var dateAccessibilityLabel: String {
+        dateMode == .weekly ? "Week starts \(startDate)" : "Meal date \(startDate)"
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    DatePicker("Week starting Monday", selection: mondayBinding, displayedComponents: .date)
+                    DatePicker(datePickerLabel, selection: dateBinding, displayedComponents: .date)
                         .disabled(isLoading || isSaving || isAlreadyImported)
+                        .accessibilityLabel(datePickerLabel)
                     Text(startDate)
                         .font(Typography.monoSmall)
                         .foregroundStyle(Palette.textSecond)
-                        .accessibilityLabel("Week starts \(startDate)")
+                        .accessibilityLabel(dateAccessibilityLabel)
                 } footer: {
-                    Text("Choose the Monday for this meal plan. Changing it refreshes the preview.")
+                    Text(datePickerFooter)
                 }
 
                 if isLoading {
@@ -778,7 +835,21 @@ private struct MealPlanReviewSheet: View {
         }
     }
 
-    private static func nextMonday(calendar: Calendar = .current, now: Date = Date()) -> Date {
+    private static func initialDate(for mode: MealPlanDateMode,
+                                    calendar: Calendar = .autoupdatingCurrent,
+                                    now: Date = Date()) -> Date {
+        let today = calendar.startOfDay(for: now)
+        switch mode {
+        case .today:
+            return today
+        case .tomorrow:
+            return calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        case .weekly:
+            return nextMonday(calendar: calendar, now: now)
+        }
+    }
+
+    private static func nextMonday(calendar: Calendar = .autoupdatingCurrent, now: Date = Date()) -> Date {
         let today = calendar.startOfDay(for: now)
         let weekday = calendar.component(.weekday, from: today)
         let daysUntilMonday = (2 - weekday + 7) % 7
@@ -786,14 +857,14 @@ private struct MealPlanReviewSheet: View {
         return calendar.date(byAdding: .day, value: offset, to: today) ?? today
     }
 
-    private static func monday(on date: Date, calendar: Calendar = .current) -> Date {
+    private static func monday(on date: Date, calendar: Calendar = .autoupdatingCurrent) -> Date {
         let day = calendar.startOfDay(for: date)
         let weekday = calendar.component(.weekday, from: day)
         let daysSinceMonday = (weekday + 5) % 7
         return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
     }
 
-    private static func ymd(for date: Date, calendar: Calendar = .current) -> String {
+    private static func ymd(for date: Date, calendar: Calendar = .autoupdatingCurrent) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: date))
         return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
     }

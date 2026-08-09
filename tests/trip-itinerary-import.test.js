@@ -113,6 +113,73 @@ function rowTable(rows = [
   ].join("\n");
 }
 
+function hanoiProseItinerary() {
+  return [
+    "## Recommended 5-day Hanoi family itinerary",
+    "",
+    "### Day 1 — Arrive and explore the Old Quarter",
+    "",
+    "**Afternoon**",
+    "- Check into the hotel and settle in.",
+    "",
+    "**Evening**",
+    "- Take a gentle walk around Hoàn Kiếm Lake and the Old Quarter, depending on route:",
+    "  - Keep the loop short if the children are tired.",
+    "  - Use a quieter side street if it is busy.",
+    "",
+    "### Day 2 — Culture and an easy evening",
+    "",
+    "**Morning**",
+    "- Visit the Temple of Literature.",
+    "",
+    "**Lunch and rest**",
+    "- Have lunch near the hotel and take a break.",
+    "",
+    "**Afternoon**",
+    "- Explore the Vietnam Museum of Ethnology.",
+    "",
+    "**Evening**",
+    "- Enjoy a family dinner.",
+    "",
+    "### Day 3 — Flexible family day",
+    "",
+    "**Typical day**",
+    "- Spend a relaxed day around West Lake and local cafés.",
+    "",
+    "**For your group, look for:**",
+    "- A slower pace with a playground stop.",
+    "- Choose one of the optional neighborhood walks.",
+    "",
+    "According to the cited guide, neighborhood options vary by season.",
+    "",
+    "**Important**",
+    "Keep the day flexible.",
+    "",
+    "**Choose one…**",
+    "- Optional route that must not be imported.",
+    "",
+    "### Day 4 — Markets and a cooking activity",
+    "",
+    "**Morning**",
+    "- Visit a local market.",
+    "",
+    "**Afternoon**",
+    "- Join a family cooking class.",
+    "",
+    "**Evening**",
+    "- Have dinner and free time.",
+    "",
+    "### Day 5 — Departure",
+    "",
+    "**Morning**",
+    "- Check out and transfer to the airport.",
+    "",
+    "Pace: relaxed and flexible; adjust stops for the children.",
+    "",
+    "[Guide citations](https://example.test/hanoi)",
+  ].join("\n");
+}
+
 test("Trip itinerary parser handles row and daypart tables deterministically", () => {
   const trip = { startDate: "2026-09-01", endDate: "2026-09-10" };
   const rowItems = tripItineraryImport.parse(rowTable(), trip);
@@ -147,6 +214,70 @@ test("Trip itinerary parser handles row and daypart tables deterministically", (
     { key: "2026-09-01||museum", date: "2026-09-01", time: "", title: "Museum", category: "sight", note: "" },
     { key: "2026-09-01||dinner", date: "2026-09-01", time: "", title: "Dinner", category: "food", note: "" },
   ]);
+});
+
+test("Trip itinerary parser handles conservative Hanoi prose and Hermes preview/import", async () => {
+  const itinerary = hanoiProseItinerary();
+  const tripContext = { startDate: "2026-09-01", endDate: "2026-09-05" };
+  assert.equal(tripItineraryImport.isParseable(itinerary, tripContext), true);
+
+  const items = tripItineraryImport.parse(itinerary, tripContext);
+  assert.deepEqual(items.map(({ date, time, title }) => ({ date, time, title })), [
+    { date: "2026-09-01", time: "", title: "Check into the hotel and settle in." },
+    { date: "2026-09-01", time: "", title: "Take a gentle walk around Hoàn Kiếm Lake and the Old Quarter, depending on route:" },
+    { date: "2026-09-02", time: "", title: "Visit the Temple of Literature." },
+    { date: "2026-09-02", time: "", title: "Have lunch near the hotel and take a break." },
+    { date: "2026-09-02", time: "", title: "Explore the Vietnam Museum of Ethnology." },
+    { date: "2026-09-02", time: "", title: "Enjoy a family dinner." },
+    { date: "2026-09-03", time: "", title: "Spend a relaxed day around West Lake and local cafés." },
+    { date: "2026-09-04", time: "", title: "Visit a local market." },
+    { date: "2026-09-04", time: "", title: "Join a family cooking class." },
+    { date: "2026-09-04", time: "", title: "Have dinner and free time." },
+    { date: "2026-09-05", time: "", title: "Check out and transfer to the airport." },
+  ]);
+  assert.equal(items.some(({ title }) => /Keep the loop|quieter side street|slower pace|optional route/i.test(title)), false);
+
+  const notifyCalls = [];
+  const routes = buildHarness(notifyCalls);
+  const { owner, trip } = makeTrip("HanoiProse");
+  const source = hermes.sendAgentMessage(`trip:${trip.id}`, itinerary).message;
+  assert.deepEqual(source.card, hermes.TRIP_ITINERARY_DRAFT_CARD);
+  assert.equal(chat.getMessage(`trip:${trip.id}`, source.id).text, itinerary);
+  const preview = await call(routes["POST /api/trips/:tripId/itinerary/import-chat/:messageId/preview"], {
+    user: owner, params: { tripId: trip.id, messageId: source.id },
+  });
+  assert.equal(preview.statusCode, 200);
+  assert.deepEqual(preview.body.items.map(({ date, title }) => ({ date, title })), items.map(({ date, title }) => ({ date, title })));
+
+  const confirmed = await call(routes["POST /api/trips/:tripId/itinerary/import-chat/:messageId"], {
+    user: owner, params: { tripId: trip.id, messageId: source.id },
+  });
+  assert.equal(confirmed.statusCode, 200);
+  assert.equal(confirmed.body.importedItems.length, items.length);
+  assert.equal(notifyCalls.length, 1);
+});
+
+test("Trip itinerary prose rejects missing grammar, duplicate activities, and out-of-range days", () => {
+  const trip = { startDate: "2026-09-01", endDate: "2026-09-03" };
+  const section = ["**Morning**", "- Visit the museum"].join("\n");
+  assert.equal(tripItineraryImport.isParseable(["## Hanoi family plan", "### Day 1", section].join("\n"), trip), false);
+  assert.equal(tripItineraryImport.isParseable(["## Hanoi itinerary", "### Monday", section].join("\n"), trip), false);
+  assert.equal(tripItineraryImport.isParseable(["## Hanoi itinerary", "### Day 1"].join("\n"), trip), false);
+  assert.throws(() => tripItineraryImport.parse([
+    "## Hanoi itinerary",
+    "### Day 1",
+    section,
+    "### Day 4",
+    section,
+  ].join("\n"), trip), /date range/i);
+  assert.throws(() => tripItineraryImport.parse([
+    "## Hanoi itinerary",
+    "### Day 1",
+    "**Morning**",
+    "- Visit the museum",
+    "**Evening**",
+    "- Visit the museum",
+  ].join("\n"), trip), /duplicate/i);
 });
 
 test("Trip itinerary parser rejects ambiguous dates, duplicates, malformed rows, and bounds", () => {

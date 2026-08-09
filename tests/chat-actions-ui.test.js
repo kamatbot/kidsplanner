@@ -55,25 +55,46 @@ function mealReviewHelpers() {
     extractFunction(appSource, "chatMessageIsFamilyRoom"),
     extractFunction(appSource, "chatMessageCanReviewMealPlan"),
     extractFunction(appSource, "mealPlanReviewDateInputValue"),
+    extractFunction(appSource, "mealPlanReviewDateModeFromMessage"),
     extractFunction(appSource, "nextMealPlanReviewMonday"),
+    extractFunction(appSource, "mealPlanReviewDefaultDate"),
     extractFunction(appSource, "mealPlanReviewItems"),
     extractFunction(appSource, "mealPlanReviewConflicts"),
     extractFunction(appSource, "mealPlanReviewBlocked"),
     extractFunction(appSource, "mealPlanReviewSafeItems"),
     extractFunction(appSource, "mealPlanReviewDateLabel"),
+    extractFunction(appSource, "mealPlanReviewIsSingleDay"),
+    extractFunction(appSource, "mealPlanReviewIsValidDate"),
     extractFunction(appSource, "mealPlanReviewIsMonday"),
     extractFunction(appSource, "mealPlanReviewCanConfirm"),
     extractFunction(appSource, "mealPlanReviewResultCount"),
     extractFunction(appSource, "mealPlanReviewSuccessMessage"),
     extractFunction(appSource, "renderMealPlanReviewEntries"),
-    "this.helpers = { chatMessageCanReviewMealPlan, nextMealPlanReviewMonday, mealPlanReviewIsMonday, mealPlanReviewSafeItems, mealPlanReviewCanConfirm, mealPlanReviewSuccessMessage, renderMealPlanReviewEntries, setKid };",
+    "this.helpers = { chatMessageCanReviewMealPlan, mealPlanReviewDateModeFromMessage, nextMealPlanReviewMonday, mealPlanReviewDefaultDate, mealPlanReviewIsSingleDay, mealPlanReviewIsValidDate, mealPlanReviewIsMonday, mealPlanReviewSafeItems, mealPlanReviewCanConfirm, mealPlanReviewSuccessMessage, renderMealPlanReviewEntries, setKid };",
   ].join("\n"), sandbox, { filename: "meal-review-helpers.js" });
+  return sandbox.helpers;
+}
+
+function mealReviewDateChangeState(initialState) {
+  const sandbox = { initialState, renders: 0, previews: 0 };
+  vm.runInNewContext([
+    extractFunction(appSource, "mealPlanReviewIsSingleDay"),
+    extractFunction(appSource, "mealPlanReviewIsValidDate"),
+    extractFunction(appSource, "mealPlanReviewIsMonday"),
+    "let mealPlanReviewState = initialState;",
+    "let mealPlanReviewRequestToken = 9;",
+    "function renderMealPlanReviewDialog() { renders++; }",
+    "function requestMealPlanReviewPreview() { previews++; mealPlanReviewState.status = 'loading'; mealPlanReviewState.preview = null; }",
+    extractFunction(appSource, "handleMealPlanReviewDateChange"),
+    "this.helpers = { change: handleMealPlanReviewDateChange, state: () => mealPlanReviewState, token: () => mealPlanReviewRequestToken, counts: () => ({ renders, previews }) };",
+  ].join("\n"), sandbox, { filename: "meal-review-date-change.js" });
   return sandbox.helpers;
 }
 
 test("the review action is limited to parent family Hermes draft messages", () => {
   const helpers = mealReviewHelpers();
   const draft = { id: "m_draft", senderType: "agent", senderId: "hermes", familyId: "fam_1", card: { type: "meal-plan-draft" } };
+  assert.equal(helpers.chatMessageCanReviewMealPlan({ ...draft, card: undefined, text: "## Today's Meal Plan" }), false);
   assert.equal(helpers.chatMessageCanReviewMealPlan(draft), true);
   assert.equal(helpers.chatMessageCanReviewMealPlan({ ...draft, deleted: true }), false);
   assert.equal(helpers.chatMessageCanReviewMealPlan({ ...draft, senderId: "other-agent" }), false);
@@ -82,6 +103,19 @@ test("the review action is limited to parent family Hermes draft messages", () =
   assert.equal(helpers.chatMessageCanReviewMealPlan({ ...draft, scopeId: "trip:t1" }), false);
   helpers.setKid(true);
   assert.equal(helpers.chatMessageCanReviewMealPlan(draft), false);
+});
+
+test("date headings select local single-day defaults while unhinted drafts stay weekly", () => {
+  const helpers = mealReviewHelpers();
+  assert.equal(helpers.mealPlanReviewDateModeFromMessage({ text: "## Today's Meal Plan\n- Dinner" }), "today");
+  assert.equal(helpers.mealPlanReviewDateModeFromMessage({ text: "## Tomorrow’s Meal Plan\n- Dinner" }), "tomorrow");
+  assert.equal(helpers.mealPlanReviewDateModeFromMessage({ text: "## Meal Plan for Tomorrow\n- Dinner" }), "tomorrow");
+  assert.equal(helpers.mealPlanReviewDateModeFromMessage({ text: "Today's meal plan\n- Dinner" }), "weekly");
+  assert.equal(helpers.mealPlanReviewDateModeFromMessage({ text: "## Today's Meal Plan for Tomorrow" }), "weekly");
+
+  assert.equal(helpers.mealPlanReviewDefaultDate("today", new Date(2026, 7, 31, 23, 59)), "2026-08-31");
+  assert.equal(helpers.mealPlanReviewDefaultDate("tomorrow", new Date(2026, 7, 31, 23, 59)), "2026-09-01");
+  assert.equal(helpers.mealPlanReviewDefaultDate("weekly", new Date(2026, 7, 9, 23, 59)), "2026-08-10");
 });
 
 test("preview defaults to the following local Monday and confirm gates are explicit", () => {
@@ -101,6 +135,52 @@ test("preview defaults to the following local Monday and confirm gates are expli
   assert.deepEqual(helpers.mealPlanReviewSafeItems(allBlocked), []);
   assert.equal(helpers.mealPlanReviewCanConfirm({ status: "ready", preview: allBlocked, replaceExisting: false, imported: false }), false);
   assert.equal(helpers.mealPlanReviewCanConfirm({ status: "ready", preview: { ...preview, imported: true }, replaceExisting: false, imported: false }), false);
+});
+
+test("single-day dates accept any real date while weekly dates remain Monday-only", () => {
+  const helpers = mealReviewHelpers();
+  assert.equal(helpers.mealPlanReviewIsSingleDay("today"), true);
+  assert.equal(helpers.mealPlanReviewIsSingleDay("tomorrow"), true);
+  assert.equal(helpers.mealPlanReviewIsSingleDay("weekly"), false);
+  assert.equal(helpers.mealPlanReviewIsValidDate("2026-08-11"), true);
+  assert.equal(helpers.mealPlanReviewIsValidDate("2026-02-29"), false);
+  assert.equal(helpers.mealPlanReviewIsValidDate("2026-04-31"), false);
+  assert.equal(helpers.mealPlanReviewIsValidDate("2026-8-11"), false);
+  assert.equal(helpers.mealPlanReviewIsMonday("2026-08-10"), true);
+  assert.equal(helpers.mealPlanReviewIsMonday("2026-08-11"), false);
+});
+
+test("date changes refresh single-day previews, clear replacement, and invalidate stale weekly state", () => {
+  const singleDay = mealReviewDateChangeState({
+    dateMode: "today",
+    startDate: "2026-08-10",
+    replaceExisting: true,
+    preview: { items: [{ title: "Soup" }] },
+    status: "ready",
+  });
+  singleDay.change("2026-08-11");
+  assert.equal(singleDay.state().startDate, "2026-08-11");
+  assert.equal(singleDay.state().replaceExisting, false);
+  assert.equal(singleDay.state().status, "loading");
+  assert.equal(singleDay.state().preview, null);
+  assert.equal(singleDay.counts().renders, 0);
+  assert.equal(singleDay.counts().previews, 1);
+
+  const weekly = mealReviewDateChangeState({
+    dateMode: "weekly",
+    startDate: "2026-08-10",
+    replaceExisting: true,
+    preview: { items: [{ title: "Soup" }] },
+    status: "ready",
+  });
+  weekly.change("2026-08-11");
+  assert.equal(weekly.state().status, "error");
+  assert.equal(weekly.state().error, "Choose a Monday for the week start.");
+  assert.equal(weekly.state().preview, null);
+  assert.equal(weekly.state().replaceExisting, false);
+  assert.equal(weekly.token(), 10);
+  assert.equal(weekly.counts().renders, 1);
+  assert.equal(weekly.counts().previews, 0);
 });
 
 test("success and idempotent outcomes stay clear, while grouped preview text is escaped", () => {
@@ -128,6 +208,11 @@ test("the chat UI preserves full text, uses a reusable accessible modal, and ign
   assert.match(appSource, /role="dialog" aria-modal="true"/);
   assert.match(appSource, /id="meal-plan-review-start-date"/);
   assert.match(appSource, /Week starting Monday/);
+  assert.match(appSource, /Meal date/);
+  assert.match(appSource, /single-day meal plan/);
+  assert.match(appSource, /const dateMode = mealPlanReviewDateModeFromMessage\(message\);/);
+  assert.match(appSource, /\n    dateMode,\n/);
+  assert.match(appSource, /startDate: mealPlanReviewDefaultDate\(dateMode\)/);
   assert.match(appSource, /Replace meals already in these slots/);
   assert.match(appSource, /const token = \+\+mealPlanReviewRequestToken/);
   assert.match(appSource, /if \(!mealPlanReviewRequestIsCurrent\(token, messageId, startDate\)\) return;/);

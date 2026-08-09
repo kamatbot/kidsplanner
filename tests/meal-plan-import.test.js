@@ -71,6 +71,69 @@ test("parseMealPlan accepts a Day column with only the meal slots that are prese
   ]);
 });
 
+test("parseMealPlan recognizes the natural single-day heading and ignores snacks and prep notes", () => {
+  const text = [
+    "# Tomorrow’s high-protein meal plan",
+    "",
+    "**Breakfast**",
+    "- **Greek yogurt** with berries and chia",
+    "- Add cinnamon to taste.",
+    "",
+    "**Lunch**",
+    "- [Chicken quinoa bowl](https://example.test)",
+    "- Use leftover vegetables if available.",
+    "",
+    "**After-school snack**",
+    "- Protein bar or fruit.",
+    "",
+    "**Dinner**",
+    "- Salmon with roasted vegetables",
+    "- Optional rice on the side.",
+    "",
+    "**Quick prep notes**",
+    "- Cook quinoa ahead of time.",
+  ].join("\n");
+
+  assert.equal(parser.isParseableMealPlan(text), true);
+  assert.deepEqual(parser.parseMealPlan(text, "2026-08-10"), [
+    {
+      key: "2026-08-10|breakfast",
+      date: "2026-08-10",
+      slot: "breakfast",
+      title: "Greek yogurt with berries and chia",
+    },
+    {
+      key: "2026-08-10|lunch",
+      date: "2026-08-10",
+      slot: "lunch",
+      title: "Chicken quinoa bowl",
+    },
+    {
+      key: "2026-08-10|dinner",
+      date: "2026-08-10",
+      slot: "dinner",
+      title: "Salmon with roasted vegetables",
+    },
+  ]);
+});
+
+test("single-day sections accept inline and next-line titles on any valid date", () => {
+  const text = [
+    "## Today’s meal plan",
+    "",
+    "Breakfast: Overnight oats",
+    "Lunch",
+    "Chicken and rice bowl",
+    "Dinner — Lentil curry",
+  ].join("\n");
+
+  assert.deepEqual(parser.parseMealPlan(text, "2026-08-11"), [
+    { key: "2026-08-11|breakfast", date: "2026-08-11", slot: "breakfast", title: "Overnight oats" },
+    { key: "2026-08-11|lunch", date: "2026-08-11", slot: "lunch", title: "Chicken and rice bowl" },
+    { key: "2026-08-11|dinner", date: "2026-08-11", slot: "dinner", title: "Lentil curry" },
+  ]);
+});
+
 test("parseMealPlan rejects malformed, duplicate, empty, unsupported, oversized, and non-Monday input", () => {
   const invalidTables = [
     "| Day | Breakfast | Lunch | Dinner |\n| --- | --- | --- | --- |\n| Monday | A | B |",
@@ -82,6 +145,49 @@ test("parseMealPlan rejects malformed, duplicate, empty, unsupported, oversized,
   for (const text of invalidTables) assert.throws(() => parser.parseMealPlan(text, "2026-08-10"), parser.MealPlanParseError);
   assert.throws(() => parser.parseMealPlan(sampleTable([["Monday", "A", "B", "C"]]), "2026-08-11"), /Monday/);
   assert.equal(parser.isParseableMealPlan("ordinary Hermes reply"), false);
+});
+
+test("single-day detection rejects duplicates, missing titles, unsupported headings, and snack-only lists", () => {
+  const invalidPlans = [
+    [
+      "# Tomorrow's meal plan",
+      "Breakfast: Oats",
+      "Breakfast: Eggs",
+    ],
+    [
+      "# Today's meal plan",
+      "**Lunch**",
+      "**Quick prep notes**",
+      "- Cook rice.",
+    ],
+    [
+      "# Tomorrow's meal plan",
+      "Breakfast: Oats",
+      "Lunch: Rice",
+      "**Dinner**",
+      "**Quick prep tonight:** Cook chicken before dinner.",
+    ],
+    [
+      "# Tomorrow's high-protein menu",
+      "Breakfast: Oats",
+    ],
+    [
+      "# Tomorrow's meal plan",
+      "- Breakfast: Oats",
+      "- Lunch: Rice",
+      "- Dinner: Curry",
+    ],
+    [
+      "# Tomorrow's meal plan",
+      "**Snack**",
+      "- Fruit",
+    ],
+  ].map((lines) => lines.join("\n"));
+
+  for (const text of invalidPlans) {
+    assert.equal(parser.isParseableMealPlan(text), false);
+    assert.throws(() => parser.parseMealPlan(text, "2026-08-11"), parser.MealPlanParseError);
+  }
 });
 
 test("parseMealPlan truncates cleaned titles at 120 characters", () => {
