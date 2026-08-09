@@ -12,6 +12,13 @@ private func stableHash(_ s: String) -> Int {
 func famSenderColor(_ id: String) -> Color {
     famColors[abs(stableHash(id)) % famColors.count]
 }
+func famChatSenderColor(id: String, name: String, isMine: Bool) -> Color {
+    if isMine { return Palette.blue }
+    if name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Arya") == .orderedSame {
+        return Palette.green
+    }
+    return famSenderColor(id)
+}
 func famInitials(_ name: String) -> String {
     let parts = name.split(separator: " ")
     let first = parts.first?.first.map(String.init) ?? ""
@@ -32,6 +39,7 @@ func famAvatar(senderType: String, id: String) -> String {
 
 struct SystemCardRow: View {
     let message: ChatMessage
+    let senderName: String
     var onTapCard: (ChatCard) -> Void
 
     private var cardType: String { message.card?.type ?? "" }
@@ -40,7 +48,7 @@ struct SystemCardRow: View {
     private var isDone: Bool { !isEvent && message.text.hasPrefix("✅") }
     private var tint: Color { isDone ? Palette.green : Palette.accent }
     private var emoji: String { isEvent ? "📅" : (isDone ? "✅" : "📚") }
-    private var subLabel: String { isEvent ? "Event · tap to view" : "Homework · tap to view" }
+    private var subLabel: String { "Homework · tap to view" }
 
     private var tripStyle: (label: String, icon: String, tint: Color) {
         switch cardType {
@@ -128,7 +136,7 @@ struct SystemCardRow: View {
                         .foregroundStyle(Palette.text)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
-                    Text(subLabel)
+                    Text(isEvent ? "Added by \(senderName)" : subLabel)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(tint)
                 }

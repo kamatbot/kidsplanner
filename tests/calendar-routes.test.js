@@ -211,6 +211,33 @@ test("POST /api/calendar/events: co-parents and kids may create, with family/cre
   assert.equal(kidEvent.body.event.kidId, kid.id);
 });
 
+test("DELETE /api/calendar/events: a kid may delete their own event, not a sibling's", () => {
+  const { routes } = buildHarness();
+  const fam = freshFamily();
+  const parent = store.getUser(fam.parentIds[0]);
+  const first = family.addKid(fam.id, parent.id, { name: "First Kid" }).kid;
+  const second = family.addKid(fam.id, parent.id, { name: "Second Kid" }).kid;
+  const firstUser = store.findOrCreateKidUser(fam.id, first.id, first.name);
+  const secondUser = store.findOrCreateKidUser(fam.id, second.id, second.name);
+
+  const created = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    user: firstUser,
+    body: { title: "First kid's event", date: "2026-07-24", kidId: first.id, silent: true },
+  }).body.event;
+  const siblingDelete = call(routes["DELETE /api/calendar/events/:id"], {
+    familyId: fam.id, user: secondUser, params: { id: created.id },
+  });
+  assert.equal(siblingDelete.statusCode, 403);
+  assert.ok(events.getById(fam.id, created.id));
+
+  const ownDelete = call(routes["DELETE /api/calendar/events/:id"], {
+    familyId: fam.id, user: firstUser, params: { id: created.id },
+  });
+  assert.equal(ownDelete.statusCode, 200);
+  assert.equal(events.getById(fam.id, created.id), null);
+});
+
 test("POST /api/calendar/events: silent:true skips the chat announcement (bulk import / migration)", () => {
   const { routes, chatPosts } = buildHarness();
   const fam = freshFamily();

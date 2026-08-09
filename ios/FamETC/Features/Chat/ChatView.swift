@@ -667,11 +667,13 @@ struct ChatMessageRow: View {
     var onAddToShopping: (ChatMessage) -> Void = { _ in }
     var onPinToNotes: (ChatMessage) -> Void = { _ in }
 
-    private var senderColor: Color { isMine ? Palette.accent : famSenderColor(message.senderId) }
+    private var senderColor: Color {
+        famChatSenderColor(id: message.senderId, name: senderName, isMine: isMine)
+    }
 
     var body: some View {
         if message.card != nil {
-            SystemCardRow(message: message, onTapCard: onTapCard)
+            SystemCardRow(message: message, senderName: senderName, onTapCard: onTapCard)
         } else {
             bubbleRow
         }
@@ -735,16 +737,16 @@ struct ChatMessageRow: View {
                     }
                 }
         } else {
-            // Own messages: flat violet fill (Horizon --accent), white/onAccent
-            // text. Others: neutral panel bg + border — the sender name above
-            // (not the bubble) carries their kid/parent color.
+            // Each sender keeps a readable identity color in both the sender
+            // label and message text; alignment and names remain the secondary
+            // identity cues so color is never the only signal.
             Text(message.text)
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(isMine ? Palette.onAccent : Palette.text)
+                .foregroundStyle(senderColor)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16).padding(.vertical, 11)
-                .background(bubbleShape.fill(isMine ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Palette.panel2)))
-                .overlay(isMine ? nil : bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
+                .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))
+                .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.55), lineWidth: 1))
                 .contextMenu {
                     if canAddToShopping && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button {

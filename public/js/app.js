@@ -2147,9 +2147,16 @@ function isOwnMessage(msg) {
   return msg.senderType === 'parent' && msg.senderId === sessionUser.id;
 }
 
-function renderChatCard(card) {
+function chatSenderColor(msg) {
+  if (isOwnMessage(msg)) return 'var(--c-blue)';
+  if (chatSenderName(msg).trim().toLowerCase() === 'arya') return 'var(--c-green)';
+  return msg.senderType === 'kid' ? (kidColorFor(msg.senderId) || 'var(--accent)') : 'var(--accent)';
+}
+
+function renderChatCard(card, senderName) {
   if (!card || !card.type) return '';
   const mealCard = card.type === 'menu' || card.type === 'meal' || card.sourceType === 'meal';
+  const eventCard = card.type === 'event';
   const icon = mealCard ? '🍽️' : card.type === 'homework' ? '📚' : card.type === 'event' ? '📅' : '🔗';
   const label = mealCard ? 'Meals' : card.type === 'homework' ? 'Homework' : card.type === 'event' ? 'Event' : esc(card.type);
   const mealSummary = mealCard ? [
@@ -2158,11 +2165,13 @@ function renderChatCard(card) {
     famMealCardCount(card.lowPantryCount) !== null ? 'Pantry low/out ' + famMealCardCount(card.lowPantryCount) : '',
   ].filter(Boolean).join(' · ') : '';
   const mealLink = mealCard ? '<a href="/meals" class="btn-link" style="font-size:11px">Open Meals →</a>' : '';
+  const eventAttribution = eventCard && senderName ? `<div class="chat-card-attribution">Added by ${esc(senderName)}</div>` : '';
   return `<div class="chat-msg-card">
     <span class="chat-card-icon">${icon}</span>
     <div class="chat-card-body">
-      <div class="chat-card-label">${label}</div>
+      ${!eventCard ? `<div class="chat-card-label">${label}</div>` : ''}
       ${card.title ? `<div class="chat-card-title">${esc(card.title)}</div>` : ''}
+      ${eventAttribution}
       ${mealSummary ? `<div class="chat-card-summary">${esc(mealSummary)}</div>` : ''}
       ${mealLink}
     </div>
@@ -2246,7 +2255,7 @@ function renderChatMessages() {
       return `<div class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
     }
     const own = isOwnMessage(m);
-    const color = m.senderType === 'kid' ? (kidColorFor(m.senderId) || 'var(--accent)') : 'var(--accent)';
+    const color = chatSenderColor(m);
     const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
     const pinBtn = (!m.deleted && m.text) ? `<button class="chat-msg-ctrl" onclick="handlePinChatMessage('${m.id}')" title="Pin to notes">📌</button>` : '';
     const showAddToTodayTip = chatMessageCanAddToToday(m) && chatAddTodayTipShouldShow();
@@ -2272,7 +2281,7 @@ function renderChatMessages() {
       <div class="chat-msg-bubble" style="${own ? '' : `--sender-color:${color}`}">
         ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
         ${renderChatMedia(m.media)}
-        ${renderChatCard(m.card)}
+        ${renderChatCard(m.card, chatSenderName(m))}
       </div>
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>
