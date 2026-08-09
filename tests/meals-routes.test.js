@@ -19,6 +19,7 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const meals = require("../lib/meals");
 const chat = require("../lib/chat");
+const recipeLibrary = require("../lib/recipes");
 const mealsRoutes = require("../lib/routes/meals");
 
 function userRole(user) {
@@ -95,6 +96,66 @@ test("GET /api/meals: returns {pantry, menu, shopping, prefs, household}; parent
   // Meals is a parent tool (owner decision 2026-08-03) — a kid can't even read it.
   const kidRes = await call(routes["GET /api/meals"], { user: kidUser });
   assert.equal(kidRes.statusCode, 403);
+});
+
+test("GET /api/meals/recipes: lists family-covered recipes and applies filters", async () => {
+  const routes = buildHarness();
+  const first = freshFamily("RC");
+  const recipe = recipeLibrary.all()[0];
+  const coreIngredient = recipe.ingredients.find((ingredient) => ingredient.core) || recipe.ingredients[0];
+  meals.addPantryItem(first.fam.id, first.parent.id, { name: coreIngredient.name, category: "other", level: "plenty" });
+
+  const list = await call(routes["GET /api/meals/recipes"], { user: first.parent });
+  assert.equal(list.statusCode, 200);
+  assert.ok(Array.isArray(list.body.recipes));
+  assert.ok(list.body.recipes.length > 0);
+  const listed = list.body.recipes.find((item) => item.id === recipe.id);
+  assert.ok(listed);
+  assert.ok(listed.coverage.have.includes(coreIngredient.name));
+
+  const filtered = await call(routes["GET /api/meals/recipes"], {
+    user: first.parent,
+    query: { cuisine: recipe.cuisine, query: recipe.title, canCookNow: "1" },
+  });
+  assert.equal(filtered.statusCode, 200);
+  assert.ok(filtered.body.recipes.every((item) => item.cuisine === recipe.cuisine));
+  assert.ok(filtered.body.recipes.every((item) => item.coverage.coreMissing.length === 0));
+});
+
+test("GET /api/meals/recipes/:id: returns detail, isolates pantry coverage, and enforces parent access", async () => {
+  const routes = buildHarness();
+  const first = freshFamily("RD");
+  const second = freshFamily("RDX");
+  const recipe = recipeLibrary.all()[0];
+  const ingredient = recipe.ingredients[0];
+  meals.addPantryItem(first.fam.id, first.parent.id, { name: ingredient.name, category: "other", level: "plenty" });
+
+  const detail = await call(routes["GET /api/meals/recipes/:id"], {
+    user: first.parent,
+    params: { id: recipe.id },
+  });
+  assert.equal(detail.statusCode, 200);
+  assert.equal(detail.body.recipe.id, recipe.id);
+  assert.ok(detail.body.coverage.have.includes(ingredient.name));
+
+  const foreign = await call(routes["GET /api/meals/recipes/:id"], {
+    user: second.parent,
+    params: { id: recipe.id },
+  });
+  assert.equal(foreign.statusCode, 200);
+  assert.ok(!foreign.body.coverage.have.includes(ingredient.name));
+
+  const missing = await call(routes["GET /api/meals/recipes/:id"], {
+    user: first.parent,
+    params: { id: "rc_missing" },
+  });
+  assert.equal(missing.statusCode, 404);
+  assert.deepEqual(missing.body, { error: "Recipe not found." });
+
+  const kid = await call(routes["GET /api/meals/recipes"], { user: first.kidUser });
+  assert.equal(kid.statusCode, 403);
+  const anon = await call(routes["GET /api/meals/recipes"], { user: null });
+  assert.equal(anon.statusCode, 401);
 });
 
 test("GET /api/meals/shopping: family members read a bounded shopping-only projection", async () => {
