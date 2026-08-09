@@ -7,10 +7,23 @@ import WebKit
 /// by `AuthService` at sign-in — so these load logged-in.
 struct HybridWebView: UIViewRepresentable {
     let path: String
+    let isEmbedded: Bool
+
+    init(path: String, isEmbedded: Bool = false) {
+        self.path = path
+        self.isEmbedded = isEmbedded
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
+        if isEmbedded {
+            let userContentController = WKUserContentController()
+            userContentController.addUserScript(WKUserScript(source: Self.embeddedShellScript,
+                                                              injectionTime: .atDocumentStart,
+                                                              forMainFrameOnly: true))
+            config.userContentController = userContentController
+        }
         // Append an iOS token to the User-Agent so in-app web surfaces are also
         // recognised as the iOS app (kept free of the web subscription gate). A
         // WebView can't set per-request headers, so the shared secret (when
@@ -26,4 +39,13 @@ struct HybridWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    private static let embeddedShellScript = """
+        (function() {
+            var style = document.createElement('style');
+            style.textContent = '.standalone-app-shell .app-sidebar { display: none !important; }' +
+                '.standalone-app-shell .standalone-main-content-wrap { flex: 1 1 100% !important; width: 100% !important; }';
+            (document.head || document.documentElement).appendChild(style);
+        }());
+        """
 }

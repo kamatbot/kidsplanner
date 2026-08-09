@@ -6,8 +6,12 @@ import SwiftUI
 /// version of the same three plus their own homework in full.
 struct TodayScreen: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.horizontalSizeClass) private var hSize
     @State private var showAddEvent = false
+    @State private var showNotes = false
+
+    private var bottomClearance: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .phone ? Layout.tabBarClearance : Space.xl
+    }
 
     private var firstName: String {
         guard let name = store.me?.name, !name.isEmpty else { return "" }
@@ -21,27 +25,36 @@ struct TodayScreen: View {
     private var dateLabel: String { Date().formatted(.dateTime.weekday(.wide).month(.wide).day()) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.lg) {
-                if store.isParent {
-                    ParentHeader(greeting: greeting, dateLabel: dateLabel, onAdd: { showAddEvent = true })
-                    ParentTodayStack()
-                } else {
-                    KidHeader(dateLabel: dateLabel)
-                    KidTodayStack()
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    if store.isParent {
+                        ParentHeader(greeting: greeting, dateLabel: dateLabel, onMore: { showNotes = true })
+                        ParentTodayStack()
+                    } else {
+                        KidHeader(dateLabel: dateLabel, onMore: { showNotes = true })
+                        KidTodayStack()
+                    }
                 }
+                .padding(Space.lg)
+                .padding(.bottom, bottomClearance)
+                // Chat-style: tapping anywhere that isn't a field/button/card control
+                // puts the keyboard away. (Controls consume their own taps first.)
+                .contentShape(Rectangle())
+                .onTapGesture { famDismissKeyboard() }
             }
-            .padding(Space.lg)
-            .padding(.bottom, hSize == .compact ? Layout.tabBarClearance : Space.xl)
-            // Chat-style: tapping anywhere that isn't a field/button/card control
-            // puts the keyboard away. (Controls consume their own taps first.)
-            .contentShape(Rectangle())
-            .onTapGesture { famDismissKeyboard() }
+
+            if store.isParent {
+                AddEventFAB { showAddEvent = true }
+                    .padding(.trailing, Space.lg)
+                    .padding(.bottom, bottomClearance)
+            }
         }
         .background(ScreenBackground())
         .scrollDismissesKeyboard(.interactively)
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
+        .sheet(isPresented: $showNotes) { NotesScreen() }
     }
 }
 
@@ -50,7 +63,7 @@ struct TodayScreen: View {
 private struct ParentHeader: View {
     let greeting: String
     let dateLabel: String
-    let onAdd: () -> Void
+    let onMore: () -> Void
 
     var body: some View {
         HStack(alignment: .bottom, spacing: Space.md) {
@@ -59,16 +72,29 @@ private struct ParentHeader: View {
                 Text(greeting).font(Typography.title).foregroundStyle(Palette.text)
             }
             Spacer(minLength: Space.sm)
-            Button(action: { Haptics.impact(.light); onAdd() }) {
-                Label("Add event", systemImage: "plus")
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(Palette.onAccent)
-                    .padding(.horizontal, Space.lg)
-                    .padding(.vertical, Space.sm + 2)
-                    .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-            }
-            .buttonStyle(PressableStyle())
+            MoreMenu(onNotes: onMore)
         }
+    }
+}
+
+private struct AddEventFAB: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.impact(.medium)
+            action()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Palette.onAccent)
+                .frame(width: 58, height: 58)
+                .background(Signal.gradient(), in: Circle())
+                .shadow(color: Signal.end.opacity(0.28), radius: 8, x: 0, y: 5)
+        }
+        .buttonStyle(PressableStyle(scale: 0.94))
+        .accessibilityLabel("Add event")
+        .accessibilityHint("Create a family event")
     }
 }
 
@@ -240,29 +266,98 @@ private struct HomeworkDueRow: View {
 private struct KidHeader: View {
     @Environment(AppStore.self) private var store
     let dateLabel: String
+    let onMore: () -> Void
 
     private var kid: Kid? { store.kids.first { $0.id == store.me?.kidId } }
-    private var kidIndex: Int? { store.kids.firstIndex { $0.id == store.me?.kidId } }
-    private var kidColor: Color { kidIndex.map { Palette.kidColor(index: $0) } ?? Palette.accent }
     private var kidName: String { kid?.name ?? store.me?.name ?? "there" }
     private var initial: String { String(kidName.first ?? "?").uppercased() }
+    private var completedHomework: Int { store.homework.filter(\.isDone).count }
+    private var remainingHomework: Int { store.homework.filter { !$0.isDone }.count }
+
+    private var missionCopy: String {
+        if store.homework.isEmpty { return "Nothing is waiting right now — enjoy the win." }
+        if remainingHomework == 0 { return "All clear. You made it happen." }
+        return remainingHomework == 1
+            ? "One small thing to finish today."
+            : "\(remainingHomework) small wins are waiting for you."
+    }
 
     var body: some View {
-        HStack(spacing: Space.md) {
-            Text(initial)
-                .font(Typography.title)
-                .foregroundStyle(Palette.onAccent)
-                .frame(width: 52, height: 52)
-                .background(kidColor, in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                MicroLabel(text: dateLabel)
-                Text("Hey \(kidName)!").font(Typography.largeTitle).foregroundStyle(Palette.text)
+        VStack(alignment: .leading, spacing: Space.md) {
+            HStack(spacing: Space.md) {
+                Text(initial)
+                    .font(Typography.title)
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(.white.opacity(0.18), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(dateLabel.uppercased())
+                        .font(Typography.monoSmall)
+                        .tracking(0.7)
+                        .foregroundStyle(.white.opacity(0.78))
+                    Text("Hey \(kidName)!")
+                        .font(Typography.largeTitle)
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: Space.sm)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                MoreMenu(onNotes: onMore, foreground: .white)
             }
-            Spacer()
-            // ponytail: no streak-days data source yet (server doesn't track a
-            // streak) — skipping the canvas-1g coral→violet ring rather than
-            // showing a fake number. Add once /api/streak (or similar) exists.
+
+            Text("Today's mission")
+                .font(Typography.cardTitle.weight(.bold))
+                .foregroundStyle(.white)
+            Text(missionCopy)
+                .font(Typography.body)
+                .foregroundStyle(.white.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: Space.sm) {
+                ProgressView(value: store.homework.isEmpty ? 0 : Double(completedHomework) / Double(store.homework.count))
+                    .tint(.white)
+                Text(store.homework.isEmpty ? "Ready when you are" : "\(completedHomework)/\(store.homework.count)")
+                    .font(Typography.mono(12, .bold))
+                    .foregroundStyle(.white)
+                    .fixedSize()
+            }
         }
+        .padding(Space.lg)
+        .background(Signal.gradient(), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .overlay(alignment: .bottomTrailing) {
+            Circle()
+                .fill(.white.opacity(0.09))
+                .frame(width: 96, height: 96)
+                .offset(x: 28, y: 28)
+                .accessibilityHidden(true)
+        }
+        .clipped()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Today's mission for \(kidName)")
+        .accessibilityValue(missionCopy)
+    }
+}
+
+private struct MoreMenu: View {
+    let onNotes: () -> Void
+    var foreground: Color = Palette.text
+
+    var body: some View {
+        Menu {
+            Button(action: onNotes) {
+                Label("Notes", systemImage: "note.text")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(foreground)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("More")
+        .accessibilityHint("Open Notes and other family tools")
     }
 }
 

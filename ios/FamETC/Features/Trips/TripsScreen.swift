@@ -9,7 +9,7 @@ import SwiftUI
 /// `HybridWebView` host.
 struct TripsScreen: View {
     var body: some View {
-        HybridWebView(path: "/trips")
+        HybridWebView(path: "/trips", isEmbedded: true)
             // `HybridWebView` sets `contentInsetAdjustmentBehavior = .always`,
             // so — the same trick `SurfaceScaffold` uses via `.contentMargins`
             // (SurfaceScaffold.swift:41) — a bottom `safeAreaInset` here becomes
