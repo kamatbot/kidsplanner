@@ -60,6 +60,7 @@ let mealCurrentUserId = null;
 let mealIsKid = false;
 
 let mealMenuFormOpen = null;     // {date, entryId|null}
+let mealSelectedWeekStart = isoDate(mondayOf(new Date()));
 let mealPlanning = false;
 let mealMenuAiUnavailable = false;
 
@@ -149,8 +150,12 @@ function mealNextDays(n) {
   return out;
 }
 
-function mealWeekDays() {
-  const mon = mondayOf(new Date());
+function mealCurrentWeekStart() {
+  return isoDate(mondayOf(new Date()));
+}
+
+function mealWeekDays(startDate) {
+  const mon = parseIso(startDate || mealSelectedWeekStart || mealCurrentWeekStart());
   const out = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(mon);
@@ -158,6 +163,44 @@ function mealWeekDays() {
     out.push(isoDate(d));
   }
   return out;
+}
+
+function mealShiftWeekStart(startDate, weeks) {
+  const shifted = parseIso(startDate || mealCurrentWeekStart());
+  shifted.setDate(shifted.getDate() + (weeks * 7));
+  return isoDate(shifted);
+}
+
+function mealWeekHeading(startDate) {
+  const current = mealCurrentWeekStart();
+  if (startDate === current) return "This week's dinners";
+  if (startDate === mealShiftWeekStart(current, 1)) return "Next week's dinners";
+  if (startDate === mealShiftWeekStart(current, -1)) return "Previous week's dinners";
+  return "Selected week's dinners";
+}
+
+function mealWeekRangeLabel(startDate) {
+  const days = mealWeekDays(startDate);
+  const start = parseIso(days[0]);
+  const end = parseIso(days[6]);
+  const startMonth = start.toLocaleDateString('en-US', { month: 'short' });
+  const endMonth = end.toLocaleDateString('en-US', { month: 'short' });
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `${startMonth} ${start.getDate()}–${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (start.getFullYear() === end.getFullYear()) {
+    return `${startMonth} ${start.getDate()}–${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  return `${startMonth} ${start.getDate()}, ${start.getFullYear()}–${endMonth} ${end.getDate()}, ${end.getFullYear()}`;
+}
+
+function mealWeekRangeAnnouncement(startDate) {
+  const days = mealWeekDays(startDate);
+  const start = parseIso(days[0]);
+  const end = parseIso(days[6]);
+  const startLabel = start.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const endLabel = end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `Showing week of ${startLabel} through ${endLabel}`;
 }
 
 function mealShortDayLabel(dateIso) {
@@ -555,21 +598,50 @@ async function mealMarkCooked(entryId) {
 /* ============================================================
    MENU TAB
 ============================================================ */
+function mealSetSelectedWeek(startDate) {
+  const nextStart = isoDate(mondayOf(parseIso(startDate || mealCurrentWeekStart())));
+  if (nextStart === mealSelectedWeekStart) return;
+  mealSelectedWeekStart = nextStart;
+  mealMenuFormOpen = null;
+  mealsRerenderTab();
+}
+
+function mealNavigateWeek(weeks) {
+  mealSetSelectedWeek(mealShiftWeekStart(mealSelectedWeekStart, weeks));
+}
+
+function mealWeekNavigationHtml() {
+  const current = mealCurrentWeekStart();
+  const isCurrent = mealSelectedWeekStart === current;
+  return `
+    <nav class="meal-week-navigation" aria-label="Menu week navigation">
+      <button type="button" class="btn-secondary" aria-label="Previous week" onclick="mealNavigateWeek(-1)">Previous week</button>
+      <button type="button" class="btn-secondary" aria-label="This week" onclick="mealSetSelectedWeek('${current}')"${isCurrent ? ' disabled aria-current="date"' : ''}>This week</button>
+      <button type="button" class="btn-secondary" aria-label="Next week" onclick="mealNavigateWeek(1)">Next week</button>
+    </nav>
+  `;
+}
+
 function renderMealsMenuTab() {
   const d = mealsData;
-  const days = mealWeekDays();
+  const startDate = mealSelectedWeekStart || mealCurrentWeekStart();
+  const days = mealWeekDays(startDate);
   return `
-    <div class="meal-section-header">
-      <div>
-        <div class="meal-section-title">This week's dinners</div>
+    <div class="meal-section-header meal-menu-header">
+      <div class="meal-menu-heading">
+        <div class="meal-section-title">${esc(mealWeekHeading(startDate))}</div>
+        <div class="meal-section-sub meal-week-range" role="status" aria-live="polite" aria-atomic="true" aria-label="${esc(mealWeekRangeAnnouncement(startDate))}">${esc(mealWeekRangeLabel(startDate))}</div>
         <div class="meal-section-sub">Dinner around ${esc(fmt12((d.prefs && d.prefs.dinnerTime) || '18:30'))}</div>
       </div>
-      ${!mealIsKid ? `
-        <div class="meal-section-header-actions">
-          <button type="button" class="btn-secondary" onclick="mealSuggestFromPantry()" ${mealPlanning ? 'disabled' : ''}>🥫 Suggest from my pantry</button>
-          <button type="button" class="btn-primary" onclick="mealPlanWeek()" ${mealPlanning ? 'disabled' : ''}>${mealPlanning ? renderMealSpinner() + 'Planning…' : '✨ Plan my week'}</button>
-        </div>
-      ` : ''}
+      <div class="meal-menu-controls">
+        ${mealWeekNavigationHtml()}
+        ${!mealIsKid ? `
+          <div class="meal-section-header-actions">
+            <button type="button" class="btn-secondary" onclick="mealSuggestFromPantry()" ${mealPlanning ? 'disabled' : ''}>🥫 Suggest from my pantry</button>
+            <button type="button" class="btn-primary" onclick="mealPlanWeek()" ${mealPlanning ? 'disabled' : ''}>${mealPlanning ? renderMealSpinner() + 'Planning…' : '✨ Plan my week'}</button>
+          </div>
+        ` : ''}
+      </div>
     </div>
     ${!mealIsKid && mealMenuAiUnavailable ? `
       <div class="card meal-ai-note">
@@ -673,7 +745,7 @@ async function mealPlanWeek(forceDeterministic) {
   mealPlanning = true;
   mealsRerenderTab();
   try {
-    const payload = { days: 7, slots: ['dinner'] };
+    const payload = { days: 7, slots: ['dinner'], startDate: mealSelectedWeekStart || mealCurrentWeekStart() };
     if (forceDeterministic) payload.ai = false;
     const res = await window.auth.planMenu(payload);
     const menu = (res && res.menu) || [];

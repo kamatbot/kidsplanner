@@ -43,7 +43,8 @@
 .meal-tab-btn:focus-visible,
 .meal-member-chip:focus-visible,
 .meal-icon-btn:focus-visible,
-.meal-day-picker-btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+.meal-day-picker-btn:focus-visible,
+.meal-week-navigation button:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 
 /* ---------- household preferences (progressive disclosure, not page chrome) ---------- */
 .meal-household-panel {
@@ -186,6 +187,14 @@
 
 /* ---------- Menu tab ---------- */
 .meal-ai-note { padding: 12px 16px; font-size: 13.5px; }
+.meal-menu-header { align-items: flex-start; }
+.meal-menu-heading { flex: 1 1 220px; min-width: 0; }
+.meal-week-range { font-weight: 600; color: var(--text-2); }
+.meal-menu-controls { display: flex; flex: 1 1 420px; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 0; }
+.meal-week-navigation { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.meal-week-navigation button { min-height: 44px; }
+.meal-week-navigation button:disabled { opacity: .55; cursor: default; }
+.meal-menu-controls .meal-section-header-actions { justify-content: flex-end; }
 .meal-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
 .meal-day-col {
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
@@ -322,6 +331,11 @@
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
+  .meal-menu-controls { width: 100%; flex-basis: 100%; align-items: stretch; }
+  .meal-week-navigation,
+  .meal-menu-controls .meal-section-header-actions { width: 100%; justify-content: stretch; }
+  .meal-week-navigation button,
+  .meal-menu-controls .meal-section-header-actions > button { flex: 1 1 0; min-width: 0; }
   .meal-week-grid { grid-template-columns: 1fr; }
   .meal-day-col { flex-direction: row; align-items: center; min-height: 0; }
   .meal-day-head { flex-direction: row; align-items: baseline; gap: 6px; min-width: 64px; }
@@ -339,6 +353,8 @@
   .meal-household-panel-inner { padding: 12px; }
   .meal-household-panel-head { align-items: center; }
   .meal-household-sub { max-width: 34ch; }
+  .meal-week-navigation { gap: 6px; }
+  .meal-week-navigation button { padding-left: 6px; padding-right: 6px; font-size: 12.5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

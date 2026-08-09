@@ -39,6 +39,105 @@ function buildCombined(scriptSrcs) {
     .join("\n;\n");
 }
 
+const mealsSource = fs.readFileSync(path.join(PUBLIC, "js", "meals.js"), "utf8");
+
+function extractFunction(source, name) {
+  const functionToken = `function ${name}(`;
+  const tokenStart = source.indexOf(functionToken);
+  const start = tokenStart >= 6 && source.slice(tokenStart - 6, tokenStart) === "async "
+    ? tokenStart - 6
+    : tokenStart;
+  assert.ok(start >= 0, `expected ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    if (source[i] === "}") depth--;
+    if (depth === 0) return source.slice(start, i + 1);
+  }
+  assert.fail(`could not extract ${name}`);
+}
+
+function frozenDateFor(nowIso) {
+  const NativeDate = Date;
+  const now = new NativeDate(`${nowIso}T12:00:00`).getTime();
+  return class FrozenDate extends NativeDate {
+    constructor(...args) {
+      super(...(args.length ? args : [now]));
+    }
+
+    static now() { return now; }
+  };
+}
+
+function mealWeekHelpers(nowIso) {
+  const sandbox = { Date: frozenDateFor(nowIso) };
+  const source = [
+    `function isoDate(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return \`${'${y}'}-${'${m}'}-${'${day}'}\`;
+    }`,
+    `function parseIso(str) {
+      const [y, m, d] = str.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }`,
+    `function mondayOf(d) {
+      const copy = new Date(d);
+      const dow = copy.getDay();
+      copy.setDate(copy.getDate() - (dow === 0 ? 6 : dow - 1));
+      copy.setHours(0, 0, 0, 0);
+      return copy;
+    }`,
+    `let mealSelectedWeekStart = isoDate(mondayOf(new Date()));
+     let mealMenuFormOpen = null;
+     let mealPlanning = false;
+     let mealMenuAiUnavailable = false;
+     let mealIsKid = false;
+     let rerenderCount = 0;
+     const planCalls = [];
+     const window = { auth: { planMenu: async (payload) => { planCalls.push(payload); return { menu: [] }; } } };
+     function mealsRerenderTab() { rerenderCount++; }
+     function mealMergeMenu() {}
+     function toast() {}
+     function renderMealMenuEntry(entry) { return \`<div class="meal-entry-title">${'${entry.title}'}</div>\`; }
+     function mealMenuFormHtml() { return '<form></form>'; }
+     function esc(value) { return String(value); }`,
+    extractFunction(mealsSource, "mealCurrentWeekStart"),
+    extractFunction(mealsSource, "mealWeekDays"),
+    extractFunction(mealsSource, "mealShiftWeekStart"),
+    extractFunction(mealsSource, "mealWeekHeading"),
+    extractFunction(mealsSource, "mealWeekRangeLabel"),
+    extractFunction(mealsSource, "mealWeekRangeAnnouncement"),
+    extractFunction(mealsSource, "mealSetSelectedWeek"),
+    extractFunction(mealsSource, "mealNavigateWeek"),
+    extractFunction(mealsSource, "mealWeekNavigationHtml"),
+    extractFunction(mealsSource, "renderMealDayCol"),
+    extractFunction(mealsSource, "mealPlanWeek"),
+    `this.helpers = {
+      selected: () => mealSelectedWeekStart,
+      current: () => mealCurrentWeekStart(),
+      days: (startDate) => mealWeekDays(startDate),
+      shift: (startDate, weeks) => mealShiftWeekStart(startDate, weeks),
+      heading: (startDate) => mealWeekHeading(startDate),
+      range: (startDate) => mealWeekRangeLabel(startDate),
+      announcement: (startDate) => mealWeekRangeAnnouncement(startDate),
+      setSelected: (startDate) => mealSetSelectedWeek(startDate),
+      navigate: (weeks) => mealNavigateWeek(weeks),
+      navigation: () => mealWeekNavigationHtml(),
+      setForm: (form) => { mealMenuFormOpen = form; },
+      getForm: () => mealMenuFormOpen,
+      rerenders: () => rerenderCount,
+      renderDay: (dateIso, data) => renderMealDayCol(dateIso, data),
+      plan: (forceDeterministic) => mealPlanWeek(forceDeterministic),
+      planCalls,
+    };`,
+  ].join("\n");
+  vm.runInNewContext(source, sandbox, { filename: "meal-week-helpers.js" });
+  return sandbox.helpers;
+}
+
 test("meals.html client scripts compile together without a global-scope clash", () => {
   const html = fs.readFileSync(path.join(PUBLIC, "meals.html"), "utf8");
   const scripts = localScriptSrcs(html);
@@ -83,6 +182,72 @@ test("meals.js does not redeclare any of util.js's top-level bindings", () => {
     if (re.test(mealsSrc)) clashes.push(name);
   }
   assert.deepEqual(clashes, [], `meals.js redeclares util.js top-level name(s): ${clashes.join(", ")}`);
+});
+
+test("menu week navigation reveals Sunday's next Monday with local calendar dates", () => {
+  const helpers = mealWeekHelpers("2026-08-09");
+  assert.equal(helpers.selected(), "2026-08-03");
+  assert.deepEqual(Array.from(helpers.days()), [
+    "2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06",
+    "2026-08-07", "2026-08-08", "2026-08-09",
+  ]);
+
+  helpers.setForm({ date: "2026-08-09", entryId: "entry_1" });
+  helpers.navigate(1);
+
+  assert.equal(helpers.selected(), "2026-08-10");
+  assert.deepEqual(Array.from(helpers.days()), [
+    "2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13",
+    "2026-08-14", "2026-08-15", "2026-08-16",
+  ]);
+  assert.equal(helpers.getForm(), null, "changing weeks closes an inline menu form");
+  assert.equal(helpers.heading("2026-08-10"), "Next week's dinners");
+  assert.equal(helpers.range("2026-08-10"), "Aug 10–16, 2026");
+  assert.equal(helpers.announcement("2026-08-10"), "Showing week of August 10, 2026 through August 16, 2026");
+
+  const nextMonday = helpers.renderDay("2026-08-10", {
+    menu: [{ id: "entry_2", date: "2026-08-10", slot: "dinner", title: "Tomorrow's dinner" }],
+  });
+  assert.match(nextMonday, /Tomorrow's dinner/);
+});
+
+test("menu week navigation uses local week arithmetic across month and year boundaries", () => {
+  const helpers = mealWeekHelpers("2026-08-09");
+  assert.equal(helpers.shift("2026-01-26", 1), "2026-02-02");
+  assert.equal(helpers.shift("2026-12-28", 1), "2027-01-04");
+  assert.equal(helpers.shift("2027-01-04", -1), "2026-12-28");
+});
+
+test("This week resets the selected week and exposes current state accessibly", () => {
+  const helpers = mealWeekHelpers("2026-08-09");
+  assert.match(helpers.navigation(), /aria-label="This week"[^>]*disabled/);
+
+  helpers.navigate(1);
+  assert.equal(helpers.selected(), "2026-08-10");
+  assert.doesNotMatch(helpers.navigation(), /aria-label="This week"[^>]*disabled/);
+
+  helpers.setForm({ date: "2026-08-10", entryId: null });
+  helpers.setSelected(helpers.current());
+  assert.equal(helpers.selected(), "2026-08-03");
+  assert.equal(helpers.getForm(), null, "resetting to the current week closes an inline menu form");
+  assert.match(helpers.navigation(), /aria-label="This week"[^>]*disabled/);
+});
+
+test("menu planning sends the visible Monday and preserves pantry-only ai:false", async () => {
+  const helpers = mealWeekHelpers("2026-08-09");
+  helpers.navigate(1);
+  await helpers.plan();
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.planCalls[0])), { days: 7, slots: ["dinner"], startDate: "2026-08-10" });
+
+  const pantryHelpers = mealWeekHelpers("2026-08-09");
+  pantryHelpers.navigate(1);
+  await pantryHelpers.plan(true);
+  assert.deepEqual(JSON.parse(JSON.stringify(pantryHelpers.planCalls[0])), {
+    days: 7,
+    slots: ["dinner"],
+    startDate: "2026-08-10",
+    ai: false,
+  });
 });
 
 test("shopping client uses canonical text/done fields and rolls back optimistic toggles", () => {
