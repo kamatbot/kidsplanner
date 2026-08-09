@@ -192,6 +192,12 @@ let chatPollAbort   = null;   // AbortController for the in-flight long-poll fet
 const CHAT_LONGPOLL_WAIT_S = 25; // must match LONG_POLL_MS in lib/routes/chat.js
 const CHAT_BACKOFF_MS = [2000, 5000, 10000]; // retry backoff on poll errors, capped
 
+/* Parent-only Hermes meal-plan draft review. The dialog is created lazily so
+   the existing shell HTML stays unchanged, then reused for every draft. */
+let mealPlanReviewDialog = null;
+let mealPlanReviewState = null;
+let mealPlanReviewRequestToken = 0;
+
 /* Chat: emoji + GIF pickers (see CHAT PICKERS section near the bottom) */
 const CHAT_EMOJI_LIST = [
   '😀','😁','😂','🤣','😊','😍','😘','😜','🤪','😎',
@@ -2319,6 +2325,7 @@ function kidColorFor(kidProfileId) {
 }
 
 function chatSenderName(msg) {
+  if (msg.senderType === 'agent') return msg.senderName || 'Hermes';
   if (msg.senderType === 'kid') {
     const kids = (currentFamily && currentFamily.kids) || [];
     const k = kids.find((x) => x.id === msg.senderId);
@@ -2344,8 +2351,35 @@ function chatSenderColor(msg) {
   return msg.senderType === 'kid' ? (kidColorFor(msg.senderId) || 'var(--accent)') : 'var(--accent)';
 }
 
+function chatMessageIsFamilyRoom(msg) {
+  if (!msg) return false;
+  if (msg.roomId && msg.roomId !== 'family') return false;
+  if (msg.scopeId && msg.scopeId !== 'family') return false;
+  return !(msg.familyId && String(msg.familyId).startsWith('trip:'));
+}
+
+function chatMessageCanReviewMealPlan(msg) {
+  return !isKidSession() && !!(msg && msg.id != null && !msg.deleted &&
+    msg.senderType === 'agent' && msg.senderId === 'hermes' &&
+    msg.card && msg.card.type === 'meal-plan-draft' &&
+    chatMessageIsFamilyRoom(msg));
+}
+
+function renderMealPlanReviewAction(msg) {
+  if (!chatMessageCanReviewMealPlan(msg)) return '';
+  const messageId = todayActionIdArg(msg.id);
+  return `<div class="chat-msg-card chat-meal-plan-draft-card">
+    <span class="chat-card-icon" aria-hidden="true">🍽️</span>
+    <div class="chat-card-body">
+      <div class="chat-card-label">Meal plan ready</div>
+      <div class="chat-card-summary">Hermes prepared a menu for your family.</div>
+      <button type="button" class="btn-primary" style="margin-top:8px" onclick="openMealPlanReviewFromChatMessage('${messageId}')" aria-controls="meal-plan-review-modal">Review &amp; add to Meals</button>
+    </div>
+  </div>`;
+}
+
 function renderChatCard(card, senderName) {
-  if (!card || !card.type) return '';
+  if (!card || !card.type || card.type === 'meal-plan-draft') return '';
   const mealCard = card.type === 'menu' || card.type === 'meal' || card.sourceType === 'meal';
   const eventCard = card.type === 'event';
   const icon = mealCard ? '🍽️' : card.type === 'homework' ? '📚' : card.type === 'event' ? '📅' : '🔗';
@@ -2436,6 +2470,378 @@ function chatAddTodayTipShouldShow() {
   return true;
 }
 
+function mealPlanReviewDateInputValue(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function nextMealPlanReviewMonday(now) {
+  let d = now instanceof Date ? new Date(now.getTime()) : new Date(now || Date.now());
+  if (Number.isNaN(d.getTime())) d = new Date();
+  const daysUntilMonday = ((8 - d.getDay()) % 7) || 7;
+  d.setDate(d.getDate() + daysUntilMonday);
+  return mealPlanReviewDateInputValue(d);
+}
+
+function mealPlanReviewDateLabel(value) {
+  const raw = value == null ? '' : String(value);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (!Number.isNaN(d.getTime()) && d.getFullYear() === Number(match[1]) &&
+        d.getMonth() === Number(match[2]) - 1 && d.getDate() === Number(match[3])) {
+      return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    }
+  }
+  return raw || 'Date not specified';
+}
+
+function mealPlanReviewIsMonday(value) {
+  const raw = String(value || '');
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return !Number.isNaN(d.getTime()) && d.getFullYear() === Number(match[1]) &&
+    d.getMonth() === Number(match[2]) - 1 && d.getDate() === Number(match[3]) && d.getDay() === 1;
+}
+
+function mealPlanReviewItems(preview) {
+  return preview && Array.isArray(preview.items) ? preview.items : [];
+}
+
+function mealPlanReviewConflicts(preview) {
+  return preview && Array.isArray(preview.conflicts) ? preview.conflicts : [];
+}
+
+function mealPlanReviewBlocked(preview) {
+  return preview && Array.isArray(preview.blocked) ? preview.blocked : [];
+}
+
+function mealPlanReviewSafeItems(preview) {
+  const blockedKeys = new Set(mealPlanReviewBlocked(preview)
+    .filter((item) => item && item.key != null)
+    .map((item) => String(item.key)));
+  return mealPlanReviewItems(preview).filter((item) => !blockedKeys.has(String(item && item.key)));
+}
+
+function mealPlanReviewCanConfirm(state) {
+  const preview = state && state.preview;
+  return !!(state && preview && state.status === 'ready' && !state.imported &&
+    preview.imported !== true && mealPlanReviewSafeItems(preview).length > 0 &&
+    (mealPlanReviewConflicts(preview).length === 0 || state.replaceExisting === true));
+}
+
+function mealPlanReviewResultCount(value) {
+  if (Array.isArray(value)) return value.length;
+  return value === true ? 1 : 0;
+}
+
+function mealPlanReviewSuccessMessage(result) {
+  const imported = mealPlanReviewResultCount(result && result.importedEntries);
+  const alreadyImported = result && result.existing === true;
+  const existing = alreadyImported ? 0 : mealPlanReviewResultCount(result && result.existing);
+  const blocked = mealPlanReviewResultCount(result && result.blocked);
+  let message;
+  if (alreadyImported) {
+    message = 'This meal plan was already in Meals.';
+  } else if (imported && existing) {
+    message = `Added ${imported} ${imported === 1 ? 'meal' : 'meals'} to Meals; ${existing} ${existing === 1 ? 'was' : 'were'} already there.`;
+  } else if (imported) {
+    message = `Added ${imported} ${imported === 1 ? 'meal' : 'meals'} to Meals.`;
+  } else if (existing) {
+    message = `Those ${existing === 1 ? 'meal' : 'meals'} were already in Meals.`;
+  } else {
+    message = 'Meal plan import finished. Open Meals to review it.';
+  }
+  if (blocked) message += ` ${blocked} ${blocked === 1 ? 'item was' : 'items were'} blocked by the server.`;
+  return `✅ ${message} Open Meals to see the plan.`;
+}
+
+function renderMealPlanReviewEntries(items) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const date = item && item.date != null ? String(item.date) : '';
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(item || {});
+  });
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, entries]) => `<section aria-labelledby="meal-plan-review-day-${esc(date)}" style="margin-top:14px">
+      <h4 id="meal-plan-review-day-${esc(date)}" style="margin:0 0 6px;font-size:14px">${esc(mealPlanReviewDateLabel(date))}</h4>
+      <ul style="margin:0;padding-left:20px">${entries
+        .slice()
+        .sort((a, b) => String(a.slot || '').localeCompare(String(b.slot || '')))
+        .map((item) => `<li style="margin:4px 0"><strong>${esc(item.slot || 'Meal')}</strong>: ${esc(item.title || 'Untitled meal')}</li>`)
+        .join('')}</ul>
+    </section>`)
+    .join('');
+}
+
+function renderMealPlanReviewIssues(title, items, detail) {
+  if (!items.length) return '';
+  return `<section aria-labelledby="meal-plan-review-${title.toLowerCase().replace(/[^a-z]+/g, '-')}-heading" style="margin-top:16px">
+    <h4 id="meal-plan-review-${title.toLowerCase().replace(/[^a-z]+/g, '-')}-heading" style="margin:0 0 6px;font-size:14px">${esc(title)} (${items.length})</h4>
+    <ul style="margin:0;padding-left:20px">${items.map((item) => detail(item)).join('')}</ul>
+  </section>`;
+}
+
+function renderMealPlanReviewContent(preview) {
+  if (!preview) return '<p class="text-muted">Loading the meal-plan preview…</p>';
+  const items = mealPlanReviewSafeItems(preview);
+  const conflicts = mealPlanReviewConflicts(preview);
+  const blocked = mealPlanReviewBlocked(preview);
+  const imported = preview.imported === true;
+  const safeSummary = imported
+    ? `${items.length} ${items.length === 1 ? 'meal is' : 'meals are'} already in Meals.`
+    : items.length === 1 ? '1 meal can be added.' : `${items.length} meals can be added.`;
+  const content = [`<div class="parse-summary" role="status">${esc(safeSummary)}</div>`];
+
+  if (items.length) {
+    content.push(`<h4 style="margin:16px 0 0;font-size:14px">Meals by day</h4>${renderMealPlanReviewEntries(items)}`);
+  } else if (!imported) {
+    content.push('<p class="text-muted" style="margin:14px 0 0">No safe meals are available to add for this week.</p>');
+  }
+  if (blocked.length) {
+    content.push(renderMealPlanReviewIssues('Blocked', blocked, (item) => `<li style="margin:4px 0"><strong>${esc(item.title || 'Meal')}</strong> — ${esc(item.slot || 'slot')}<br><span class="text-muted">${esc(item.reason || 'The server cannot add this item.')}</span></li>`));
+  }
+  if (conflicts.length) {
+    content.push(renderMealPlanReviewIssues('Conflicts', conflicts, (item) => `<li style="margin:4px 0"><strong>${esc(item.title || 'Meal')}</strong> — ${esc(item.date || 'date')}, ${esc(item.slot || 'slot')}<br><span class="text-muted">Existing: ${esc(item.existingTitle || 'Meal already in this slot.')}</span></li>`));
+  }
+  if (imported) {
+    content.push('<p class="text-muted" style="margin:16px 0 0">This draft has already been added to Meals.</p>');
+  }
+  return content.join('');
+}
+
+function mealPlanReviewDialogIsOpen() {
+  return !!(mealPlanReviewDialog && mealPlanReviewDialog.classList.contains('open'));
+}
+
+function ensureMealPlanReviewDialog() {
+  if (mealPlanReviewDialog && document.body.contains(mealPlanReviewDialog)) return mealPlanReviewDialog;
+  const existing = document.getElementById('meal-plan-review-modal');
+  if (existing) {
+    mealPlanReviewDialog = existing;
+    return existing;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'meal-plan-review-modal';
+  overlay.className = 'modal-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = `<div class="modal-card modal-wide" role="dialog" aria-modal="true" aria-labelledby="meal-plan-review-title" aria-describedby="meal-plan-review-status">
+    <div class="modal-header">
+      <h3 id="meal-plan-review-title">🍽️ Review meal plan</h3>
+      <button type="button" class="modal-close meal-plan-review-close" aria-label="Close meal plan review">×</button>
+    </div>
+    <div class="form-group">
+      <label for="meal-plan-review-start-date">Week starting Monday</label>
+      <input type="date" id="meal-plan-review-start-date" autocomplete="off">
+      <p class="text-muted" style="margin:5px 0 0">Choose the Monday for this meal plan. Changing it refreshes the preview.</p>
+    </div>
+    <div id="meal-plan-review-status" role="status" aria-live="polite" class="text-muted" style="min-height:20px;margin:12px 0"></div>
+    <div id="meal-plan-review-error" role="alert" aria-live="assertive" style="display:none;margin:10px 0;color:var(--danger)"></div>
+    <div id="meal-plan-review-content"></div>
+    <div id="meal-plan-review-replace-group" class="form-group" style="margin-top:16px;display:none">
+      <label for="meal-plan-review-replace"><input type="checkbox" id="meal-plan-review-replace"> Replace meals already in these slots</label>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary meal-plan-review-cancel">Cancel</button>
+      <button type="button" class="btn-primary meal-plan-review-confirm">Add safe meals to Meals</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  mealPlanReviewDialog = overlay;
+
+  overlay.querySelector('.meal-plan-review-close').addEventListener('click', closeMealPlanReviewDialog);
+  overlay.querySelector('.meal-plan-review-cancel').addEventListener('click', closeMealPlanReviewDialog);
+  overlay.querySelector('.meal-plan-review-confirm').addEventListener('click', confirmMealPlanReviewImport);
+  overlay.querySelector('#meal-plan-review-start-date').addEventListener('change', (event) => {
+    handleMealPlanReviewDateChange(event.target.value);
+  });
+  overlay.querySelector('#meal-plan-review-replace').addEventListener('change', (event) => {
+    if (!mealPlanReviewState) return;
+    mealPlanReviewState.replaceExisting = event.target.checked;
+    renderMealPlanReviewDialog();
+  });
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeMealPlanReviewDialog();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && mealPlanReviewDialogIsOpen()) closeMealPlanReviewDialog();
+  });
+  return overlay;
+}
+
+function renderMealPlanReviewDialog() {
+  if (!mealPlanReviewDialog || !mealPlanReviewState) return;
+  const state = mealPlanReviewState;
+  const preview = state.preview;
+  const status = mealPlanReviewDialog.querySelector('#meal-plan-review-status');
+  const error = mealPlanReviewDialog.querySelector('#meal-plan-review-error');
+  const content = mealPlanReviewDialog.querySelector('#meal-plan-review-content');
+  const dateInput = mealPlanReviewDialog.querySelector('#meal-plan-review-start-date');
+  const replaceGroup = mealPlanReviewDialog.querySelector('#meal-plan-review-replace-group');
+  const replaceInput = mealPlanReviewDialog.querySelector('#meal-plan-review-replace');
+  const confirm = mealPlanReviewDialog.querySelector('.meal-plan-review-confirm');
+  const conflictCount = mealPlanReviewConflicts(preview).length;
+
+  dateInput.value = state.startDate || '';
+  dateInput.disabled = state.status === 'importing';
+  replaceInput.checked = state.replaceExisting === true;
+  replaceGroup.style.display = conflictCount && !state.imported ? '' : 'none';
+  replaceInput.disabled = !conflictCount || state.status === 'loading' || state.status === 'importing' || state.imported === true || (preview && preview.imported === true);
+  content.innerHTML = renderMealPlanReviewContent(preview);
+
+  if (state.status === 'loading') status.textContent = 'Loading preview for the week starting Monday…';
+  else if (state.status === 'importing') status.textContent = 'Adding meals to Meals…';
+  else if (state.status === 'error') status.textContent = 'Preview or import needs attention.';
+  else if (state.imported || (preview && preview.imported === true)) status.textContent = 'This meal plan is already in Meals.';
+  else if (preview) status.textContent = `${mealPlanReviewSafeItems(preview).length} safe meal${mealPlanReviewSafeItems(preview).length === 1 ? '' : 's'} in the preview for ${mealPlanReviewDateLabel(state.startDate)}.`;
+  else status.textContent = '';
+
+  error.textContent = state.error || '';
+  error.style.display = state.error ? '' : 'none';
+  confirm.disabled = !mealPlanReviewCanConfirm(state);
+  confirm.textContent = state.status === 'importing' ? 'Adding…' : state.imported || (preview && preview.imported === true) ? 'Already in Meals' : 'Add safe meals to Meals';
+}
+
+function mealPlanReviewRequestIsCurrent(token, messageId, startDate) {
+  return !!(mealPlanReviewDialogIsOpen() && mealPlanReviewState &&
+    mealPlanReviewState.requestToken === token && mealPlanReviewRequestToken === token &&
+    mealPlanReviewState.messageId === String(messageId) && mealPlanReviewState.startDate === startDate);
+}
+
+function requestMealPlanReviewPreview() {
+  const state = mealPlanReviewState;
+  if (!state) return;
+  const messageId = state.messageId;
+  const startDate = state.startDate;
+  const token = ++mealPlanReviewRequestToken;
+  state.requestToken = token;
+  state.status = 'loading';
+  state.preview = null;
+  state.imported = false;
+  state.error = '';
+  renderMealPlanReviewDialog();
+
+  const previewFn = window.auth && window.auth.previewMealPlanChatImport;
+  if (typeof previewFn !== 'function') {
+    state.status = 'error';
+    state.error = 'Meal-plan preview is not available yet.';
+    renderMealPlanReviewDialog();
+    return;
+  }
+  Promise.resolve(previewFn(messageId, startDate)).then((preview) => {
+    if (!mealPlanReviewRequestIsCurrent(token, messageId, startDate)) return;
+    state.preview = preview || {};
+    state.imported = state.preview.imported === true;
+    state.status = 'ready';
+    state.error = '';
+    renderMealPlanReviewDialog();
+  }).catch((err) => {
+    if (!mealPlanReviewRequestIsCurrent(token, messageId, startDate)) return;
+    state.status = 'error';
+    state.error = (err && err.message) || 'Could not preview this meal plan.';
+    renderMealPlanReviewDialog();
+  });
+}
+
+function handleMealPlanReviewDateChange(value) {
+  if (!mealPlanReviewState) return;
+  if (!mealPlanReviewIsMonday(value)) {
+    mealPlanReviewRequestToken++;
+    mealPlanReviewState.requestToken = mealPlanReviewRequestToken;
+    mealPlanReviewState.startDate = String(value || '');
+    mealPlanReviewState.status = 'error';
+    mealPlanReviewState.error = 'Choose a Monday for the week start.';
+    mealPlanReviewState.preview = null;
+    mealPlanReviewState.replaceExisting = false;
+    renderMealPlanReviewDialog();
+    return;
+  }
+  mealPlanReviewState.startDate = String(value);
+  mealPlanReviewState.replaceExisting = false;
+  requestMealPlanReviewPreview();
+}
+
+function closeMealPlanReviewDialog() {
+  if (!mealPlanReviewDialog) return;
+  const returnFocus = mealPlanReviewState && mealPlanReviewState.returnFocus;
+  mealPlanReviewRequestToken++;
+  closeModal('meal-plan-review-modal');
+  mealPlanReviewDialog.setAttribute('aria-hidden', 'true');
+  if (returnFocus && typeof returnFocus.focus === 'function' && document.contains(returnFocus)) returnFocus.focus();
+}
+
+function openMealPlanReviewFromChatMessage(messageId) {
+  if (isKidSession()) return;
+  const message = chatMessages.find((item) => item && String(item.id) === String(messageId));
+  if (!chatMessageCanReviewMealPlan(message)) return;
+  const dialog = ensureMealPlanReviewDialog();
+  mealPlanReviewRequestToken++;
+  mealPlanReviewState = {
+    messageId: String(message.id),
+    startDate: nextMealPlanReviewMonday(),
+    preview: null,
+    imported: false,
+    replaceExisting: false,
+    status: 'loading',
+    error: '',
+    returnFocus: document.activeElement,
+    requestToken: mealPlanReviewRequestToken,
+  };
+  openModal('meal-plan-review-modal');
+  dialog.setAttribute('aria-hidden', 'false');
+  renderMealPlanReviewDialog();
+  const closeButton = dialog.querySelector('.meal-plan-review-close');
+  if (closeButton && typeof closeButton.focus === 'function') closeButton.focus();
+  requestMealPlanReviewPreview();
+}
+
+function confirmMealPlanReviewImport() {
+  const state = mealPlanReviewState;
+  if (!mealPlanReviewCanConfirm(state)) return;
+  const importFn = window.auth && window.auth.importMealPlanChat;
+  if (typeof importFn !== 'function') {
+    state.status = 'error';
+    state.error = 'Meal-plan import is not available yet.';
+    renderMealPlanReviewDialog();
+    return;
+  }
+
+  const messageId = state.messageId;
+  const startDate = state.startDate;
+  const replaceExisting = state.replaceExisting === true;
+  const token = ++mealPlanReviewRequestToken;
+  state.requestToken = token;
+  state.status = 'importing';
+  state.error = '';
+  renderMealPlanReviewDialog();
+  Promise.resolve(importFn(messageId, startDate, replaceExisting)).then((result) => {
+    if (!mealPlanReviewRequestIsCurrent(token, messageId, startDate)) return;
+    const blocked = mealPlanReviewResultCount(result && result.blocked);
+    const imported = mealPlanReviewResultCount(result && result.importedEntries);
+    const existing = mealPlanReviewResultCount(result && result.existing);
+    if (!imported && !existing && blocked) {
+      state.status = 'ready';
+      state.error = `${blocked} ${blocked === 1 ? 'meal was' : 'meals were'} blocked by the server; nothing was added.`;
+      state.preview = Object.assign({}, state.preview, { blocked: (result && result.blocked) || [] });
+      renderMealPlanReviewDialog();
+      return;
+    }
+    state.imported = true;
+    state.status = 'success';
+    closeMealPlanReviewDialog();
+    toast(mealPlanReviewSuccessMessage(result));
+  }).catch((err) => {
+    if (!mealPlanReviewRequestIsCurrent(token, messageId, startDate)) return;
+    state.status = 'error';
+    state.error = (err && err.message) || 'Could not add this meal plan.';
+    renderMealPlanReviewDialog();
+  });
+}
+
 function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
@@ -2473,6 +2879,7 @@ function renderChatMessages() {
         ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
         ${renderChatMedia(m.media)}
         ${renderChatCard(m.card, chatSenderName(m))}
+        ${renderMealPlanReviewAction(m)}
       </div>
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>

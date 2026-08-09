@@ -74,6 +74,12 @@ let tripChatPollAbort = null;
 let tripChatNudgeReady = false;
 const TRIP_CHAT_BACKOFF_MS = [2000, 5000, 10000];
 
+// Hermes itinerary review is kept in this page's state so the dialog can be
+// reused for every eligible draft without changing the trips.html shell.
+let tripItineraryReviewDialog = null;
+let tripItineraryReviewState = null;
+let tripItineraryReviewRequestToken = 0;
+
 // lib/trips.js publicTrip()/memberFaces() hand back a PALETTE NAME (see
 // lib/trips.js PALETTE — "accent"|"teal"|"blue"|"amber"|"green"|"violet"|
 // "orange"), not a CSS value, so the server never bakes a hex/light-vs-dark
@@ -101,6 +107,12 @@ const CATS = {
   transit:  { label: 'Transit',  color: 'var(--c-orange)' },
   stay:     { label: 'Stay',     color: 'var(--c-violet)' },
 };
+
+const HERMES_TRIP_ITINERARY_CARD = Object.freeze({
+  type: 'trip-itinerary-draft',
+  id: 'hermes-trip-itinerary',
+  title: 'Itinerary ready',
+});
 
 const ICON_PLANE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>';
 const ICON_BED = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 21v-6h6v6"></path><path d="M9 10h.01M15 10h.01M9 13h.01M15 13h.01"></path></svg>';
@@ -196,6 +208,7 @@ function tripsParseRoute() {
 }
 
 function tripsRoute() {
+  if (tripItineraryReviewDialogIsOpen()) closeTripItineraryReviewDialog();
   tripStopChatPolling();
   const r = tripsParseRoute();
   if (r.view === 'hub') {
@@ -1973,6 +1986,400 @@ function tripChatUpdateMeta(type) {
   return null;
 }
 
+function tripChatMessageIsCurrentScope(message) {
+  if (!message || !currentTrip || currentTripId == null || String(currentTripId) === '') return false;
+  if (currentTrip.id != null && String(currentTrip.id) !== String(currentTripId)) return false;
+  const scope = 'trip:' + String(currentTripId);
+  const scopeValues = ['familyId', 'roomId', 'scopeId']
+    .map((key) => message[key])
+    .filter((value) => value !== undefined && value !== null);
+  return scopeValues.length > 0 && scopeValues.every((value) => String(value) === scope);
+}
+
+function tripChatMessageCanReviewItinerary(message) {
+  const role = currentTrip && currentTrip.myRole;
+  const card = message && message.card;
+  return !!(currentTrip && currentTripId != null && String(currentTripId) !== '' && (role === 'owner' || role === 'editor') &&
+    message && message.id != null && !message.deleted &&
+    tripChatMessageIsCurrentScope(message) &&
+    message.senderType === 'agent' && message.senderId === 'hermes' &&
+    message.postedByUserId == null && message.media == null &&
+    typeof message.text === 'string' && message.text.trim() &&
+    card && card.type === HERMES_TRIP_ITINERARY_CARD.type &&
+    card.id === HERMES_TRIP_ITINERARY_CARD.id &&
+    card.title === HERMES_TRIP_ITINERARY_CARD.title);
+}
+
+function tripItineraryReviewMessage(messageId) {
+  return tripChatMessages.find((message) => message && String(message.id) === String(messageId)) || null;
+}
+
+function tripItineraryReviewMessageSnapshot(message) {
+  const card = message && message.card;
+  return [
+    message && message.id,
+    message && message.text,
+    message && message.deleted,
+    message && message.familyId,
+    message && message.roomId,
+    message && message.scopeId,
+    card && card.type,
+    card && card.id,
+    card && card.title,
+  ].map((value) => String(value == null ? '' : value)).join('\u0000');
+}
+
+function tripItineraryReviewInlineArg(value) {
+  return encodeURIComponent(String(value == null ? '' : value))
+    .replace(/[!'()*]/g, (char) => '%' + char.charCodeAt(0).toString(16).toUpperCase());
+}
+
+function renderTripItineraryReviewAction(message) {
+  if (!tripChatMessageCanReviewItinerary(message)) return '';
+  const messageId = tripItineraryReviewInlineArg(message.id);
+  return `<div class="chat-msg-card chat-trip-itinerary-draft-card">
+    <span class="chat-card-icon" aria-hidden="true">🗺️</span>
+    <div class="chat-card-body">
+      <div class="chat-card-label">Itinerary ready</div>
+      <div class="chat-card-summary">Hermes prepared a Trip itinerary.</div>
+      <button type="button" class="btn-primary" style="margin-top:8px" onclick="openTripItineraryReviewFromChatMessage(decodeURIComponent('${messageId}'))" aria-controls="trip-itinerary-review-modal">Review &amp; add to Itinerary</button>
+    </div>
+  </div>`;
+}
+
+function tripItineraryReviewItems(preview) {
+  return preview && Array.isArray(preview.items) ? preview.items : [];
+}
+
+function tripItineraryReviewDuplicates(preview) {
+  return preview && Array.isArray(preview.duplicates) ? preview.duplicates : [];
+}
+
+function tripItineraryReviewSafeItems(preview) {
+  const duplicateKeys = new Set(tripItineraryReviewDuplicates(preview)
+    .filter((item) => item && item.key != null)
+    .map((item) => String(item.key)));
+  return tripItineraryReviewItems(preview)
+    .filter((item) => item && !duplicateKeys.has(String(item.key)));
+}
+
+function tripItineraryReviewCanConfirm(state) {
+  const preview = state && state.preview;
+  const ready = state && (state.status === 'ready' || (state.status === 'error' && state.errorKind === 'import'));
+  return !!(state && ready && !state.imported &&
+    preview && preview.imported !== true && tripItineraryReviewSafeItems(preview).length > 0);
+}
+
+function tripItineraryReviewResultCount(value) {
+  if (Array.isArray(value)) return value.length;
+  return value === true ? 1 : 0;
+}
+
+function tripItineraryReviewSuccessMessage(result) {
+  const imported = tripItineraryReviewResultCount(result && result.importedItems);
+  const skipped = tripItineraryReviewResultCount(result && result.skippedDuplicates);
+  if (result && result.existing === true) {
+    return '✅ This itinerary draft was already imported into this Trip.';
+  }
+  if (imported && skipped) {
+    return `✅ Added ${imported} itinerary ${imported === 1 ? 'item' : 'items'}; ${skipped} ${skipped === 1 ? 'duplicate was' : 'duplicates were'} already on the itinerary.`;
+  }
+  if (imported) {
+    return `✅ Added ${imported} itinerary ${imported === 1 ? 'item' : 'items'} to this Trip.`;
+  }
+  if (skipped) {
+    return `✅ All ${skipped} proposed itinerary ${skipped === 1 ? 'item was' : 'items were'} already on the itinerary.`;
+  }
+  return '✅ Itinerary import finished. No new items were added.';
+}
+
+function tripItineraryReviewSortedItems(items) {
+  return (items || []).map((item, index) => ({ item: item || {}, index })).sort((a, b) => {
+    const dateCompare = String(a.item.date || '').localeCompare(String(b.item.date || ''));
+    if (dateCompare) return dateCompare;
+    const aTime = String(a.item.time || '');
+    const bTime = String(b.item.time || '');
+    if (!aTime && bTime) return 1;
+    if (aTime && !bTime) return -1;
+    const timeCompare = aTime.localeCompare(bTime);
+    return timeCompare || a.index - b.index;
+  }).map(({ item }) => item);
+}
+
+function tripItineraryReviewCategory(item) {
+  const category = item && item.category;
+  return (category && CATS[category] && CATS[category].label) || category || 'Activity';
+}
+
+function renderTripItineraryReviewItem(item, duplicate) {
+  const value = item || {};
+  const time = value.time ? String(value.time) : 'Any time';
+  const title = value.title || 'Untitled activity';
+  const note = value.note ? `<div class="text-muted" style="margin-top:3px">${esc(value.note)}</div>` : '';
+  const existing = duplicate
+    ? `<div class="text-muted" style="margin-top:3px">Existing: ${esc(value.existingTitle || value.title || 'Itinerary item')}</div>`
+    : '';
+  return `<li style="margin:7px 0">
+    <div><span class="micro-label">${esc(time)}</span> · <strong>${esc(title)}</strong> · <span>${esc(tripItineraryReviewCategory(value))}</span></div>
+    ${note}${existing}
+  </li>`;
+}
+
+function renderTripItineraryReviewEntries(items, duplicate) {
+  const groups = new Map();
+  const headingPrefix = duplicate ? 'duplicate' : 'proposed';
+  tripItineraryReviewSortedItems(items).forEach((item) => {
+    const date = String(item && item.date != null ? item.date : '');
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(item || {});
+  });
+  return Array.from(groups.entries()).map(([date, entries]) => `<section aria-labelledby="trip-itinerary-review-${headingPrefix}-${esc(date)}" style="margin-top:14px">
+    <h4 id="trip-itinerary-review-${headingPrefix}-${esc(date)}" style="margin:0 0 6px;font-size:14px">${esc(date || 'Date not specified')}</h4>
+    <ul style="margin:0;padding-left:20px">${entries.map((item) => renderTripItineraryReviewItem(item, duplicate)).join('')}</ul>
+  </section>`).join('');
+}
+
+function renderTripItineraryReviewContent(preview) {
+  if (!preview) return '<p class="text-muted">Loading the itinerary preview…</p>';
+  const items = tripItineraryReviewSafeItems(preview);
+  const duplicates = tripItineraryReviewDuplicates(preview);
+  const imported = preview.imported === true;
+  const content = [];
+  if (imported) {
+    content.push('<div class="parse-summary" role="status">This itinerary draft is already on this Trip.</div>');
+    if (items.length) content.push(`<h4 style="margin:16px 0 0;font-size:14px">Already imported</h4>${renderTripItineraryReviewEntries(items, false)}`);
+  } else {
+    content.push(`<div class="parse-summary" role="status">${items.length} new itinerary ${items.length === 1 ? 'item' : 'items'} can be added.</div>`);
+    if (items.length) content.push(`<h4 style="margin:16px 0 0;font-size:14px">Proposed additions</h4>${renderTripItineraryReviewEntries(items, false)}`);
+    else content.push('<p class="text-muted" style="margin:14px 0 0">No new itinerary items are available to add.</p>');
+  }
+  if (duplicates.length) {
+    content.push(`<section aria-labelledby="trip-itinerary-review-duplicates-heading" style="margin-top:16px">
+      <h4 id="trip-itinerary-review-duplicates-heading" style="margin:0 0 6px;font-size:14px">Already on itinerary (${duplicates.length})</h4>
+      ${renderTripItineraryReviewEntries(duplicates, true)}
+    </section>`);
+  }
+  return content.join('');
+}
+
+function tripItineraryReviewDialogIsOpen() {
+  return !!(tripItineraryReviewDialog && tripItineraryReviewDialog.classList.contains('open'));
+}
+
+function ensureTripItineraryReviewDialog() {
+  if (tripItineraryReviewDialog && document.body.contains(tripItineraryReviewDialog)) return tripItineraryReviewDialog;
+  const existing = document.getElementById('trip-itinerary-review-modal');
+  if (existing) {
+    tripItineraryReviewDialog = existing;
+    return existing;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'trip-itinerary-review-modal';
+  overlay.className = 'modal-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = `<div class="modal-card modal-wide" role="dialog" aria-modal="true" aria-labelledby="trip-itinerary-review-title" aria-describedby="trip-itinerary-review-status" tabindex="-1">
+    <div class="modal-header">
+      <h3 id="trip-itinerary-review-title">🗺️ Review itinerary</h3>
+      <button type="button" class="modal-close trip-itinerary-review-close" aria-label="Close itinerary review">×</button>
+    </div>
+    <div id="trip-itinerary-review-status" role="status" aria-live="polite" class="text-muted" style="min-height:20px;margin:12px 0"></div>
+    <div id="trip-itinerary-review-error" role="alert" aria-live="assertive" style="display:none;margin:10px 0;color:var(--danger)"></div>
+    <div id="trip-itinerary-review-content"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary trip-itinerary-review-cancel">Cancel</button>
+      <button type="button" class="btn-secondary trip-itinerary-review-retry" aria-controls="trip-itinerary-review-content" style="display:none">Retry preview</button>
+      <button type="button" class="btn-primary trip-itinerary-review-confirm">Add safe items to Itinerary</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  tripItineraryReviewDialog = overlay;
+  overlay.querySelector('.trip-itinerary-review-close').addEventListener('click', closeTripItineraryReviewDialog);
+  overlay.querySelector('.trip-itinerary-review-cancel').addEventListener('click', closeTripItineraryReviewDialog);
+  overlay.querySelector('.trip-itinerary-review-retry').addEventListener('click', retryTripItineraryReviewPreview);
+  overlay.querySelector('.trip-itinerary-review-confirm').addEventListener('click', confirmTripItineraryReviewImport);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeTripItineraryReviewDialog();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && tripItineraryReviewDialogIsOpen()) closeTripItineraryReviewDialog();
+  });
+  return overlay;
+}
+
+function renderTripItineraryReviewDialog() {
+  if (!tripItineraryReviewDialog || !tripItineraryReviewState) return;
+  const state = tripItineraryReviewState;
+  const preview = state.preview;
+  const status = tripItineraryReviewDialog.querySelector('#trip-itinerary-review-status');
+  const error = tripItineraryReviewDialog.querySelector('#trip-itinerary-review-error');
+  const content = tripItineraryReviewDialog.querySelector('#trip-itinerary-review-content');
+  const retry = tripItineraryReviewDialog.querySelector('.trip-itinerary-review-retry');
+  const confirm = tripItineraryReviewDialog.querySelector('.trip-itinerary-review-confirm');
+  content.innerHTML = renderTripItineraryReviewContent(preview);
+
+  if (state.status === 'loading') status.textContent = 'Loading itinerary preview…';
+  else if (state.status === 'saving') status.textContent = 'Adding itinerary items…';
+  else if (state.status === 'success') status.textContent = state.success || 'Itinerary import finished.';
+  else if (state.status === 'error') status.textContent = 'Preview or import needs attention.';
+  else if (state.imported || (preview && preview.imported === true)) status.textContent = 'This itinerary draft is already on this Trip.';
+  else if (preview) {
+    const count = tripItineraryReviewSafeItems(preview).length;
+    status.textContent = `${count} new itinerary ${count === 1 ? 'item' : 'items'} in the preview.`;
+  } else status.textContent = '';
+
+  error.textContent = state.error || '';
+  error.style.display = state.error ? '' : 'none';
+  const canRetryPreview = state.status === 'error' && state.errorKind === 'preview';
+  retry.style.display = canRetryPreview ? '' : 'none';
+  retry.disabled = !canRetryPreview;
+  confirm.disabled = !tripItineraryReviewCanConfirm(state);
+  if (state.status === 'saving') confirm.textContent = 'Adding…';
+  else if (state.status === 'success' || state.imported || (preview && preview.imported === true)) confirm.textContent = 'Already added';
+  else confirm.textContent = 'Add safe items to Itinerary';
+}
+
+function tripItineraryReviewContextIsCurrent(state) {
+  if (!state || !tripItineraryReviewDialogIsOpen()) return false;
+  const message = tripItineraryReviewMessage(state.messageId);
+  return !!(state.tripId === String(currentTripId) &&
+    state.messageSnapshot === tripItineraryReviewMessageSnapshot(message) &&
+    tripChatMessageCanReviewItinerary(message));
+}
+
+function tripItineraryReviewRequestIsCurrent(token, tripId, messageId) {
+  const message = tripItineraryReviewMessage(messageId);
+  return !!(tripItineraryReviewDialogIsOpen() && tripItineraryReviewState &&
+    tripItineraryReviewState.requestToken === token && tripItineraryReviewRequestToken === token &&
+    tripItineraryReviewState.tripId === String(tripId) && tripItineraryReviewState.messageId === String(messageId) &&
+    tripItineraryReviewState.messageSnapshot === tripItineraryReviewMessageSnapshot(message) &&
+    String(currentTripId) === String(tripId) && tripChatMessageCanReviewItinerary(message));
+}
+
+function requestTripItineraryReviewPreview() {
+  const state = tripItineraryReviewState;
+  if (!tripItineraryReviewContextIsCurrent(state)) return;
+  const tripId = state.tripId;
+  const messageId = state.messageId;
+  const token = ++tripItineraryReviewRequestToken;
+  state.requestToken = token;
+  state.status = 'loading';
+  state.preview = null;
+  state.imported = false;
+  state.error = '';
+  state.success = '';
+  state.errorKind = '';
+  renderTripItineraryReviewDialog();
+
+  const previewFn = window.auth && window.auth.previewTripItineraryChatImport;
+  if (typeof previewFn !== 'function') {
+    state.status = 'error';
+    state.errorKind = 'preview';
+    state.error = 'Itinerary preview is not available yet.';
+    renderTripItineraryReviewDialog();
+    return;
+  }
+  Promise.resolve(previewFn(tripId, messageId)).then((preview) => {
+    if (!tripItineraryReviewRequestIsCurrent(token, tripId, messageId)) return;
+    state.preview = preview || {};
+    state.imported = state.preview.imported === true;
+    state.status = 'ready';
+    state.error = '';
+    renderTripItineraryReviewDialog();
+  }).catch((err) => {
+    if (!tripItineraryReviewRequestIsCurrent(token, tripId, messageId)) return;
+    state.status = 'error';
+    state.errorKind = 'preview';
+    state.error = (err && err.message) || 'Could not preview this itinerary.';
+    renderTripItineraryReviewDialog();
+  });
+}
+
+function retryTripItineraryReviewPreview() {
+  const state = tripItineraryReviewState;
+  if (!state || state.status !== 'error' || state.errorKind !== 'preview') return;
+  if (!tripItineraryReviewContextIsCurrent(state)) return;
+  requestTripItineraryReviewPreview();
+}
+
+function closeTripItineraryReviewDialog() {
+  if (!tripItineraryReviewDialog) return;
+  const state = tripItineraryReviewState;
+  const returnFocus = state && state.returnFocus;
+  tripItineraryReviewRequestToken++;
+  tripItineraryReviewDialog.classList.remove('open');
+  tripItineraryReviewDialog.setAttribute('aria-hidden', 'true');
+  tripItineraryReviewState = null;
+  if (returnFocus && typeof returnFocus.focus === 'function' && document.contains(returnFocus)) returnFocus.focus();
+}
+
+function openTripItineraryReviewFromChatMessage(messageId) {
+  const message = tripItineraryReviewMessage(messageId);
+  if (!tripChatMessageCanReviewItinerary(message)) return;
+  const dialog = ensureTripItineraryReviewDialog();
+  const token = ++tripItineraryReviewRequestToken;
+  tripItineraryReviewState = {
+    tripId: String(currentTripId),
+    messageId: String(message.id),
+    preview: null,
+    imported: false,
+    status: 'loading',
+    error: '',
+    success: '',
+    errorKind: '',
+    returnFocus: document.activeElement,
+    messageSnapshot: tripItineraryReviewMessageSnapshot(message),
+    requestToken: token,
+  };
+  dialog.classList.add('open');
+  dialog.setAttribute('aria-hidden', 'false');
+  renderTripItineraryReviewDialog();
+  const closeButton = dialog.querySelector('.trip-itinerary-review-close');
+  if (closeButton && typeof closeButton.focus === 'function') closeButton.focus();
+  requestTripItineraryReviewPreview();
+}
+
+function confirmTripItineraryReviewImport() {
+  const state = tripItineraryReviewState;
+  if (!tripItineraryReviewCanConfirm(state)) return;
+  if (!tripItineraryReviewContextIsCurrent(state)) return;
+  const importFn = window.auth && window.auth.importTripItineraryChat;
+  if (typeof importFn !== 'function') {
+    state.status = 'error';
+    state.errorKind = 'import';
+    state.error = 'Itinerary import is not available yet.';
+    renderTripItineraryReviewDialog();
+    return;
+  }
+
+  const tripId = state.tripId;
+  const messageId = state.messageId;
+  const token = ++tripItineraryReviewRequestToken;
+  state.requestToken = token;
+  state.status = 'saving';
+  state.error = '';
+  state.errorKind = '';
+  renderTripItineraryReviewDialog();
+  Promise.resolve(importFn(tripId, messageId)).then((result) => {
+    if (!tripItineraryReviewRequestIsCurrent(token, tripId, messageId)) return;
+    if (result && result.trip) currentTrip = result.trip;
+    state.imported = true;
+    state.status = 'success';
+    state.success = tripItineraryReviewSuccessMessage(result);
+    state.preview = Object.assign({}, state.preview, { imported: true });
+    state.error = '';
+    rerenderTab();
+    if (currentTab === 'chat') renderTripChatMessages();
+    renderTripItineraryReviewDialog();
+  }).catch((err) => {
+    if (!tripItineraryReviewRequestIsCurrent(token, tripId, messageId)) return;
+    state.status = 'error';
+    state.errorKind = 'import';
+    state.error = (err && err.message) || 'Could not add this itinerary.';
+    renderTripItineraryReviewDialog();
+  });
+}
+
 function renderTripChatUpdate(message, senderName, time, controls) {
   const card = message.card;
   const meta = card && tripChatUpdateMeta(card.type);
@@ -2014,6 +2421,7 @@ function renderTripChatMessages() {
       ${!own ? `<div class="chat-msg-avatar-row">${avatarHtml(face.initial, face.color, 16, false)}<span class="chat-msg-sender">${esc(senderName)}</span></div>` : ''}
       <div class="chat-msg-bubble">
         ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
+        ${renderTripItineraryReviewAction(m)}
       </div>
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>

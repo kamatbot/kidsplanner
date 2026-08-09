@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 // MARK: - Chat (native)
@@ -33,6 +34,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @State private var eventRef: EVRef?
     @State private var newEventReq: NewEventReq?
     @State private var newShoppingReq: NewShoppingReq?
+    @State private var mealPlanRef: MealPlanRef?
+    @State private var tripItineraryRef: TripItineraryRef?
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @FocusState private var composerFocused: Bool
 
@@ -82,6 +85,12 @@ struct ChatScreen<HeaderAccessory: View>: View {
         .sheet(item: $newShoppingReq) { req in
             ChatAddShoppingSheet(messageId: req.messageId, initialText: req.text)
         }
+        .sheet(item: $mealPlanRef) { ref in
+            MealPlanReviewSheet(messageId: ref.id)
+        }
+        .sheet(item: $tripItineraryRef) { ref in
+            TripItineraryReviewSheet(tripId: ref.tripId, messageId: ref.messageId)
+        }
     }
 
     // MARK: Header
@@ -121,7 +130,11 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    onAddToCalendar: handleAddToCalendar,
                                    canAddToShopping: isFamilyRoom,
                                    onAddToShopping: handleAddToShopping,
-                                   onPinToNotes: handlePinToNotes)
+                                   onPinToNotes: handlePinToNotes,
+                                   canImportMealPlan: canImportMealPlan(m),
+                                   onImportMealPlan: handleMealPlanImport,
+                                   canImportTripItinerary: canImportTripItinerary(m),
+                                   onImportTripItinerary: handleTripItineraryImport)
                         .id(m.id)
                 }
             }
@@ -160,6 +173,54 @@ struct ChatScreen<HeaderAccessory: View>: View {
     private func handleCardTap(_ card: ChatCard) {
         if card.type == "homework" { hwRef = HWRef(id: card.id) }
         else if card.type == "event" { eventRef = EVRef(id: card.id) }
+    }
+
+    /// A Trip id is meaningful here only when the currently displayed room
+    /// uses the server's exact `trip:<tripId>` scope. The suffix is kept
+    /// untouched for the API path and must be nonempty.
+    private var currentTripId: String? {
+        guard roomId.hasPrefix("trip:") else { return nil }
+        let tripId = String(roomId.dropFirst("trip:".count))
+        return tripId.isEmpty ? nil : tripId
+    }
+
+    private func canImportMealPlan(_ message: ChatMessage) -> Bool {
+        store.isParent && isFamilyRoom && !message.deleted
+            && message.senderType == "agent"
+            && message.senderId == "hermes"
+            && message.card?.type == "meal-plan-draft"
+    }
+    private func handleMealPlanImport(_ message: ChatMessage) {
+        guard canImportMealPlan(message) else { return }
+        Haptics.selection()
+        mealPlanRef = MealPlanRef(id: message.id)
+    }
+
+    /// Trip chat responses have carried the room scope in `familyId` since
+    /// the shared chat store was introduced. Current server responses also
+    /// include `roomId`; accepting a missing roomId preserves old cached Trip
+    /// messages while rejecting any conflicting scope.
+    private func canImportTripItinerary(_ message: ChatMessage) -> Bool {
+        guard let currentTripId,
+              store.isParent,
+              !message.deleted,
+              message.familyId == roomId,
+              message.roomId == nil || message.roomId == roomId,
+              message.senderType == "agent",
+              message.senderId == "hermes",
+              message.postedByUserId == nil,
+              let card = message.card else { return false }
+        return !currentTripId.isEmpty
+            && card.type == "trip-itinerary-draft"
+            && card.id == "hermes-trip-itinerary"
+            && card.title == "Itinerary ready"
+    }
+
+    private func handleTripItineraryImport(_ message: ChatMessage) {
+        guard let currentTripId,
+              canImportTripItinerary(message) else { return }
+        Haptics.selection()
+        tripItineraryRef = TripItineraryRef(tripId: currentTripId, messageId: message.id)
     }
     private func handleAddToCalendar(_ message: ChatMessage) {
         guard isFamilyRoom, !message.deleted,
@@ -359,6 +420,841 @@ struct NewShoppingReq: Identifiable {
     let id = UUID()
     let messageId: String
     let text: String
+}
+struct MealPlanRef: Identifiable {
+    let id: String
+}
+struct TripItineraryRef: Identifiable {
+    let tripId: String
+    let messageId: String
+
+    var id: String { "\(tripId):\(messageId)" }
+}
+
+// MARK: - Hermes meal-plan review
+
+private struct MealPlanDayGroup: Identifiable {
+    let date: String
+    let items: [MealPlanPreviewItem]
+
+    var id: String { date }
+}
+
+private struct MealPlanReviewSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let messageId: String
+
+    @State private var selectedStartDate = MealPlanReviewSheet.nextMonday()
+    @State private var preview: MealPlanPreviewResponse?
+    @State private var isLoading = false
+    @State private var isSaving = false
+    @State private var replaceExisting = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+    @State private var requestToken = UUID()
+
+    private static let slotOrder = ["breakfast", "lunch", "dinner"]
+
+    private var startDate: String { Self.ymd(for: selectedStartDate) }
+    private var blockedKeys: Set<String> {
+        Set(preview?.blocked.map { $0.key } ?? [])
+    }
+    private var conflictKeys: Set<String> {
+        Set(preview?.conflicts.map { $0.key } ?? [])
+    }
+    private var safeImportCount: Int {
+        (preview?.items ?? []).filter { !blockedKeys.contains($0.key) }.count
+    }
+    private var dayGroups: [MealPlanDayGroup] {
+        let groups = Dictionary(grouping: preview?.items ?? [], by: { $0.date })
+        return groups.keys.sorted().map { date in
+            let items = (groups[date] ?? []).sorted { lhs, rhs in
+                let left = Self.slotOrder.firstIndex(of: lhs.slot) ?? Self.slotOrder.count
+                let right = Self.slotOrder.firstIndex(of: rhs.slot) ?? Self.slotOrder.count
+                return left == right ? lhs.slot < rhs.slot : left < right
+            }
+            return MealPlanDayGroup(date: date, items: items)
+        }
+    }
+    private var isAlreadyImported: Bool {
+        successMessage != nil || preview?.imported == true
+    }
+    private var canConfirm: Bool {
+        guard let preview else { return false }
+        return !isAlreadyImported
+            && !isLoading
+            && !isSaving
+            && successMessage == nil
+            && safeImportCount > 0
+            && (preview.conflicts.isEmpty || replaceExisting)
+    }
+
+    private var mondayBinding: Binding<Date> {
+        Binding(
+            get: { selectedStartDate },
+            set: { selectedStartDate = Self.monday(on: $0) }
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    DatePicker("Week starting Monday", selection: mondayBinding, displayedComponents: .date)
+                        .disabled(isLoading || isSaving || isAlreadyImported)
+                    Text(startDate)
+                        .font(Typography.monoSmall)
+                        .foregroundStyle(Palette.textSecond)
+                        .accessibilityLabel("Week starts \(startDate)")
+                } footer: {
+                    Text("Choose the Monday for this meal plan. Changing it refreshes the preview.")
+                }
+
+                if isLoading {
+                    Section {
+                        HStack(spacing: Space.sm) {
+                            ProgressView().tint(Palette.accent)
+                            Text("Loading meal-plan preview…")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.textSecond)
+                        }
+                        .frame(minHeight: 44, alignment: .leading)
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label {
+                            Text(errorMessage)
+                                .font(Typography.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                        }
+                        .foregroundStyle(Palette.coral)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Meal-plan error: \(errorMessage)")
+                    }
+                }
+
+                if let successMessage {
+                    Section {
+                        Label {
+                            Text(successMessage)
+                                .font(Typography.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                        }
+                        .foregroundStyle(Palette.green)
+                        Button("Done") { dismiss() }
+                            .frame(minHeight: 44, alignment: .leading)
+                            .accessibilityHint("Closes the meal-plan review")
+                    }
+                } else if preview?.imported == true {
+                    Section {
+                        Label {
+                            Text("This meal plan is already in Meals.")
+                                .font(Typography.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                        }
+                        .foregroundStyle(Palette.green)
+                        Button("Done") { dismiss() }
+                            .frame(minHeight: 44, alignment: .leading)
+                            .accessibilityHint("Closes the meal-plan review")
+                    }
+                }
+
+                if let preview, !isLoading {
+                    previewSections(preview)
+                }
+            }
+            .navigationTitle("Review meal plan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(isAlreadyImported ? "Done" : "Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Adding…" : "Add safe meals") { importMealPlan() }
+                        .fontWeight(.bold)
+                        .disabled(!canConfirm)
+                }
+            }
+        }
+        .task { requestPreview() }
+        .onChange(of: selectedStartDate) { _, _ in requestPreview() }
+    }
+
+    @ViewBuilder
+    private func previewSections(_ preview: MealPlanPreviewResponse) -> some View {
+        if preview.imported {
+            Section("Meals already in Meals") {
+                Text("This draft has already been added. No new meals will be written.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            Section("Preview") {
+                Text(safeImportCount == 1
+                     ? "1 safe meal can be added."
+                     : "\(safeImportCount) safe meals can be added.")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(safeImportCount > 0 ? Palette.text : Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if preview.items.isEmpty {
+                    Text("No meals were parsed for this week.")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(dayGroups) { group in
+                        VStack(alignment: .leading, spacing: Space.sm) {
+                            Text(Self.dateHeading(group.date))
+                                .font(Typography.cardTitle)
+                                .foregroundStyle(Palette.text)
+                                .accessibilityAddTraits(.isHeader)
+                            ForEach(group.items) { item in
+                                mealRow(item)
+                                if item.id != group.items.last?.id {
+                                    Divider().overlay(Palette.border)
+                                }
+                            }
+                        }
+                        .padding(.vertical, Space.xs)
+                    }
+                }
+            }
+
+            if !preview.blocked.isEmpty {
+                Section("Blocked (\(preview.blocked.count))") {
+                    ForEach(preview.blocked) { item in
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text("\(Self.dateHeading(item.date)) · \(Self.slotLabel(item.slot))")
+                                .font(Typography.caption.weight(.semibold))
+                                .foregroundStyle(Palette.textSecond)
+                            Text(item.title)
+                                .font(Typography.body.weight(.semibold))
+                                .foregroundStyle(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(item.reason)
+                                .font(Typography.caption)
+                                .foregroundStyle(Palette.coral)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Blocked \(item.title), \(item.reason)")
+                    }
+                }
+            }
+
+            if !preview.conflicts.isEmpty {
+                Section("Conflicts (\(preview.conflicts.count))") {
+                    ForEach(preview.conflicts) { conflict in
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text("\(Self.dateHeading(conflict.date)) · \(Self.slotLabel(conflict.slot))")
+                                .font(Typography.caption.weight(.semibold))
+                                .foregroundStyle(Palette.textSecond)
+                            Text(conflict.title)
+                                .font(Typography.body.weight(.semibold))
+                                .foregroundStyle(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("Existing: \(conflict.existingTitle)")
+                                .font(Typography.caption)
+                                .foregroundStyle(Palette.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Conflict for \(conflict.title). Existing meal: \(conflict.existingTitle)")
+                    }
+                    Toggle("Replace meals already in these slots", isOn: $replaceExisting)
+                        .disabled(isLoading || isSaving)
+                        .frame(minHeight: 44, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private func mealRow(_ item: MealPlanPreviewItem) -> some View {
+        let isBlocked = blockedKeys.contains(item.key)
+        let isConflict = conflictKeys.contains(item.key)
+        return HStack(alignment: .top, spacing: Space.sm) {
+            Text(Self.slotLabel(item.slot))
+                .font(Typography.caption.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(width: 72, alignment: .leading)
+            Text(item.title)
+                .font(Typography.body)
+                .foregroundStyle(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Space.xs)
+            if isBlocked {
+                Image(systemName: "nosign")
+                    .foregroundStyle(Palette.coral)
+                    .accessibilityHidden(true)
+            } else if isConflict {
+                Image(systemName: "exclamationmark.circle")
+                    .foregroundStyle(Palette.warn)
+                    .accessibilityHidden(true)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(Self.slotLabel(item.slot)): \(item.title)\(isBlocked ? ", blocked" : isConflict ? ", conflicts with an existing meal" : "")")
+    }
+
+    private func requestPreview() {
+        let token = UUID()
+        requestToken = token
+        isLoading = true
+        preview = nil
+        errorMessage = nil
+        successMessage = nil
+        replaceExisting = false
+        let startDate = self.startDate
+        let appStore = store
+
+        Task { @MainActor in
+            do {
+                let response = try await appStore.previewHermesMealPlan(messageId: messageId, startDate: startDate)
+                guard !Task.isCancelled, requestToken == token else { return }
+                preview = response
+                isLoading = false
+            } catch {
+                guard !Task.isCancelled, requestToken == token else { return }
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
+    }
+
+    private func importMealPlan() {
+        guard canConfirm else { return }
+        isSaving = true
+        errorMessage = nil
+        let startDate = self.startDate
+        let appStore = store
+        let replaceExisting = self.replaceExisting
+
+        Task { @MainActor in
+            do {
+                let response = try await appStore.importHermesMealPlan(messageId: messageId,
+                                                                        startDate: startDate,
+                                                                        replaceExisting: replaceExisting)
+                guard !Task.isCancelled else {
+                    isSaving = false
+                    return
+                }
+                let count = response.importedEntries.count
+                if response.existing {
+                    successMessage = count == 1
+                        ? "This meal plan was already in Meals (1 meal)."
+                        : "This meal plan was already in Meals (\(count) meals)."
+                } else {
+                    successMessage = count == 1
+                        ? "Added 1 meal to Meals."
+                        : "Added \(count) meals to Meals."
+                }
+                if !response.blocked.isEmpty {
+                    successMessage? += " \(response.blocked.count) item\(response.blocked.count == 1 ? " was" : "s were") blocked by the server."
+                }
+                isSaving = false
+            } catch {
+                if Task.isCancelled {
+                    isSaving = false
+                    return
+                }
+                errorMessage = error.localizedDescription
+                isSaving = false
+            }
+        }
+    }
+
+    private static func nextMonday(calendar: Calendar = .current, now: Date = Date()) -> Date {
+        let today = calendar.startOfDay(for: now)
+        let weekday = calendar.component(.weekday, from: today)
+        let daysUntilMonday = (2 - weekday + 7) % 7
+        let offset = daysUntilMonday == 0 ? 7 : daysUntilMonday
+        return calendar.date(byAdding: .day, value: offset, to: today) ?? today
+    }
+
+    private static func monday(on date: Date, calendar: Calendar = .current) -> Date {
+        let day = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: day)
+        let daysSinceMonday = (weekday + 5) % 7
+        return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+    }
+
+    private static func ymd(for date: Date, calendar: Calendar = .current) -> String {
+        let components = calendar.dateComponents([.year, .month, .day], from: calendar.startOfDay(for: date))
+        return String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    private static func dateHeading(_ value: String) -> String {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return value }
+        var components = DateComponents()
+        components.year = parts[0]
+        components.month = parts[1]
+        components.day = parts[2]
+        let calendar = Calendar.current
+        guard let date = calendar.date(from: components) else { return value }
+        let weekday = calendar.component(.weekday, from: date)
+        let name = calendar.weekdaySymbols.indices.contains(weekday - 1)
+            ? calendar.weekdaySymbols[weekday - 1]
+            : "Date"
+        return "\(name) · \(value)"
+    }
+
+    private static func slotLabel(_ value: String) -> String {
+        value.isEmpty ? "Meal" : value.capitalized
+    }
+}
+
+// MARK: - Hermes Trip itinerary review
+
+private struct TripItineraryReviewEntry: Identifiable {
+    let item: TripItineraryImportItem
+    let duplicate: TripItineraryDuplicate?
+    let sourceOrder: Int
+
+    var id: String { "\(item.key)-\(sourceOrder)" }
+}
+
+private struct TripItineraryDayGroup: Identifiable {
+    let date: String
+    let entries: [TripItineraryReviewEntry]
+
+    var id: String { date }
+}
+
+private struct TripItineraryReviewSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let tripId: String
+    let messageId: String
+
+    @State private var preview: TripItineraryPreviewResponse?
+    @State private var isLoading = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var successMessage: String?
+    @State private var requestToken = UUID()
+
+    private var sheetID: String { "\(tripId):\(messageId)" }
+    private var duplicateKeys: Set<String> {
+        Set(preview?.duplicates.map { $0.key } ?? [])
+    }
+    private var safeImportCount: Int {
+        (preview?.items ?? []).filter { !duplicateKeys.contains($0.key) }.count
+    }
+    private var isComplete: Bool {
+        successMessage != nil || preview?.imported == true
+    }
+    private var canConfirm: Bool {
+        guard let preview else { return false }
+        return !isLoading
+            && !isSaving
+            && !preview.imported
+            && successMessage == nil
+            && safeImportCount > 0
+    }
+
+    private var dayGroups: [TripItineraryDayGroup] {
+        guard let preview else { return [] }
+
+        var duplicateByKey: [String: TripItineraryDuplicate] = [:]
+        for duplicate in preview.duplicates {
+            duplicateByKey[duplicate.key] = duplicate
+        }
+
+        var entries: [TripItineraryReviewEntry] = []
+        var knownKeys = Set<String>()
+        for (sourceOrder, item) in preview.items.enumerated() {
+            entries.append(TripItineraryReviewEntry(item: item,
+                                                    duplicate: duplicateByKey[item.key],
+                                                    sourceOrder: sourceOrder))
+            knownKeys.insert(item.key)
+        }
+
+        // A defensive fallback keeps every duplicate explainable if a server
+        // response ever lists one that is absent from `items`.
+        var sourceOrder = entries.count
+        for duplicate in preview.duplicates where !knownKeys.contains(duplicate.key) {
+            let item = TripItineraryImportItem(key: duplicate.key,
+                                               date: duplicate.date,
+                                               time: duplicate.time,
+                                               title: duplicate.title,
+                                               category: duplicate.category,
+                                               note: duplicate.note)
+            entries.append(TripItineraryReviewEntry(item: item,
+                                                    duplicate: duplicate,
+                                                    sourceOrder: sourceOrder))
+            knownKeys.insert(duplicate.key)
+            sourceOrder += 1
+        }
+
+        let grouped = Dictionary(grouping: entries, by: { $0.item.date })
+        return grouped.keys.sorted().map { date in
+            let sorted = Self.sortEntries(grouped[date] ?? [])
+            return TripItineraryDayGroup(
+                date: date,
+                entries: sorted
+            )
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if isLoading {
+                    Section {
+                        HStack(spacing: Space.sm) {
+                            ProgressView()
+                            Text("Loading itinerary preview…")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.textSecond)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Loading itinerary preview")
+                    }
+                }
+
+                if let errorMessage {
+                    Section("Could not complete request") {
+                        VStack(alignment: .leading, spacing: Space.sm) {
+                            Label {
+                                Text(errorMessage)
+                                    .font(Typography.body)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } icon: {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                            }
+                            .foregroundStyle(Palette.coral)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Itinerary error: \(errorMessage)")
+
+                            if preview == nil && !isLoading {
+                                Button("Retry preview") { requestPreview() }
+                                    .frame(minHeight: 44, alignment: .leading)
+                                    .accessibilityHint("Requests the itinerary preview again")
+                            } else if !isSaving && !isComplete {
+                                Text("You can try adding the itinerary again.")
+                                    .font(Typography.caption)
+                                    .foregroundStyle(Palette.textSecond)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+
+                if let preview, !isLoading {
+                    Section("Preview") {
+                        if preview.imported {
+                            Text("This itinerary was already added to this Trip. No new activities will be written.")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.textSecond)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else if safeImportCount == 0 {
+                            Text("No new activities can be added. The proposed activities are already on the itinerary.")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.textSecond)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text(safeImportCount == 1
+                                 ? "1 new activity can be added to this Trip."
+                                 : "\(safeImportCount) new activities can be added to this Trip.")
+                                .font(Typography.body.weight(.semibold))
+                                .foregroundStyle(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    if dayGroups.isEmpty {
+                        Section {
+                            Text("No activities were found in this itinerary draft.")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.textSecond)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        ForEach(dayGroups) { group in
+                            Section {
+                                ForEach(group.entries) { entry in
+                                    itineraryRow(entry)
+                                }
+                            } header: {
+                                Text(Self.dateHeading(group.date))
+                                    .font(Typography.cardTitle)
+                                    .foregroundStyle(Palette.text)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
+                        }
+                    }
+                }
+
+                if let successMessage {
+                    Section("Import complete") {
+                        Label {
+                            Text(successMessage)
+                                .font(Typography.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                        }
+                        .foregroundStyle(Palette.green)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Itinerary import complete: \(successMessage)")
+                        Button("Done") { dismiss() }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .accessibilityHint("Acknowledges the result and closes the itinerary review")
+                    }
+                } else if preview?.imported == true {
+                    Section("Already imported") {
+                        Label {
+                            Text("This itinerary is already on the Trip itinerary.")
+                                .font(Typography.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                        }
+                        .foregroundStyle(Palette.green)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("This itinerary is already on the Trip itinerary")
+                        Button("Done") { dismiss() }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .accessibilityHint("Acknowledges the result and closes the itinerary review")
+                    }
+                }
+            }
+            .navigationTitle("Review itinerary")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(isComplete ? "Done" : "Cancel") { dismiss() }
+                        .frame(minHeight: 44)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Adding…" : "Add to Itinerary") { importItinerary() }
+                        .fontWeight(.bold)
+                        .disabled(!canConfirm)
+                        .accessibilityHint("Adds only activities that are not already on the Trip itinerary")
+                }
+            }
+        }
+        .task(id: sheetID) { requestPreview() }
+    }
+
+    private func itineraryRow(_ entry: TripItineraryReviewEntry) -> some View {
+        let item = entry.item
+        let category = item.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = item.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                Text(Self.displayTime(item.time))
+                    .font(Typography.caption.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .frame(minWidth: 68, alignment: .leading)
+                Text(item.title)
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !category.isEmpty {
+                Text("Category: \(category.capitalized)")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !note.isEmpty {
+                Text("Note: \(note)")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let duplicate = entry.duplicate {
+                Divider().overlay(Palette.border)
+                Label("Already on itinerary", systemImage: "checkmark.circle")
+                    .font(Typography.caption.weight(.semibold))
+                    .foregroundStyle(Palette.textSecond)
+                Text("Existing: \(duplicate.existingTitle)")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Self.accessibilityLabel(for: entry))
+    }
+
+    private func requestPreview() {
+        let token = UUID()
+        requestToken = token
+        preview = nil
+        isLoading = true
+        isSaving = false
+        errorMessage = nil
+        successMessage = nil
+        let tripId = self.tripId
+        let messageId = self.messageId
+        let appStore = store
+
+        Task { @MainActor in
+            do {
+                let response = try await appStore.previewHermesTripItinerary(tripId: tripId,
+                                                                              messageId: messageId)
+                guard requestToken == token, !Task.isCancelled else { return }
+                preview = response
+                isLoading = false
+            } catch {
+                guard requestToken == token, !Task.isCancelled else { return }
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
+    }
+
+    private func importItinerary() {
+        guard canConfirm else { return }
+        let token = UUID()
+        requestToken = token
+        isSaving = true
+        errorMessage = nil
+        let tripId = self.tripId
+        let messageId = self.messageId
+        let appStore = store
+
+        Task { @MainActor in
+            do {
+                let response = try await appStore.importHermesTripItinerary(tripId: tripId,
+                                                                             messageId: messageId)
+                guard requestToken == token else { return }
+                isSaving = false
+                guard !Task.isCancelled else { return }
+                successMessage = Self.successText(for: response)
+            } catch {
+                guard requestToken == token else { return }
+                isSaving = false
+                guard !Task.isCancelled else { return }
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private static func successText(for response: TripItineraryImportResponse) -> String {
+        let importedCount = response.importedItems.count
+        let duplicateCount = response.skippedDuplicates.count
+
+        if response.existing {
+            return "This itinerary was already added to this Trip's itinerary."
+        }
+        if importedCount > 0 {
+            var text = importedCount == 1
+                ? "Added 1 new activity to this Trip's itinerary."
+                : "Added \(importedCount) new activities to this Trip's itinerary."
+            if duplicateCount > 0 {
+                text += duplicateCount == 1
+                    ? " 1 duplicate was skipped."
+                    : " \(duplicateCount) duplicates were skipped."
+            }
+            return text
+        }
+        if duplicateCount > 0 {
+            return duplicateCount == 1
+                ? "No new activities were added. The activity was already on the itinerary."
+                : "No new activities were added. All \(duplicateCount) activities were already on the itinerary."
+        }
+        return "The itinerary import completed, but no new activities were added."
+    }
+
+    private static func sortEntries(_ entries: [TripItineraryReviewEntry]) -> [TripItineraryReviewEntry] {
+        entries.sorted { lhs, rhs in
+            let left = normalizedTime(lhs.item.time)
+            let right = normalizedTime(rhs.item.time)
+            if let left, let right, left != right { return left < right }
+            if left != nil && right == nil { return true }
+            if left == nil && right != nil { return false }
+            return lhs.sourceOrder < rhs.sourceOrder
+        }
+    }
+
+    /// Normalizes common server/parser time forms to a sortable HH:MM key.
+    /// Empty or malformed values intentionally sort after timed activities.
+    private static func normalizedTime(_ value: String) -> String? {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              let regex = try? NSRegularExpression(pattern: #"(?i)^\s*(\d{1,2})(?::([0-5]\d))?\s*(am|pm)?\s*$"#),
+              let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else {
+            return nil
+        }
+
+        let nsText = text as NSString
+        let hour = Int(nsText.substring(with: match.range(at: 1))) ?? -1
+        let minuteRange = match.range(at: 2)
+        let meridiemRange = match.range(at: 3)
+        let hasMinute = minuteRange.location != NSNotFound
+        let hasMeridiem = meridiemRange.location != NSNotFound
+        var normalizedHour = hour
+        let minute = hasMinute ? (Int(nsText.substring(with: minuteRange)) ?? -1) : 0
+
+        if hasMeridiem {
+            guard hour >= 1, hour <= 12, minute >= 0, minute <= 59 else { return nil }
+            let meridiem = nsText.substring(with: meridiemRange).lowercased()
+            if meridiem == "am" {
+                if normalizedHour == 12 { normalizedHour = 0 }
+            } else if normalizedHour != 12 {
+                normalizedHour += 12
+            }
+        } else {
+            guard hasMinute, hour >= 0, hour <= 23, minute >= 0, minute <= 59 else { return nil }
+        }
+        return String(format: "%02d:%02d", normalizedHour, minute)
+    }
+
+    private static func displayTime(_ value: String) -> String {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedTime(text) ?? (text.isEmpty ? "Any time" : text)
+    }
+
+    private static func dateHeading(_ value: String) -> String {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return value }
+        var components = DateComponents()
+        components.year = parts[0]
+        components.month = parts[1]
+        components.day = parts[2]
+        let calendar = Calendar.current
+        guard let date = calendar.date(from: components) else { return value }
+        let weekday = calendar.component(.weekday, from: date)
+        let name = calendar.weekdaySymbols.indices.contains(weekday - 1)
+            ? calendar.weekdaySymbols[weekday - 1]
+            : "Date"
+        return "\(name) · \(value)"
+    }
+
+    private static func accessibilityLabel(for entry: TripItineraryReviewEntry) -> String {
+        let item = entry.item
+        var label = "\(displayTime(item.time)), \(item.title)"
+        let category = item.category.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = item.note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !category.isEmpty { label += ". Category: \(category)" }
+        if !note.isEmpty { label += ". Note: \(note)" }
+        if let duplicate = entry.duplicate {
+            label += ". Already on itinerary. Existing activity: \(duplicate.existingTitle)"
+        }
+        return label
+    }
 }
 
 /// Best-effort time-of-day parser for message text, e.g. "pick up kids at 5pm"
@@ -666,13 +1562,19 @@ struct ChatMessageRow: View {
     var canAddToShopping: Bool = false
     var onAddToShopping: (ChatMessage) -> Void = { _ in }
     var onPinToNotes: (ChatMessage) -> Void = { _ in }
+    var canImportMealPlan: Bool = false
+    var onImportMealPlan: (ChatMessage) -> Void = { _ in }
+    var canImportTripItinerary: Bool = false
+    var onImportTripItinerary: (ChatMessage) -> Void = { _ in }
 
     private var senderColor: Color {
         famChatSenderColor(id: message.senderId, name: senderName, isMine: isMine)
     }
 
     var body: some View {
-        if message.card != nil {
+        if message.card?.type == "meal-plan-draft" || message.card?.type == "trip-itinerary-draft" {
+            bubbleRow
+        } else if message.card != nil {
             SystemCardRow(message: message, senderName: senderName, onTapCard: onTapCard)
         } else {
             bubbleRow
@@ -688,6 +1590,11 @@ struct ChatMessageRow: View {
                     Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderColor).padding(.horizontal, 6)
                 }
                 bubble
+                if canImportMealPlan {
+                    mealPlanAction
+                } else if canImportTripItinerary {
+                    tripItineraryAction
+                }
                 Text(ChatTime.short(message.createdAt)).font(Typography.mono(10.5)).foregroundStyle(Palette.textSecond).padding(.horizontal, 6)
             }
             if !isMine { Spacer(minLength: 52) }
@@ -703,6 +1610,56 @@ struct ChatMessageRow: View {
     }
 
     private var bubbleShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+
+    private var mealPlanAction: some View {
+        Button {
+            onImportMealPlan(message)
+        } label: {
+            HStack(alignment: .center, spacing: Space.sm) {
+                Image(systemName: "fork.knife")
+                Text("Review & add to Meals")
+                    .font(Typography.body.weight(.semibold))
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Palette.accent)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, Space.md)
+            .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                    .strokeBorder(Palette.accent.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("Review and add meal plan to Meals")
+        .accessibilityHint("Opens a preview before adding meals")
+    }
+
+    private var tripItineraryAction: some View {
+        Button {
+            onImportTripItinerary(message)
+        } label: {
+            HStack(alignment: .center, spacing: Space.sm) {
+                Image(systemName: "airplane")
+                Text("Review & add to Itinerary")
+                    .font(Typography.body.weight(.semibold))
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Palette.accent)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, Space.md)
+            .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                    .strokeBorder(Palette.accent.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("Review and add to Itinerary")
+        .accessibilityHint("Opens a preview before adding new activities to this Trip")
+    }
 
     @ViewBuilder private var bubble: some View {
         if message.deleted {
@@ -748,6 +1705,20 @@ struct ChatMessageRow: View {
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))
                 .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.55), lineWidth: 1))
                 .contextMenu {
+                    if canImportMealPlan {
+                        Button {
+                            onImportMealPlan(message)
+                        } label: {
+                            Label("Review & add to Meals", systemImage: "fork.knife")
+                        }
+                    }
+                    if canImportTripItinerary {
+                        Button {
+                            onImportTripItinerary(message)
+                        } label: {
+                            Label("Review & add to Itinerary", systemImage: "airplane")
+                        }
+                    }
                     if canAddToShopping && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Button {
                             onAddToShopping(message)

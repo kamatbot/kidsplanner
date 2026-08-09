@@ -407,3 +407,60 @@ test("Hermes inbound polling seeds history, filters to mentions, and cannot loop
   assert.ok(emptyConnected.body.token);
   assert.equal(oldMention.senderType, "parent");
 });
+
+test("Hermes marks only parseable family meal plans and preserves the full reply text", () => {
+  const { parent, fam } = makeFamily("MealPlanCard");
+  const table = [
+    "A short introduction.",
+    "| Day | Breakfast | Lunch | Dinner |",
+    "| --- | --- | --- | --- |",
+    "| Monday | Oats | Rice | Dal curry |",
+    "",
+    "Full preparation notes remain here.",
+  ].join("\n");
+  const familyReply = hermes.sendAgentMessage(fam.id, table).message;
+  assert.deepEqual(familyReply.card, {
+    type: "meal-plan-draft",
+    id: "hermes-meal-plan",
+    title: "Meal plan ready",
+  });
+  assert.equal(chat.getMessage(fam.id, familyReply.id).text, table);
+
+  const ordinary = hermes.sendAgentMessage(fam.id, "No structured plan today.").message;
+  assert.equal(ordinary.card, null);
+
+  const trip = createTrip(parent.id, fam.id, "Meal plan trip");
+  const tripReply = hermes.sendAgentMessage(`trip:${trip.id}`, table).message;
+  assert.equal(tripReply.card, null);
+  assert.equal(chat.getMessage(`trip:${trip.id}`, tripReply.id).text, table);
+});
+
+test("Hermes marks a parseable Trip itinerary, but not ordinary or meal-only Trip replies", () => {
+  const { parent, fam } = makeFamily("TripItineraryCard");
+  const trip = createTrip(parent.id, fam.id, "Itinerary card trip");
+  const itinerary = [
+    "Here is the proposed route:",
+    "| Day | Time | Activity | Category |",
+    "| --- | --- | --- | --- |",
+    "| Day 1 | 9 am | Colosseum | sight |",
+    "",
+    "Keep the alternatives in the review sheet.",
+  ].join("\n");
+  const reply = hermes.sendAgentMessage(`trip:${trip.id}`, itinerary).message;
+  assert.deepEqual(reply.card, {
+    type: "trip-itinerary-draft",
+    id: "hermes-trip-itinerary",
+    title: "Itinerary ready",
+  });
+  assert.equal(chat.getMessage(`trip:${trip.id}`, reply.id).text, itinerary);
+
+  const ordinary = hermes.sendAgentMessage(`trip:${trip.id}`, "A normal travel note.").message;
+  assert.equal(ordinary.card, null);
+  const meals = [
+    "| Day | Breakfast | Lunch | Dinner |",
+    "| --- | --- | --- | --- |",
+    "| Monday | Oats | Rice | Dal |",
+  ].join("\n");
+  const mealReply = hermes.sendAgentMessage(`trip:${trip.id}`, meals).message;
+  assert.equal(mealReply.card, null);
+});

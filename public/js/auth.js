@@ -747,6 +747,20 @@
     });
   }
 
+  async function previewTripItineraryChatImport(tripId, messageId) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/itinerary/import-chat/" + encodeURIComponent(messageId) + "/preview",
+      { method: "POST", body: JSON.stringify({}) }
+    );
+  }
+
+  async function importTripItineraryChat(tripId, messageId) {
+    return api(
+      "/api/trips/" + encodeURIComponent(tripId) + "/itinerary/import-chat/" + encodeURIComponent(messageId),
+      { method: "POST", body: JSON.stringify({}) }
+    );
+  }
+
   async function voteTripItineraryItem(tripId, itemId) {
     return api("/api/trips/" + encodeURIComponent(tripId) + "/itinerary/" + encodeURIComponent(itemId) + "/vote", {
       method: "POST",
@@ -955,6 +969,20 @@
     return api("/api/meals/menu/plan", { method: "POST", body: JSON.stringify(payload || {}) });
   }
 
+  async function previewMealPlanChatImport(messageId, startDate) {
+    return api("/api/meals/menu/import-chat/" + encodeURIComponent(messageId) + "/preview", {
+      method: "POST",
+      body: JSON.stringify({ startDate: startDate || "" }),
+    });
+  }
+
+  async function importMealPlanChat(messageId, startDate, replaceExisting) {
+    return api("/api/meals/menu/import-chat/" + encodeURIComponent(messageId), {
+      method: "POST",
+      body: JSON.stringify({ startDate: startDate || "", replaceExisting: replaceExisting === true }),
+    });
+  }
+
   async function addMenuEntry(payload) {
     return api("/api/meals/menu", { method: "POST", body: JSON.stringify(payload || {}) });
   }
@@ -1113,6 +1141,8 @@
     updateTripItineraryItem,
     moveTripItineraryItem,
     deleteTripItineraryItem,
+    previewTripItineraryChatImport,
+    importTripItineraryChat,
     voteTripItineraryItem,
     addTripComment,
     deleteTripComment,
@@ -1144,6 +1174,8 @@
     bulkPantry,
     undoPantry,
     planMenu,
+    previewMealPlanChatImport,
+    importMealPlanChat,
     addMenuEntry,
     updateMenuEntry,
     deleteMenuEntry,

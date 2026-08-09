@@ -11,23 +11,12 @@ import SwiftUI
 //                                        Planning switches between Trips and
 //                                        Meals through its context menu.
 //
-//   iPad landscape, PARENT session    → compact nav rail (Today/Calendar/
-//                                        Homework/Trips/Meals — no Chat entry) +
-//                                        main content + a DOCKED chat column on
-//                                        the trailing edge (canvas-1f) — so chat
-//                                        is always visible while browsing. The
-//                                        docked column defaults to the family
-//                                        room, with a Menu room-switcher once
-//                                        Trips adds more rooms.
-//
-//   iPad portrait, OR any kid         → compact nav rail (Today/Calendar/
-//   session (any orientation)           Homework/Chat/Trips/Meals) + full-width
-//                                        main content; tapping the Chat rail
-//                                        item opens the Chat surface as a
-//                                        slide-over sheet instead of docking a
-//                                        column (canvas-1g) — there isn't width
-//                                        to spare for a permanent 3rd column at
-//                                        kid-friendly scale or in portrait.
+//   iPad (all orientations and roles) → compact nav rail (Today/Calendar/
+//                                        Homework/Chat/Trips/Meals) + one full-
+//                                        width content surface. Chat is a real
+//                                        tab, so selecting it replaces Today/
+//                                        Calendar/etc. instead of becoming a
+//                                        floating sheet or a side column.
 //
 // iPad size classes are regular×regular in BOTH orientations, so orientation is
 // read from actual geometry (`onGeometryChange`), not size classes.
@@ -94,41 +83,22 @@ enum Tab: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @State private var selection: Tab = .today
     @State private var planningSelection: PlanningDestination = .trips
-    @State private var showChatSlideOver = false
-    /// iPad docked chat column's own room selection (Trips room switcher) —
-    /// independent of `selection`/`showChatSlideOver`, which the docked layout
-    /// doesn't use for chat at all.
-    @State private var dockedRoomId: String = familyRoomId
-    // iPad size classes are regular×regular in BOTH orientations, so they can't
-    // tell landscape from portrait — read it from the actual geometry.
-    @State private var isLandscape = true
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
-    /// Docked chat column shows only for parent sessions in iPad landscape —
-    /// kid sessions and iPad portrait always use the rail + slide-over instead.
-    private var showDockedChat: Bool { isPad && isLandscape && store.isParent }
     /// Notes remains available as a screen, but is intentionally not a native
     /// navigation entry in the compact shell.
     private var roleTabs: [Tab] { Tab.allCases }
-    private var mainTabs: [Tab] { roleTabs.filter { $0 != .chat } }
 
     var body: some View {
         Group {
             if isPad {
-                if showDockedChat {
-                    iPadDockedChatLayout
-                } else {
-                    iPadRailLayout
-                }
+                iPadLayout
             } else {
                 iPhoneLayout
             }
         }
-        .onGeometryChange(for: Bool.self) { $0.size.width > $0.size.height } action: { isLandscape = $0 }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
         // Parents: kids waiting to be let in appear as a banner above everything.
@@ -164,22 +134,14 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToTripChat)) { note in
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             let roomId = "trip:\(tripId)"
-            if showDockedChat {
-                dockedRoomId = roomId
-            } else {
-                selection = .chat
-                if isPad { showChatSlideOver = true }
-                store.pendingChatRoomId = roomId
-            }
+            selection = .chat
+            store.pendingChatRoomId = roomId
         }
         .overlay { if store.needsAuth { ReauthOverlay() } }
         .onAppear {
             #if DEBUG
             switch DebugLaunch.screen {
-            case "chat":
-                if !isPad { selection = .chat }
-                else if !showDockedChat { showChatSlideOver = true }
-                // else: docked column already shows chat.
+            case "chat": selection = .chat
             case "calendar": selection = .calendar
             case "homework": selection = .homework
             case "trips": planningSelection = .trips; selection = .planning
@@ -216,69 +178,23 @@ struct RootView: View {
         }
     }
 
-    // MARK: iPad landscape (parent) — Trips/Meals rail + content + DOCKED chat column
+    // MARK: iPad — rail + one full-width content surface
 
-    /// Nav rail (no Chat entry — it's docked, not tabbed; Trips and Meals are
-    /// separate entries) + main content +
-    /// a fixed-width `ChatScreen` column pinned to the trailing edge, per
-    /// canvas-1f. The docked column always keeps the family room as its base
-    /// (`ChatScreen` itself is otherwise unmodified — same header/composer,
-    /// same horizontalSizeClass-driven bottom inset); Trips adds a compact
-    /// Menu room-switcher in its header when the user has more than one room.
-    private var iPadDockedChatLayout: some View {
+    /// Chat is a normal tab on iPad. The rail remains visible, while the
+    /// selected screen owns the entire content region beside it.
+    private var iPadLayout: some View {
         HStack(spacing: 0) {
-            NavRailList(selection: $selection, planningSelection: $planningSelection, tabs: mainTabs)
+            NavRailList(selection: $selection, planningSelection: $planningSelection, tabs: roleTabs)
                 .frame(width: 90)
             Divider()
             TabView(selection: $selection) {
                 TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
+                ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
                 planningDestinationScreen.toolbar(.hidden, for: .tabBar).tag(Tab.planning)
             }
             .frame(maxWidth: .infinity)
-            Divider()
-            ChatScreen(roomId: dockedRoomId, title: dockedRoomTitle) {
-                if store.chatRooms.count > 1 {
-                    ChatRoomSwitcher(rooms: store.chatRooms, selection: $dockedRoomId)
-                }
-            }
-            .frame(width: 300)
-        }
-    }
-
-    /// nil for the family room (falls back to `ChatScreen`'s own default
-    /// title); the matching trip's title otherwise.
-    private var dockedRoomTitle: String? {
-        dockedRoomId == familyRoomId ? nil : store.chatRooms.first { $0.roomId == dockedRoomId }?.title
-    }
-
-    // MARK: iPad portrait, or any kid session — Trips/Meals rail + slide-over chat
-
-    /// Nav rail with all compact entries (including Chat and separate Trips /
-    /// Meals entries); tapping Chat opens
-    /// `ChatTabHost` as a large sheet instead of swapping the main content,
-    /// since there isn't width to spare for a permanent chat column here
-    /// (canvas-1g). Main `TabView` only carries the non-chat screens, so
-    /// `selection` never actually becomes `.chat` in this layout.
-    private var iPadRailLayout: some View {
-        HStack(spacing: 0) {
-            NavRailList(selection: $selection, planningSelection: $planningSelection, tabs: roleTabs, onTapChat: { showChatSlideOver = true })
-                .frame(width: 90)
-            Divider()
-            // A TabView (with its own tab bar hidden) keeps all screens alive,
-            // so switching tabs is instant and each screen's loaded data +
-            // scroll state persist instead of being rebuilt on every tap.
-            TabView(selection: $selection) {
-                TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
-                CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
-                HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-                planningDestinationScreen.toolbar(.hidden, for: .tabBar).tag(Tab.planning)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .sheet(isPresented: $showChatSlideOver) {
-            ChatTabHost().presentationDetents([.large])
         }
     }
 }
@@ -290,17 +206,12 @@ struct RootView: View {
 /// updates selection via edit mode / NavigationSplitView row selection and
 /// otherwise leaves taps outside a split view inert).
 ///
-/// `tabs` lets a layout omit an entry entirely (docked chat has no Chat row).
 /// The Planning slot is rendered as separate Trips and Meals rows on iPad;
 /// `planningSelection` keeps the iPhone Tab contract shared with the content.
-/// `onTapChat`, when set, intercepts a tap on the Chat row instead of changing
-/// `selection` — used to open the chat slide-over sheet rather than swap the
-/// main content.
 private struct NavRailList: View {
     @Binding var selection: Tab
     @Binding var planningSelection: PlanningDestination
     var tabs: [Tab] = Tab.allCases
-    var onTapChat: (() -> Void)? = nil
     @Environment(AppStore.self) private var store
 
     var body: some View {
@@ -347,11 +258,6 @@ private struct NavRailList: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if tab == .chat, let onTapChat {
-                Haptics.selection()
-                onTapChat()
-                return
-            }
             if let planningDestination {
                 choosePlanning(planningDestination)
                 return

@@ -547,6 +547,37 @@ final class AppStore {
         } catch { handle(error) }
     }
 
+    /// Previewing a Hermes meal plan is deliberately throwing so the review
+    /// sheet can keep the request error local instead of replacing it with the
+    /// app-wide sync error.
+    func previewHermesMealPlan(messageId: String, startDate: String) async throws -> MealPlanPreviewResponse {
+        try await api.previewHermesMealPlan(messageId: messageId, startDate: startDate)
+    }
+
+    /// Confirm a Hermes meal-plan import and mirror the server's authoritative
+    /// menu immediately so the Meals tab reflects replacements and retries.
+    func importHermesMealPlan(messageId: String, startDate: String, replaceExisting: Bool) async throws -> MealPlanImportResponse {
+        let response = try await api.importHermesMealPlan(messageId: messageId,
+                                                          startDate: startDate,
+                                                          replaceExisting: replaceExisting)
+        meals?.menu = response.menu
+        return response
+    }
+
+    /// Previewing a Hermes Trip itinerary is deliberately throwing so the
+    /// review sheet can keep a request error local instead of replacing it
+    /// with the app-wide sync error.
+    func previewHermesTripItinerary(tripId: String, messageId: String) async throws -> TripItineraryPreviewResponse {
+        try await api.previewHermesTripItinerary(tripId: tripId, messageId: messageId)
+    }
+
+    /// Confirm a Hermes Trip itinerary import. Trip planning remains
+    /// HybridWebView-backed, so this bridge intentionally does not create or
+    /// refresh native Trip state.
+    func importHermesTripItinerary(tripId: String, messageId: String) async throws -> TripItineraryImportResponse {
+        try await api.importHermesTripItinerary(tripId: tripId, messageId: messageId)
+    }
+
     func deleteMenuEntry(_ id: String) async {
         let backup = meals?.menu
         meals?.menu.removeAll { $0.id == id }

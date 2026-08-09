@@ -272,6 +272,20 @@ final class APIClient: FamilyActionService {
         let r: MenuEntryResponse = try await request("/api/meals/menu/\(id)/cooked", method: "POST", body: [:])
         return r.entry
     }
+    func previewHermesMealPlan(messageId: String, startDate: String) async throws -> MealPlanPreviewResponse {
+        try await request(
+            "/api/meals/menu/import-chat/\(pathComponent(messageId))/preview",
+            method: "POST",
+            body: ["startDate": startDate]
+        )
+    }
+    func importHermesMealPlan(messageId: String, startDate: String, replaceExisting: Bool) async throws -> MealPlanImportResponse {
+        try await request(
+            "/api/meals/menu/import-chat/\(pathComponent(messageId))",
+            method: "POST",
+            body: ["startDate": startDate, "replaceExisting": replaceExisting]
+        )
+    }
 
     func addShoppingItem(text: String, category: String? = nil, assigneeUserId: String? = nil, sourceMessageId: String? = nil) async throws -> ShoppingItem {
         try await addShoppingItemResult(text: text, category: category, assigneeUserId: assigneeUserId, sourceMessageId: sourceMessageId).item
@@ -306,6 +320,24 @@ final class APIClient: FamilyActionService {
         let body: [String: Any] = ["kind": "pantry", "mediaType": mediaType, "dataBase64": base64]
         let r: AIParsePantryResponse = try await request("/api/ai/parse", method: "POST", body: body, timeout: 35)
         return r.items
+    }
+
+    // MARK: Trips (Hermes itinerary import)
+
+    func previewHermesTripItinerary(tripId: String, messageId: String) async throws -> TripItineraryPreviewResponse {
+        try await request(
+            "/api/trips/\(pathComponent(tripId))/itinerary/import-chat/\(pathComponent(messageId))/preview",
+            method: "POST",
+            body: [:]
+        )
+    }
+
+    func importHermesTripItinerary(tripId: String, messageId: String) async throws -> TripItineraryImportResponse {
+        try await request(
+            "/api/trips/\(pathComponent(tripId))/itinerary/import-chat/\(pathComponent(messageId))",
+            method: "POST",
+            body: [:]
+        )
     }
 
     // MARK: Word bank
@@ -478,6 +510,10 @@ final class APIClient: FamilyActionService {
     }
 
     // MARK: Core
+
+    private func pathComponent(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+    }
 
     private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {
         let data = try await rawSend(path, method: method, body: body, timeout: timeout)

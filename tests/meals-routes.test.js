@@ -19,6 +19,8 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const meals = require("../lib/meals");
 const chat = require("../lib/chat");
+const hermes = require("../lib/hermes");
+const trips = require("../lib/trips");
 const recipeLibrary = require("../lib/recipes");
 const mealsRoutes = require("../lib/routes/meals");
 
@@ -80,6 +82,15 @@ function freshFamily(label) {
   const { kid } = family.addKid(fam.id, parent.id, { name: `Kid ${label}${n}` });
   const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
   return { parent, fam, kid, kidUser };
+}
+
+function hermesPlanText() {
+  return [
+    "| Day | Breakfast | Lunch | Dinner |",
+    "| --- | --- | --- | --- |",
+    "| Monday | Oats | Rice | Safe curry |",
+    "| Tuesday | Eggs | Dal | Pasta |",
+  ].join("\n");
 }
 
 // ---------- GET composite ----------
@@ -316,6 +327,150 @@ test("POST /api/meals/menu/:id/cooked: parent-only, steps the pantry down and fl
   assert.equal(parentRes.statusCode, 200);
   const pantryRow = parentRes.body.pantry.find((p) => p.id === item.id);
   assert.equal(pantryRow.level, "low"); // floored — was already low
+});
+
+// ---------- Hermes meal-plan import ----------
+
+test("Hermes meal-plan preview is parent-only, source-scoped, and does not write", async () => {
+  const routes = buildHarness();
+  const first = freshFamily("HI");
+  const foreign = freshFamily("HIX");
+  const source = hermes.sendAgentMessage(first.fam.id, hermesPlanText()).message;
+  const before = meals.getState(first.fam.id).menu.length;
+
+  const preview = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], {
+    user: first.parent, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.body.items.length, 6);
+  assert.deepEqual(Object.keys(preview.body).sort(), ["blocked", "conflicts", "imported", "items"]);
+  assert.equal(preview.body.imported, false);
+  assert.deepEqual(preview.body.conflicts, []);
+  assert.deepEqual(preview.body.blocked, []);
+  assert.equal(meals.getState(first.fam.id).menu.length, before);
+
+  const anon = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], {
+    user: null, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(anon.statusCode, 401);
+  const kid = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], {
+    user: first.kidUser, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(kid.statusCode, 403);
+  const foreignRes = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], {
+    user: foreign.parent, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(foreignRes.statusCode, 404);
+});
+
+test("Hermes meal-plan import blocks unsafe cells, refuses conflicts atomically, replaces selectively, and retries idempotently", async () => {
+  const routes = buildHarness();
+  const { parent, fam, kid } = freshFamily("HII");
+  family.updateKid(fam.id, parent.id, kid.id, { allergies: ["peanut"] });
+  meals.updatePrefs(fam.id, { avoid: ["mushroom"] });
+  const text = [
+    "| Day | Breakfast | Lunch | Dinner |",
+    "| --- | --- | --- | --- |",
+    "| Monday | Oats | Peanut porridge | Safe curry |",
+    "| Tuesday | Eggs | Mushroom noodles | Pasta |",
+  ].join("\n");
+  const source = hermes.sendAgentMessage(fam.id, text).message;
+  const existing = meals.addMenuEntry(fam.id, parent.id, {
+    date: "2026-08-10", slot: "dinner", title: "Keep this until confirm",
+  }).entry;
+  const before = meals.getState(fam.id).menu.map((entry) => entry.id);
+
+  const preview = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], {
+    user: parent, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.body.blocked.length, 2);
+  assert.ok(preview.body.blocked.every((item) => /allergy or dislike/i.test(item.reason)));
+  assert.equal(preview.body.conflicts.length, 1);
+  assert.equal(preview.body.conflicts[0].existingEntryId, existing.id);
+
+  const refused = await call(routes["POST /api/meals/menu/import-chat/:messageId"], {
+    user: parent, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(refused.statusCode, 409);
+  assert.deepEqual(meals.getState(fam.id).menu.map((entry) => entry.id), before);
+
+  const imported = await call(routes["POST /api/meals/menu/import-chat/:messageId"], {
+    user: parent, params: { messageId: source.id }, body: { startDate: "2026-08-10", replaceExisting: true },
+  });
+  assert.equal(imported.statusCode, 200);
+  assert.equal(imported.body.existing, false);
+  assert.equal(imported.body.importedEntries.length, 4);
+  assert.equal(imported.body.blocked.length, 2);
+  assert.ok(imported.body.importedEntries.every((entry) => entry.source === "hermes"));
+  assert.ok(imported.body.importedEntries.every((entry) => entry.sourceType === "chat" && entry.sourceId === source.id));
+  assert.ok(imported.body.importedEntries.every((entry) => entry.servesPortions === 1.6));
+  assert.equal(meals.getMenuEntry(fam.id, existing.id), null, "only the conflicting safe slot is replaced");
+  const importedPreview = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], {
+    user: parent, params: { messageId: source.id }, body: { startDate: "2026-08-10" },
+  });
+  assert.equal(importedPreview.statusCode, 200);
+  assert.equal(importedPreview.body.items.length, 6, "preview still returns every parsed entry after import");
+  assert.equal(importedPreview.body.imported, true);
+
+  // Source revalidation is deliberately skipped for an idempotent retry.
+  chat.deleteMessage(fam.id, parent.id, source.id);
+  const retry = await call(routes["POST /api/meals/menu/import-chat/:messageId"], {
+    user: parent, params: { messageId: source.id }, body: { startDate: "not-a-date", replaceExisting: true },
+  });
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.body.existing, true);
+  assert.equal(retry.body.importedEntries.length, 4);
+  assert.equal(meals.getState(fam.id).menu.filter((entry) => entry.sourceId === source.id).length, 4);
+});
+
+test("Hermes meal-plan import rejects deleted, ordinary, client, and card sources without leaking text", async () => {
+  const routes = buildHarness();
+  const { parent, fam } = freshFamily("HIS");
+  const ordinary = hermes.sendAgentMessage(fam.id, "Dinner is up to you.").message;
+  const client = chat.sendMessage(fam.id, { senderType: "parent", senderId: parent.id, text: hermesPlanText() }).message;
+  const wrongCardAgent = chat.sendMessage(fam.id, {
+    senderType: "agent", senderId: "hermes", postedByUserId: null, text: hermesPlanText(), card: { type: "menu", id: "secret" },
+  }).message;
+  const system = chat.sendMessage(fam.id, { senderType: "parent", senderId: parent.id, text: hermesPlanText() }).message;
+  const deleted = chat.sendMessage(fam.id, { senderType: "agent", senderId: "hermes", text: hermesPlanText() }).message;
+  chat.deleteMessage(fam.id, parent.id, deleted.id);
+  const trip = trips.createTrip(parent.id, fam.id, {
+    name: "Trip source",
+    destination: "Rome, IT",
+    startDate: "2026-09-01",
+    endDate: "2026-09-10",
+  }).trip;
+  const tripReply = hermes.sendAgentMessage(`trip:${trip.id}`, hermesPlanText()).message;
+
+  // chat.sendMessage intentionally normalizes client senders. Simulate a
+  // legacy/system record at the route boundary without changing durable data.
+  const getMessage = chat.getMessage;
+  chat.getMessage = (familyId, id) => id === system.id
+    ? Object.assign({}, getMessage(familyId, id), { senderType: "system" })
+    : getMessage(familyId, id);
+
+  try {
+    const ordinaryRes = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], { user: parent, params: { messageId: ordinary.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(ordinaryRes.statusCode, 422);
+    const clientRes = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], { user: parent, params: { messageId: client.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(clientRes.statusCode, 404);
+    const cardRes = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], { user: parent, params: { messageId: wrongCardAgent.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(cardRes.statusCode, 404);
+    const systemRes = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], { user: parent, params: { messageId: system.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(systemRes.statusCode, 404);
+    const deletedRes = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], { user: parent, params: { messageId: deleted.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(deletedRes.statusCode, 404);
+    const tripPreview = await call(routes["POST /api/meals/menu/import-chat/:messageId/preview"], { user: parent, params: { messageId: tripReply.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(tripPreview.statusCode, 404);
+    assert.deepEqual(tripPreview.body, clientRes.body);
+    const tripImport = await call(routes["POST /api/meals/menu/import-chat/:messageId"], { user: parent, params: { messageId: tripReply.id }, body: { startDate: "2026-08-10" } });
+    assert.equal(tripImport.statusCode, 404);
+    assert.deepEqual(tripImport.body, clientRes.body);
+    for (const response of [clientRes, cardRes, systemRes, deletedRes, tripPreview, tripImport]) assert.equal(response.body.error.includes("secret"), false);
+  } finally {
+    chat.getMessage = getMessage;
+  }
 });
 
 // ---------- shopping: the family-wide write carve-out ----------

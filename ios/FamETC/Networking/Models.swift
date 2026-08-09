@@ -358,6 +358,205 @@ struct MenuEntry: Codable, Identifiable {
     var isCooked: Bool { cookedAt != nil }
 }
 
+/// One menu entry proposed by Hermes for `POST /api/meals/menu/import-chat/:messageId/preview`.
+struct MealPlanPreviewItem: Codable, Identifiable {
+    let key: String
+    var date: String
+    var slot: String
+    var title: String
+
+    var id: String { key }
+}
+
+/// An imported menu entry that would replace an existing entry at the same key.
+struct MealPlanConflict: Codable, Identifiable {
+    let key: String
+    var date: String
+    var slot: String
+    var title: String
+    var existingEntryId: String
+    var existingTitle: String
+
+    var id: String { key }
+}
+
+/// A menu entry Hermes cannot import, with the server-provided reason.
+struct MealPlanBlocked: Codable, Identifiable {
+    let key: String
+    var date: String
+    var slot: String
+    var title: String
+    var reason: String
+
+    var id: String { key }
+}
+
+struct MealPlanPreviewResponse: Codable {
+    var items: [MealPlanPreviewItem]
+    var conflicts: [MealPlanConflict]
+    var blocked: [MealPlanBlocked]
+    var imported: Bool
+
+    init(items: [MealPlanPreviewItem] = [], conflicts: [MealPlanConflict] = [],
+         blocked: [MealPlanBlocked] = [], imported: Bool = false) {
+        self.items = items
+        self.conflicts = conflicts
+        self.blocked = blocked
+        self.imported = imported
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items, conflicts, blocked, imported
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = try c.decodeIfPresent([MealPlanPreviewItem].self, forKey: .items) ?? []
+        conflicts = try c.decodeIfPresent([MealPlanConflict].self, forKey: .conflicts) ?? []
+        blocked = try c.decodeIfPresent([MealPlanBlocked].self, forKey: .blocked) ?? []
+        imported = try c.decodeIfPresent(Bool.self, forKey: .imported) ?? false
+    }
+}
+
+struct MealPlanImportResponse: Codable {
+    var menu: [MenuEntry]
+    var importedEntries: [MenuEntry]
+    var blocked: [MealPlanBlocked]
+    var existing: Bool
+
+    init(menu: [MenuEntry] = [], importedEntries: [MenuEntry] = [],
+         blocked: [MealPlanBlocked] = [], existing: Bool = false) {
+        self.menu = menu
+        self.importedEntries = importedEntries
+        self.blocked = blocked
+        self.existing = existing
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case menu, importedEntries, blocked, existing
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        menu = try c.decodeIfPresent([MenuEntry].self, forKey: .menu) ?? []
+        importedEntries = try c.decodeIfPresent([MenuEntry].self, forKey: .importedEntries) ?? []
+        blocked = try c.decodeIfPresent([MealPlanBlocked].self, forKey: .blocked) ?? []
+        existing = try c.decodeIfPresent(Bool.self, forKey: .existing) ?? false
+    }
+}
+
+// MARK: - Trip itinerary import (Trip chat)
+
+/// One itinerary item proposed by Hermes for a native Trip-chat review.
+/// Import responses contain persisted itinerary rows with `id` instead of the
+/// preview-only `key`; decoding that id as the key keeps this DTO usable for
+/// both frozen response shapes without introducing a native Trip model.
+struct TripItineraryImportItem: Codable, Identifiable {
+    let key: String
+    var date: String
+    var time: String
+    var title: String
+    var category: String
+    var note: String
+
+    var id: String { key }
+
+    private enum CodingKeys: String, CodingKey {
+        case key, id, date, time, title, category, note
+    }
+
+    init(key: String, date: String, time: String, title: String, category: String, note: String) {
+        self.key = key
+        self.date = date
+        self.time = time
+        self.title = title
+        self.category = category
+        self.note = note
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decodeIfPresent(String.self, forKey: .key)
+            ?? (try c.decode(String.self, forKey: .id))
+        date = try c.decode(String.self, forKey: .date)
+        time = try c.decode(String.self, forKey: .time)
+        title = try c.decode(String.self, forKey: .title)
+        category = try c.decode(String.self, forKey: .category)
+        note = try c.decode(String.self, forKey: .note)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(key, forKey: .key)
+        try c.encode(date, forKey: .date)
+        try c.encode(time, forKey: .time)
+        try c.encode(title, forKey: .title)
+        try c.encode(category, forKey: .category)
+        try c.encode(note, forKey: .note)
+    }
+}
+
+struct TripItineraryDuplicate: Codable, Identifiable {
+    let key: String
+    var date: String
+    var time: String
+    var title: String
+    var category: String
+    var note: String
+    var existingItemId: String
+    var existingTitle: String
+
+    var id: String { key }
+}
+
+struct TripItineraryPreviewResponse: Codable {
+    var items: [TripItineraryImportItem]
+    var duplicates: [TripItineraryDuplicate]
+    var imported: Bool
+
+    init(items: [TripItineraryImportItem] = [], duplicates: [TripItineraryDuplicate] = [], imported: Bool = false) {
+        self.items = items
+        self.duplicates = duplicates
+        self.imported = imported
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items, duplicates, imported
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = try c.decodeIfPresent([TripItineraryImportItem].self, forKey: .items) ?? []
+        duplicates = try c.decodeIfPresent([TripItineraryDuplicate].self, forKey: .duplicates) ?? []
+        imported = try c.decodeIfPresent(Bool.self, forKey: .imported) ?? false
+    }
+}
+
+/// The response's full `trip` payload is intentionally ignored: native Trip
+/// planning remains HybridWebView-backed and has no native Trip domain model.
+struct TripItineraryImportResponse: Codable {
+    var importedItems: [TripItineraryImportItem]
+    var skippedDuplicates: [TripItineraryDuplicate]
+    var existing: Bool
+
+    init(importedItems: [TripItineraryImportItem] = [], skippedDuplicates: [TripItineraryDuplicate] = [], existing: Bool = false) {
+        self.importedItems = importedItems
+        self.skippedDuplicates = skippedDuplicates
+        self.existing = existing
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case importedItems, skippedDuplicates, existing
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        importedItems = try c.decodeIfPresent([TripItineraryImportItem].self, forKey: .importedItems) ?? []
+        skippedDuplicates = try c.decodeIfPresent([TripItineraryDuplicate].self, forKey: .skippedDuplicates) ?? []
+        existing = try c.decodeIfPresent(Bool.self, forKey: .existing) ?? false
+    }
+}
+
 struct ShoppingItem: Codable, Identifiable {
     let id: String
     var text: String
