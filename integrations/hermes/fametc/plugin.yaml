@@ -1,0 +1,22 @@
+name: fametc-platform
+label: FamETC
+kind: platform
+version: 1.0.0
+description: >
+  Family-scoped FamETC REST long-poll adapter for Hermes Agent. One bearer
+  connection covers the family room and every authorized trip room.
+author: FamETC
+requires_env:
+  - name: FAMETC_HERMES_API_URL
+    description: "FamETC Hermes bridge URL returned by the family connection flow"
+    prompt: "FamETC bridge URL"
+    password: false
+  - name: FAMETC_HERMES_TOKEN
+    description: "Bearer token returned once when a family connection is created or rotated"
+    prompt: "FamETC bridge token"
+    password: true
+optional_env:
+  - name: FAMETC_HERMES_POLL_SECONDS
+    description: "How often to refresh the authorized room list"
+    prompt: "Room refresh interval in seconds"
+    password: false

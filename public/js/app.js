@@ -587,6 +587,190 @@ function setActiveKid(kidId) {
   if (document.getElementById('homework-list')) renderHomeworkHub();
 }
 
+function removeHermesConnectionCard() {
+  const card = document.getElementById('hermes-connection-card');
+  if (card) card.remove();
+}
+
+function ensureHermesConnectionCard() {
+  const parentOnly = document.getElementById('settings-parent-only');
+  if (!parentOnly) return null;
+
+  let card = document.getElementById('hermes-connection-card');
+  if (card && card.parentElement !== parentOnly) {
+    card.remove();
+    card = null;
+  }
+  if (!card) {
+    card = document.createElement('section');
+    card.id = 'hermes-connection-card';
+    card.className = 'settings-subcard';
+    parentOnly.insertBefore(card, parentOnly.firstElementChild);
+  }
+  return card;
+}
+
+function hermesConnectedAtLabel(value) {
+  const date = new Date(value || '');
+  return Number.isNaN(date.getTime()) ? String(value || 'unknown time') : date.toLocaleString();
+}
+
+function hermesCardRequest(card) {
+  card._hermesRequestId = (card._hermesRequestId || 0) + 1;
+  return card._hermesRequestId;
+}
+
+function hermesCardIsCurrent(card, requestId) {
+  return document.getElementById('hermes-connection-card') === card
+    && card._hermesRequestId === requestId;
+}
+
+function bindHermesCardActions(card) {
+  const connect = card.querySelector('[data-hermes-action="connect"]');
+  if (connect) connect.addEventListener('click', () => handleHermesConnect(false));
+
+  const rotate = card.querySelector('[data-hermes-action="rotate"]');
+  if (rotate) rotate.addEventListener('click', () => handleHermesConnect(true));
+
+  const disconnect = card.querySelector('[data-hermes-action="disconnect"]');
+  if (disconnect) disconnect.addEventListener('click', handleHermesDisconnect);
+
+  const retry = card.querySelector('[data-hermes-action="retry"]');
+  if (retry) retry.addEventListener('click', renderHermesConnectionCard);
+
+  card.querySelectorAll('[data-hermes-copy]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = card.querySelector(`[data-hermes-value="${button.dataset.hermesCopy}"]`);
+      if (input) copyTextToClipboard(input.value, `${button.dataset.hermesCopy === 'token' ? 'Token' : 'API URL'} copied! 📋`);
+    });
+  });
+}
+
+function renderHermesLoading(card, message) {
+  const requestId = hermesCardRequest(card);
+  card._hermesActionPending = true;
+  delete card.dataset.hermesOneTime;
+  card.innerHTML = `<h4 style="margin-bottom:6px">🤖 Hermes assistant</h4>
+    <p class="text-muted" style="margin:0">${message || 'Loading connection status…'}</p>`;
+  return requestId;
+}
+
+function renderHermesConnectionState(card, connection, oneTime) {
+  card._hermesActionPending = false;
+  const connected = !!connection;
+  const connectedAt = connected ? esc(hermesConnectedAtLabel(connection.connectedAt)) : '';
+  const oneTimeHtml = oneTime ? `
+    <div class="invite-box" style="margin-top:14px">
+      <p style="margin:0 0 6px;font-weight:700">Save this token now — it won’t be shown again.</p>
+      <p class="text-muted" style="margin:0 0 12px">Install and configure the existing <code>integrations/hermes/fametc/README.md</code> adapter, then restart Hermes.</p>
+      <div class="form-group" style="margin-bottom:10px">
+        <label for="hermes-api-url">API URL</label>
+        <div class="invite-code-row">
+          <input type="text" readonly autocomplete="off" data-hermes-value="api-url" id="hermes-api-url" value="${esc(oneTime.apiBaseUrl)}" aria-label="Hermes API URL" style="flex:1;min-width:240px">
+          <button type="button" class="btn-secondary" data-hermes-copy="api-url">Copy URL</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label for="hermes-token">Bearer token</label>
+        <div class="invite-code-row">
+          <input type="text" readonly autocomplete="off" data-hermes-value="token" id="hermes-token" value="${esc(oneTime.token)}" aria-label="Hermes bearer token">
+          <button type="button" class="btn-secondary" data-hermes-copy="token">Copy token</button>
+        </div>
+      </div>
+    </div>` : '';
+
+  card.dataset.hermesOneTime = oneTime ? 'true' : 'false';
+  card.innerHTML = connected ? `
+    <h4 style="margin-bottom:6px">🤖 Hermes assistant</h4>
+    <p class="text-muted" style="margin:0 0 10px">One family connection covers Family chat and every authorized Trip room. Hermes replies when a human mentions <strong>@Hermes</strong>.</p>
+    <p class="text-muted" style="margin:0 0 12px">Connected ${connectedAt}</p>
+    <div class="invite-code-row">
+      <button type="button" class="btn-secondary" data-hermes-action="rotate">Rotate token</button>
+      <button type="button" class="btn-link-danger" data-hermes-action="disconnect">Disconnect</button>
+    </div>
+    ${oneTimeHtml}` : `
+    <h4 style="margin-bottom:6px">🤖 Hermes assistant</h4>
+    <p class="text-muted" style="margin:0 0 12px">Connect one user-owned Hermes gateway for Family chat and authorized Trip rooms. It only receives messages that mention <strong>@Hermes</strong>.</p>
+    <button type="button" class="btn-primary" data-hermes-action="connect">Connect Hermes</button>`;
+  bindHermesCardActions(card);
+}
+
+function renderHermesStatusError(card) {
+  card._hermesActionPending = false;
+  card.dataset.hermesOneTime = 'false';
+  card.innerHTML = `<h4 style="margin-bottom:6px">🤖 Hermes assistant</h4>
+    <p class="text-muted" style="margin:0 0 12px">Could not load the Hermes connection status.</p>
+    <button type="button" class="btn-secondary" data-hermes-action="retry">Try again</button>`;
+  bindHermesCardActions(card);
+}
+
+async function renderHermesConnectionCard() {
+  if (isKidSession() || !currentFamily || !window.auth || !window.auth.getHermesConnection) return;
+  const card = ensureHermesConnectionCard();
+  if (!card || card._hermesActionPending || card.dataset.hermesOneTime === 'true') return;
+
+  const requestId = hermesCardRequest(card);
+  card.innerHTML = `<h4 style="margin-bottom:6px">🤖 Hermes assistant</h4>
+    <p class="text-muted" style="margin:0">Loading connection status…</p>`;
+  try {
+    const result = await window.auth.getHermesConnection();
+    if (!hermesCardIsCurrent(card, requestId)) return;
+    renderHermesConnectionState(card, result && result.connection, null);
+  } catch (err) {
+    if (!hermesCardIsCurrent(card, requestId)) return;
+    renderHermesStatusError(card);
+    toast('❌ ' + ((err && err.message) || 'Could not load Hermes connection status.'));
+  }
+}
+
+async function handleHermesConnect(rotate) {
+  if (isKidSession() || !currentFamily || !window.auth || !window.auth.connectHermes) return;
+  if (rotate && !confirm('Rotate the Hermes token? The current token will stop working immediately.')) return;
+
+  const card = ensureHermesConnectionCard();
+  if (!card) return;
+  const requestId = renderHermesLoading(card, rotate ? 'Rotating the Hermes token…' : 'Creating the Hermes connection…');
+  try {
+    const result = await window.auth.connectHermes();
+    if (!result || !result.token || !result.apiBaseUrl || !result.connection) {
+      throw new Error('The server did not return complete Hermes connection details.');
+    }
+    if (!hermesCardIsCurrent(card, requestId)) return;
+    renderHermesConnectionState(card, result.connection, {
+      apiBaseUrl: result.apiBaseUrl,
+      token: result.token,
+    });
+    toast(rotate ? 'Hermes token rotated.' : 'Hermes connected.');
+  } catch (err) {
+    if (hermesCardIsCurrent(card, requestId)) {
+      card._hermesActionPending = false;
+      renderHermesConnectionCard();
+    }
+    toast('❌ ' + ((err && err.message) || 'Could not connect Hermes.'));
+  }
+}
+
+async function handleHermesDisconnect() {
+  if (isKidSession() || !currentFamily || !window.auth || !window.auth.disconnectHermes) return;
+  if (!confirm('Disconnect Hermes? The current gateway token will stop working immediately.')) return;
+
+  const card = ensureHermesConnectionCard();
+  if (!card) return;
+  const requestId = renderHermesLoading(card, 'Disconnecting Hermes…');
+  try {
+    await window.auth.disconnectHermes();
+    if (!hermesCardIsCurrent(card, requestId)) return;
+    renderHermesConnectionState(card, null, null);
+    toast('Hermes disconnected.');
+  } catch (err) {
+    if (hermesCardIsCurrent(card, requestId)) {
+      card._hermesActionPending = false;
+      renderHermesConnectionCard();
+    }
+    toast('❌ ' + ((err && err.message) || 'Could not disconnect Hermes.'));
+  }
+}
+
 function renderManageFamily() {
   applyRoleScopingToUI();
   renderChatDockAvatars();
@@ -594,13 +778,17 @@ function renderManageFamily() {
   // parent-only container is hidden by applyRoleScopingToUI(), and the
   // backend independently rejects any parent-only call a kid might still
   // trigger (e.g. via devtools), so this is defense in depth, not the gate.
-  if (isKidSession()) return;
+  if (isKidSession()) {
+    removeHermesConnectionCard();
+    return;
+  }
   renderMoodleIdsSettings(); // kid list may have changed (add/remove)
 
   const parentsEl0 = document.getElementById('manage-family-parents');
   const inviteEl0  = document.getElementById('co-parent-invite');
   const kidsEl0    = document.getElementById('manage-family-kids');
   if (!currentFamily) {
+    removeHermesConnectionCard();
     // No family loaded yet — guide the user instead of showing blank sections.
     const msg = `<p class="text-muted">You're not in a family yet.
       <a href="#" onclick="showFirstRunPanel();return false" style="color:var(--accent);font-weight:700">Create or join a family</a> to add parents and kids.</p>`;
@@ -609,6 +797,8 @@ function renderManageFamily() {
     if (kidsEl0)    kidsEl0.innerHTML = '';
     return;
   }
+
+  renderHermesConnectionCard();
 
   // --- Parents ---
   const parentsEl = document.getElementById('manage-family-parents');
@@ -745,14 +935,15 @@ function copyInviteCode() {
 
 function copyTextToClipboard(text, message) {
   const done = () => toast(message || 'Copied! 📋');
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(() => done());
-  } else {
+  const fallback = () => {
     const t = document.createElement('textarea');
     t.value = text; document.body.appendChild(t); t.select();
     try { document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(t); done();
-  }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else fallback();
 }
 
 async function handleRemoveParent(userId) {

@@ -27,6 +27,7 @@ const {
 const store = require("./lib/store");
 const db = require("./lib/db");
 const datacrypto = require("./lib/datacrypto");
+const hermes = require("./lib/hermes");
 const billing = require("./lib/billing");
 const backupCodes = require("./lib/backup-codes");
 const analytics = require("./lib/analytics");
@@ -548,7 +549,7 @@ function friendlyDate(ymd) {
 // directory's README-equivalent comment in server.js history / commit log).
 // Each module destructures only what it uses.
 const routeDeps = {
-  store, db, billing, backupCodes, analytics, family, chat, kidAccess, events, gifs,
+  store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
   schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter,
@@ -561,6 +562,7 @@ require("./lib/routes/billing")(app, routeDeps);
 require("./lib/routes/auth")(app, routeDeps);
 require("./lib/routes/family")(app, routeDeps);
 require("./lib/routes/chat")(app, routeDeps);
+require("./lib/routes/hermes")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/actions")(app, routeDeps);

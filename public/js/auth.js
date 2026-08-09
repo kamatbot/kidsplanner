@@ -184,6 +184,19 @@
     return api("/api/family/members/" + encodeURIComponent(userId), { method: "DELETE" });
   }
 
+  /* ---------- family-scoped Hermes connection ---------- */
+  async function getHermesConnection() {
+    return api("/api/hermes/connect", { method: "GET" });
+  }
+
+  async function connectHermes() {
+    return api("/api/hermes/connect", { method: "POST" });
+  }
+
+  async function disconnectHermes() {
+    return api("/api/hermes/connect", { method: "DELETE" });
+  }
+
   /* ---------- passkey / credential management (security.html) ---------- */
   async function getCredentials() {
     const data = await api("/api/webauthn/credentials", { method: "GET" });
@@ -1009,6 +1022,9 @@
     updateKid,
     removeKid,
     removeMember,
+    getHermesConnection,
+    connectHermes,
+    disconnectHermes,
     getCalendarFeeds,
     previewCalendarFeed,
     subscribeCalendarFeed,
