@@ -68,29 +68,6 @@ const SAT_WORDS = [
   { word: "Wary",        pos: "adjective", def: "Feeling or showing caution about possible dangers or problems.",                  example: "Be wary of anyone who promises easy success without hard work." },
 ];
 
-const NEWS_ITEMS = [
-  { cat: "🚀 Space",       headline: "Webb Telescope Discovers Ancient Galaxies",          summary: "Scientists using the James Webb Space Telescope have identified thousands of previously unknown galaxies, revealing what the universe looked like just 500 million years after the Big Bang." },
-  { cat: "🐾 Animals",     headline: "Rare White Giraffe Spotted in Kenya",                summary: "Conservationists spotted a leucistic giraffe in Kenya's national park. These animals lack pigmentation and appear white, making them extraordinarily rare in the wild." },
-  { cat: "💡 Tech",        headline: "Students Design Robot to Clean Ocean Plastic",       summary: "A team of high school students won a global engineering competition with their autonomous robot that collects plastic waste from ocean surfaces without harming marine life." },
-  { cat: "🔬 Science",     headline: "New Solar Panel Generates Power From Windows",       summary: "Scientists have developed ultra-thin solar panels that can be attached to windows, turning ordinary buildings into electricity generators — without blocking the view." },
-  { cat: "🌿 Environment", headline: "Teen Invents Device to Purify River Water",          summary: "A 15-year-old from India invented an affordable water purification device using local materials that can clean contaminated river water for drinking in just minutes." },
-  { cat: "🐸 Animals",     headline: "Colorful New Frog Species Found in Amazon",         summary: "Biologists exploring the Amazon rainforest discovered a new species of dart frog with brilliant blue and yellow patterns that could help scientists develop new medicines." },
-  { cat: "🚀 Space",       headline: "Spacecraft Successfully Lands on the Moon",          summary: "A new spacecraft successfully landed on the Moon, carrying scientific instruments designed to study the lunar surface and test technology for future human landings." },
-  { cat: "💡 Tech",        headline: "AI Decodes 4,000-Year-Old Ancient Language",        summary: "Artificial intelligence successfully translated a mysterious ancient language that had puzzled historians for decades, unlocking secrets from Mesopotamian civilization." },
-  { cat: "🌿 Environment", headline: "Giant Forest in Costa Rica Fully Restored",          summary: "A massive reforestation effort in Costa Rica successfully restored over 3 million acres of tropical forest, bringing back wildlife and cleaner air to the region." },
-  { cat: "🔬 Science",     headline: "Scientists Grow Human Ear in Lab for Transplant",   summary: "Medical researchers grew a human ear from a patient's own cartilage cells in a laboratory and successfully transplanted it to a child born without one." },
-  { cat: "🐋 Animals",     headline: "Humpback Whale Populations Show 30% Recovery",      summary: "A new census shows humpback whale populations have grown by 30% in the past decade, thanks to international hunting bans and ocean conservation efforts." },
-  { cat: "💡 Tech",        headline: "Solar-Powered Plane Completes World Trip",           summary: "An electric airplane powered entirely by solar energy completed a journey around the world, proving that long-distance solar flight is possible — inspiring the future of aviation." },
-  { cat: "🔬 Science",     headline: "Researchers Discover Why We Dream at Night",         summary: "New brain research suggests dreams help the brain sort and store important memories while clearing out unnecessary information — like a nightly computer cleanup." },
-  { cat: "🌿 Environment", headline: "Youth Group Plants 10 Million Trees in 20 Countries", summary: "A youth-led environmental organization reached its goal of planting 10 million trees across 20 countries, making it one of the largest student-led conservation efforts ever." },
-  { cat: "💡 Tech",        headline: "New Battery Could Charge Phone in 5 Minutes",        summary: "Engineers have developed a new graphene-based battery that can charge a smartphone to 100% in under five minutes — and last for 20 years without degrading." },
-  { cat: "🐆 Animals",     headline: "Cheetah Cubs Born in India After 70 Years",          summary: "For the first time in 70 years, cheetah cubs were born in the wild in India after a successful reintroduction program brought cheetahs from Namibia and South Africa." },
-  { cat: "🔬 Science",     headline: "Gene Therapy Successfully Treats Rare Disease",      summary: "Scientists announced a new gene therapy that successfully treated a rare genetic disorder in children, offering hope to millions of families worldwide." },
-  { cat: "🚀 Space",       headline: "Earth-Sized Planet Found in Habitable Zone",         summary: "NASA announced the discovery of an Earth-sized planet where conditions might be right for liquid water — and potentially life — around a nearby star." },
-  { cat: "🌿 Environment", headline: "Coral Reef Shows Unexpected Signs of Recovery",      summary: "Parts of the Great Barrier Reef are recovering faster than expected after efforts to reduce pollution and control invasive starfish that had been damaging the coral." },
-  { cat: "🔬 Science",     headline: "Scientists Create Material Stronger Than Diamonds",  summary: "Researchers have engineered a new carbon-based material that outperforms diamonds in hardness tests, with potential uses in aerospace, medicine, and electronics." },
-];
-
 const QUIZ = [
   { q: "What is the largest planet in our Solar System?",           opts: ["Saturn","Jupiter","Neptune","Uranus"],          ans: 1, exp: "Jupiter is the largest — all other planets could fit inside it!" },
   { q: "How many continents are there on Earth?",                   opts: ["5","6","7","8"],                                ans: 2, exp: "7 continents: Africa, Antarctica, Asia, Australia, Europe, North America, South America." },
@@ -279,11 +256,17 @@ document.addEventListener('click', (e) => {
 ============================================================ */
 let notesItems      = [];    // last-loaded list from GET /api/notes
 let currentQuote    = null;  // today's { text, author }
-let currentNews     = null;  // today's { cat, headline, summary }
+let currentNews     = null;  // today's accepted recent news item
 let currentSatWord  = null;  // today's { word, pos, def, example }
 let wordBankState   = { words: [], stats: { learning: 0, mastered: 0, known: 0 } };
 let wordQuizState   = { questions: [], index: 0 };
 let satPlacementDone = false; // tracked via localStorage per-user, see satPlacementKey()
+
+const NEWS_MAX_AGE_DAYS = 14;
+const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+const NEWS_FUTURE_SKEW_MS = 60 * 60 * 1000;
+const NEWS_EMPTY_STATE = 'No recent stories right now.';
+let newsRequestToken = 0;
 
 /* ---------- gating: homework due today > 3 disables enrichment cards ---------- */
 function homeworkDueTodayCount() {
@@ -335,16 +318,177 @@ async function handlePinQuote() {
   await saveNoteFromWidget(full, 'quote', { kind: 'quote', id: '', context: full });
 }
 
-/* ---------- News widget: reflection ---------- */
-// The article link: an explicit url if the item has one, else a Google News
-// search for the headline, which reliably surfaces real coverage of the story.
+/* ---------- News widget: recent stories + reflection ---------- */
+function newsUrlIsHttps(url) {
+  if (typeof url !== 'string' || !url.trim()) return false;
+  try {
+    return new URL(url).protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+function newsPublishedAtIsFresh(publishedAt, now) {
+  if (typeof publishedAt !== 'string' || !publishedAt.trim()) return false;
+  const publishedMs = Date.parse(publishedAt);
+  const nowMs = new Date(now || Date.now()).getTime();
+  if (!Number.isFinite(publishedMs) || !Number.isFinite(nowMs)) return false;
+  const ageMs = nowMs - publishedMs;
+  return ageMs >= -NEWS_FUTURE_SKEW_MS && ageMs <= NEWS_MAX_AGE_MS;
+}
+
+function isRecentNewsItem(item, now) {
+  return !!item && typeof item === 'object' &&
+    newsPublishedAtIsFresh(item.publishedAt, now) && newsUrlIsHttps(item.url);
+}
+
+function newsFreshnessLabel(publishedAt, now) {
+  const publishedMs = Date.parse(publishedAt);
+  const nowMs = new Date(now || Date.now()).getTime();
+  const ageMs = Math.max(0, nowMs - publishedMs);
+  if (ageMs < 24 * 60 * 60 * 1000) return 'Today';
+  const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
 function newsArticleLink(n) {
-  if (!n) return '';
-  if (n.url) return n.url;
-  return 'https://news.google.com/search?q=' + encodeURIComponent(n.headline);
+  return n && newsUrlIsHttps(n.url) ? n.url.trim() : '';
+}
+
+function setNewsLinkState(link, url) {
+  if (!link) return;
+  if (url) {
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.removeAttribute('aria-disabled');
+    link.removeAttribute('tabindex');
+  } else {
+    link.removeAttribute('href');
+    link.removeAttribute('target');
+    link.removeAttribute('rel');
+    link.setAttribute('aria-disabled', 'true');
+    link.setAttribute('tabindex', '-1');
+  }
+  if (link.classList && link.classList.toggle) {
+    link.classList.toggle('news-link-disabled', !url);
+  }
+}
+
+function setNewsReflectionAvailability(enabled) {
+  const details = document.getElementById('news-details');
+  if (details) {
+    details.hidden = !enabled;
+    if (!enabled && details.classList) details.classList.remove('news-open');
+  }
+  const moreButton = document.getElementById('news-more-btn');
+  if (moreButton) {
+    moreButton.hidden = !enabled;
+    moreButton.disabled = !enabled;
+    if (enabled) moreButton.removeAttribute('aria-disabled');
+    else moreButton.setAttribute('aria-disabled', 'true');
+  }
+  const prompt = document.getElementById('news-reflect-prompt');
+  if (prompt) prompt.hidden = !enabled;
+  const text = document.getElementById('news-reflect-text');
+  if (text) {
+    text.hidden = !enabled;
+    text.disabled = !enabled;
+    if (!enabled) text.value = '';
+  }
+  const saveButton = details && details.querySelector ? details.querySelector('.fam-save-btn') : null;
+  if (saveButton) {
+    saveButton.hidden = !enabled;
+    saveButton.disabled = !enabled;
+  }
+}
+
+function clearNewsState(message) {
+  currentNews = null;
+  const badge = document.getElementById('news-badge');
+  if (badge) badge.textContent = '';
+  const headline = document.getElementById('news-headline');
+  if (headline) {
+    headline.textContent = message;
+    setNewsLinkState(headline, '');
+  }
+  const summary = document.getElementById('news-summary');
+  if (summary) summary.textContent = '';
+  const link = document.getElementById('news-link');
+  if (link) {
+    link.textContent = '';
+    setNewsLinkState(link, '');
+  }
+  const prompt = document.getElementById('news-reflect-prompt');
+  if (prompt) prompt.textContent = '';
+  const text = document.getElementById('news-reflect-text');
+  if (text) text.value = '';
+  setNewsReflectionAvailability(false);
+}
+
+function renderNewsLoading() {
+  clearNewsState('Loading recent stories…');
+  const badge = document.getElementById('news-badge');
+  if (badge) badge.textContent = 'Loading…';
+}
+
+function renderNewsUnavailable() {
+  clearNewsState(NEWS_EMPTY_STATE);
+}
+
+function renderNewsItem(n, now) {
+  if (!isRecentNewsItem(n, now)) {
+    renderNewsUnavailable();
+    return;
+  }
+  currentNews = n;
+  const category = typeof n.cat === 'string' ? n.cat.trim() : '';
+  const source = typeof n.source === 'string' ? n.source.trim() : '';
+  const freshness = newsFreshnessLabel(n.publishedAt, now);
+  const cue = [source, freshness].filter(Boolean).join(' · ');
+  const badge = document.getElementById('news-badge');
+  if (badge) badge.textContent = [category, cue].filter(Boolean).join(' · ');
+  const headline = document.getElementById('news-headline');
+  if (headline) {
+    headline.textContent = typeof n.headline === 'string' ? n.headline : '';
+    setNewsLinkState(headline, newsArticleLink(n));
+  }
+  const summary = document.getElementById('news-summary');
+  if (summary) summary.textContent = typeof n.summary === 'string' ? n.summary : '';
+  const link = document.getElementById('news-link');
+  if (link) {
+    link.textContent = '🔗 Read the full story';
+    setNewsLinkState(link, newsArticleLink(n));
+  }
+  const prompt = document.getElementById('news-reflect-prompt');
+  if (prompt) {
+    prompt.textContent = 'Why do you think this matters, and how does it make you feel?';
+  }
+  const text = document.getElementById('news-reflect-text');
+  if (text) text.value = '';
+  setNewsReflectionAvailability(true);
+}
+
+async function loadRecentNews(requestToken, now) {
+  try {
+    const data = await window.auth.getRecentNews();
+    if (requestToken !== newsRequestToken) return;
+    const currentTime = now || new Date();
+    const items = data && Array.isArray(data.items)
+      ? data.items.filter((item) => isRecentNewsItem(item, currentTime))
+      : [];
+    if (!items.length) {
+      renderNewsUnavailable();
+      return;
+    }
+    renderNewsItem(dailyPick(items, currentTime), currentTime);
+  } catch (e) {
+    if (requestToken === newsRequestToken) renderNewsUnavailable();
+  }
 }
 
 async function saveNewsReflection() {
+  if (!currentNews || !newsArticleLink(currentNews)) return;
   const textEl = document.getElementById('news-reflect-text');
   const body = textEl ? textEl.value.trim() : '';
   if (!body) { toast('Write a few words first 🙂'); return; }
@@ -1923,6 +2067,8 @@ function applyDaily5Done() {
 
 function renderWidgets() {
   const now = new Date();
+  const requestToken = ++newsRequestToken;
+  renderNewsLoading();
 
   // Quote
   const q = dailyPick(QUOTES, now);
@@ -1943,23 +2089,12 @@ function renderWidgets() {
   renderSatActivity();
   loadWordBank();
 
-  // News
-  const n = dailyPick(NEWS_ITEMS, now);
-  currentNews = n;
-  document.getElementById('news-badge').textContent    = n.cat;
-  const newsHeadlineEl = document.getElementById('news-headline');
-  if (newsHeadlineEl) { newsHeadlineEl.textContent = n.headline; newsHeadlineEl.href = newsArticleLink(n); }
-  document.getElementById('news-summary').textContent  = n.summary;
-  const newsLink = document.getElementById('news-link');
-  if (newsLink) newsLink.href = newsArticleLink(n);
-  document.getElementById('news-reflect-prompt').textContent = 'Why do you think this matters, and how does it make you feel?';
-  document.getElementById('news-reflect-text').value = '';
-
   // Brain teaser (server-backed, day-ramped)
   loadBrainTeaser();
 
   applyEnrichmentGating();
   applyDaily5Done();
+  return loadRecentNews(requestToken, now);
 }
 
 /* ============================================================
@@ -4489,6 +4624,7 @@ function renderTodayHabitsAndMomentum() {
    headline itself is a real link to the article (opens in a new tab) —
    click the separate chevron to expand the summary + reflection composer. */
 function toggleNewsDetails() {
+  if (!currentNews) return;
   const details = document.getElementById('news-details');
   if (details) details.classList.toggle('news-open');
 }

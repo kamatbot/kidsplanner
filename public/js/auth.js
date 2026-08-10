@@ -598,6 +598,10 @@
   }
 
   /* ---------- notes (enrichment) ---------- */
+  async function getRecentNews() {
+    return api("/api/news/recent", { method: "GET" });
+  }
+
   async function getNotes(opts) {
     const params = new URLSearchParams();
     if (opts && opts.authorId) params.set("authorId", opts.authorId);
@@ -1117,6 +1121,7 @@
     confirmSchoolImport,
     disconnectSchoolAccount,
     getNotes,
+    getRecentNews,
     addNote,
     updateNote,
     deleteNote,
