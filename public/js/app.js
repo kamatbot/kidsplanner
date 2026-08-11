@@ -5745,6 +5745,16 @@ async function famImportSchoolData(payload) {
           result.homeworkSkipped++;
         }
       }
+
+      // The extension runs inside an already-open Fam ETC tab. Refresh every
+      // homework-backed surface immediately so a successful import cannot
+      // leave that tab showing the pre-import snapshot.
+      await loadHomework();
+      renderHomeworkHub();
+      renderCalendar();
+      renderTodayScreen();
+      applyEnrichmentGating();
+      updateHomeworkBadge();
     }
 
     /* ---------- Timetable -> calendar events (current Mon-Fri) ---------- */

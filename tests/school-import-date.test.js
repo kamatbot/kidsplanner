@@ -52,3 +52,20 @@ test("normalizeSchoolImportDate: preserves ISO and academic-year day/month parsi
   assert.equal(normalizeSchoolImportDate("Thu 18 June", new Date(2026, 6, 3, 12)), "2026-06-18");
   assert.equal(normalizeSchoolImportDate("10 January", new Date(2026, 10, 15, 12)), "2027-01-10");
 });
+
+test("school import refreshes every homework-backed surface after processing homework", () => {
+  const start = appSource.indexOf("async function famImportSchoolData(");
+  const end = appSource.indexOf("function normalizeSchoolImportDate(", start);
+  const bridge = appSource.slice(start, end);
+
+  for (const call of [
+    "await loadHomework();",
+    "renderHomeworkHub();",
+    "renderCalendar();",
+    "renderTodayScreen();",
+    "applyEnrichmentGating();",
+    "updateHomeworkBadge();",
+  ]) {
+    assert.match(bridge, new RegExp(call.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
