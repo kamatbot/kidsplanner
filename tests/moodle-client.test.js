@@ -154,6 +154,41 @@ test("parseHomeworkHtml: returns an empty list for HTML with no homework items",
   assert.deepEqual(moodleClient.parseHomeworkHtml(""), []);
 });
 
+test("inferDate: resolves exact weekday names and abbreviations with local next-occurrence semantics", () => {
+  const sunday = new Date(2026, 7, 9, 12);
+  assert.equal(moodleClient.inferDate("Saturday", sunday), "2026-08-15");
+  assert.equal(moodleClient.inferDate("sAt", sunday), "2026-08-15");
+  assert.equal(moodleClient.inferDate("Sunday", sunday), "2026-08-09");
+  assert.equal(moodleClient.inferDate("Due Saturday", sunday), null);
+  assert.equal(moodleClient.inferDate("Saturday or Sunday", sunday), null);
+
+  const yearEnd = new Date(2026, 11, 31, 12);
+  assert.equal(moodleClient.inferDate("Monday", yearEnd), "2027-01-04");
+});
+
+test("inferDate: preserves ISO and academic-year day/month parsing", () => {
+  assert.equal(moodleClient.inferDate("2026-08-15", new Date(2026, 7, 9, 12)), "2026-08-15");
+  assert.equal(moodleClient.inferDate("Thu 18 June", new Date(2026, 6, 3, 12)), "2026-06-18");
+  assert.equal(moodleClient.inferDate("10 January", new Date(2026, 10, 15, 12)), "2027-01-10");
+});
+
+test("fetchHomework: requests pending homework without completed rows and encodes the Moodle user id", async () => {
+  let requestedUrl = null;
+  await withServer((req, res) => {
+    requestedUrl = req.url;
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end("<html><body>No homework</body></html>");
+  }, async (baseUrl) => {
+    await moodleClient.fetchHomework({ baseUrl, cookies: {} }, "14197/child", new Date(2026, 7, 9, 12));
+  });
+
+  assert.match(requestedUrl, /h=2/);
+  assert.match(requestedUrl, /userid=14197%2Fchild/);
+  assert.match(requestedUrl, /showcompleted=0/);
+  assert.doesNotMatch(requestedUrl, /showcompleted=1/);
+  assert.match(requestedUrl, /limit=0/);
+});
+
 // ---------- timetable parser ----------
 test("parseTimetableHtml: extracts day/period/time/subject from a synthetic weekly grid", () => {
   const html = `

@@ -5813,18 +5813,30 @@ async function famImportSchoolData(payload) {
 
 // Homework dates from Moodle look like "Thu 18 June" (no year) — infer the
 // academic year: Aug-Dec = the earlier calendar year of the current
-// Aug-Jul school year, Jan-Jul = the later one. Already-ISO dates pass
-// through unchanged. Returns null if unparseable.
+// Aug-Jul school year, Jan-Jul = the later one. Weekday-only dates resolve to
+// the next local occurrence, including today. Already-ISO dates pass through
+// unchanged. Returns null if unparseable.
 function normalizeSchoolImportDate(raw, now) {
   if (!raw) return null;
   const s = String(raw).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
+  const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const weekdayText = s.toLowerCase().replace(/\.$/, '');
+  const weekdayIdx = weekdays.findIndex((name) => weekdayText === name || weekdayText === name.slice(0, 3));
+  if (weekdayIdx !== -1) {
+    const today = now || new Date();
+    const date = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    date.setDate(date.getDate() + (weekdayIdx - date.getDay() + 7) % 7);
+    return isoDate(date);
+  }
+
   const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
   const m = s.match(/(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?/);
   if (!m) return null;
   const dayNum = parseInt(m[1], 10);
-  const monthIdx = MONTHS.indexOf(m[2].toLowerCase());
+  const monthName = m[2].toLowerCase();
+  const monthIdx = MONTHS.findIndex((month) => month === monthName || month.slice(0, 3) === monthName);
   if (monthIdx === -1 || !dayNum) return null;
 
   let year;
