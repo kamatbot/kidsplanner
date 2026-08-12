@@ -877,6 +877,15 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .cal-legend-dashed { background: none; border: 1px dashed var(--text-2); }
 .cal-sync-status { margin-left: auto; }
 
+.timetable-event-kid {
+  display: inline-flex; align-items: center; margin-right: 5px;
+  color: var(--text-2); font-family: "JetBrains Mono", monospace;
+  font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+}
+.month-evt .timetable-event-kid { font-size: 8px; margin-right: 3px; }
+.month-day.timetable-mode { cursor: default; }
+.month-day.timetable-mode:hover { background: transparent; }
+
 .chip-school  { background: color-mix(in srgb, var(--c-blue) 16%, var(--panel));   color: var(--c-blue); }
 .chip-sports  { background: color-mix(in srgb, var(--c-green) 16%, var(--panel));  color: var(--c-green); }
 .chip-arts    { background: color-mix(in srgb, var(--c-orange) 16%, var(--panel)); color: var(--c-orange-ink); }
@@ -1152,18 +1161,19 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 
 /* ============================================================
    KID SWITCHER — Calendar + Homework page headers (canvas 1b/1c) each get
-   their own instance; renderKidSwitcher() updates every .kid-switcher on
-   the page in lockstep, so they always agree on activeKidId.
+   their own instance; renderKidSwitcher() updates the shared kid selection,
+   while Calendar can additionally expose its parent-only Timetable audience.
 ============================================================ */
-.kid-switcher { display: flex; gap: 6px; flex-wrap: wrap; }
+.kid-switcher { display: flex; gap: 6px; flex-wrap: wrap; max-width: 100%; }
 .kid-chip {
   --kid-color: var(--accent);
   border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
-  padding: 5px 12px; border-radius: 999px; font-family: inherit;
+  min-height: 44px; padding: 5px 12px; border-radius: 999px; font-family: inherit;
   font-weight: 600; font-size: 12.5px; cursor: pointer; transition: all .15s;
   display: inline-flex; align-items: center;
 }
 .kid-chip:hover { border-color: var(--kid-color); }
+.kid-chip:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 .kid-chip.active { background: var(--kid-color); border-color: var(--kid-color); color: #fff; }
 .kid-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kid-color); margin-right: 6px; flex: none; }
 .kid-chip.active .kid-chip-dot { background: #fff; }

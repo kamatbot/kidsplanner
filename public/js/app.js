@@ -135,6 +135,7 @@ function migrateLegacyStorage() {
 let sessionUser     = null;   // { id, email, name, createdAt } from GET /api/me
 let currentFamily    = null;  // { id, name, inviteCode, parentIds, kids, createdAt }
 let activeKidId      = null;  // currently selected kid filter ("" = all kids)
+let calendarAudience  = 'all'; // parent Calendar audience: all/selected kid/timetable
 let currentView     = 'week';
 let weekStart       = null;   // Monday of displayed week
 let monthDate       = null;   // any date in displayed month
@@ -719,15 +720,34 @@ function renderKidSwitcher() {
     return;
   }
 
-  const chips = [`<button class="kid-chip${activeKidId === null ? ' active' : ''}" onclick="setActiveKid(null)">All kids</button>`]
+  const chipsFor = (el) => {
+    const isCalendar = el.id === 'kid-switcher-calendar';
+    const source = isCalendar ? 'calendar' : 'homework';
+    const allActive = activeKidId === null && (!isCalendar || calendarAudience !== 'timetable');
+    const chips = [`<button type="button" class="kid-chip${allActive ? ' active' : ''}" aria-pressed="${allActive}" aria-label="Show all kids' events" onclick="setActiveKid(null,'${source}')">All kids</button>`]
     .concat(kids.map((k) =>
-      `<button class="kid-chip${activeKidId === k.id ? ' active' : ''}" style="--kid-color:${kidColorFor(k.id) || k.color}" onclick="setActiveKid('${k.id}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
+      `<button type="button" class="kid-chip${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable') ? ' active' : ''}" style="--kid-color:${kidColorFor(k.id) || k.color}" aria-pressed="${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable')}" aria-label="Show ${esc(k.name)}'s events" onclick="setActiveKid('${k.id}','${source}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
     ));
-  els.forEach((el) => { el.innerHTML = chips.join(''); });
+    if (isCalendar) {
+      const timetableActive = calendarAudience === 'timetable';
+      chips.push(`<button type="button" class="kid-chip timetable-chip${timetableActive ? ' active' : ''}" aria-pressed="${timetableActive}" aria-label="Show all kids' timetable" title="Show all kids' timetable" onclick="setCalendarAudience('timetable')"><span class="kid-chip-dot" aria-hidden="true"></span>Timetable</button>`);
+    }
+    return chips.join('');
+  };
+  els.forEach((el) => { el.innerHTML = chipsFor(el); });
 }
 
-function setActiveKid(kidId) {
+function setCalendarAudience(audience) {
+  if (isKidSession()) return;
+  calendarAudience = audience === 'timetable' ? 'timetable' : 'all';
+  if (calendarAudience === 'timetable') activeKidId = null;
+  renderKidSwitcher();
+  renderCalendar();
+}
+
+function setActiveKid(kidId, source = 'calendar') {
   activeKidId = kidId;
+  if (source === 'calendar') calendarAudience = 'all';
   renderKidSwitcher();
   renderCalendar();
   renderSchoolStatsWidget();
@@ -1254,11 +1274,19 @@ function isImportedTimetableEvent(ev) {
   return ev.source !== 'school' && ev.category === 'school' && ev.notes === 'Timetable';
 }
 
+function isTimetableMode() {
+  return !isKidSession() && calendarAudience === 'timetable';
+}
+
+function mergedCalendarEvents() {
+  return getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+}
+
 // Manual + school events merged and scoped to the signed-in role, before the
 // parent's optional kid filter. Parents do not receive imported timetable
 // rows; kids receive family events plus only their own kid-scoped events.
 function allEvents() {
-  const merged = getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+  const merged = mergedCalendarEvents();
   if (isKidSession()) {
     return merged.filter((ev) => ev.kidId == null || ev.kidId === sessionUser.kidId);
   }
@@ -1266,13 +1294,23 @@ function allEvents() {
 }
 
 function visibleEvents() {
-  const merged = allEvents();
-  if (!activeKidId) return merged;
+  const merged = mergedCalendarEvents();
+  if (isKidSession()) {
+    const own = merged.filter((ev) => ev.kidId == null || ev.kidId === sessionUser.kidId);
+    if (!activeKidId) return own;
+    return own.filter((ev) => ev.kidId === activeKidId || ev.kidId == null);
+  }
+  if (isTimetableMode()) return merged.filter(isImportedTimetableEvent);
+
+  const ordinary = merged.filter((ev) => !isImportedTimetableEvent(ev));
+  if (!activeKidId) return ordinary;
   // A filtered view (parent tapping a kid chip, or a kid session which pins
   // activeKidId to itself) is "that kid's calendar": their own events PLUS
   // every whole-family event (kidId == null covers both null and undefined) —
   // family events must never be hidden just because a kid filter is active.
-  return merged.filter(e => e.kidId === activeKidId || e.kidId == null || (e.source === 'school' && !e.kidId));
+  return ordinary
+    .filter((e) => e.kidId === activeKidId || e.kidId == null || (e.source === 'school' && !e.kidId))
+    .concat(merged.filter((e) => isImportedTimetableEvent(e) && e.kidId === activeKidId));
 }
 
 function renderCalendar() {
@@ -1285,6 +1323,11 @@ function renderCalendar() {
 // "all day" marker for events with no time set — shared by week + month.
 function eventBarColor(ev) {
   return ev.kidId ? (kidColorFor(ev.kidId) || 'var(--c-violet)') : 'var(--c-violet)';
+}
+
+function timetableEventKidLabel(ev) {
+  if (!isImportedTimetableEvent(ev)) return '';
+  return `<span class="timetable-event-kid">${esc(kidNameFor(ev.kidId) || 'Kid')}</span>`;
 }
 
 // "Repeats weekly until Jul 30" — occurrences carry `repeat`/`repeatUntil`
@@ -1303,6 +1346,7 @@ const allDayIconSvg = '<svg class="evt-allday-icon" width="10" height="10" viewB
 function renderWeekView() {
   const today  = isoDate(new Date());
   const events = visibleEvents();
+  const timetable = isTimetableMode();
   const days   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const weekEnd = new Date(+weekStart + 6 * 86400000);
 
@@ -1316,7 +1360,7 @@ function renderWeekView() {
     const isT = ds === today;
     const isW = i >= 5;
     const evs = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
-    const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
+    const dueHw = timetable ? [] : visibleHomeworkDueItems().filter(h => h.dueDate === ds);
     html += `<div class="week-day-col${isT?' is-today':''}${isW?' is-weekend':''}">
       <div class="week-day-col-hdr">
         <div class="wday-name">${days[i]}${isT ? ' · today' : ''}</div>
@@ -1335,10 +1379,10 @@ function renderWeekView() {
           return `
           <div class="week-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
             <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
-            <span class="evt-title">${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
+            <span class="evt-title">${timetableEventKidLabel(ev)}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
           </div>`;
         }).join('')}
-        <button class="week-add-btn" onclick="openAddEventModal('${ds}')">+ Add</button>
+        ${timetable ? '' : `<button class="week-add-btn" onclick="openAddEventModal('${ds}')">+ Add</button>`}
       </div>
     </div>`;
   }
@@ -1366,6 +1410,22 @@ function renderCalendarFooter() {
     ? `Synced ${timeAgo(schoolFeedsInfo.lastSyncAt)} · ${weekEventCount} school event${weekEventCount === 1 ? '' : 's'} this week`
     : 'Not synced yet';
 
+  if (isTimetableMode()) {
+    const rangeStart = currentView === 'week'
+      ? (weekStart ? isoDate(weekStart) : null)
+      : (monthDate ? isoDate(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)) : null);
+    const rangeEnd = currentView === 'week'
+      ? (weekStart ? isoDate(new Date(+weekStart + 6 * 86400000)) : null)
+      : (monthDate ? isoDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)) : null);
+    const lessons = visibleEvents().filter((ev) => !rangeStart || (ev.date <= rangeEnd && (ev.endDate || ev.date) >= rangeStart));
+    const lessonText = `${lessons.length} lesson${lessons.length === 1 ? '' : 's'} in this ${currentView}`;
+    el.innerHTML = `
+      ${kidLegend}
+      <span class="cal-legend-item cal-timetable-key"><span class="cal-legend-swatch" style="background:var(--accent)"></span>Timetable</span>
+      <span class="cal-sync-status micro-label" role="status" aria-live="polite">Timetable · ${lessonText} · all kids</span>`;
+    return;
+  }
+
   el.innerHTML = `
     ${kidLegend}
     <span class="cal-legend-item"><span class="cal-legend-swatch" style="background:var(--c-violet)"></span>School feed</span>
@@ -1376,6 +1436,7 @@ function renderCalendarFooter() {
 function renderMonthView() {
   const today  = isoDate(new Date());
   const events = visibleEvents();
+  const timetable = isTimetableMode();
   const d      = monthDate;
   const dayHdrs = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -1398,8 +1459,8 @@ function renderMonthView() {
     const ds   = isoDate(date);
     const isT  = ds === today;
     const evs  = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
-    const dueHw = visibleHomeworkDueItems().filter(h => h.dueDate === ds);
-    html += `<div class="month-day${isT?' is-today':''}" onclick="openAddEventModal('${ds}')">
+    const dueHw = timetable ? [] : visibleHomeworkDueItems().filter(h => h.dueDate === ds);
+    html += `<div class="month-day${isT?' is-today':''}${timetable ? ' timetable-mode' : ''}"${timetable ? '' : ` onclick="openAddEventModal('${ds}')"`}>
       <span class="mday-num">${day}</span>
       ${dueHw.slice(0,3).map((h) => {
         const overdue = h.dueDate < today;
@@ -1408,7 +1469,7 @@ function renderMonthView() {
       ${evs.slice(0,3).map((ev) => {
         const isCont = ev.date !== ds;
         const rLabel = repeatLabel(ev);
-        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
+        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${timetableEventKidLabel(ev)}${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
       }).join('')}
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
