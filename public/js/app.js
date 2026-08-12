@@ -1244,11 +1244,25 @@ function normalizeSchoolEvent(ev) {
   };
 }
 
-// Manual + school events merged, before any kid filter — shared by
-// visibleEvents() (respects the Calendar screen's kid switcher) and
-// renderTodaySchedule() (always whole-family, no switcher on Today).
+// Moodle timetable rows are imported through the legacy local-event bridge.
+// Before the server round-trip they carry source:"timetable-import"; older
+// persisted rows are identified by the bridge's canonical school/Timetable
+// shape. They belong on the child's calendar only, never a parent's calendar.
+function isImportedTimetableEvent(ev) {
+  if (!ev || !ev.kidId) return false;
+  if (ev.source === 'timetable-import') return true;
+  return ev.source !== 'school' && ev.category === 'school' && ev.notes === 'Timetable';
+}
+
+// Manual + school events merged and scoped to the signed-in role, before the
+// parent's optional kid filter. Parents do not receive imported timetable
+// rows; kids receive family events plus only their own kid-scoped events.
 function allEvents() {
-  return getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+  const merged = getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+  if (isKidSession()) {
+    return merged.filter((ev) => ev.kidId == null || ev.kidId === sessionUser.kidId);
+  }
+  return merged.filter((ev) => !isImportedTimetableEvent(ev));
 }
 
 function visibleEvents() {
@@ -5521,9 +5535,10 @@ function scheduleReminders() {
   const horizon = now + FAM_REMINDER_WINDOW_MS;
   const candidates = [];
 
-  // Calendar events: remind 10 min before start. Use the full family set
-  // (unfiltered by active kid) so no one's event is missed.
-  const events = getEvents().concat(schoolEvents.map(normalizeSchoolEvent));
+  // Calendar events: remind 10 min before start. allEvents() applies the same
+  // role scope as Calendar and Today, so parents are not reminded about a
+  // child's imported timetable and kids never receive sibling reminders.
+  const events = allEvents();
   events.forEach((ev) => {
     if (!ev || !ev.time) return;
     const start = famLocalDate(ev.date, ev.time);

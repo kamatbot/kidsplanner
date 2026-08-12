@@ -64,9 +64,17 @@ final class AppStore {
     /// events scoped to themself — never a sibling's.
     var kidScope: String? { me?.role == "kid" ? me?.kidId : nil }
 
+    /// Moodle timetable imports use the bridge's canonical school/Timetable
+    /// shape. They belong only to the matching kid's calendar, not a parent's.
+    private func isImportedTimetableEvent(_ event: FamilyEvent) -> Bool {
+        event.kidId != nil && event.category == "school" && event.notes == "Timetable"
+    }
+
     /// Family (manually-added) calendar events visible to the current session.
     var visibleFamilyEvents: [FamilyEvent] {
-        guard let scope = kidScope else { return familyEvents }
+        guard let scope = kidScope else {
+            return familyEvents.filter { !isImportedTimetableEvent($0) }
+        }
         return familyEvents.filter { $0.kidId == nil || $0.kidId == scope }
     }
 
@@ -683,7 +691,7 @@ final class AppStore {
         if let ev = try? await api.calendarEvents(force: force) { events = ev }
         if let fe = try? await api.familyEvents() { familyEvents = fe }
         if let hw = try? await api.homework() { homework = hw }
-        Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
+        Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
     }
 
     /// Load the server-scoped action queue. Actions are intentionally not put
@@ -719,7 +727,7 @@ final class AppStore {
         do {
             _ = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil)
             if let fe = try? await api.familyEvents() { familyEvents = fe }
-            Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
+            Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
         } catch { handle(error) }
     }
 
@@ -732,7 +740,7 @@ final class AppStore {
         do {
             _ = try await api.updateFamilyEvent(id, title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil)
             if let fe = try? await api.familyEvents() { familyEvents = fe }
-            Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
+            Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
         } catch { handle(error) }
     }
 
@@ -743,7 +751,7 @@ final class AppStore {
         do {
             try await api.deleteFamilyEvent(id)
             familyEvents.removeAll { $0.id == id }
-            Task { await NotificationScheduler.reschedule(events: familyEvents, homework: homework, kids: family?.kids ?? []) }
+            Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
         } catch { handle(error) }
     }
 
