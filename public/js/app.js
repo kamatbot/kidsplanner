@@ -724,7 +724,9 @@ function renderKidSwitcher() {
     const isCalendar = el.id === 'kid-switcher-calendar';
     const source = isCalendar ? 'calendar' : 'homework';
     const allActive = activeKidId === null && (!isCalendar || calendarAudience !== 'timetable');
-    const chips = [`<button type="button" class="kid-chip${allActive ? ' active' : ''}" aria-pressed="${allActive}" aria-label="Show all kids' events" onclick="setActiveKid(null,'${source}')">All kids</button>`]
+    const allLabel = isCalendar ? 'Parents' : 'All kids';
+    const allAriaLabel = isCalendar ? 'Show parent calendar' : "Show all kids' homework";
+    const chips = [`<button type="button" class="kid-chip${allActive ? ' active' : ''}" aria-pressed="${allActive}" aria-label="${allAriaLabel}" onclick="setActiveKid(null,'${source}')">${allLabel}</button>`]
     .concat(kids.map((k) =>
       `<button type="button" class="kid-chip${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable') ? ' active' : ''}" style="--kid-color:${kidColorFor(k.id) || k.color}" aria-pressed="${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable')}" aria-label="Show ${esc(k.name)}'s events" onclick="setActiveKid('${k.id}','${source}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
     ));

@@ -128,7 +128,11 @@ test("kids cannot enter the parent Timetable mode and keep their own timetable r
 test("only the parent Calendar switcher renders Timetable", () => {
   const parent = switcherMarkup(false);
   assert.match(parent.calendar, /Timetable/);
+  assert.match(parent.calendar, />Parents<\/button>/);
+  assert.doesNotMatch(parent.calendar, />All kids<\/button>/);
   assert.match(parent.calendar, /aria-pressed="true"/);
+  assert.match(parent.homework, />All kids<\/button>/);
+  assert.doesNotMatch(parent.homework, />Parents<\/button>/);
   assert.doesNotMatch(parent.homework, /Timetable/);
 
   const kid = switcherMarkup(true);
