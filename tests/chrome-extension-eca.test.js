@@ -94,3 +94,57 @@ test("calendar activity deduplication keeps identical sibling signups separate",
   assert.match(activityBlock, /schoolImportEventKey\(e\.date, e\.time, e\.title, e\.kidId\)/);
   assert.match(activityBlock, /schoolImportEventKey\(date, time, title, kidId\)/);
 });
+
+function loadEcaReconciliationHelpers() {
+  const source = fs.readFileSync(path.join(__dirname, "..", "public", "js", "app.js"), "utf8");
+  const start = source.indexOf("function schoolImportEventKey");
+  const end = source.indexOf("// Normalize a day value", start);
+  assert.ok(start >= 0 && end > start, "ECA reconciliation helpers should be present in app.js");
+  const context = vm.createContext({});
+  vm.runInContext(source.slice(start, end), context, { filename: "app-eca-helpers.js" });
+  return context;
+}
+
+test("ECA reconciliation does not adopt or delete a matching manual event", () => {
+  const helper = loadEcaReconciliationHelpers();
+  const marker = helper.ecaImportMarker("14197", "834", "64894");
+  const manual = { id: "ev_manual", kidId: "kid-1", title: "Chess", date: "2026-08-20", time: "15:45", notes: "" };
+  const plan = helper.planEcaSnapshotReconciliation(
+    [manual], "kid-1", "14197", "834",
+    [{ marker, title: "Chess", date: "2026-08-20", time: "15:45" }]
+  );
+  assert.equal(plan.add.length, 0);
+  assert.equal(plan.remove.length, 0);
+});
+
+test("ECA reconciliation removes only extension-owned events missing from a complete snapshot", () => {
+  const helper = loadEcaReconciliationHelpers();
+  const marker = helper.ecaImportMarker("14197", "834", "64894");
+  const owned = {
+    id: "ev_owned", kidId: "kid-1", title: "Chess", date: "2026-08-20", time: "15:45",
+    notes: `${marker} Signed up activity`,
+  };
+  const manual = { id: "ev_manual", kidId: "kid-1", title: "Swimming", date: "2026-08-25", time: "14:45", notes: "" };
+  const otherKid = { ...owned, id: "ev_other", kidId: "kid-2" };
+  const otherPage = {
+    ...owned, id: "ev_other_page", notes: `${helper.ecaImportMarker("14197", "999", "64894")} Signed up activity`,
+  };
+  const plan = helper.planEcaSnapshotReconciliation(
+    [owned, manual, otherKid, otherPage], "kid-1", "14197", "834", []
+  );
+  assert.deepEqual(plan.remove.map((event) => event.id), ["ev_owned"]);
+  assert.equal(plan.add.length, 0);
+});
+
+test("ECA reconciliation replaces an owned event when its date or title changes", () => {
+  const helper = loadEcaReconciliationHelpers();
+  const marker = helper.ecaImportMarker("14197", "834", "64894");
+  const owned = {
+    id: "ev_owned", kidId: "kid-1", title: "Chess", date: "2026-08-20", time: "15:45",
+    notes: `${marker} Signed up activity`,
+  };
+  const changed = { marker, title: "Flames Chess", date: "2026-08-21", time: "15:45" };
+  const plan = helper.planEcaSnapshotReconciliation([owned], "kid-1", "14197", "834", [changed]);
+  assert.deepEqual(plan.remove.map((event) => event.id), ["ev_owned"]);
+  assert.deepEqual(plan.add.map((event) => ({ ...event })), [changed]);
+});
