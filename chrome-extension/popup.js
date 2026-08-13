@@ -116,20 +116,23 @@ async function fetchSchoolStats() {
 /* Parse confirmed activities from any open ECA signup page for this kid.
    Fetching the visible page URL reuses the parent's authenticated Moodle
    session and lets the popup remain a complete manual fallback. */
-async function fetchSignedUpActivities(moodleUserId) {
+async function fetchSignedUpActivitySnapshots(moodleUserId) {
   try {
     const tabs = await chrome.tabs.query({ url: `${popupMoodleBase}/mod/eca/view_student.php*` });
-    const byKey = new Map();
+    const byEcaId = new Map();
     for (const tab of tabs) {
       if (!tab.url) continue;
       const url = new URL(tab.url);
       if (url.searchParams.get("userid") !== String(moodleUserId)) continue;
+      const ecaId = url.searchParams.get("e");
+      if (!ecaId) continue;
       const html = await fetchMoodlePage(tab.url);
-      for (const activity of popupParseSignedUpActivitiesHtml(html)) {
-        byKey.set(`${activity.date}|${activity.time}|${activity.title.toLowerCase()}`, activity);
-      }
+      byEcaId.set(ecaId, {
+        ecaId,
+        activities: popupParseSignedUpActivitiesHtml(html),
+      });
     }
-    return Array.from(byKey.values());
+    return Array.from(byEcaId.values());
   } catch (e) {
     return [];
   }
@@ -173,9 +176,10 @@ async function handleImport() {
     const homework = popupParseHomeworkHtml(hwHtml);
     const { lessons: timetable, twoWeek } = popupParseTimetableHtml(ttHtml);
 
-    const activities = await fetchSignedUpActivities(moodleUserId);
+    const activitySnapshots = await fetchSignedUpActivitySnapshots(moodleUserId);
+    const activityCount = activitySnapshots.reduce((sum, snapshot) => sum + snapshot.activities.length, 0);
 
-    if (!homework.length && !timetable.length && !activities.length) {
+    if (!homework.length && !timetable.length && !activitySnapshots.length) {
       setStatus(
         "No homework, timetable, or signed-up activity rows were found. The page structure may have changed, or this Moodle account has nothing posted yet.",
         "error"
@@ -184,7 +188,7 @@ async function handleImport() {
     }
 
     setStatus(
-      `Parsed ${homework.length} homework item(s), ${timetable.length} lesson(s), and ${activities.length} signed-up activity event(s)` +
+      `Parsed ${homework.length} homework item(s), ${timetable.length} lesson(s), and ${activityCount} signed-up activity event(s)` +
         (twoWeek ? " (looks like a 2-week timetable — only the first week shown was imported)." : ".") +
         " Sending to Fam ETC…",
       "info"
@@ -199,7 +203,7 @@ async function handleImport() {
       moodleUserId,
       homework,
       timetable,
-      activities,
+      activitySnapshots,
       schoolStats,
     });
 
@@ -224,7 +228,7 @@ async function handleImport() {
 
     const result = response.result || {};
     setStatus(
-      `Done! Added ${result.homeworkAdded || 0} homework item(s) and ${result.eventsAdded || 0} calendar event(s)` +
+      `Done! Added ${result.homeworkAdded || 0} homework item(s), ${result.timetableEventsAdded || 0} timetable event(s), and ${result.activityEventsAdded || 0} activit${result.activityEventsAdded === 1 ? "y" : "ies"}; removed ${result.activityEventsRemoved || 0} unsigned activit${result.activityEventsRemoved === 1 ? "y" : "ies"}` +
         (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped, e.g. completed/duplicates).` : "."),
       "ok"
     );
