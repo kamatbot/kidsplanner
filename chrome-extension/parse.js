@@ -22,7 +22,7 @@ function looksLikeMoodleLoginPage(html) {
 }
 
 /* ---------- homework parsing ----------
-   GET /mod/homework/view.php?h=2&userid=<id>&showcompleted=1&limit=0
+   GET /mod/homework/view.php?h=2&userid=<id>&showcompleted=0&limit=0
    Task = <div class="accordion-item applyhwclass ...">, completed tasks
    also carry class "tickon". Inside: <span class="subject">,
    <span class="title">, <div class="date" title="This task was completed
@@ -237,7 +237,7 @@ function parseSchoolStatsHtml(html) {
 /* ---------- Moodle page URLs ---------- */
 const MOODLE_BASE = "https://bangkok.learn.nae.school";
 function moodleHomeworkUrl(moodleUserId) {
-  return `${MOODLE_BASE}/mod/homework/view.php?h=2&userid=${encodeURIComponent(moodleUserId)}&showcompleted=1&limit=0`;
+  return `${MOODLE_BASE}/mod/homework/view.php?h=2&userid=${encodeURIComponent(moodleUserId)}&showcompleted=0&limit=0`;
 }
 function moodleTimetableUrl(moodleUserId) {
   return `${MOODLE_BASE}/local/sta/pages/timetable.php?id=${encodeURIComponent(moodleUserId)}`;
