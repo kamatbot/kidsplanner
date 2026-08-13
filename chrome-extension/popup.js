@@ -23,6 +23,7 @@ const {
   looksLikeMoodleLoginPage: popupLooksLikeMoodleLoginPage,
   parseHomeworkHtml: popupParseHomeworkHtml,
   parseTimetableHtml: popupParseTimetableHtml,
+  parseSignedUpActivitiesHtml: popupParseSignedUpActivitiesHtml,
   parseSchoolStatsHtml: popupParseSchoolStatsHtml,
   moodleHomeworkUrl: popupMoodleHomeworkUrl,
   moodleTimetableUrl: popupMoodleTimetableUrl,
@@ -112,6 +113,28 @@ async function fetchSchoolStats() {
   }
 }
 
+/* Parse confirmed activities from any open ECA signup page for this kid.
+   Fetching the visible page URL reuses the parent's authenticated Moodle
+   session and lets the popup remain a complete manual fallback. */
+async function fetchSignedUpActivities(moodleUserId) {
+  try {
+    const tabs = await chrome.tabs.query({ url: `${popupMoodleBase}/mod/eca/view_student.php*` });
+    const byKey = new Map();
+    for (const tab of tabs) {
+      if (!tab.url) continue;
+      const url = new URL(tab.url);
+      if (url.searchParams.get("userid") !== String(moodleUserId)) continue;
+      const html = await fetchMoodlePage(tab.url);
+      for (const activity of popupParseSignedUpActivitiesHtml(html)) {
+        byKey.set(`${activity.date}|${activity.time}|${activity.title.toLowerCase()}`, activity);
+      }
+    }
+    return Array.from(byKey.values());
+  } catch (e) {
+    return [];
+  }
+}
+
 /* ---------- main flow ---------- */
 async function handleImport() {
   const moodleUserId = el.moodleUserId.value.trim();
@@ -150,16 +173,18 @@ async function handleImport() {
     const homework = popupParseHomeworkHtml(hwHtml);
     const { lessons: timetable, twoWeek } = popupParseTimetableHtml(ttHtml);
 
-    if (!homework.length && !timetable.length) {
+    const activities = await fetchSignedUpActivities(moodleUserId);
+
+    if (!homework.length && !timetable.length && !activities.length) {
       setStatus(
-        "No homework or timetable rows were found. The page structure may have changed, or this Moodle account has nothing posted yet.",
+        "No homework, timetable, or signed-up activity rows were found. The page structure may have changed, or this Moodle account has nothing posted yet.",
         "error"
       );
       return;
     }
 
     setStatus(
-      `Parsed ${homework.length} homework item(s) and ${timetable.length} lesson(s)` +
+      `Parsed ${homework.length} homework item(s), ${timetable.length} lesson(s), and ${activities.length} signed-up activity event(s)` +
         (twoWeek ? " (looks like a 2-week timetable — only the first week shown was imported)." : ".") +
         " Sending to Fam ETC…",
       "info"
@@ -174,6 +199,7 @@ async function handleImport() {
       moodleUserId,
       homework,
       timetable,
+      activities,
       schoolStats,
     });
 
@@ -198,7 +224,7 @@ async function handleImport() {
 
     const result = response.result || {};
     setStatus(
-      `Done! Added ${result.homeworkAdded || 0} homework item(s) and ${result.eventsAdded || 0} timetable event(s)` +
+      `Done! Added ${result.homeworkAdded || 0} homework item(s) and ${result.eventsAdded || 0} calendar event(s)` +
         (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped, e.g. completed/duplicates).` : "."),
       "ok"
     );

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Fam ETC School Import",
-  "version": "0.2.0",
-  "description": "Auto-syncs your child's Moodle homework and timetable into Fam ETC using your already-logged-in Moodle session.",
+  "version": "0.3.0",
+  "description": "Auto-syncs Moodle homework, timetable, and signed-up activities into Fam ETC using your logged-in session.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "Fam ETC School Import"

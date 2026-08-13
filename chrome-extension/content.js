@@ -5,7 +5,8 @@
    logged-in Moodle session, then either:
      - shows a callout nudging the parent to open fametc.com, or
      - shows a "set up your kids' Moodle IDs" nudge, or
-     - silently auto-syncs each mapped kid's homework/timetable (throttled).
+     - silently auto-syncs each mapped kid's homework/timetable and any
+       signed-up activities visible on the current ECA page (throttled).
 
    Uses window.famParse (parse.js, loaded as an earlier content_scripts
    entry in manifest.json) for the homework/timetable HTML parsing — the
@@ -16,6 +17,7 @@
 const THROTTLE_MS = 10 * 60 * 1000; // ~10 minutes between auto-syncs
 const STORAGE_KEY_LAST_SYNC = "famEtcLastAutoSyncAt";
 const BANNER_ID = "fam-etc-callout-banner";
+const ECA_SYNC_DEBOUNCE_MS = 800;
 
 /* ---------- logged-in detection ----------
    The Moodle login page has a password field; a logged-in page has Moodle's
@@ -134,6 +136,84 @@ async function fetchAndParseForKid(moodleUserId) {
   return { homework, timetable };
 }
 
+/* Signed-up activities are available on ECA enrollment pages rather than a
+   stable per-kid endpoint. When auto-sync is triggered from such a page,
+   attach its confirmed rows only to the kid named by that page's userid=. */
+function activitiesVisibleForKid(moodleUserId) {
+  const url = new URL(window.location.href);
+  if (url.pathname !== "/mod/eca/view_student.php") return [];
+  if (url.searchParams.get("userid") !== String(moodleUserId)) return [];
+  return window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML);
+}
+
+function visibleActivitiesSignature(activities) {
+  return (activities || [])
+    .map((activity) => `${activity.clubId || ""}|${activity.date}|${activity.time}|${activity.title}`)
+    .sort()
+    .join("\n");
+}
+
+/* Moodle updates ECA rows in-place after a signup is saved, without loading
+   a new page. Watch only the activity table so the extension notices that
+   transition and imports the new confirmed set immediately. Calendar-side
+   deduplication makes resending the other confirmed rows safe. */
+function watchEcaSignupChanges() {
+  const url = new URL(window.location.href);
+  const table = document.querySelector("table#ecastudentview");
+  const moodleUserId = url.pathname === "/mod/eca/view_student.php"
+    ? url.searchParams.get("userid")
+    : null;
+  if (!table || !moodleUserId) return;
+
+  let lastSignature = visibleActivitiesSignature(
+    window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML)
+  );
+  let timer = null;
+  let syncing = false;
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const activities = window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML);
+      const nextSignature = visibleActivitiesSignature(activities);
+      if (nextSignature === lastSignature) return;
+      lastSignature = nextSignature;
+      if (!activities.length || syncing) return;
+
+      syncing = true;
+      try {
+        const check = await chrome.runtime.sendMessage({ type: "AUTO_SYNC_CHECK" });
+        const mapping = check && check.famOpen && Array.isArray(check.mappings)
+          ? check.mappings.find((item) => item && String(item.moodleUserId) === String(moodleUserId))
+          : null;
+        if (!mapping) return;
+
+        const response = await chrome.runtime.sendMessage({
+          type: "IMPORT",
+          kidId: mapping.kidId,
+          moodleUserId,
+          homework: [],
+          timetable: [],
+          activities,
+          schoolStats: [],
+        });
+        if (response && response.result) {
+          showSuccessCallout(
+            `Synced activities: ${response.result.activityEventsAdded || 0} new calendar event(s) added.`
+          );
+          await setLastSyncAt(Date.now());
+        }
+      } catch (e) {
+        console.warn("[Fam ETC] live activity sync failed", e && e.message);
+      } finally {
+        syncing = false;
+      }
+    }, ECA_SYNC_DEBOUNCE_MS);
+  });
+
+  observer.observe(table, { childList: true, subtree: true, characterData: true, attributes: true });
+}
+
 /* ---------- fetch + parse the family-wide school stats (house points,
    attendance, canteen balance) from the HOME dashboard. Fetched ONCE per
    sync (not per kid) — best-effort: any failure just means no schoolStats
@@ -163,12 +243,14 @@ async function runAutoSync(mappings) {
     if (!mapping || !mapping.moodleUserId) continue;
     try {
       const { homework, timetable } = await fetchAndParseForKid(mapping.moodleUserId);
+      const activities = activitiesVisibleForKid(mapping.moodleUserId);
       const response = await chrome.runtime.sendMessage({
         type: "IMPORT",
         kidId: mapping.kidId,
         moodleUserId: mapping.moodleUserId,
         homework,
         timetable,
+        activities,
         schoolStats,
       });
       if (response && response.result) {
@@ -183,13 +265,15 @@ async function runAutoSync(mappings) {
   }
 
   if (anySynced) {
-    showSuccessCallout(`Synced ${mappings.length} kid(s): ${totalHw} homework item(s), ${totalEvents} timetable event(s) added.`);
+    showSuccessCallout(`Synced ${mappings.length} kid(s): ${totalHw} homework item(s), ${totalEvents} calendar event(s) added.`);
     await setLastSyncAt(Date.now());
   }
 }
 
 async function main() {
   if (!isLoggedIn()) return; // on the login page (or can't tell) — do nothing
+
+  watchEcaSignupChanges();
 
   let check;
   try {
@@ -210,7 +294,12 @@ async function main() {
   }
 
   const lastSync = await getLastSyncAt();
-  if (Date.now() - lastSync < THROTTLE_MS) {
+  // A confirmed ECA signup should reach the calendar as soon as the parent
+  // visits that page, even if a routine homework sync ran a few minutes ago.
+  const hasVisibleActivities = check.mappings.some(
+    (mapping) => mapping && mapping.moodleUserId && activitiesVisibleForKid(mapping.moodleUserId).length > 0
+  );
+  if (!hasVisibleActivities && Date.now() - lastSync < THROTTLE_MS) {
     return; // throttled — manual sync via the popup is still always available
   }
 
