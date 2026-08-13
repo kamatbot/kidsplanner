@@ -108,6 +108,7 @@ struct RootView: View {
         }
         .task {
             await store.load()
+            consumePendingChatRoute()
             // Now that we know there's an authenticated session, ask for push
             // permission (prompts once) and register/refresh the APNs token. Gated
             // on !needsAuth so the token POST to /api/push/register has a session.
@@ -127,15 +128,16 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await store.refreshKidRequests() }
         }
-        // Trips (docs/TRIPS-PLAN.md) push routing, v1: surface the Chat tab/
-        // room. `ChatTabHost` finishes the job (switches to the exact trip
+        .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToChat)) { _ in
+            routeFromLiveChatNotification(fallbackRoomId: familyRoomId)
+        }
+        // Trips (docs/TRIPS-PLAN.md) push routing: surface the Chat tab/room.
+        // `ChatTabHost` finishes the job (switches to the exact trip
         // room) once `store.pendingChatRoomId` matches a room it knows about —
         // see `AppStore.pendingChatRoomId`.
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToTripChat)) { note in
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
-            let roomId = "trip:\(tripId)"
-            selection = .chat
-            store.pendingChatRoomId = roomId
+            routeFromLiveChatNotification(fallbackRoomId: "trip:\(tripId)")
         }
         .overlay { if store.needsAuth { ReauthOverlay() } }
         .onAppear {
@@ -149,7 +151,23 @@ struct RootView: View {
             default: break   // today starts on the today tab
             }
             #endif
+            consumePendingChatRoute()
         }
+    }
+
+    private func routeToChat(roomId: String) {
+        selection = .chat
+        store.pendingChatRoomId = roomId
+    }
+
+    private func routeFromLiveChatNotification(fallbackRoomId: String) {
+        let roomId = NotificationHandler.shared.consumePendingChatRoomId() ?? fallbackRoomId
+        routeToChat(roomId: roomId)
+    }
+
+    private func consumePendingChatRoute() {
+        guard let roomId = NotificationHandler.shared.consumePendingChatRoomId() else { return }
+        routeToChat(roomId: roomId)
     }
 
     // MARK: iPhone — floating pill tab bar (5 entries)
