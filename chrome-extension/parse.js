@@ -119,6 +119,68 @@ function parseTimetableHtml(html) {
   return { lessons, twoWeek };
 }
 
+/* ---------- signed-up ECA/activity parsing ----------
+   GET /mod/eca/view_student.php?e=<event id>&userid=<kid id>&prefmode=0
+   Timeslot headers and activity rows share one table in document order:
+     <th><input class="timeslot-radio" data-index="1787215500">Thursday ...</th>
+     <tr data-clubid="64894"><td class="wait">Signed up</td>
+       <td class="name"><a>High School Flames Chess Tryouts</a></td></tr>
+   Only rows whose visible status is exactly "Signed up" are imported;
+   availability and waitlist rows are deliberately ignored.
+*/
+function parseEcaTimeslot(text) {
+  const months = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+  };
+  const m = String(text || "").replace(/\s+/g, " ").trim().match(
+    /^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4}),\s+(\d{1,2}):(\d{2})\s*(am|pm)$/i
+  );
+  if (!m) return null;
+  const month = months[m[2].slice(0, 3).toLowerCase()];
+  if (!month) return null;
+  let hour = Number(m[4]);
+  if (hour < 1 || hour > 12) return null;
+  if (m[6].toLowerCase() === "am") hour %= 12;
+  else hour = (hour % 12) + 12;
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    date: `${m[3]}-${pad(month)}-${pad(Number(m[1]))}`,
+    time: `${pad(hour)}:${m[5]}`,
+  };
+}
+
+function parseSignedUpActivitiesHtml(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const table = doc.querySelector("table#ecastudentview");
+  if (!table) return [];
+
+  const activities = [];
+  let timeslot = null;
+  Array.from(table.querySelectorAll("tr")).forEach((row) => {
+    const header = row.querySelector("th");
+    if (header && header.querySelector(".timeslot-radio")) {
+      timeslot = parseEcaTimeslot(header.textContent);
+      return;
+    }
+    if (!timeslot) return;
+
+    const status = row.querySelector("td.wait");
+    if (!status || status.textContent.replace(/\s+/g, " ").trim().toLowerCase() !== "signed up") return;
+    const nameEl = row.querySelector("td.name a") || row.querySelector("td.name");
+    const title = (nameEl && nameEl.textContent || "").replace(/\s+/g, " ").trim();
+    if (!title) return;
+
+    activities.push({
+      title,
+      date: timeslot.date,
+      time: timeslot.time,
+      clubId: row.getAttribute("data-clubid") || "",
+    });
+  });
+  return activities;
+}
+
 /* ---------- school stats parsing (house points / attendance / canteen) ----------
    GET / (the school HOME dashboard, site root). Lists each child as a
    `<td class="cell c1 lastcol">Ryshi 10a</td>` heading followed by tiles
@@ -192,6 +254,7 @@ if (typeof window !== "undefined") {
     looksLikeMoodleLoginPage,
     parseHomeworkHtml,
     parseTimetableHtml,
+    parseSignedUpActivitiesHtml,
     parseSchoolStatsHtml,
     moodleHomeworkUrl,
     moodleTimetableUrl,

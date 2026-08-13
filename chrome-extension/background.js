@@ -13,7 +13,7 @@
    Message types (all sent from content.js or popup.js via
    chrome.runtime.sendMessage):
      - AUTO_SYNC_CHECK -> { famOpen, mappings }
-     - IMPORT { kidId, moodleUserId, homework, timetable } -> import result
+     - IMPORT { kidId, moodleUserId, homework, timetable, activities } -> import result
      - OPEN_FAMETC -> opens/focuses a fametc.com tab
 ============================================================ */
 
@@ -75,6 +75,7 @@ async function handleImport(msg) {
     moodleUserId: msg.moodleUserId,
     homework: msg.homework || [],
     timetable: msg.timetable || [],
+    activities: msg.activities || [],
     schoolStats: msg.schoolStats || [],
   };
   try {

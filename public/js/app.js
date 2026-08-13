@@ -5659,9 +5659,11 @@ function startReminderLoop() {
        kidId: string,               // Fam ETC kid id (currentFamily.kids[].id)
        moodleUserId: string|number, // informational only, not required
        homework: [{ subject, title, dueDate (YYYY-MM-DD or parseable), completed }],
-       timetable: [{ day: 0-4 (Mon-Fri) or 'Mon'.., period, time: 'HH:MM', subject }]
+       timetable: [{ day: 0-4 (Mon-Fri) or 'Mon'.., period, time: 'HH:MM', subject }],
+       activities: [{ title, date: 'YYYY-MM-DD', time: 'HH:MM', clubId }]
      }
-   Returns: { homeworkAdded, eventsAdded, homeworkSkipped } (also toasted).
+   Returns: { homeworkAdded, eventsAdded, timetableEventsAdded,
+              activityEventsAdded, homeworkSkipped } (also toasted).
 ============================================================ */
 
 // Dedupe key helpers — exported as plain functions so they're easy to unit
@@ -5669,8 +5671,8 @@ function startReminderLoop() {
 function schoolImportHomeworkKey(title, dueDate) {
   return `${String(title || '').trim().toLowerCase()}|${dueDate || ''}`;
 }
-function schoolImportEventKey(date, time, title) {
-  return `${date}|${time || ''}|${String(title || '').trim().toLowerCase()}`;
+function schoolImportEventKey(date, time, title, kidId) {
+  return `${date}|${time || ''}|${String(title || '').trim().toLowerCase()}|${kidId || ''}`;
 }
 
 // Normalize a day value from the extension into a 0-4 (Mon-Fri) offset, or
@@ -5759,7 +5761,13 @@ async function processSchoolStats(kids, statsList) {
 }
 
 async function famImportSchoolData(payload) {
-  const result = { homeworkAdded: 0, eventsAdded: 0, homeworkSkipped: 0 };
+  const result = {
+    homeworkAdded: 0,
+    eventsAdded: 0,
+    timetableEventsAdded: 0,
+    activityEventsAdded: 0,
+    homeworkSkipped: 0,
+  };
   try {
     if (isKidSession()) {
       toast('Ask a parent to import');
@@ -5840,7 +5848,7 @@ async function famImportSchoolData(payload) {
     if (ttList.length) {
       const monday = mondayOf(new Date());
       const events = getEvents();
-      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title)));
+      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title, e.kidId)));
 
       for (const lesson of ttList) {
         if (!lesson) continue;
@@ -5850,7 +5858,7 @@ async function famImportSchoolData(payload) {
         const time = String(lesson.time || '').trim();
         if (!title || !time) continue;
         const date = isoDate(new Date(+monday + offset * 86400000));
-        const key = schoolImportEventKey(date, time, title);
+        const key = schoolImportEventKey(date, time, title, kidId);
         if (existingKeys.has(key)) continue;
         existingKeys.add(key);
 
@@ -5867,11 +5875,51 @@ async function famImportSchoolData(payload) {
           source: 'timetable-import',
         });
         result.eventsAdded++;
+        result.timetableEventsAdded++;
       }
 
       if (result.eventsAdded > 0) {
         saveEvents(events);
         loadFamilyEvents(); // push to the server (silent — no chat flood)
+        renderCalendar();
+      }
+    }
+
+    /* ---------- Signed-up activities -> exact calendar events ---------- */
+    const activityList = (payload && Array.isArray(payload.activities)) ? payload.activities : [];
+    if (activityList.length) {
+      const events = getEvents();
+      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title, e.kidId)));
+
+      for (const activity of activityList) {
+        if (!activity) continue;
+        const title = String(activity.title || '').trim();
+        const date = normalizeSchoolImportDate(activity.date);
+        const time = String(activity.time || '').trim();
+        if (!title || !date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
+        const key = schoolImportEventKey(date, time, title, kidId);
+        if (existingKeys.has(key)) continue;
+        existingKeys.add(key);
+
+        events.push({
+          id: uid(),
+          userId: sessionUser.id,
+          kidId,
+          title,
+          date,
+          time,
+          endTime: '',
+          category: 'school',
+          notes: 'Signed up activity',
+          source: 'eca-import',
+        });
+        result.eventsAdded++;
+        result.activityEventsAdded++;
+      }
+
+      if (result.activityEventsAdded > 0) {
+        saveEvents(events);
+        loadFamilyEvents();
         renderCalendar();
       }
     }
@@ -5890,7 +5938,7 @@ async function famImportSchoolData(payload) {
       }
     }
 
-    toast(`🎓 Imported: ${result.homeworkAdded} homework, ${result.eventsAdded} timetable events` +
+    toast(`🎓 Imported: ${result.homeworkAdded} homework, ${result.timetableEventsAdded} timetable events, ${result.activityEventsAdded} activities` +
       (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped)` : ''));
     return result;
   } catch (e) {

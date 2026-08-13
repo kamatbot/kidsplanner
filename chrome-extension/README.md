@@ -1,6 +1,6 @@
 # Fam ETC School Import (Chrome extension)
 
-Auto-syncs a child's homework and timetable from the school Moodle portal
+Auto-syncs a child's homework, timetable, and confirmed activity signups from the school Moodle portal
 (`bangkok.learn.nae.school`) into Fam ETC — without ever handling a
 username or password.
 
@@ -20,7 +20,7 @@ The extension runs entirely in **your already-logged-in browser sessions**
 - **`popup.js`** — the toolbar popup, kept as a manual fallback trigger you
   can use anytime, independent of the auto-sync throttle.
 
-`parse.js` holds the Moodle HTML parsing (homework list + timetable) shared
+`parse.js` holds the Moodle HTML parsing (homework list + timetable + ECA signups) shared
 by both the content script and the popup, so auto-sync and manual import
 never drift apart.
 
@@ -42,7 +42,11 @@ never drift apart.
      banner nudges you to set one up in Settings.
    - If a `fametc.com` tab is open **and** at least one kid has a Moodle ID
      saved **and** the throttle window has elapsed, the extension silently
-     fetches and imports **each mapped kid's** homework + timetable, then
+     fetches and imports **each mapped kid's** homework + timetable. When
+     the current Moodle page is an ECA signup page, it also imports that
+     kid's rows marked **Signed up** into the calendar. If a signup changes
+     without a page reload, the extension detects the updated row and syncs
+     the confirmed activities immediately, then
      shows a brief success banner with the totals (auto-dismisses after
      ~15s).
 3. **Throttle**: auto-sync runs at most **once every ~10 minutes**, tracked
@@ -62,7 +66,8 @@ Click the extension icon any time to trigger an import by hand:
    child's homework/timetable page.
 3. Enter the child's name as shown in Fam ETC (optional if there's only one
    kid in the family).
-4. Click **Import homework & timetable**. The status area reports how many
+4. Click **Import school data**. Any open ECA signup page for that child is
+   also checked for rows marked **Signed up**. The status area reports how many
    homework items and timetable events were added, and surfaces clear
    errors (not logged into Moodle, no open Fam ETC tab, etc).
 
@@ -97,6 +102,11 @@ success banner), so a family with multiple kids at the same school gets all
 of them synced from a single Moodle login, no per-kid manual steps needed.
 
 ## Limitations
+
+- **ECA pages must be open/visited**: Moodle does not expose a stable
+  per-child activities endpoint. Signed-up activities are imported when the
+  corresponding ECA signup page is open (manual import) or when auto-sync
+  runs from that page.
 
 - **Current week only**: timetable lessons are mapped onto the *current*
   Mon–Fri calendar week each time an import runs. The school timetable
