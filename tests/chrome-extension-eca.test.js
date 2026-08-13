@@ -12,6 +12,18 @@ function loadParser(extraGlobals = {}) {
   return context;
 }
 
+function extractFunction(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `${name} should exist`);
+  const brace = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = brace; index < source.length; index++) {
+    if (source[index] === "{") depth++;
+    if (source[index] === "}" && --depth === 0) return source.slice(start, index + 1);
+  }
+  throw new Error(`Could not extract ${name}`);
+}
+
 test("parseEcaTimeslot: converts displayed Moodle time to an exact local date/time", () => {
   const parser = loadParser();
   assert.deepEqual(
@@ -53,10 +65,32 @@ test("parseSignedUpActivitiesHtml: imports Signed up rows and ignores availabili
   }
   const parser = loadParser({ DOMParser: FakeDOMParser });
   const activities = parser.parseSignedUpActivitiesHtml("<ignored>");
-  assert.deepEqual(activities.map((activity) => ({ ...activity })), [{
+  assert.deepEqual(Array.from(activities, (activity) => ({ ...activity })), [{
     title: "High School Flames Chess Tryouts",
     date: "2026-08-20",
     time: "15:45",
     clubId: "64894",
   }]);
+});
+
+test("calendar activity deduplication keeps identical sibling signups separate", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "..", "public", "js", "app.js"), "utf8");
+  const sandbox = {};
+  vm.runInNewContext([
+    extractFunction(appSource, "schoolImportEventKey"),
+    "this.schoolImportEventKey = schoolImportEventKey;",
+  ].join("\n"), sandbox, { filename: "public/js/app.js" });
+
+  const firstKid = sandbox.schoolImportEventKey("2026-08-20", "15:45", " Swimming ", "kid-1");
+  const sameSignup = sandbox.schoolImportEventKey("2026-08-20", "15:45", "swimming", "kid-1");
+  const sibling = sandbox.schoolImportEventKey("2026-08-20", "15:45", "Swimming", "kid-2");
+  assert.equal(firstKid, sameSignup);
+  assert.notEqual(firstKid, sibling);
+
+  const activityBlock = appSource.slice(
+    appSource.indexOf("/* ---------- Signed-up activities"),
+    appSource.indexOf("/* ---------- School stats", appSource.indexOf("/* ---------- Signed-up activities"))
+  );
+  assert.match(activityBlock, /schoolImportEventKey\(e\.date, e\.time, e\.title, e\.kidId\)/);
+  assert.match(activityBlock, /schoolImportEventKey\(date, time, title, kidId\)/);
 });

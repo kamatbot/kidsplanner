@@ -5671,8 +5671,8 @@ function startReminderLoop() {
 function schoolImportHomeworkKey(title, dueDate) {
   return `${String(title || '').trim().toLowerCase()}|${dueDate || ''}`;
 }
-function schoolImportEventKey(date, time, title) {
-  return `${date}|${time || ''}|${String(title || '').trim().toLowerCase()}`;
+function schoolImportEventKey(date, time, title, kidId) {
+  return `${date}|${time || ''}|${String(title || '').trim().toLowerCase()}|${kidId || ''}`;
 }
 
 // Normalize a day value from the extension into a 0-4 (Mon-Fri) offset, or
@@ -5848,7 +5848,7 @@ async function famImportSchoolData(payload) {
     if (ttList.length) {
       const monday = mondayOf(new Date());
       const events = getEvents();
-      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title)));
+      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title, e.kidId)));
 
       for (const lesson of ttList) {
         if (!lesson) continue;
@@ -5858,7 +5858,7 @@ async function famImportSchoolData(payload) {
         const time = String(lesson.time || '').trim();
         if (!title || !time) continue;
         const date = isoDate(new Date(+monday + offset * 86400000));
-        const key = schoolImportEventKey(date, time, title);
+        const key = schoolImportEventKey(date, time, title, kidId);
         if (existingKeys.has(key)) continue;
         existingKeys.add(key);
 
@@ -5889,7 +5889,7 @@ async function famImportSchoolData(payload) {
     const activityList = (payload && Array.isArray(payload.activities)) ? payload.activities : [];
     if (activityList.length) {
       const events = getEvents();
-      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title)));
+      const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title, e.kidId)));
 
       for (const activity of activityList) {
         if (!activity) continue;
@@ -5897,7 +5897,7 @@ async function famImportSchoolData(payload) {
         const date = normalizeSchoolImportDate(activity.date);
         const time = String(activity.time || '').trim();
         if (!title || !date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
-        const key = schoolImportEventKey(date, time, title);
+        const key = schoolImportEventKey(date, time, title, kidId);
         if (existingKeys.has(key)) continue;
         existingKeys.add(key);
 
