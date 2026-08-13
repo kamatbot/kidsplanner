@@ -263,10 +263,23 @@ final class APIClient: FamilyActionService {
         _ = try await rawSend("/api/meals/pantry/staples", method: "POST", body: [:])
     }
 
+    func mealRecipes() async throws -> [Recipe] {
+        let r: RecipeListResponse = try await request("/api/meals/recipes")
+        return r.recipes
+    }
+
     func addMenuEntry(date: String, slot: String = "dinner", title: String, note: String? = nil) async throws -> MenuEntry {
         var body: [String: Any] = ["date": date, "slot": slot, "title": title]
         if let note, !note.isEmpty { body["note"] = note }
         let r: MenuEntryResponse = try await request("/api/meals/menu", method: "POST", body: body)
+        return r.entry
+    }
+    func addRecipeMenuEntry(date: String, slot: String = "dinner", recipeId: String) async throws -> MenuEntry {
+        let r: MenuEntryResponse = try await request(
+            "/api/meals/menu",
+            method: "POST",
+            body: ["date": date, "slot": slot, "recipeId": recipeId]
+        )
         return r.entry
     }
     func updateMenuEntry(_ id: String, _ patch: [String: Any]) async throws -> MenuEntry {

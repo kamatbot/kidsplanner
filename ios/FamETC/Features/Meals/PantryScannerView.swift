@@ -4,9 +4,9 @@ import UIKit
 
 // MARK: - Pantry photo scan → AI review → bulk add
 //
-// Flow: take a photo (camera) OR pick one from the library → JPEG-compress →
-// POST /api/ai/parse (kind:"pantry") → editable review list → confirm bulk-adds
-// via POST /api/meals/pantry/bulk (AppStore.bulkAddScannedPantryItems).
+// Flow: queue up to eight camera/library photos → JPEG-compress and parse each
+// only after the user taps Generate list → merge duplicate detections → editable
+// review list → confirm bulk-adds via POST /api/meals/pantry/bulk.
 //
 // Camera capture is SIMULATOR-ONLY UNVERIFIED — UIImagePickerController's
 // .camera source isn't available in the Simulator; this view detects that and
@@ -17,13 +17,18 @@ struct PantryScannerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showCamera = false
-    @State private var photoItem: PhotosPickerItem?
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var queuedImages: [UIImage] = []
     @State private var isParsing = false
+    @State private var parsingCompleted = 0
+    @State private var parsingTotal = 0
     @State private var reviewItems: [ScannedPantryItem] = []
     @State private var errorMessage: String?
     @State private var isSaving = false
 
+    private let maxPhotos = 8
     private var cameraAvailable: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+    private var remainingPhotoSlots: Int { max(0, maxPhotos - queuedImages.count) }
 
     var body: some View {
         NavigationStack {
@@ -53,17 +58,29 @@ struct PantryScannerView: View {
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { image in
                 showCamera = false
-                if let image { Task { await parse(image) } }
+                if let image, queuedImages.count < maxPhotos {
+                    queuedImages.append(image)
+                    errorMessage = nil
+                }
             }
             .ignoresSafeArea()
         }
-        .onChange(of: photoItem) { _, newValue in
-            guard let newValue else { return }
+        .onChange(of: photoItems) { _, newItems in
+            guard !newItems.isEmpty else { return }
+            photoItems = []
             Task {
-                if let data = try? await newValue.loadTransferable(type: Data.self), let image = UIImage(data: data) {
-                    await parse(image)
+                var loaded: [UIImage] = []
+                for item in newItems.prefix(remainingPhotoSlots) {
+                    if let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data) {
+                        loaded.append(image)
+                    }
                 }
-                photoItem = nil
+                queuedImages.append(contentsOf: loaded.prefix(remainingPhotoSlots))
+                if loaded.count < newItems.count {
+                    errorMessage = "Some selected photos couldn't be loaded. Try selecting those photos again."
+                } else {
+                    errorMessage = nil
+                }
             }
         }
     }
@@ -76,10 +93,12 @@ struct PantryScannerView: View {
             Image(systemName: "camera.fill")
                 .font(.system(size: 40, weight: .semibold))
                 .foregroundStyle(Palette.accent)
-            Text("Scan your pantry or fridge")
+            Text(queuedImages.isEmpty ? "Scan your pantry or fridge" : "\(queuedImages.count) photo\(queuedImages.count == 1 ? "" : "s") ready")
                 .font(Typography.cardTitle)
                 .foregroundStyle(Palette.text)
-            Text("Take a photo (or pick one from your library) and Fam ETC will detect the items for you to review before adding.")
+            Text(queuedImages.isEmpty
+                 ? "Photograph each shelf or section. Fam ETC will combine everything into one list for you to review."
+                 : "Add another angle, or generate one combined pantry list when you’re ready.")
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
                 .multilineTextAlignment(.center)
@@ -89,9 +108,14 @@ struct PantryScannerView: View {
                     .foregroundStyle(Palette.warn)
                     .multilineTextAlignment(.center)
             }
-            if cameraAvailable {
-                AccentButton(title: "Take a photo", systemImage: "camera.fill") { showCamera = true }
-            } else {
+            if !queuedImages.isEmpty {
+                queuedPhotoStrip
+            }
+            if cameraAvailable, remainingPhotoSlots > 0 {
+                AccentButton(title: queuedImages.isEmpty ? "Take a photo" : "Take another photo", systemImage: "camera.fill") {
+                    showCamera = true
+                }
+            } else if !cameraAvailable {
                 // ponytail: no device to verify camera capture in this pass — the
                 // Simulator has no camera hardware, so this branch is what's
                 // actually reachable/tested here.
@@ -99,10 +123,22 @@ struct PantryScannerView: View {
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
             }
-            PhotosPicker(selection: $photoItem, matching: .images) {
-                Text("Choose from library")
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(Palette.accent)
+            if remainingPhotoSlots > 0 {
+                PhotosPicker(selection: $photoItems, maxSelectionCount: remainingPhotoSlots, matching: .images) {
+                    Label(queuedImages.isEmpty ? "Choose photos" : "Add from library", systemImage: "photo.on.rectangle.angled")
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                        .frame(minHeight: 44)
+                }
+            } else {
+                Text("Maximum of \(maxPhotos) photos reached")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            if !queuedImages.isEmpty {
+                AccentButton(title: "Generate list from \(queuedImages.count) photo\(queuedImages.count == 1 ? "" : "s")", systemImage: "sparkles") {
+                    generateList()
+                }
             }
             Spacer()
         }
@@ -112,8 +148,48 @@ struct PantryScannerView: View {
     private var parsingView: some View {
         VStack(spacing: Space.md) {
             ProgressView()
-            Text("Reading your photo…").font(Typography.body).foregroundStyle(Palette.textSecond)
+            Text("Reading photo \(min(parsingCompleted + 1, parsingTotal)) of \(parsingTotal)…")
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+            Text("We’ll combine duplicate items into one review list.")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+                .multilineTextAlignment(.center)
         }
+        .padding(Space.xl)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Reading pantry photos. \(parsingCompleted) of \(parsingTotal) complete.")
+    }
+
+    private var queuedPhotoStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.sm) {
+                ForEach(Array(queuedImages.enumerated()), id: \.offset) { index, image in
+                    ZStack(alignment: .topTrailing) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 82, height: 82)
+                            .clipShape(RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                        Button {
+                            queuedImages.remove(at: index)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 22, weight: .bold))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, Color.black.opacity(0.62))
+                        }
+                        .buttonStyle(.plain)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .accessibilityLabel("Remove photo \(index + 1)")
+                    }
+                    .accessibilityElement(children: .contain)
+                }
+            }
+            .padding(.vertical, Space.xs)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("Selected pantry photos")
     }
 
     // MARK: Review
@@ -140,22 +216,43 @@ struct PantryScannerView: View {
 
     // MARK: Actions
 
-    private func parse(_ image: UIImage) async {
+    private func generateList() {
+        let images = queuedImages
+        guard !images.isEmpty, !isParsing else { return }
         errorMessage = nil
         isParsing = true
-        guard let base64 = Self.jpegBase64(image) else {
+        parsingCompleted = 0
+        parsingTotal = images.count
+        Task {
+            var merged: [ScannedPantryItem] = []
+            var failures = 0
+            var lastError: Error?
+            for image in images {
+                guard let base64 = Self.jpegBase64(image) else {
+                    failures += 1
+                    parsingCompleted += 1
+                    continue
+                }
+                do {
+                    let items = try await APIClient.shared.parsePantryPhoto(base64: base64)
+                    merged = PantryScanMerger.merge(existing: merged, incoming: items)
+                } catch {
+                    failures += 1
+                    lastError = error
+                }
+                parsingCompleted += 1
+            }
+            reviewItems = merged
             isParsing = false
-            errorMessage = "Couldn't read that photo."
-            return
+            if merged.isEmpty {
+                errorMessage = lastError?.localizedDescription ?? "No items detected — try clearer photos."
+            } else {
+                queuedImages = []
+                if failures > 0 {
+                    errorMessage = "\(failures) photo\(failures == 1 ? "" : "s") couldn’t be read. Review the items found in the others."
+                }
+            }
         }
-        do {
-            let items = try await APIClient.shared.parsePantryPhoto(base64: base64)
-            reviewItems = items
-            if items.isEmpty { errorMessage = "No items detected — try a clearer photo." }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isParsing = false
     }
 
     private func confirmAdd() {
@@ -185,6 +282,41 @@ struct PantryScannerView: View {
         }
         guard let data = working.jpegData(compressionQuality: 0.5) else { return nil }
         return data.base64EncodedString()
+    }
+}
+
+/// Consolidates detections from overlapping shelf/fridge photos before review.
+/// The first detection owns the row; later matches only fill missing metadata.
+enum PantryScanMerger {
+    static func merge(existing: [ScannedPantryItem], incoming: [ScannedPantryItem]) -> [ScannedPantryItem] {
+        var result = existing
+        var indexByKey: [String: Int] = [:]
+        for (index, item) in result.enumerated() { indexByKey[key(item.name)] = index }
+
+        for var item in incoming {
+            item.name = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let itemKey = key(item.name)
+            guard !itemKey.isEmpty else { continue }
+            if let index = indexByKey[itemKey] {
+                if result[index].category == "other", item.category != "other" {
+                    result[index].category = item.category
+                }
+                if (result[index].unitHint ?? "").isEmpty, let hint = item.unitHint, !hint.isEmpty {
+                    result[index].unitHint = hint
+                }
+            } else {
+                indexByKey[itemKey] = result.count
+                result.append(item)
+            }
+        }
+        return result
+    }
+
+    private static func key(_ name: String) -> String {
+        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }
 

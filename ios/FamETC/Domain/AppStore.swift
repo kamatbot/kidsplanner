@@ -548,6 +548,59 @@ final class AppStore {
         } catch { handle(error) }
     }
 
+    /// Loads the existing parent-only recipe library with pantry coverage.
+    /// Search/filter state stays view-local because it is transient UI state.
+    func loadRecipes() async throws -> [Recipe] {
+        guard isParent else { throw APIError.http(403, "Recipes are available to parents.") }
+        return try await api.mealRecipes()
+    }
+
+    /// Adds a library recipe to dinner and mirrors the returned authoritative
+    /// menu entry immediately.
+    func addRecipeToMenu(recipeId: String, date: String) async throws -> MenuEntry {
+        guard isParent else { throw APIError.http(403, "Only parents can plan meals.") }
+        let entry = try await api.addRecipeMenuEntry(date: date, recipeId: recipeId)
+        if let index = meals?.menu.firstIndex(where: { $0.id == entry.id }) {
+            meals?.menu[index] = entry
+        } else {
+            meals?.menu.append(entry)
+        }
+        return entry
+    }
+
+    /// Adds missing recipe ingredients that are not already on the family
+    /// shopping list. Partial success is retained; an error is surfaced only
+    /// when every attempted addition fails.
+    func addRecipeIngredientsToShopping(_ ingredients: [RecipeIngredient]) async throws -> Int {
+        guard isParent else { throw APIError.http(403, "Only parents can add recipe ingredients.") }
+        let normalize: (String) -> String = {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        }
+        let known = Set((meals?.shopping ?? []).map { normalize($0.text) })
+        var scheduled = known
+        let pending = ingredients.filter { scheduled.insert(normalize($0.name)).inserted }
+        var added = 0
+        var completed = 0
+        var firstError: Error?
+        for ingredient in pending {
+            do {
+                let response = try await api.addShoppingItemResult(text: ingredient.name, category: ingredient.category)
+                if let index = meals?.shopping.firstIndex(where: { $0.id == response.item.id }) {
+                    meals?.shopping[index] = response.item
+                } else {
+                    meals?.shopping.append(response.item)
+                }
+                completed += 1
+                if response.existing != true { added += 1 }
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+        }
+        if completed == 0, let firstError, !pending.isEmpty { throw firstError }
+        return added
+    }
+
     func addMenuEntry(date: String, title: String, note: String? = nil) async {
         do {
             let entry = try await api.addMenuEntry(date: date, title: title, note: note)

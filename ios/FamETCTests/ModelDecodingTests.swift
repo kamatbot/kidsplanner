@@ -387,4 +387,100 @@ final class ModelDecodingTests: XCTestCase {
         let r = try JSONDecoder().decode(MenuEntryResponse.self, from: Data(payload.utf8))
         XCTAssertTrue(r.entry.isCooked)
     }
+
+    func testDecodesRecipeLibraryWithPantryCoverage() throws {
+        let payload = """
+        {
+          "recipes": [{
+            "id": "rc_dal_tadka", "title": "Dal Tadka", "cuisine": "indian", "region": "north-indian",
+            "slots": ["lunch", "dinner"], "veg": true, "spice": 1, "kidFriendly": true, "timeMins": 35,
+            "prep": [{ "label": "Soak toor dal", "leadHours": 2 }],
+            "ingredients": [
+              { "name": "toor dal", "category": "protein", "core": true, "qtyHint": "1 cup" },
+              { "name": "turmeric", "category": "spice", "core": true, "qtyHint": "1/2 tsp" }
+            ],
+            "steps": ["Cook the dal.", "Add the tempering."],
+            "proteinGPerPortion": 12, "fiberGPerPortion": 8,
+            "allergens": ["dairy"], "tags": ["weeknight"],
+            "coverage": { "have": ["toor dal"], "missing": ["turmeric"], "coreMissing": ["turmeric"], "ratio": 0.5 }
+          }]
+        }
+        """
+        let response = try JSONDecoder().decode(RecipeListResponse.self, from: Data(payload.utf8))
+        let recipe = try XCTUnwrap(response.recipes.first)
+        XCTAssertEqual(recipe.title, "Dal Tadka")
+        XCTAssertEqual(recipe.ingredients.first?.qtyHint, "1 cup")
+        XCTAssertEqual(recipe.prep.first?.leadHours, 2)
+        XCTAssertEqual(recipe.coverage?.have, ["toor dal"])
+        XCTAssertEqual(recipe.coverage?.coreMissing, ["turmeric"])
+        XCTAssertEqual(recipe.coverage?.ratio, 0.5)
+    }
+
+    func testPantryScanMergerCombinesOverlappingPhotos() {
+        let first = [ScannedPantryItem(name: "Coconut Milk", category: "other", levelGuess: "some")]
+        let second = [
+            ScannedPantryItem(name: " coconut-milk ", category: "pantry", levelGuess: "plenty", unitHint: "2 cans"),
+            ScannedPantryItem(name: "Carrots", category: "produce", levelGuess: "some")
+        ]
+        let merged = PantryScanMerger.merge(existing: first, incoming: second)
+        XCTAssertEqual(merged.count, 2)
+        XCTAssertEqual(merged[0].name, "Coconut Milk")
+        XCTAssertEqual(merged[0].category, "pantry")
+        XCTAssertEqual(merged[0].unitHint, "2 cans")
+        XCTAssertEqual(merged[1].name, "Carrots")
+    }
+
+    func testDecodesRecentNewsWithThinkingQuestion() throws {
+        let payload = """
+        {
+          "items": [{
+            "id": "nasa-1", "cat": "🚀 Space", "headline": "A new view of Mars",
+            "summary": "Scientists compared fresh images of the surface.",
+            "url": "https://www.nasa.gov/example/", "publishedAt": "2026-08-12T08:00:00.000Z",
+            "source": "NASA", "question": "What should scientists investigate next, and why?"
+          }],
+          "maxAgeDays": 14
+        }
+        """
+        let response = try JSONDecoder().decode(RecentNewsResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(response.maxAgeDays, 14)
+        XCTAssertEqual(response.items.first?.source, "NASA")
+        XCTAssertEqual(response.items.first?.question, "What should scientists investigate next, and why?")
+    }
+
+    func testDecodesWeekendCrosswordAndWednesdaySudoku() throws {
+        let crosswordPayload = """
+        {
+          "date": "2026-08-15", "available": true, "type": "crossword",
+          "title": "Weekend crossword", "instructions": "Solve all ten clues.",
+          "crossword": {
+            "rows": 3, "cols": 3, "solution": ["SUN", ".S.", ".A."],
+            "entries": [
+              { "number": 1, "direction": "across", "clue": "The star nearest Earth", "answer": "SUN", "row": 0, "col": 0 },
+              { "number": 2, "direction": "down", "clue": "A space agency", "answer": "USA", "row": 0, "col": 1 }
+            ]
+          }
+        }
+        """
+        let crossword = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(crosswordPayload.utf8))
+        XCTAssertEqual(crossword.type, "crossword")
+        XCTAssertEqual(crossword.crossword?.entries.count, 2)
+        XCTAssertEqual(crossword.crossword?.entries.first?.id, "1-across")
+
+        let sudokuPayload = """
+        {
+          "date": "2026-08-12", "available": true, "type": "sudoku",
+          "title": "Wednesday Sudoku", "instructions": "Fill every row, column, and box.",
+          "sudoku": {
+            "puzzle": "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+            "solution": "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+            "size": 9, "difficulty": "Easy"
+          }
+        }
+        """
+        let sudoku = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(sudokuPayload.utf8))
+        XCTAssertEqual(sudoku.type, "sudoku")
+        XCTAssertEqual(sudoku.sudoku?.size, 9)
+        XCTAssertEqual(sudoku.sudoku?.puzzle.count, 81)
+    }
 }

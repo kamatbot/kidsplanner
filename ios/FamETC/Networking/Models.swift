@@ -725,6 +725,56 @@ struct ScannedPantryItem: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey { case name, category, levelGuess, unitHint }
 }
 
+// MARK: Recipes
+
+struct RecipeIngredient: Codable, Identifiable, Hashable {
+    var name: String
+    var category: String
+    var core: Bool
+    var qtyHint: String? = nil
+
+    var id: String { "\(name)|\(category)" }
+}
+
+struct RecipePrep: Codable, Identifiable, Hashable {
+    var label: String
+    var leadHours: Int
+
+    var id: String { "\(label)|\(leadHours)" }
+}
+
+struct RecipeCoverage: Codable, Hashable {
+    var have: [String]
+    var missing: [String]
+    var coreMissing: [String]
+    var ratio: Double
+}
+
+/// One recipe from the existing parent-only Meals library. List responses
+/// include pantry coverage; the recipe itself carries the full ingredients and
+/// steps, so native detail can open instantly without a second request.
+struct Recipe: Codable, Identifiable, Hashable {
+    let id: String
+    var title: String
+    var cuisine: String
+    var region: String
+    var slots: [String]
+    var veg: Bool
+    var spice: Int
+    var kidFriendly: Bool
+    var timeMins: Int
+    var prep: [RecipePrep]
+    var ingredients: [RecipeIngredient]
+    var steps: [String]
+    var proteinGPerPortion: Int
+    var fiberGPerPortion: Int
+    var allergens: [String]
+    var tags: [String]
+    var coverage: RecipeCoverage? = nil
+}
+
+struct RecipeListResponse: Codable { var recipes: [Recipe] }
+
 struct PantryItemResponse: Codable { var item: PantryItem }
 struct PantryItemsResponse: Codable { var items: [PantryItem] }
 struct MenuEntryResponse: Codable { var entry: MenuEntry }
