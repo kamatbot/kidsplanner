@@ -46,7 +46,9 @@ never drift apart.
      the current Moodle page is an ECA signup page, it also imports that
      kid's rows marked **Signed up** into the calendar. If a signup changes
      without a page reload, the extension detects the updated row and syncs
-     the confirmed activities immediately, then
+     the confirmed activities immediately. Events removed from the signup
+     are deleted only when they were originally created by this extension;
+     manually created calendar events are never deleted. It then
      shows a brief success banner with the totals (auto-dismisses after
      ~15s).
 3. **Throttle**: auto-sync runs at most **once every ~10 minutes**, tracked
