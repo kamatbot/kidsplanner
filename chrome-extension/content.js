@@ -70,7 +70,7 @@ function showBanner(html, { autoHideMs } = {}) {
 function showOpenFamEtcCallout() {
   const el = showBanner(`
     <div style="font-weight:700;margin-bottom:6px">Fam ETC</div>
-    <div style="margin-bottom:10px">Open fametc.com to auto-sync homework &amp; timetable.</div>
+    <div style="margin-bottom:10px">Open fametc.com to auto-sync homework, timetable, and signed-up activities.</div>
     <div style="display:flex;gap:8px">
       <button data-fam-open style="flex:1;background:#6C63FF;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-weight:700;cursor:pointer">Open Fam ETC</button>
       <button data-fam-close style="background:#eee;color:#333;border:none;border-radius:6px;padding:7px 10px;cursor:pointer">Dismiss</button>
@@ -139,11 +139,16 @@ async function fetchAndParseForKid(moodleUserId) {
 /* Signed-up activities are available on ECA enrollment pages rather than a
    stable per-kid endpoint. When auto-sync is triggered from such a page,
    attach its confirmed rows only to the kid named by that page's userid=. */
-function activitiesVisibleForKid(moodleUserId) {
+function activitySnapshotVisibleForKid(moodleUserId) {
   const url = new URL(window.location.href);
-  if (url.pathname !== "/mod/eca/view_student.php") return [];
-  if (url.searchParams.get("userid") !== String(moodleUserId)) return [];
-  return window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML);
+  if (url.pathname !== "/mod/eca/view_student.php") return null;
+  if (url.searchParams.get("userid") !== String(moodleUserId)) return null;
+  const ecaId = url.searchParams.get("e");
+  if (!ecaId) return null;
+  return {
+    ecaId,
+    activities: window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML),
+  };
 }
 
 function visibleActivitiesSignature(activities) {
@@ -163,7 +168,8 @@ function watchEcaSignupChanges() {
   const moodleUserId = url.pathname === "/mod/eca/view_student.php"
     ? url.searchParams.get("userid")
     : null;
-  if (!table || !moodleUserId) return;
+  const ecaId = url.searchParams.get("e");
+  if (!table || !moodleUserId || !ecaId) return;
 
   let lastSignature = visibleActivitiesSignature(
     window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML)
@@ -178,7 +184,7 @@ function watchEcaSignupChanges() {
       const nextSignature = visibleActivitiesSignature(activities);
       if (nextSignature === lastSignature) return;
       lastSignature = nextSignature;
-      if (!activities.length || syncing) return;
+      if (syncing) return;
 
       syncing = true;
       try {
@@ -194,12 +200,12 @@ function watchEcaSignupChanges() {
           moodleUserId,
           homework: [],
           timetable: [],
-          activities,
+          activitySnapshots: [{ ecaId, activities }],
           schoolStats: [],
         });
         if (response && response.result) {
           showSuccessCallout(
-            `Synced activities: ${response.result.activityEventsAdded || 0} new calendar event(s) added.`
+            `Synced activities: ${response.result.activityEventsAdded || 0} added, ${response.result.activityEventsRemoved || 0} removed.`
           );
           await setLastSyncAt(Date.now());
         }
@@ -243,14 +249,14 @@ async function runAutoSync(mappings) {
     if (!mapping || !mapping.moodleUserId) continue;
     try {
       const { homework, timetable } = await fetchAndParseForKid(mapping.moodleUserId);
-      const activities = activitiesVisibleForKid(mapping.moodleUserId);
+      const activitySnapshot = activitySnapshotVisibleForKid(mapping.moodleUserId);
       const response = await chrome.runtime.sendMessage({
         type: "IMPORT",
         kidId: mapping.kidId,
         moodleUserId: mapping.moodleUserId,
         homework,
         timetable,
-        activities,
+        activitySnapshots: activitySnapshot ? [activitySnapshot] : [],
         schoolStats,
       });
       if (response && response.result) {
@@ -296,10 +302,10 @@ async function main() {
   const lastSync = await getLastSyncAt();
   // A confirmed ECA signup should reach the calendar as soon as the parent
   // visits that page, even if a routine homework sync ran a few minutes ago.
-  const hasVisibleActivities = check.mappings.some(
-    (mapping) => mapping && mapping.moodleUserId && activitiesVisibleForKid(mapping.moodleUserId).length > 0
+  const hasVisibleActivityPage = check.mappings.some(
+    (mapping) => mapping && mapping.moodleUserId && activitySnapshotVisibleForKid(mapping.moodleUserId)
   );
-  if (!hasVisibleActivities && Date.now() - lastSync < THROTTLE_MS) {
+  if (!hasVisibleActivityPage && Date.now() - lastSync < THROTTLE_MS) {
     return; // throttled — manual sync via the popup is still always available
   }
 
