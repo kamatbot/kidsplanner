@@ -79,10 +79,34 @@ test("POST /api/calendar/events: creates the event and posts a chat announcement
   });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.event.title, "Dentist");
+  assert.equal(res.body.event.canEdit, true, "the web must show Edit/Delete immediately after creation");
   assert.equal(chatPosts.length, 1);
   assert.equal(chatPosts[0].familyId, fam.id);
   assert.match(chatPosts[0].msg.text, /New event: Dentist/);
   assert.deepEqual(chatPosts[0].msg.card, { type: "event", id: res.body.event.id, title: "Dentist" });
+});
+
+test("POST and PATCH return the same canEdit capability used by the web detail view", () => {
+  const { routes } = buildHarness();
+  const fam = freshFamily();
+  const parent = store.getUser(fam.parentIds[0]);
+  const created = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    user: parent,
+    body: { title: "Dentist", date: "2026-07-20", silent: true },
+  });
+  assert.equal(created.statusCode, 200);
+  assert.equal(created.body.event.canEdit, true);
+
+  const updated = call(routes["PATCH /api/calendar/events/:id"], {
+    familyId: fam.id,
+    user: parent,
+    params: { id: created.body.event.id },
+    body: { title: "Dentist follow-up" },
+  });
+  assert.equal(updated.statusCode, 200);
+  assert.equal(updated.body.event.title, "Dentist follow-up");
+  assert.equal(updated.body.event.canEdit, true);
 });
 
 test("POST /api/calendar/events: chat source is persisted and retries are idempotent", () => {
