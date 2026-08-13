@@ -22,9 +22,8 @@ extension Notification.Name {
     /// Posted when a `trip_chat_message` or `trip_update` push is received/
     /// tapped (lib/fam-notifications.js `notifyTripChatMessage`/
     /// `notifyTripEvent`, docs/TRIPS-PLAN.md). `userInfo["tripId"]` carries the
-    /// trip to deep-link into. v1 routing is coarse — surface the Chat tab and,
-    /// once its room list has loaded, push into that trip's room; a full
-    /// `/trips/<id>` native deep link (the Trips webview tab) is a follow-up.
+    /// trip to deep-link into. The app opens the Chat tab and selects that
+    /// exact Trip room once the room list is available.
     static let famDeepLinkToTripChat = Notification.Name("famDeepLinkToTripChat")
 }
 
@@ -49,7 +48,30 @@ extension Notification.Name {
 final class NotificationHandler {
     static let shared = NotificationHandler()
 
+    private let pendingRouteLock = NSLock()
+    private var pendingChatRoomId: String?
+
     private init() {}
+
+    /// Notification responses can arrive before SwiftUI has installed
+    /// RootView's observers (notably on a cold launch). Keep the latest chat
+    /// destination until the app shell consumes it.
+    func consumePendingChatRoomId() -> String? {
+        pendingRouteLock.lock()
+        defer { pendingRouteLock.unlock() }
+        let roomId = pendingChatRoomId
+        pendingChatRoomId = nil
+        return roomId
+    }
+
+    private func routeToChat(roomId: String, notification: Notification.Name, userInfo: [AnyHashable: Any]) {
+        pendingRouteLock.lock()
+        pendingChatRoomId = roomId
+        pendingRouteLock.unlock()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: notification, object: nil, userInfo: userInfo)
+        }
+    }
 
     /// Dispatches a push payload's `userInfo` to the right deep link, based on
     /// the app-specific `famType` tag. No coordinator pattern — just
@@ -60,7 +82,9 @@ final class NotificationHandler {
         switch famType {
         case "chat_message":
             guard let familyId = userInfo["familyId"] as? String else { return }
-            NotificationCenter.default.post(name: .famDeepLinkToChat, object: nil, userInfo: ["familyId": familyId])
+            routeToChat(roomId: familyRoomId,
+                        notification: .famDeepLinkToChat,
+                        userInfo: ["familyId": familyId])
         case "homework_reminder":
             guard let homeworkId = userInfo["homeworkId"] as? String else { return }
             NotificationCenter.default.post(name: .famDeepLinkToHomework, object: nil, userInfo: ["homeworkId": homeworkId])
@@ -69,7 +93,9 @@ final class NotificationHandler {
             NotificationCenter.default.post(name: .famDeepLinkToKidApproval, object: nil, userInfo: ["familyId": familyId])
         case "trip_chat_message", "trip_update":
             guard let tripId = userInfo["tripId"] as? String else { return }
-            NotificationCenter.default.post(name: .famDeepLinkToTripChat, object: nil, userInfo: ["tripId": tripId])
+            routeToChat(roomId: "trip:\(tripId)",
+                        notification: .famDeepLinkToTripChat,
+                        userInfo: ["tripId": tripId])
         default:
             break
         }

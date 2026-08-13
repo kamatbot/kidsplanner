@@ -5,6 +5,11 @@ import XCTest
 /// header contract the server's iOS free-tier gate relies on.
 final class LogicTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        _ = NotificationHandler.shared.consumePendingChatRoomId()
+    }
+
     func testBaseURLHasFamETCHost() {
         let url = Config.baseURL
         XCTAssertNotNil(url)
@@ -25,5 +30,25 @@ final class LogicTests: XCTestCase {
 
     func testBridgeNameIsFam() {
         XCTAssertEqual(Config.bridgeName, "fam")
+    }
+
+    func testFamilyChatNotificationQueuesFamilyRoomForColdLaunch() {
+        NotificationHandler.shared.handle(userInfo: [
+            "famType": "chat_message",
+            "familyId": "fam_1",
+        ])
+
+        XCTAssertEqual(NotificationHandler.shared.consumePendingChatRoomId(), familyRoomId)
+        XCTAssertNil(NotificationHandler.shared.consumePendingChatRoomId(), "route must be one-shot")
+    }
+
+    func testTripChatNotificationQueuesExactTripRoomForColdLaunch() {
+        NotificationHandler.shared.handle(userInfo: [
+            "famType": "trip_chat_message",
+            "tripId": "trip_42",
+        ])
+
+        XCTAssertEqual(NotificationHandler.shared.consumePendingChatRoomId(), "trip:trip_42")
+        XCTAssertNil(NotificationHandler.shared.consumePendingChatRoomId(), "route must be one-shot")
     }
 }
