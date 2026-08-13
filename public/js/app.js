@@ -1846,6 +1846,7 @@ function loadFamilyEvents() {
         const res = await window.auth.addCalendarEvent({
           title: ev.title, date: ev.date, time: ev.time || '', endTime: ev.endTime || '',
           notes: ev.notes || '', category: ev.category, kidId: ev.kidId || null, silent: true,
+          sourceType: ev.sourceType || undefined, sourceId: ev.sourceId || undefined,
         });
         serverEvents.push(res.event);
         seen.add(evKey(res.event));
@@ -5774,28 +5775,32 @@ function schoolImportHomeworkKey(title, dueDate) {
 function schoolImportEventKey(date, time, title, kidId) {
   return `${date}|${time || ''}|${String(title || '').trim().toLowerCase()}|${kidId || ''}`;
 }
-const ECA_IMPORT_NOTE_RE = /^\[Fam ETC ECA:([^:\]]+):([^:\]]+):([^\]]+)\]/;
-function ecaImportMarker(moodleUserId, ecaId, clubId) {
-  return `[Fam ETC ECA:${String(moodleUserId)}:${String(ecaId)}:${String(clubId)}]`;
+const ECA_SOURCE_TYPE = 'eca';
+const ECA_SOURCE_ID_RE = /^([^:]+):([^:]+):([^:]+)$/;
+function ecaImportSourceId(kidId, ecaId, clubId) {
+  return `${String(kidId)}:${String(ecaId)}:${String(clubId)}`;
 }
-function parseEcaImportMarker(notes) {
-  const match = String(notes || '').match(ECA_IMPORT_NOTE_RE);
-  return match ? { moodleUserId: match[1], ecaId: match[2], clubId: match[3], marker: match[0] } : null;
+function parseEcaImportSource(event) {
+  if (!event || event.sourceType !== ECA_SOURCE_TYPE) return null;
+  const match = String(event.sourceId || '').match(ECA_SOURCE_ID_RE);
+  return match ? {
+    kidId: match[1], ecaId: match[2], clubId: match[3], sourceId: match[0],
+  } : null;
 }
-function planEcaSnapshotReconciliation(events, kidId, moodleUserId, ecaId, activities) {
-  const desired = new Map((activities || []).map((activity) => [activity.marker, activity]));
+function planEcaSnapshotReconciliation(events, kidId, ecaId, activities) {
+  const desired = new Map((activities || []).map((activity) => [activity.sourceId, activity]));
   const remove = [];
   const ownedInScope = (events || []).filter((event) => {
-    const parsed = parseEcaImportMarker(event && event.notes);
-    return parsed && event.kidId === kidId && parsed.moodleUserId === moodleUserId && parsed.ecaId === ecaId;
+    const parsed = parseEcaImportSource(event);
+    return parsed && event.kidId === kidId && parsed.kidId === kidId && parsed.ecaId === ecaId;
   });
 
   for (const event of ownedInScope) {
-    const parsed = parseEcaImportMarker(event.notes);
-    const wanted = desired.get(parsed.marker);
+    const parsed = parseEcaImportSource(event);
+    const wanted = desired.get(parsed.sourceId);
     const unchanged = wanted && schoolImportEventKey(event.date, event.time, event.title, event.kidId) ===
       schoolImportEventKey(wanted.date, wanted.time, wanted.title, kidId);
-    if (unchanged) desired.delete(parsed.marker);
+    if (unchanged) desired.delete(parsed.sourceId);
     else remove.push(event);
   }
 
@@ -6026,9 +6031,10 @@ async function famImportSchoolData(payload) {
 
     /* ---------- Signed-up activities -> exact calendar events ----------
        Each open ECA page sends a complete snapshot for one Moodle ECA id.
-       The durable marker in notes survives server round-trips, so removals
-       can target only extension-owned events from that exact page. Manual
-       events are never adopted or deleted. ---------- */
+       The calendar's durable source fields survive server round-trips, so
+       removals can target only extension-owned events from that exact page.
+       Manual events are never adopted or deleted, and internal Moodle ids
+       never appear in the user-visible notes field. ---------- */
     const activitySnapshots = (payload && Array.isArray(payload.activitySnapshots))
       ? payload.activitySnapshots
       : [];
@@ -6049,19 +6055,19 @@ async function famImportSchoolData(payload) {
           const date = normalizeSchoolImportDate(activity.date);
           const time = String(activity.time || '').trim();
           if (!clubId || !title || !date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
-          const marker = ecaImportMarker(moodleUserId, ecaId, clubId);
-          normalizedActivities.push({ marker, title, date, time });
+          const sourceId = ecaImportSourceId(kidId, ecaId, clubId);
+          normalizedActivities.push({ sourceType: ECA_SOURCE_TYPE, sourceId, title, date, time });
         }
 
-        const plan = planEcaSnapshotReconciliation(events, kidId, moodleUserId, ecaId, normalizedActivities);
+        const plan = planEcaSnapshotReconciliation(events, kidId, ecaId, normalizedActivities);
         const failedRemovalMarkers = new Set();
         for (const event of plan.remove) {
           if (String(event.id).startsWith('ev_')) {
             try {
               await window.auth.deleteCalendarEvent(event.id);
             } catch (e) {
-              const parsed = parseEcaImportMarker(event.notes);
-              if (parsed) failedRemovalMarkers.add(parsed.marker);
+              const parsed = parseEcaImportSource(event);
+              if (parsed) failedRemovalMarkers.add(parsed.sourceId);
               continue;
             }
           }
@@ -6071,7 +6077,7 @@ async function famImportSchoolData(payload) {
         }
 
         for (const activity of plan.add) {
-          if (failedRemovalMarkers.has(activity.marker)) continue;
+          if (failedRemovalMarkers.has(activity.sourceId)) continue;
           events.push({
             id: uid(),
             userId: sessionUser.id,
@@ -6081,8 +6087,10 @@ async function famImportSchoolData(payload) {
             time: activity.time,
             endTime: '',
             category: 'school',
-            notes: `${activity.marker} Signed up activity`,
+            notes: 'Signed up activity',
             source: 'eca-import',
+            sourceType: activity.sourceType,
+            sourceId: activity.sourceId,
           });
           result.eventsAdded++;
           result.activityEventsAdded++;

@@ -12,6 +12,11 @@ function loadParser(extraGlobals = {}) {
   return context;
 }
 
+test("extension version identifies the ECA reconciliation release", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "chrome-extension", "manifest.json"), "utf8"));
+  assert.equal(manifest.version, "0.3.1");
+});
+
 function extractFunction(source, name) {
   const start = source.indexOf(`function ${name}(`);
   assert.notEqual(start, -1, `${name} should exist`);
@@ -87,12 +92,6 @@ test("calendar activity deduplication keeps identical sibling signups separate",
   assert.equal(firstKid, sameSignup);
   assert.notEqual(firstKid, sibling);
 
-  const activityBlock = appSource.slice(
-    appSource.indexOf("/* ---------- Signed-up activities"),
-    appSource.indexOf("/* ---------- School stats", appSource.indexOf("/* ---------- Signed-up activities"))
-  );
-  assert.match(activityBlock, /schoolImportEventKey\(e\.date, e\.time, e\.title, e\.kidId\)/);
-  assert.match(activityBlock, /schoolImportEventKey\(date, time, title, kidId\)/);
 });
 
 function loadEcaReconciliationHelpers() {
@@ -107,11 +106,11 @@ function loadEcaReconciliationHelpers() {
 
 test("ECA reconciliation does not adopt or delete a matching manual event", () => {
   const helper = loadEcaReconciliationHelpers();
-  const marker = helper.ecaImportMarker("14197", "834", "64894");
+  const sourceId = helper.ecaImportSourceId("kid-1", "834", "64894");
   const manual = { id: "ev_manual", kidId: "kid-1", title: "Chess", date: "2026-08-20", time: "15:45", notes: "" };
   const plan = helper.planEcaSnapshotReconciliation(
-    [manual], "kid-1", "14197", "834",
-    [{ marker, title: "Chess", date: "2026-08-20", time: "15:45" }]
+    [manual], "kid-1", "834",
+    [{ sourceType: "eca", sourceId, title: "Chess", date: "2026-08-20", time: "15:45" }]
   );
   assert.equal(plan.add.length, 0);
   assert.equal(plan.remove.length, 0);
@@ -119,32 +118,45 @@ test("ECA reconciliation does not adopt or delete a matching manual event", () =
 
 test("ECA reconciliation removes only extension-owned events missing from a complete snapshot", () => {
   const helper = loadEcaReconciliationHelpers();
-  const marker = helper.ecaImportMarker("14197", "834", "64894");
+  const sourceId = helper.ecaImportSourceId("kid-1", "834", "64894");
   const owned = {
     id: "ev_owned", kidId: "kid-1", title: "Chess", date: "2026-08-20", time: "15:45",
-    notes: `${marker} Signed up activity`,
+    notes: "Signed up activity", sourceType: "eca", sourceId,
   };
   const manual = { id: "ev_manual", kidId: "kid-1", title: "Swimming", date: "2026-08-25", time: "14:45", notes: "" };
   const otherKid = { ...owned, id: "ev_other", kidId: "kid-2" };
   const otherPage = {
-    ...owned, id: "ev_other_page", notes: `${helper.ecaImportMarker("14197", "999", "64894")} Signed up activity`,
+    ...owned, id: "ev_other_page", sourceId: helper.ecaImportSourceId("kid-1", "999", "64894"),
   };
   const plan = helper.planEcaSnapshotReconciliation(
-    [owned, manual, otherKid, otherPage], "kid-1", "14197", "834", []
+    [owned, manual, otherKid, otherPage], "kid-1", "834", []
   );
-  assert.deepEqual(plan.remove.map((event) => event.id), ["ev_owned"]);
+  assert.deepEqual(Array.from(plan.remove, (event) => event.id), ["ev_owned"]);
   assert.equal(plan.add.length, 0);
 });
 
 test("ECA reconciliation replaces an owned event when its date or title changes", () => {
   const helper = loadEcaReconciliationHelpers();
-  const marker = helper.ecaImportMarker("14197", "834", "64894");
+  const sourceId = helper.ecaImportSourceId("kid-1", "834", "64894");
   const owned = {
     id: "ev_owned", kidId: "kid-1", title: "Chess", date: "2026-08-20", time: "15:45",
-    notes: `${marker} Signed up activity`,
+    notes: "Signed up activity", sourceType: "eca", sourceId,
   };
-  const changed = { marker, title: "Flames Chess", date: "2026-08-21", time: "15:45" };
-  const plan = helper.planEcaSnapshotReconciliation([owned], "kid-1", "14197", "834", [changed]);
-  assert.deepEqual(plan.remove.map((event) => event.id), ["ev_owned"]);
-  assert.deepEqual(plan.add.map((event) => ({ ...event })), [changed]);
+  const changed = { sourceType: "eca", sourceId, title: "Flames Chess", date: "2026-08-21", time: "15:45" };
+  const plan = helper.planEcaSnapshotReconciliation([owned], "kid-1", "834", [changed]);
+  assert.deepEqual(Array.from(plan.remove, (event) => event.id), ["ev_owned"]);
+  assert.deepEqual(Array.from(plan.add, (event) => ({ ...event })), [changed]);
+});
+
+test("ECA ownership uses source fields and keeps visible notes free of Moodle ids", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "..", "public", "js", "app.js"), "utf8");
+  const activityBlock = appSource.slice(
+    appSource.indexOf("/* ---------- Signed-up activities"),
+    appSource.indexOf("/* ---------- School stats", appSource.indexOf("/* ---------- Signed-up activities"))
+  );
+  assert.match(activityBlock, /sourceType: activity\.sourceType/);
+  assert.match(activityBlock, /sourceId: activity\.sourceId/);
+  assert.match(activityBlock, /notes: 'Signed up activity'/);
+  assert.doesNotMatch(activityBlock, /notes: `\$\{activity\./);
+  assert.match(appSource, /sourceType: ev\.sourceType \|\| undefined, sourceId: ev\.sourceId \|\| undefined/);
 });
