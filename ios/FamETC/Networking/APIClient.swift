@@ -215,6 +215,14 @@ final class APIClient: FamilyActionService {
         let _: OKResponse = try await request("/api/notes/\(id)", method: "DELETE")
     }
 
+    func recentNews() async throws -> RecentNewsResponse {
+        try await request("/api/news/recent")
+    }
+
+    func dailyPuzzle(date: String) async throws -> DailyPuzzleResponse {
+        try await request("/api/enrichment/puzzle/today?date=\(date)")
+    }
+
     // MARK: Meals (composite parent-gated; shopping is family-readable)
 
     func mealsState() async throws -> MealsState {

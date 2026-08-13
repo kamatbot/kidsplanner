@@ -54,6 +54,8 @@ try {
 const trips = require("./lib/trips");
 const activities = require("./lib/activities");
 const notes = require("./lib/notes");
+const news = require("./lib/news");
+const dailyPuzzles = require("./lib/daily-puzzles");
 const wordbank = require("./lib/wordbank");
 const brainteaser = require("./lib/brainteaser");
 const schoolAccount = require("./lib/school-account");
@@ -550,7 +552,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
+  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,

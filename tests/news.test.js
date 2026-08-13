@@ -116,8 +116,26 @@ test("recent NASA news filters the boundary, sanitizes text, orders, deduplicate
   assert.equal(result.items[5].cat, "🚀 Space");
   assert.equal(result.items[2].summary, "Launch & science … 🚀");
   assert.equal(result.items.every((news) => news.source === "NASA"), true);
+  assert.equal(result.items.every((news) => typeof news.question === "string" && news.question.endsWith("?")), true);
   assert.equal(result.items.every((news) => news.url.startsWith("https://") && new URL(news.url).hostname.endsWith("nasa.gov")), true);
   assert.equal(result.items.some((news) => news.headline === "Too old"), false);
+});
+
+test("combines allow-listed NASA feeds and gives every story a thinking question", async () => {
+  const nasa = { url: "https://www.nasa.gov/feed/", source: "NASA", hosts: ["nasa.gov"] };
+  const stem = { url: "https://www.nasa.gov/learning-resources/feed/", source: "NASA STEM", hosts: ["nasa.gov"] };
+  const bodies = {
+    [nasa.url]: feed([item({ title: "A new Earth view", date: iso(NOW - DAY), url: "https://science.nasa.gov/earth/story", category: "Environment" })]),
+    [stem.url]: feed([item({ title: "Robot explores Mars", date: iso(NOW - 2 * DAY), url: "https://www.nasa.gov/learning-resources/robot", category: "Technology" })]),
+  };
+  const result = await freshNews().getRecentNews({
+    now: NOW,
+    feeds: [nasa, stem],
+    fetch: async (url) => textResponse(bodies[url]),
+  });
+  assert.deepEqual(result.items.map((story) => story.source), ["NASA", "NASA STEM"]);
+  assert.match(result.items[0].question, /trade-off/);
+  assert.match(result.items[1].question, /Who could/);
 });
 
 test("successful results are cached for 30 minutes, then a failed fetch reuses only still-fresh items", async () => {

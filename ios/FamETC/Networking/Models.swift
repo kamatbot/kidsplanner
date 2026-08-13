@@ -241,6 +241,24 @@ struct Note: Codable, Identifiable {
 struct NotesResponse: Codable { var notes: [Note] }
 struct NoteResponse: Codable { var note: Note }
 
+/// A dated story from the authenticated recent-news feed. The server and
+/// client both enforce the rolling 14-day window before this reaches Today.
+struct RecentNewsItem: Codable, Identifiable {
+    let id: String
+    var cat: String
+    var headline: String
+    var summary: String
+    var url: String
+    var publishedAt: String
+    var source: String
+    var question: String
+}
+
+struct RecentNewsResponse: Codable {
+    var items: [RecentNewsItem]
+    var maxAgeDays: Int
+}
+
 /// A single word bank entry (`/api/wordbank`). Mirrors `lib/wordbank.js`.
 struct WordBankEntry: Codable, Identifiable {
     var word: String
@@ -288,6 +306,41 @@ struct BrainTeaserTodayResponse: Codable {
     var date: String
     var count: Int
     var questions: [BrainTeaserQ]
+}
+
+struct CrosswordEntry: Codable, Identifiable {
+    var number: Int
+    var direction: String
+    var clue: String
+    var answer: String
+    var row: Int
+    var col: Int
+
+    var id: String { "\(number)-\(direction)" }
+}
+
+struct CrosswordPuzzle: Codable {
+    var rows: Int
+    var cols: Int
+    var solution: [String]
+    var entries: [CrosswordEntry]
+}
+
+struct SudokuPuzzle: Codable {
+    var puzzle: String
+    var solution: String
+    var size: Int
+    var difficulty: String
+}
+
+struct DailyPuzzleResponse: Codable {
+    var date: String
+    var available: Bool
+    var type: String?
+    var title: String?
+    var instructions: String?
+    var crossword: CrosswordPuzzle?
+    var sudoku: SudokuPuzzle?
 }
 
 // MARK: - Response wrappers (thin, match server.js route shapes)

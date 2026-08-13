@@ -399,6 +399,22 @@
                   <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
                 </div>
 
+                <div class="widget widget-puzzle fam-enrich-card" id="widget-puzzle" hidden>
+                  <div class="fam-enrich-lock" id="lock-puzzle" hidden></div>
+                  <div class="widget-header">
+                    <span class="widget-icon" id="puzzle-icon">🧩</span>
+                    <span class="widget-label" id="puzzle-title">Today's puzzle</span>
+                  </div>
+                  <p class="puzzle-instructions" id="puzzle-instructions"></p>
+                  <div class="puzzle-grid-wrap" id="puzzle-grid-wrap"></div>
+                  <div class="puzzle-clues" id="puzzle-clues"></div>
+                  <p class="puzzle-status" id="puzzle-status" role="status" aria-live="polite"></p>
+                  <div class="puzzle-actions">
+                    <button type="button" class="btn-secondary" onclick="clearDailyPuzzle()">Clear</button>
+                    <button type="button" class="btn-primary" onclick="checkDailyPuzzle()">Check puzzle</button>
+                  </div>
+                </div>
+
                 <!-- Interesting News — headline is a real link straight to the
                      article; a separate chevron expands the summary +
                      reflection composer in place (toggleNewsDetails()). -->

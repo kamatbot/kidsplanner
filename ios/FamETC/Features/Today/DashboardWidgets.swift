@@ -188,19 +188,19 @@ struct QuizWidget: View {
 // Folds the quote, SAT word-of-the-day, brain-teaser, and news widgets above
 // into one compact card, matching the web app's Daily 5 order (commit
 // f148d7b): Quote / Word / Brain teaser / Interesting news, each row starting
-// with a label-first MicroLabel. Tapping a row opens the full existing
-// experience in a sheet; the news headline itself is a tappable link straight
-// to the article (Daily.news.articleLink), with a chevron opening the fuller
-// news sheet. Underlying views/sheets/flows (QuoteWidget, SATActivityView,
-// BrainTeaserView, NewsWidget) are unchanged, just re-hosted.
+// with a label-first MicroLabel. Tapping a row opens its full experience in a
+// sheet; current news comes from the authenticated recent-news service.
 struct DailyFiveCard: View {
     @Environment(AppStore.self) private var store
     /// Kid variant per canvas-1g: no quote row, solid full-width CTA instead of
     /// the parent's outline button.
     var isKid: Bool = false
 
-    private enum DailySheet: String, Identifiable { case quote, word, teaser, news; var id: String { rawValue } }
+    private enum DailySheet: String, Identifiable { case quote, word, teaser, puzzle, news; var id: String { rawValue } }
     @State private var activeSheet: DailySheet? = nil
+    @State private var puzzle: DailyPuzzleResponse?
+    @State private var news: RecentNewsItem?
+    @State private var extrasLoading = true
     @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
 
     var body: some View {
@@ -255,17 +255,44 @@ struct DailyFiveCard: View {
                     }
                 }
 
+                if let puzzle, puzzle.available {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        MicroLabel(text: puzzle.type == "crossword" ? "Weekend puzzle" : "Wednesday puzzle")
+                        Button { Haptics.selection(); activeSheet = .puzzle } label: {
+                            HStack(spacing: Space.sm) {
+                                Text(puzzle.type == "crossword" ? "🧩" : "🔢")
+                                Text(puzzle.title ?? "Today's puzzle")
+                                    .font(Typography.body.weight(.semibold))
+                                    .foregroundStyle(Palette.text)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(Typography.caption)
+                                    .foregroundStyle(Palette.textSecond)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens today's interactive puzzle")
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 2) {
                     MicroLabel(text: "Interesting news")
                     HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                        if let url = URL(string: Daily.news.articleLink) {
+                        if let news, let url = URL(string: news.url) {
                             Link(destination: url) {
-                                Text(Daily.news.headline)
+                                Text(news.headline)
                                     .font(Typography.body.weight(.semibold))
                                     .foregroundStyle(Palette.text)
                                     .multilineTextAlignment(.leading)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
+                        } else {
+                            Text(extrasLoading ? "Finding a fresh story…" : "No recent story is available right now.")
+                                .font(Typography.body.weight(.semibold))
+                                .foregroundStyle(Palette.textSecond)
+                                .multilineTextAlignment(.leading)
                         }
                         Spacer(minLength: Space.sm)
                         Button { Haptics.selection(); activeSheet = .news } label: {
@@ -274,12 +301,15 @@ struct DailyFiveCard: View {
                                 .foregroundStyle(Palette.textSecond)
                         }
                         .buttonStyle(.plain)
+                        .disabled(news == nil)
+                        .accessibilityLabel("Open news details")
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
+        .task { await loadDailyExtras() }
         .sheet(item: $activeSheet) { sheet in
             NavigationStack {
                 ScrollView { sheetContent(sheet).padding(Space.lg) }
@@ -297,7 +327,9 @@ struct DailyFiveCard: View {
         case .quote: QuoteWidget()
         case .word: WordWidget()
         case .teaser: QuizWidget()
-        case .news: NewsWidget()
+        case .puzzle:
+            if let puzzle { DailyPuzzleView(puzzle: puzzle) }
+        case .news: NewsWidget(news: news)
         }
     }
     private func sheetTitle(_ sheet: DailySheet) -> String {
@@ -305,8 +337,24 @@ struct DailyFiveCard: View {
         case .quote: return "Quote of the Day"
         case .word: return "SAT Word of the Day"
         case .teaser: return "Daily Brain Teaser"
+        case .puzzle: return puzzle?.title ?? "Today's Puzzle"
         case .news: return "Interesting News"
         }
+    }
+
+    private func loadDailyExtras() async {
+        extrasLoading = true
+        async let puzzleRequest = try? APIClient.shared.dailyPuzzle(date: Agenda.todayKey())
+        async let newsRequest = try? APIClient.shared.recentNews()
+        puzzle = await puzzleRequest
+        if let items = await newsRequest?.items, !items.isEmpty {
+            let studentItems = items.filter { $0.source == "NASA STEM" || $0.source == "NASA Kids" }
+            let candidates = studentItems.isEmpty ? items : studentItems
+            news = candidates[Daily.index(candidates.count)]
+        } else {
+            news = nil
+        }
+        extrasLoading = false
     }
 }
 
@@ -316,62 +364,290 @@ struct DailyFiveCard: View {
 /// moved here from TodayView's standalone `NewsCard` now that news lives
 /// inside the Daily 5 flow (matching the web app) instead of its own card.
 struct NewsWidget: View {
+    let news: RecentNewsItem?
     @Environment(AppStore.self) private var store
     @State private var reflection = ""
     @State private var saved = false
 
     var body: some View {
-        let n = Daily.news
         Card {
             VStack(alignment: .leading, spacing: Space.sm) {
                 MicroLabel(text: "Interesting news")
-                Text(n.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(n.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let url = URL(string: n.articleLink) {
+                if let news {
+                    Text("\(news.source) · \(freshness(news.publishedAt))")
+                        .font(Typography.caption.weight(.semibold))
+                        .foregroundStyle(Palette.textSecond)
+                    Text(news.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(news.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("No story published in the last 14 days is available right now.")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                if let news, let url = URL(string: news.url) {
                     Link(destination: url) {
                         Label("Read the full story", systemImage: "arrow.up.right.square")
                             .font(Typography.caption.weight(.bold))
                             .foregroundStyle(Palette.accent)
                     }
                 }
-                Divider().overlay(Palette.border)
-                TextField("Share your thoughts…", text: $reflection, axis: .vertical)
-                    .lineLimit(2...4)
-                    .font(Typography.body)
-                    .padding(Space.sm)
-                    .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                HStack {
-                    Spacer()
-                    if saved {
-                        Label("Saved", systemImage: "checkmark.circle.fill")
-                            .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.green)
-                    } else {
-                        Button {
-                            Haptics.selection()
-                            let text = reflection
-                            Task {
-                                _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": "", "context": "\(n.headline)\n\n\(n.summary)\n\n\(n.articleLink)"])
-                                saved = true
-                                try? await Task.sleep(nanoseconds: 900_000_000)
-                                saved = false
-                                reflection = ""
+                if let news {
+                    Divider().overlay(Palette.border)
+                    Text(news.question)
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    TextField("Write what you think…", text: $reflection, axis: .vertical)
+                        .lineLimit(2...4)
+                        .font(Typography.body)
+                        .padding(Space.sm)
+                        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    HStack {
+                        Spacer()
+                        if saved {
+                            Label("Saved", systemImage: "checkmark.circle.fill")
+                                .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.green)
+                        } else {
+                            Button {
+                                Haptics.selection()
+                                let text = reflection
+                                Task {
+                                    _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": news.id, "context": "\(news.headline)\n\n\(news.summary)\n\n\(news.url)"])
+                                    saved = true
+                                    try? await Task.sleep(nanoseconds: 900_000_000)
+                                    saved = false
+                                    reflection = ""
+                                }
+                            } label: {
+                                Text("Save response")
+                                    .font(Typography.caption.weight(.bold))
+                                    .foregroundStyle(Palette.onAccent)
+                                    .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+                                    .background(Palette.accent, in: Capsule())
                             }
-                        } label: {
-                            Text("Save")
-                                .font(Typography.caption.weight(.bold))
-                                .foregroundStyle(Palette.onAccent)
-                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                                .background(Palette.accent, in: Capsule())
+                            .buttonStyle(.plain)
+                            .frame(minHeight: 44)
+                            .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
+    }
+
+    private func freshness(_ publishedAt: String) -> String {
+        guard let date = ISO8601DateFormatter().date(from: publishedAt) else { return "Recent" }
+        let days = max(0, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: date), to: Calendar.current.startOfDay(for: Date())).day ?? 0)
+        return days == 0 ? "Today" : "\(days) day\(days == 1 ? "" : "s") ago"
+    }
+}
+
+// MARK: - Wednesday / weekend puzzle
+
+private struct DailyPuzzleView: View {
+    let puzzle: DailyPuzzleResponse
+    @State private var answers: [String: String] = [:]
+    @State private var resultMessage: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            Text(puzzle.instructions ?? "Take your time and have fun.")
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+            if let crossword = puzzle.crossword {
+                crosswordView(crossword)
+                crosswordClues(crossword)
+            } else if let sudoku = puzzle.sudoku {
+                sudokuView(sudoku)
+            } else {
+                Text("No puzzle today — come back Wednesday or this weekend.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            if let resultMessage {
+                Text(resultMessage)
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(resultMessage.hasPrefix("You did") ? Palette.green : Palette.warn)
+                    .accessibilityLabel(resultMessage)
+            }
+            HStack(spacing: Space.md) {
+                Button("Clear") {
+                    answers = [:]
+                    resultMessage = nil
+                }
+                .buttonStyle(.bordered)
+                .tint(Palette.textSecond)
+                .frame(minHeight: 44)
+                Spacer()
+                AccentButton(title: "Check puzzle", systemImage: "checkmark.circle.fill") {
+                    checkPuzzle()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func crosswordView(_ crossword: CrosswordPuzzle) -> some View {
+        GeometryReader { geometry in
+            let spacing: CGFloat = 1
+            let cellSize = max(18, min(34, (geometry.size.width - CGFloat(crossword.cols - 1) * spacing) / CGFloat(crossword.cols)))
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellSize), spacing: spacing), count: crossword.cols), spacing: spacing) {
+                ForEach(0..<(crossword.rows * crossword.cols), id: \.self) { index in
+                    let row = index / crossword.cols
+                    let col = index % crossword.cols
+                    let letter = solutionLetter(crossword.solution, row: row, col: col)
+                    if letter == "." {
+                        Color.clear.frame(width: cellSize, height: cellSize)
+                    } else {
+                        ZStack(alignment: .topLeading) {
+                            TextField("", text: letterBinding(row: row, col: col))
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .multilineTextAlignment(.center)
+                                .font(.system(size: max(12, cellSize * 0.55), weight: .bold, design: .rounded))
+                                .foregroundStyle(Palette.text)
+                                .frame(width: cellSize, height: cellSize)
+                                .background(Palette.panel)
+                                .overlay(Rectangle().strokeBorder(Palette.border, lineWidth: 1))
+                                .accessibilityLabel("Crossword row \(row + 1), column \(col + 1)")
+                            if let number = crossword.entries.first(where: { $0.row == row && $0.col == col })?.number {
+                                Text("\(number)")
+                                    .font(.system(size: max(7, cellSize * 0.25), weight: .bold))
+                                    .foregroundStyle(Palette.textSecond)
+                                    .padding(2)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .frame(height: crosswordHeight(crossword))
+        .accessibilityLabel("Crossword grid with \(crossword.entries.count) words")
+    }
+
+    private func crosswordHeight(_ crossword: CrosswordPuzzle) -> CGFloat {
+        // The outer content width is not known here; 34 is the maximum cell
+        // size and smaller phones simply leave harmless extra vertical room.
+        CGFloat(crossword.rows) * 35
+    }
+
+    private func crosswordClues(_ crossword: CrosswordPuzzle) -> some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            ForEach(["across", "down"], id: \.self) { direction in
+                let entries = crossword.entries.filter { $0.direction == direction }
+                if !entries.isEmpty {
+                    Text(direction.capitalized)
+                        .font(Typography.cardTitle)
+                        .foregroundStyle(Palette.text)
+                    ForEach(entries) { entry in
+                        Text("\(entry.number). \(entry.clue)")
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func sudokuView(_ sudoku: SudokuPuzzle) -> some View {
+        GeometryReader { geometry in
+            let spacing: CGFloat = 1
+            let cellSize = min(42, (geometry.size.width - 8 * spacing) / 9)
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellSize), spacing: spacing), count: 9), spacing: spacing) {
+                ForEach(0..<81, id: \.self) { index in
+                    let row = index / 9
+                    let col = index % 9
+                    let given = character(sudoku.puzzle, at: index)
+                    Group {
+                        if given != "0" {
+                            Text(given)
+                                .font(.system(size: cellSize * 0.5, weight: .bold, design: .rounded))
+                                .foregroundStyle(Palette.text)
+                        } else {
+                            TextField("", text: digitBinding(index: index))
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.center)
+                                .font(.system(size: cellSize * 0.5, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Palette.accent)
+                                .accessibilityLabel("Sudoku row \(row + 1), column \(col + 1)")
+                        }
+                    }
+                    .frame(width: cellSize, height: cellSize)
+                    .background(given == "0" ? Palette.panel : Palette.panel2)
+                    .overlay(Rectangle().strokeBorder(Palette.border, lineWidth: 1))
+                    .overlay(alignment: .trailing) {
+                        if col == 2 || col == 5 { Rectangle().fill(Palette.textSecond).frame(width: 2) }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if row == 2 || row == 5 { Rectangle().fill(Palette.textSecond).frame(height: 2) }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .frame(height: 9 * 43)
+        .accessibilityLabel("Nine by nine Sudoku grid, \(sudoku.difficulty) difficulty")
+    }
+
+    private func letterBinding(row: Int, col: Int) -> Binding<String> {
+        let cellKey = "c-\(row)-\(col)"
+        return Binding(
+            get: { answers[cellKey] ?? "" },
+            set: { answers[cellKey] = String($0.uppercased().filter(\.isLetter).suffix(1)) }
+        )
+    }
+
+    private func digitBinding(index: Int) -> Binding<String> {
+        let cellKey = "s-\(index)"
+        return Binding(
+            get: { answers[cellKey] ?? "" },
+            set: { answers[cellKey] = String($0.filter { ("1"..."9").contains(String($0)) }.suffix(1)) }
+        )
+    }
+
+    private func checkPuzzle() {
+        let required: [(String, String)]
+        if let crossword = puzzle.crossword {
+            required = crossword.solution.enumerated().flatMap { row, line in
+                Array(line).enumerated().compactMap { col, letter in
+                    letter == "." ? nil : ("c-\(row)-\(col)", String(letter))
+                }
+            }
+        } else if let sudoku = puzzle.sudoku {
+            required = (0..<81).compactMap { index in
+                character(sudoku.puzzle, at: index) == "0" ? ("s-\(index)", character(sudoku.solution, at: index)) : nil
+            }
+        } else {
+            return
+        }
+        let correct = required.filter { answers[$0.0]?.uppercased() == $0.1 }.count
+        if correct == required.count {
+            resultMessage = "You did it — every answer is correct! 🎉"
+            Haptics.notify(.success)
+        } else {
+            let unanswered = required.filter { (answers[$0.0] ?? "").isEmpty }.count
+            resultMessage = unanswered > 0
+                ? "\(unanswered) square\(unanswered == 1 ? "" : "s") still need an answer."
+                : "\(correct) of \(required.count) squares are correct — look again at the clues."
+            Haptics.notify(.warning)
+        }
+    }
+
+    private func solutionLetter(_ rows: [String], row: Int, col: Int) -> Character {
+        guard rows.indices.contains(row) else { return "." }
+        return character(rows[row], at: col).first ?? "."
+    }
+
+    private func character(_ text: String, at index: Int) -> String {
+        guard text.indices.contains(text.index(text.startIndex, offsetBy: min(index, text.count))) else { return "" }
+        return String(text[text.index(text.startIndex, offsetBy: index)])
     }
 }

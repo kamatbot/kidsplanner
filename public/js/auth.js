@@ -664,6 +664,10 @@
     });
   }
 
+  async function getDailyPuzzle(date) {
+    return api("/api/enrichment/puzzle/today?date=" + encodeURIComponent(date || ""), { method: "GET" });
+  }
+
   /* ---------- AI parse (schedule/homework photo -> structured items) ---------- */
   async function parseWithAI(kind, mediaType, dataBase64) {
     return api("/api/ai/parse", {
@@ -1131,6 +1135,7 @@
     wordBankQuiz,
     getBrainTeaserToday,
     answerBrainTeaser,
+    getDailyPuzzle,
     parseWithAI,
     getTrips,
     createTrip,

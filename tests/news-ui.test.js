@@ -135,6 +135,7 @@ function item(now, ageHours, overrides = {}) {
     url: "https://example.com/story-1",
     publishedAt: new Date(now.getTime() - ageHours * 60 * 60 * 1000).toISOString(),
     source: "NASA",
+    question: "What should scientists investigate next, and why?",
   }, overrides);
 }
 
@@ -193,6 +194,25 @@ test("client accepts only fresh HTTPS stories and renders the source/freshness c
   assert.equal(helpers.elements["news-more-btn"].disabled, false);
   assert.equal(helpers.elements["news-reflect-text"].disabled, false);
   assert.equal(helpers.elements["news-details"].hidden, false);
+  assert.equal(helpers.elements["news-reflect-prompt"].textContent, fresh.question);
+});
+
+test("client prioritizes fresh student-readable stories over the general fallback", async () => {
+  const now = new Date("2026-08-10T12:00:00.000Z");
+  const stem = item(now, 24, {
+    id: "stem",
+    headline: "How a telescope helps us see space",
+    source: "NASA STEM",
+  });
+  const helpers = newsHelpers({ auth: {
+    getRecentNews: async () => ({ items: [item(now, 1), stem], maxAgeDays: 14 }),
+  } });
+
+  helpers.setToken(1);
+  await helpers.loadRecentNews(1, now);
+
+  assert.equal(helpers.currentNews(), stem);
+  assert.match(helpers.elements["news-badge"].textContent, /NASA STEM/);
 });
 
 test("empty and error states remove stale story state and disable reflection actions", async () => {

@@ -268,6 +268,7 @@ const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 const NEWS_FUTURE_SKEW_MS = 60 * 60 * 1000;
 const NEWS_EMPTY_STATE = 'No recent stories right now.';
 let newsRequestToken = 0;
+let currentDailyPuzzle = null;
 
 /* ---------- gating: homework due today > 3 disables enrichment cards ---------- */
 function homeworkDueTodayCount() {
@@ -278,8 +279,8 @@ function homeworkDueTodayCount() {
 function applyEnrichmentGating() {
   const dueCount = homeworkDueTodayCount();
   const locked = dueCount > 3;
-  const lockIds = ['lock-quote', 'lock-sat', 'lock-news', 'lock-quiz'];
-  const cardIds = ['widget-quote', 'widget-word', 'widget-news', 'widget-quiz'];
+  const lockIds = ['lock-quote', 'lock-sat', 'lock-news', 'lock-quiz', 'lock-puzzle'];
+  const cardIds = ['widget-quote', 'widget-word', 'widget-news', 'widget-quiz', 'widget-puzzle'];
   lockIds.forEach((id, i) => {
     const overlay = document.getElementById(id);
     const card = document.getElementById(cardIds[i]);
@@ -463,7 +464,9 @@ function renderNewsItem(n, now) {
   }
   const prompt = document.getElementById('news-reflect-prompt');
   if (prompt) {
-    prompt.textContent = 'Why do you think this matters, and how does it make you feel?';
+    prompt.textContent = (typeof n.question === 'string' && n.question.trim())
+      ? n.question.trim()
+      : 'Why do you think this matters, and what question would you ask next?';
   }
   const text = document.getElementById('news-reflect-text');
   if (text) text.value = '';
@@ -482,7 +485,8 @@ async function loadRecentNews(requestToken, now) {
       renderNewsUnavailable();
       return;
     }
-    renderNewsItem(dailyPick(items, currentTime), currentTime);
+    const studentItems = items.filter((item) => item.source === 'NASA STEM' || item.source === 'NASA Kids');
+    renderNewsItem(dailyPick(studentItems.length ? studentItems : items, currentTime), currentTime);
   } catch (e) {
     if (requestToken === newsRequestToken) renderNewsUnavailable();
   }
@@ -2168,10 +2172,103 @@ function renderWidgets() {
 
   // Brain teaser (server-backed, day-ramped)
   loadBrainTeaser();
+  loadDailyPuzzle(now);
 
   applyEnrichmentGating();
   applyDaily5Done();
   return loadRecentNews(requestToken, now);
+}
+
+/* ============================================================
+   DATE-BASED PUZZLE — Wednesday Sudoku, weekend 10-word crossword
+============================================================ */
+async function loadDailyPuzzle(now) {
+  const card = document.getElementById('widget-puzzle');
+  if (!card) return;
+  currentDailyPuzzle = null;
+  card.hidden = true;
+  try {
+    const result = await window.auth.getDailyPuzzle(isoDate(now || new Date()));
+    if (!result || !result.available) return;
+    currentDailyPuzzle = result;
+    card.hidden = false;
+    const title = document.getElementById('puzzle-title');
+    const icon = document.getElementById('puzzle-icon');
+    const instructions = document.getElementById('puzzle-instructions');
+    if (title) title.textContent = result.title || "Today's puzzle";
+    if (icon) icon.textContent = result.type === 'sudoku' ? '🔢' : '🧩';
+    if (instructions) instructions.textContent = result.instructions || '';
+    renderDailyPuzzle(result);
+    applyEnrichmentGating();
+  } catch (e) {
+    card.hidden = true;
+  }
+}
+
+function renderDailyPuzzle(result) {
+  const grid = document.getElementById('puzzle-grid-wrap');
+  const clues = document.getElementById('puzzle-clues');
+  const status = document.getElementById('puzzle-status');
+  if (!grid || !clues || !status) return;
+  status.textContent = '';
+  if (result.type === 'crossword' && result.crossword) {
+    const crossword = result.crossword;
+    const starts = new Map((crossword.entries || []).map((entry) => [`${entry.row},${entry.col}`, entry.number]));
+    const cells = [];
+    (crossword.solution || []).forEach((line, row) => {
+      Array.from(line).forEach((letter, col) => {
+        if (letter === '.') {
+          cells.push('<span class="crossword-blank" aria-hidden="true"></span>');
+        } else {
+          const number = starts.get(`${row},${col}`);
+          cells.push(`<label class="crossword-cell">${number ? `<span>${number}</span>` : ''}<input maxlength="1" inputmode="text" autocomplete="off" aria-label="Crossword row ${row + 1}, column ${col + 1}" data-solution="${esc(letter)}"></label>`);
+        }
+      });
+    });
+    grid.innerHTML = `<div class="crossword-grid" style="--puzzle-cols:${Number(crossword.cols) || 1}">${cells.join('')}</div>`;
+    clues.innerHTML = ['across', 'down'].map((direction) => {
+      const entries = (crossword.entries || []).filter((entry) => entry.direction === direction);
+      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<p><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</p>`).join('')}</section>` : '';
+    }).join('');
+  } else if (result.type === 'sudoku' && result.sudoku) {
+    const sdk = result.sudoku;
+    grid.innerHTML = `<div class="sudoku-grid">${Array.from(sdk.puzzle || '').map((value, index) => {
+      const solution = Array.from(sdk.solution || '')[index] || '';
+      const row = Math.floor(index / 9), col = index % 9;
+      const classes = `${col === 2 || col === 5 ? ' box-right' : ''}${row === 2 || row === 5 ? ' box-bottom' : ''}`;
+      return value !== '0'
+        ? `<span class="sudoku-cell given${classes}">${esc(value)}</span>`
+        : `<label class="sudoku-cell${classes}"><input maxlength="1" inputmode="numeric" autocomplete="off" aria-label="Sudoku row ${row + 1}, column ${col + 1}" data-solution="${esc(solution)}"></label>`;
+    }).join('')}</div>`;
+    clues.innerHTML = '';
+  }
+}
+
+function clearDailyPuzzle() {
+  document.querySelectorAll('#puzzle-grid-wrap input').forEach((input) => { input.value = ''; input.classList.remove('right', 'wrong'); });
+  const status = document.getElementById('puzzle-status');
+  if (status) status.textContent = '';
+}
+
+function checkDailyPuzzle() {
+  const inputs = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]'));
+  let correct = 0;
+  let unanswered = 0;
+  inputs.forEach((input) => {
+    const value = String(input.value || '').trim().toUpperCase();
+    const expected = String(input.dataset.solution || '').toUpperCase();
+    input.classList.remove('right', 'wrong');
+    if (!value) unanswered++;
+    else if (value === expected) { correct++; input.classList.add('right'); }
+    else input.classList.add('wrong');
+  });
+  const status = document.getElementById('puzzle-status');
+  if (!status) return;
+  status.textContent = correct === inputs.length
+    ? 'You did it — every answer is correct! 🎉'
+    : unanswered
+      ? `${unanswered} square${unanswered === 1 ? '' : 's'} still need an answer.`
+      : `${correct} of ${inputs.length} squares are correct — take another look.`;
 }
 
 /* ============================================================

@@ -1,24 +1,11 @@
 import Foundation
 
-// Daily rotating content for the Today dashboard widgets — ported verbatim from
-// the web app (public/js/app.js QUOTES / SAT_WORDS / FACTS / NEWS_ITEMS / QUIZ)
-// so iOS and web show the same "of the day" content. Picked deterministically by
-// day-of-year, so it's stable through the day and needs no backend.
+// Daily rotating evergreen content for the Today dashboard widgets. Current
+// news is intentionally server-backed so an old bundled story cannot surface.
 
 struct DailyQuote { let text: String; let author: String }
 struct SATWord { let word: String; let pos: String; let def: String; let example: String }
 struct FunFact { let icon: String; let type: String; let text: String }
-struct NewsItem {
-    let cat: String; let headline: String; let summary: String
-    var url: String? = nil
-    /// The article link. When an item has no explicit `url`, this opens a Google
-    /// News search for the headline, which reliably surfaces real coverage of it.
-    var articleLink: String {
-        if let url, !url.isEmpty { return url }
-        let q = headline.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        return "https://news.google.com/search?q=\(q)"
-    }
-}
 struct QuizQuestion { let q: String; let opts: [String]; let ans: Int; let exp: String }
 
 /// Per-device, per-local-day completion flags for the Daily 5 *interactive*
@@ -43,7 +30,6 @@ enum Daily {
     static var quote: DailyQuote { quotes[index(quotes.count)] }
     static var word: SATWord { words[index(words.count)] }
     static var fact: FunFact { facts[index(facts.count)] }
-    static var news: NewsItem { newsItems[index(newsItems.count)] }
     static var quizStartIndex: Int { index(quiz.count) }
 
     static let quotes: [DailyQuote] = [
@@ -143,29 +129,6 @@ enum Daily {
         .init(icon: "🐝", type: "Science", text: "A single honeybee will produce only 1/12 teaspoon of honey in its entire lifetime. It takes about 60,000 bees to fill one jar of honey!"),
         .init(icon: "📚", type: "History", text: "The Library of Alexandria contained an estimated 400,000–700,000 scrolls, making it the largest library in the ancient world."),
         .init(icon: "🪐", type: "Science", text: "Saturn's rings are mostly made of ice and rock particles ranging in size from grains of sand to boulders as large as a house."),
-    ]
-
-    static let newsItems: [NewsItem] = [
-        .init(cat: "🚀 Space", headline: "Webb Telescope Discovers Ancient Galaxies", summary: "Scientists using the James Webb Space Telescope have identified thousands of previously unknown galaxies, revealing what the universe looked like just 500 million years after the Big Bang."),
-        .init(cat: "🐾 Animals", headline: "Rare White Giraffe Spotted in Kenya", summary: "Conservationists spotted a leucistic giraffe in Kenya's national park. These animals lack pigmentation and appear white, making them extraordinarily rare in the wild."),
-        .init(cat: "💡 Tech", headline: "Students Design Robot to Clean Ocean Plastic", summary: "A team of high school students won a global engineering competition with their autonomous robot that collects plastic waste from ocean surfaces without harming marine life."),
-        .init(cat: "🔬 Science", headline: "New Solar Panel Generates Power From Windows", summary: "Scientists have developed ultra-thin solar panels that can be attached to windows, turning ordinary buildings into electricity generators — without blocking the view."),
-        .init(cat: "🌿 Environment", headline: "Teen Invents Device to Purify River Water", summary: "A 15-year-old from India invented an affordable water purification device using local materials that can clean contaminated river water for drinking in just minutes."),
-        .init(cat: "🐸 Animals", headline: "Colorful New Frog Species Found in Amazon", summary: "Biologists exploring the Amazon rainforest discovered a new species of dart frog with brilliant blue and yellow patterns that could help scientists develop new medicines."),
-        .init(cat: "🚀 Space", headline: "Spacecraft Successfully Lands on the Moon", summary: "A new spacecraft successfully landed on the Moon, carrying scientific instruments designed to study the lunar surface and test technology for future human landings."),
-        .init(cat: "💡 Tech", headline: "AI Decodes 4,000-Year-Old Ancient Language", summary: "Artificial intelligence successfully translated a mysterious ancient language that had puzzled historians for decades, unlocking secrets from Mesopotamian civilization."),
-        .init(cat: "🌿 Environment", headline: "Giant Forest in Costa Rica Fully Restored", summary: "A massive reforestation effort in Costa Rica successfully restored over 3 million acres of tropical forest, bringing back wildlife and cleaner air to the region."),
-        .init(cat: "🔬 Science", headline: "Scientists Grow Human Ear in Lab for Transplant", summary: "Medical researchers grew a human ear from a patient's own cartilage cells in a laboratory and successfully transplanted it to a child born without one."),
-        .init(cat: "🐋 Animals", headline: "Humpback Whale Populations Show 30% Recovery", summary: "A new census shows humpback whale populations have grown by 30% in the past decade, thanks to international hunting bans and ocean conservation efforts."),
-        .init(cat: "💡 Tech", headline: "Solar-Powered Plane Completes World Trip", summary: "An electric airplane powered entirely by solar energy completed a journey around the world, proving that long-distance solar flight is possible — inspiring the future of aviation."),
-        .init(cat: "🔬 Science", headline: "Researchers Discover Why We Dream at Night", summary: "New brain research suggests dreams help the brain sort and store important memories while clearing out unnecessary information — like a nightly computer cleanup."),
-        .init(cat: "🌿 Environment", headline: "Youth Group Plants 10 Million Trees in 20 Countries", summary: "A youth-led environmental organization reached its goal of planting 10 million trees across 20 countries, making it one of the largest student-led conservation efforts ever."),
-        .init(cat: "💡 Tech", headline: "New Battery Could Charge Phone in 5 Minutes", summary: "Engineers have developed a new graphene-based battery that can charge a smartphone to 100% in under five minutes — and last for 20 years without degrading."),
-        .init(cat: "🐆 Animals", headline: "Cheetah Cubs Born in India After 70 Years", summary: "For the first time in 70 years, cheetah cubs were born in the wild in India after a successful reintroduction program brought cheetahs from Namibia and South Africa."),
-        .init(cat: "🔬 Science", headline: "Gene Therapy Successfully Treats Rare Disease", summary: "Scientists announced a new gene therapy that successfully treated a rare genetic disorder in children, offering hope to millions of families worldwide."),
-        .init(cat: "🚀 Space", headline: "Earth-Sized Planet Found in Habitable Zone", summary: "NASA announced the discovery of an Earth-sized planet where conditions might be right for liquid water — and potentially life — around a nearby star."),
-        .init(cat: "🌿 Environment", headline: "Coral Reef Shows Unexpected Signs of Recovery", summary: "Parts of the Great Barrier Reef are recovering faster than expected after efforts to reduce pollution and control invasive starfish that had been damaging the coral."),
-        .init(cat: "🔬 Science", headline: "Scientists Create Material Stronger Than Diamonds", summary: "Researchers have engineered a new carbon-based material that outperforms diamonds in hardness tests, with potential uses in aerospace, medicine, and electronics."),
     ]
 
     static let quiz: [QuizQuestion] = [
