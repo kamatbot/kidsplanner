@@ -6078,29 +6078,35 @@ async function famImportSchoolData(payload) {
 
         for (const activity of plan.add) {
           if (failedRemovalMarkers.has(activity.sourceId)) continue;
-          events.push({
-            id: uid(),
-            userId: sessionUser.id,
-            kidId,
-            title: activity.title,
-            date: activity.date,
-            time: activity.time,
-            endTime: '',
-            category: 'school',
-            notes: 'Signed up activity',
-            source: 'eca-import',
-            sourceType: activity.sourceType,
-            sourceId: activity.sourceId,
-          });
-          result.eventsAdded++;
-          result.activityEventsAdded++;
-          changed = true;
+          try {
+            const response = await window.auth.addCalendarEvent({
+              kidId,
+              title: activity.title,
+              date: activity.date,
+              time: activity.time,
+              endTime: '',
+              category: 'school',
+              notes: 'Signed up activity',
+              sourceType: activity.sourceType,
+              sourceId: activity.sourceId,
+              silent: true,
+            });
+            const stored = response.event;
+            events = events.filter((event) => event.id !== stored.id).concat([stored]);
+            if (!response.existing) {
+              result.eventsAdded++;
+              result.activityEventsAdded++;
+            }
+            changed = true;
+          } catch (e) {
+            // Do not claim a successful activity import unless the server
+            // accepted it; the next extension sync can safely retry.
+          }
         }
       }
 
       if (changed) {
         saveEvents(events);
-        await loadFamilyEvents();
         renderCalendar();
       }
     }
