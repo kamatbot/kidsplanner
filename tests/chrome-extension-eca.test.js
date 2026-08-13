@@ -158,5 +158,7 @@ test("ECA ownership uses source fields and keeps visible notes free of Moodle id
   assert.match(activityBlock, /sourceId: activity\.sourceId/);
   assert.match(activityBlock, /notes: 'Signed up activity'/);
   assert.doesNotMatch(activityBlock, /notes: `\$\{activity\./);
-  assert.match(appSource, /sourceType: ev\.sourceType \|\| undefined, sourceId: ev\.sourceId \|\| undefined/);
+  assert.match(activityBlock, /await window\.auth\.addCalendarEvent/);
+  assert.match(activityBlock, /if \(!response\.existing\) \{/);
+  assert.match(activityBlock, /result\.activityEventsAdded\+\+/);
 });

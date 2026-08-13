@@ -47,7 +47,7 @@ function buildHarness() {
   return { routes, chatPosts, chatMessages };
 }
 
-function call(handler, { body, params, query, user, familyId } = {}) {
+function call(handler, { body, params, query, user, familyId, familyObj } = {}) {
   const res = {
     statusCode: 200,
     body: null,
@@ -60,7 +60,7 @@ function call(handler, { body, params, query, user, familyId } = {}) {
     params: params || {},
     query: query || {},
     user: user || { id: "u1", data: {} },
-    family: { id: familyId },
+    family: familyObj || { id: familyId },
   }, res);
   return res;
 }
@@ -142,6 +142,66 @@ test("POST /api/calendar/events: chat source is persisted and retries are idempo
   assert.equal(afterDelete.body.event.id, first.body.event.id);
   assert.equal(afterDelete.body.event.title, "Pick up Ava");
   assert.equal(chatPosts.length, 1, "a retry must not post a second announcement");
+});
+
+test("POST /api/calendar/events: parent ECA source persists Ryshi's Aug 25 activity idempotently", () => {
+  const { routes, chatPosts } = buildHarness();
+  const fam = freshFamily();
+  const parent = store.getUser(fam.parentIds[0]);
+  const { kid } = family.addKid(fam.id, parent.id, { name: "Ryshi" });
+  const body = {
+    title: "Basketball activity",
+    date: "2026-08-25",
+    time: "15:45",
+    category: "school",
+    notes: "Signed up activity",
+    kidId: kid.id,
+    sourceType: "eca",
+    sourceId: `${kid.id}:834:64894`,
+    silent: true,
+  };
+  const first = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id, familyObj: fam, user: parent, body,
+  });
+  const retry = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id, familyObj: fam, user: parent, body,
+  });
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.body.existing, false);
+  assert.equal(first.body.event.date, "2026-08-25");
+  assert.equal(first.body.event.kidId, kid.id);
+  assert.equal(first.body.event.sourceType, "eca");
+  assert.equal(first.body.event.sourceId, body.sourceId);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.body.existing, true);
+  assert.equal(retry.body.event.id, first.body.event.id);
+  assert.equal(chatPosts.length, 0);
+});
+
+test("POST /api/calendar/events: ECA sources reject kids, malformed ids, and mismatched kid scope", () => {
+  const { routes } = buildHarness();
+  const fam = freshFamily();
+  const parent = store.getUser(fam.parentIds[0]);
+  const first = family.addKid(fam.id, parent.id, { name: "Ryshi" }).kid;
+  const second = family.addKid(fam.id, parent.id, { name: "Arya" }).kid;
+  const kidUser = store.findOrCreateKidUser(fam.id, first.id, first.name);
+  const base = {
+    title: "Basketball activity", date: "2026-08-25", time: "15:45",
+    kidId: first.id, sourceType: "eca", sourceId: `${first.id}:834:64894`, silent: true,
+  };
+  const attempts = [
+    { user: kidUser, body: base },
+    { user: parent, body: { ...base, sourceId: `${first.id}:not-a-number:64894` } },
+    { user: parent, body: { ...base, kidId: second.id } },
+    { user: parent, body: { ...base, sourceId: `unknown-kid:834:64894`, kidId: "unknown-kid" } },
+  ];
+  for (const attempt of attempts) {
+    const res = call(routes["POST /api/calendar/events"], {
+      familyId: fam.id, familyObj: fam, ...attempt,
+    });
+    assert.equal(res.statusCode, 400);
+  }
 });
 
 test("POST /api/calendar/events: chat sources are family-keyed and reject trip/invalid references", () => {
