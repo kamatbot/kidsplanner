@@ -327,6 +327,7 @@ const apiLimiter = rateLimit({ windowMs: 60 * 1000, max: envNum("RL_API_MAX", 30
 const gifLimiter = rateLimit({ windowMs: 60 * 1000, max: envNum("RL_GIF_MAX", 60), message: "Too many GIF searches — please slow down and try again in a moment." });
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: envNum("RL_AUTH_MAX", 60), message: "Too many sign-in attempts — please wait a minute and try again." });
 const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: envNum("RL_SIGNUP_MAX", 15), message: "Too many sign-up attempts — please try again later." });
+const buzzLimiter = rateLimit({ windowMs: 60 * 1000, max: envNum("RL_BUZZ_MAX", 3), message: "Too many Buzz alerts — please wait a minute and try again." });
 app.use("/api", apiLimiter);
 
 // ---------- helpers ----------
@@ -554,7 +555,7 @@ const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
   schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin,
-  apiLimiter, gifLimiter, authLimiter, signupLimiter,
+  apiLimiter, gifLimiter, authLimiter, signupLimiter, buzzLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
   rpForRequest, toB64url, fromB64url, upload, crypto,
   userRole, kidIdForUser, friendlyDate, isIOSClient, deviceLabelFromUA, publicProfile,
