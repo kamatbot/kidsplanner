@@ -47,6 +47,41 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+function linkifyChatText(value) {
+  const text = String(value == null ? '' : value);
+  const escape = (part) => String(part)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  const urlPattern = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+  let html = '';
+  let cursor = 0;
+
+  for (const match of text.matchAll(urlPattern)) {
+    let label = match[0];
+    let trailing = '';
+    while (/[.,!?;:)\]}]$/.test(label)) {
+      trailing = label.slice(-1) + trailing;
+      label = label.slice(0, -1);
+    }
+
+    const href = label.toLowerCase().startsWith('www.') ? `https://${label}` : label;
+    let safe = false;
+    try {
+      safe = ['http:', 'https:'].includes(new URL(href).protocol);
+    } catch (_) {}
+
+    html += escape(text.slice(cursor, match.index));
+    html += safe
+      ? `<a href="${escape(href)}" target="_blank" rel="noopener noreferrer">${escape(label)}</a>${escape(trailing)}`
+      : escape(match[0]);
+    cursor = match.index + match[0].length;
+  }
+
+  return html + escape(text.slice(cursor));
+}
+
 /* Storage helpers (fam_ prefix only) */
 function load(key)        { try { return JSON.parse(localStorage.getItem(key)) || null; } catch { return null; } }
 function save(key, val)   { localStorage.setItem(key, JSON.stringify(val)); }

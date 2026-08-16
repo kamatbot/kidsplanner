@@ -200,7 +200,7 @@ test("success and idempotent outcomes stay clear, while grouped preview text is 
 });
 
 test("the chat UI preserves full text, uses a reusable accessible modal, and ignores stale previews", () => {
-  assert.match(appSource, /\$\{m\.text \? `<div class="chat-msg-text">\$\{esc\(m\.text\)\}<\/div>` : ''\}/);
+  assert.match(appSource, /\$\{m\.text \? `<div class="chat-msg-text">\$\{linkifyChatText\(m\.text\)\}<\/div>` : ''\}/);
   assert.match(appSource, /Meal plan ready/);
   assert.match(appSource, /Review &amp; add to Meals/);
   assert.match(appSource, /card\.type === 'meal-plan-draft'/);

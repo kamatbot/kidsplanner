@@ -3242,7 +3242,7 @@ function renderChatMessages() {
     return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
       ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}</div>` : ''}
       <div class="chat-msg-bubble" style="${own ? '' : `--sender-color:${color}`}">
-        ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
+        ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
         ${renderChatMedia(m.media)}
         ${renderChatCard(m.card, chatSenderName(m))}
         ${renderMealPlanReviewAction(m)}

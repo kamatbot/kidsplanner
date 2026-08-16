@@ -2420,7 +2420,7 @@ function renderTripChatMessages() {
     return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
       ${!own ? `<div class="chat-msg-avatar-row">${avatarHtml(face.initial, face.color, 16, false)}<span class="chat-msg-sender">${esc(senderName)}</span></div>` : ''}
       <div class="chat-msg-bubble">
-        ${m.text ? `<div class="chat-msg-text">${esc(m.text)}</div>` : ''}
+        ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
         ${renderTripItineraryReviewAction(m)}
       </div>
       <div class="chat-msg-meta">

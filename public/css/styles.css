@@ -363,6 +363,11 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-msg-other .chat-msg-bubble { border-color: var(--sender-color); }
 .chat-msg-text { color: var(--sender-color); white-space: pre-wrap; }
+.chat-msg-text a {
+  color: inherit; font-weight: 700; text-decoration: underline;
+  text-underline-offset: 2px; overflow-wrap: anywhere;
+}
+.chat-msg-text a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 2px; }
 .chat-msg-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; padding: 0 4px; }
 .chat-msg-time { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--muted); }
 .chat-msg-controls { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
