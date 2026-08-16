@@ -8,7 +8,7 @@ import Foundation
 // fam-notifications equivalent.
 
 extension Notification.Name {
-    /// Posted when a `chat_message` push is received/tapped. `userInfo["familyId"]`
+    /// Posted when a `chat_message` or `chat_buzz` push is received/tapped. `userInfo["familyId"]`
     /// carries the family to deep-link into.
     static let famDeepLinkToChat = Notification.Name("famDeepLinkToChat")
     /// Posted when a `homework_reminder` push is received/tapped.
@@ -19,7 +19,7 @@ extension Notification.Name {
     /// carries the family. (Approval UI is currently a web surface; the push at
     /// least brings the parent into the app.)
     static let famDeepLinkToKidApproval = Notification.Name("famDeepLinkToKidApproval")
-    /// Posted when a `trip_chat_message` or `trip_update` push is received/
+    /// Posted when a `trip_chat_message`, `trip_chat_buzz`, or `trip_update` push is received/
     /// tapped (lib/fam-notifications.js `notifyTripChatMessage`/
     /// `notifyTripEvent`, docs/TRIPS-PLAN.md). `userInfo["tripId"]` carries the
     /// trip to deep-link into. The app opens the Chat tab and selects that
@@ -29,22 +29,22 @@ extension Notification.Name {
 
 /// Reference payload shapes (lib/fam-notifications.js):
 ///
-///   // chat_message
+///   // chat_message / chat_buzz
 ///   { aps: { alert: { title: senderName, body: text }, sound: "default",
 ///            "thread-id": "chat-<familyId>" },
-///     famType: "chat_message", familyId }
+///     famType: "chat_message" | "chat_buzz", familyId }
 ///
 ///   // homework_reminder
 ///   { aps: { alert: { title: "<kidName>: Homework due soon", body: title },
 ///            sound: "default" },
 ///     famType: "homework_reminder", homeworkId, dueDate }
 ///
-///   // trip_chat_message / trip_update (docs/TRIPS-PLAN.md) — `tripId` read
+///   // trip_chat_message / trip_chat_buzz / trip_update (docs/TRIPS-PLAN.md) — `tripId` read
 ///   // as a top-level field to match the existing convention above (familyId/
 ///   // homeworkId), not nested under a "data" key.
 ///   { aps: { alert: { title: senderName, body: text }, sound: "default",
 ///            "thread-id": "trip-<tripId>" },
-///     famType: "trip_chat_message" | "trip_update", tripId, url }
+///     famType: "trip_chat_message" | "trip_chat_buzz" | "trip_update", tripId, url }
 final class NotificationHandler {
     static let shared = NotificationHandler()
 
@@ -80,7 +80,7 @@ final class NotificationHandler {
     func handle(userInfo: [AnyHashable: Any]) {
         guard let famType = userInfo["famType"] as? String else { return }
         switch famType {
-        case "chat_message":
+        case "chat_message", "chat_buzz":
             guard let familyId = userInfo["familyId"] as? String else { return }
             routeToChat(roomId: familyRoomId,
                         notification: .famDeepLinkToChat,
@@ -91,7 +91,7 @@ final class NotificationHandler {
         case "kid_access_request":
             let familyId = (userInfo["familyId"] as? String) ?? ""
             NotificationCenter.default.post(name: .famDeepLinkToKidApproval, object: nil, userInfo: ["familyId": familyId])
-        case "trip_chat_message", "trip_update":
+        case "trip_chat_message", "trip_chat_buzz", "trip_update":
             guard let tripId = userInfo["tripId"] as? String else { return }
             routeToChat(roomId: "trip:\(tripId)",
                         notification: .famDeepLinkToTripChat,

@@ -5,6 +5,7 @@ import SwiftUI
 struct AgendaRow: View {
     @Environment(AppStore.self) private var store
     let item: AgendaItem
+    var showKidLabel = false
 
     var body: some View {
         HStack(spacing: Space.md) {
@@ -23,6 +24,18 @@ struct AgendaRow: View {
                 }
                 if let sub = item.subtitle, !sub.isEmpty {
                     Text(sub).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                }
+                if showKidLabel, let name = Agenda.kidName(item.kidId, kids: store.kids) {
+                    HStack(spacing: Space.xs) {
+                        Circle()
+                            .fill(Agenda.kidColor(item.kidId, kids: store.kids) ?? Palette.accent)
+                            .frame(width: 7, height: 7)
+                        Text(name)
+                            .font(Typography.caption.weight(.semibold))
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("For \(name)")
                 }
             }
             Spacer(minLength: Space.sm)

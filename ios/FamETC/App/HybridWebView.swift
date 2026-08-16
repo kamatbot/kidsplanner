@@ -14,6 +14,8 @@ struct HybridWebView: UIViewRepresentable {
         self.isEmbedded = isEmbedded
     }
 
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
@@ -30,6 +32,7 @@ struct HybridWebView: UIViewRepresentable {
         // configured) rides in the UA as FamETCiOS/<key> — see Config.
         config.applicationNameForUserAgent = Config.webUserAgentToken
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .always
         if let url = URL(string: Config.baseURL.absoluteString + path) {
@@ -39,6 +42,31 @@ struct HybridWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {}
+
+    final class Coordinator: NSObject, WKUIDelegate {
+        func webView(_ webView: WKWebView,
+                     runJavaScriptConfirmPanelWithMessage message: String,
+                     initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping (Bool) -> Void) {
+            guard let presenter = Self.presenter(from: webView.window?.rootViewController) else {
+                completionHandler(false)
+                return
+            }
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            let destructiveVerbs = ["Delete", "Remove", "Disconnect", "Revoke", "Disable", "Leave", "Rotate", "Regenerate"]
+            let actionTitle = destructiveVerbs.first { message.hasPrefix($0) } ?? "Continue"
+            alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+            alert.addAction(UIAlertAction(title: actionTitle, style: .destructive) { _ in completionHandler(true) })
+            presenter.present(alert, animated: true)
+        }
+
+        private static func presenter(from root: UIViewController?) -> UIViewController? {
+            if let presented = root?.presentedViewController { return presenter(from: presented) }
+            if let navigation = root as? UINavigationController { return presenter(from: navigation.visibleViewController) }
+            if let tabs = root as? UITabBarController { return presenter(from: tabs.selectedViewController) }
+            return root
+        }
+    }
 
     private static let embeddedShellScript = """
         (function() {

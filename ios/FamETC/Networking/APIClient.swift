@@ -401,6 +401,21 @@ final class APIClient: FamilyActionService {
         return "/api/trips/\(tripId)/chat/messages"
     }
 
+    /// Buzz has a dedicated endpoint for each room. Keep this helper separate
+    /// from `chatBasePath` because Buzz is never a normal chat message flag.
+    /// The trip suffix is encoded as one URL path component so an id cannot
+    /// change the route shape.
+    static func chatBuzzPath(for roomId: String) -> String {
+        guard roomId.hasPrefix("trip:") else { return "/api/chat/buzz" }
+        let tripId = String(roomId.dropFirst("trip:".count))
+        return "/api/trips/\(encodedPathComponent(tripId))/chat/buzz"
+    }
+
+    func sendChatBuzz(text: String, roomId: String = familyRoomId) async throws -> ChatMessage {
+        let r: MessageResponse = try await request(Self.chatBuzzPath(for: roomId), method: "POST", body: ["text": text])
+        return r.message
+    }
+
     /// `afterId` + `wait` adopt the server's long-poll contract: with both set,
     /// a server that supports it holds the connection open (up to ~25s) and
     /// returns the moment a message newer than `afterId` exists, else answers
@@ -532,8 +547,14 @@ final class APIClient: FamilyActionService {
 
     // MARK: Core
 
+    private static func encodedPathComponent(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+
     private func pathComponent(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+        Self.encodedPathComponent(value)
     }
 
     private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {

@@ -265,7 +265,7 @@ final class ActionStoreTests: XCTestCase {
                         occurrenceDate: nil, canEdit: nil)
         ]
 
-        XCTAssertEqual(store.visibleEvents.map(\.id), ["school-shared", "school-own"])
-        XCTAssertEqual(store.visibleFamilyEvents.map(\.id), ["family-shared", "family-own"])
+        XCTAssertEqual(store.visibleEvents.map(\.id), ["school-own"])
+        XCTAssertEqual(store.visibleFamilyEvents.map(\.id), ["family-own"])
     }
 }

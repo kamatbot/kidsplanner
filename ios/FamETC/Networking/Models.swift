@@ -81,6 +81,11 @@ struct ChatMessage: Codable, Identifiable {
     /// `family.kids`. Optional/back-compat; family-room messages may also carry
     /// it (harmless — `AppStore.senderName(for:)` prefers it when present).
     var senderName: String? = nil
+    /// True only for a server-created Buzz. Optional for cached messages from
+    /// before Buzz existed; `isBuzz` keeps the UI check simple and fails closed.
+    var buzz: Bool? = nil
+
+    var isBuzz: Bool { buzz == true }
 }
 
 /// The room id for the always-present family chat thread (docs/TRIPS-PLAN.md).

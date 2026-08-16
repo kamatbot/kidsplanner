@@ -35,6 +35,17 @@ enum Agenda {
         DateFmt.ymd.string(from: Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date())
     }
 
+    /// The local Monday containing `date`. Timetable views use this lower
+    /// bound so the school week remains visible on Friday and the weekend.
+    static func mondayKey(containing date: Date = Date()) -> String {
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: date)
+        let daysSinceMonday = (weekday + 5) % 7
+        let start = calendar.startOfDay(for: date)
+        let monday = calendar.date(byAdding: .day, value: -daysSinceMonday, to: start) ?? start
+        return DateFmt.ymd.string(from: monday)
+    }
+
     /// A friendly section header for a yyyy-MM-dd key: Today / Tomorrow / "Wed, Jul 9".
     static func dayLabel(_ key: String) -> String {
         if key == todayKey() { return "Today" }
@@ -119,8 +130,8 @@ enum Agenda {
     }
 
     /// Grouped agenda sections from today forward, limited to `days` ahead.
-    static func upcomingSections(events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem], days: Int) -> [(day: String, items: [AgendaItem])] {
-        let today = todayKey()
+    static func upcomingSections(events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem], days: Int, startingAt startDay: String? = nil) -> [(day: String, items: [AgendaItem])] {
+        let today = startDay ?? todayKey()
         let limit = dayKey(offset: days)
         let all = (events.map(fromEvent) + familyEvents.flatMap(expandFamilyEvent) + homework.map(fromHomework))
             .filter { $0.dayKey >= today && $0.dayKey <= limit }

@@ -37,7 +37,21 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @State private var mealPlanRef: MealPlanRef?
     @State private var tripItineraryRef: TripItineraryRef?
     @State private var scrollPos = ScrollPosition(edge: .bottom)
+    @State private var buzzAlert: BuzzAlert?
+    @State private var isSendingBuzz = false
     @FocusState private var composerFocused: Bool
+
+    private enum BuzzAlert: Identifiable {
+        case confirmation
+        case error(String)
+
+        var id: String {
+            switch self {
+            case .confirmation: return "confirmation"
+            case .error(let message): return "error:\(message)"
+            }
+        }
+    }
 
     private var baseInset: CGFloat { hSize == .compact ? Layout.tabBarClearance : Space.lg }
     private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
@@ -90,6 +104,24 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
         .sheet(item: $tripItineraryRef) { ref in
             TripItineraryReviewSheet(tripId: ref.tripId, messageId: ref.messageId)
+        }
+        .alert(item: $buzzAlert) { alert in
+            switch alert {
+            case .confirmation:
+                Alert(
+                    title: Text("Send a Buzz?"),
+                    message: Text("This sends one Time Sensitive alert to everyone else in this chat. Apple Watch controls the vibration pattern."),
+                    primaryButton: .cancel(Text("Cancel")),
+                    secondaryButton: .destructive(Text("Send Buzz"), action: sendBuzz)
+                )
+            case .error(let message):
+                Alert(
+                    title: Text("Buzz not sent"),
+                    message: Text("\(message) Your draft is still here."),
+                    primaryButton: .cancel(Text("Cancel")),
+                    secondaryButton: .default(Text("Retry"), action: sendBuzz)
+                )
+            }
         }
     }
 
@@ -257,9 +289,10 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
     }
 
-    // MARK: Composer (GIF + wide input + circular send)
+    // MARK: Composer (GIF + Buzz + wide input + circular send)
 
     private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canBuzz: Bool { canSend && !isSendingBuzz }
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: Space.sm) {
@@ -271,6 +304,17 @@ struct ChatScreen<HeaderAccessory: View>: View {
                     .background(Palette.accentSoft, in: Circle())
             }
             .accessibilityLabel("Add a GIF")
+
+            Button(action: requestBuzz) {
+                Image(systemName: "wave.3.right.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(canBuzz ? Palette.accent : Palette.textSecond)
+                    .frame(width: 44, height: 44)
+                    .background((canBuzz ? Palette.accentSoft : Palette.textSecond.opacity(0.12)), in: Circle())
+            }
+            .disabled(!canBuzz)
+            .accessibilityLabel("Send Buzz")
+            .accessibilityHint("Sends one Time Sensitive alert to everyone else in this chat after confirmation")
 
             TextField(isFamilyRoom ? "Message the family…" : "Message the trip…", text: $draft, axis: .vertical)
                 .font(.system(size: 17))
@@ -294,6 +338,35 @@ struct ChatScreen<HeaderAccessory: View>: View {
         .padding(.horizontal, Space.md).padding(.top, Space.sm).padding(.bottom, Space.sm)
         .background(Palette.panel)
         .overlay(Divider().overlay(Palette.border), alignment: .top)
+    }
+
+    private func requestBuzz() {
+        guard canBuzz else { return }
+        composerFocused = false
+        Haptics.selection()
+        buzzAlert = .confirmation
+    }
+
+    private func sendBuzz() {
+        guard !isSendingBuzz else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        isSendingBuzz = true
+        Task {
+            do {
+                try await store.sendBuzz(text: text, roomId: roomId)
+                // If the user edited the composer while the request was in
+                // flight, keep that newer draft instead of clearing it.
+                if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+                    draft = ""
+                }
+                Haptics.notify(.success)
+            } catch {
+                Haptics.notify(.error)
+                buzzAlert = .error(error.localizedDescription)
+            }
+            isSendingBuzz = false
+        }
     }
 
     private func send() {
@@ -1643,7 +1716,11 @@ struct ChatMessageRow: View {
     }
 
     var body: some View {
-        if message.card?.type == "meal-plan-draft" || message.card?.type == "trip-itinerary-draft" {
+        if message.isBuzz {
+            // Buzz remains a normal text bubble even if a malformed or legacy
+            // payload happens to carry another presentation field.
+            bubbleRow
+        } else if message.card?.type == "meal-plan-draft" || message.card?.type == "trip-itinerary-draft" {
             bubbleRow
         } else if message.card != nil {
             SystemCardRow(message: message, senderName: senderName, onTapCard: onTapCard)
@@ -1739,6 +1816,22 @@ struct ChatMessageRow: View {
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
                 .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
+        } else if message.isBuzz {
+            VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
+                Label("BUZZ", systemImage: "wave.3.right")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(senderColor)
+                Text(ChatLinkText.attributed(message.text))
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(senderColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 11)
+            .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))
+            .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.55), lineWidth: 1))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("BUZZ message from \(senderName): \(message.text)")
+            .accessibilityHint("Time Sensitive alert")
         } else if let media = message.media, media.type == "gif",
                   let url = URL(string: media.url ?? media.previewUrl ?? "") {
             AnimatedGIFView(url: url)
@@ -1768,7 +1861,7 @@ struct ChatMessageRow: View {
             // Each sender keeps a readable identity color in both the sender
             // label and message text; alignment and names remain the secondary
             // identity cues so color is never the only signal.
-            Text(message.text)
+            Text(ChatLinkText.attributed(message.text))
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(senderColor)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1811,6 +1904,32 @@ struct ChatMessageRow: View {
                     }
                 }
         }
+    }
+}
+
+enum ChatLinkText {
+    private static let detector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+
+    static func attributed(_ text: String) -> AttributedString {
+        var output = AttributedString(text)
+        guard let detector else { return output }
+
+        let fullRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        for match in detector.matches(in: text, range: fullRange) {
+            guard let url = match.url,
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https", "mailto"].contains(scheme),
+                  let sourceRange = Range(match.range, in: text),
+                  let lower = AttributedString.Index(sourceRange.lowerBound, within: output),
+                  let upper = AttributedString.Index(sourceRange.upperBound, within: output)
+            else { continue }
+
+            output[lower..<upper].link = url
+            output[lower..<upper].underlineStyle = .single
+        }
+        return output
     }
 }
 

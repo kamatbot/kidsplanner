@@ -8,6 +8,7 @@ import UserNotifications
 enum NotificationScheduler {
     private static let eventPrefix = "fam-ev-"
     private static let homeworkPrefix = "fam-hw-"
+    private static let reminderOverridesKey = "fam_calendar_reminder_overrides"
 
     /// Maximum number of pending reminders we schedule at once (iOS caps pending
     /// local notifications at 64 per app; we leave headroom for other uses).
@@ -20,6 +21,54 @@ enum NotificationScheduler {
         let fireDate: Date
         let title: String
         let body: String
+    }
+
+    /// Timetable imports are quiet by default; every other timed family event,
+    /// including ECA events, starts with a reminder on. The preference is
+    /// device-local because local notifications are device-specific.
+    static func defaultReminderEnabled(for event: FamilyEvent) -> Bool {
+        guard let time = event.time,
+              !time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return event.sourceType == "eca" || !event.isImportedTimetable
+    }
+
+    /// Preferences are per event occurrence: recurring rows share an event id,
+    /// so the occurrence date keeps one occurrence's choice from changing the
+    /// others.
+    static func reminderPreferenceKey(for event: FamilyEvent) -> String {
+        event.id + "|" + (event.occurrenceDate ?? event.date)
+    }
+
+    /// Pure reminder decision used by the scheduler and focused unit tests.
+    static func reminderEnabled(for event: FamilyEvent, overrides: [String: Bool]) -> Bool {
+        guard let time = event.time,
+              !time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return overrides[reminderPreferenceKey(for: event)] ?? defaultReminderEnabled(for: event)
+    }
+
+    static func reminderEnabled(for event: FamilyEvent, defaults: UserDefaults = .standard) -> Bool {
+        reminderEnabled(for: event, overrides: reminderOverrides(from: defaults))
+    }
+
+    static func reminderEligibleEvents(_ events: [FamilyEvent], overrides: [String: Bool] = [:]) -> [FamilyEvent] {
+        events.filter { reminderEnabled(for: $0, overrides: overrides) }
+    }
+
+    /// Homework keeps its existing completion rule and does not consult event
+    /// reminder preferences.
+    static func homeworkReminderEligible(_ item: HomeworkItem) -> Bool { !item.isDone }
+
+    static func setReminderEnabled(_ enabled: Bool, for event: FamilyEvent, defaults: UserDefaults = .standard) {
+        var overrides = reminderOverrides(from: defaults)
+        overrides[reminderPreferenceKey(for: event)] = enabled
+        defaults.set(overrides, forKey: reminderOverridesKey)
+    }
+
+    private static func reminderOverrides(from defaults: UserDefaults) -> [String: Bool] {
+        guard let stored = defaults.dictionary(forKey: reminderOverridesKey) else { return [:] }
+        return stored.reduce(into: [String: Bool]()) { result, item in
+            if let value = item.value as? Bool { result[item.key] = value }
+        }
     }
 
     static func reschedule(events: [FamilyEvent], homework: [HomeworkItem], kids: [Kid]) async {
@@ -42,9 +91,10 @@ enum NotificationScheduler {
 
         let now = Date()
         var candidates: [Candidate] = []
+        let overrides = reminderOverrides(from: .standard)
 
         // Calendar events: remind 10 minutes before the event starts.
-        for event in events {
+        for event in reminderEligibleEvents(events, overrides: overrides) {
             guard let time = event.time, !time.isEmpty else { continue }
             guard let start = localDate(dateString: event.date, timeString: time) else { continue }
             let fireDate = start.addingTimeInterval(-10 * 60)
@@ -59,7 +109,7 @@ enum NotificationScheduler {
             candidates.append(Candidate(
                 // Occurrences of a recurring series share `id` — key by date too,
                 // so each occurrence gets its own reminder instead of last-write-wins.
-                identifier: eventPrefix + event.id + "-" + event.date,
+                identifier: eventPrefix + event.id + "-" + (event.occurrenceDate ?? event.date),
                 fireDate: fireDate,
                 title: "📅 Upcoming: \(event.title)",
                 body: body
@@ -68,7 +118,7 @@ enum NotificationScheduler {
 
         // Homework: remind 8 hours before the due moment, addressed to the right kid.
         for item in homework {
-            guard !item.isDone else { continue }
+            guard homeworkReminderEligible(item) else { continue }
             let dueTime = item.dueTime ?? "08:00"
             guard let due = localDate(dateString: item.dueDate, timeString: dueTime) else { continue }
             let fireDate = due.addingTimeInterval(-8 * 60 * 60)

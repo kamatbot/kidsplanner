@@ -80,6 +80,19 @@ test("GET /api/calendar/events: a member's family sees the trip's spanning event
   assert.equal(tripEv.familyId, fam.id);
 });
 
+test("GET /api/calendar/events: deleting a trip removes its synthetic calendar events", () => {
+  const routes = buildHarness();
+  const { owner, fam, trip } = makeTrip("CDelete");
+  trips.addFlight(trip.id, owner.id, { airline: "BA", flightNo: "283", departs: "Aug 3, 21:50", arrives: "Aug 4, 09:10" });
+
+  const before = call(routes["GET /api/calendar/events"], { user: owner, fam });
+  assert.ok(before.body.events.some((event) => event.id.startsWith("trip_ev_" + trip.id)));
+
+  assert.deepEqual(trips.deleteTrip(trip.id, owner.id), { ok: true });
+  const after = call(routes["GET /api/calendar/events"], { user: owner, fam });
+  assert.ok(!after.body.events.some((event) => event.id.startsWith("trip_ev_" + trip.id)));
+});
+
 test("GET /api/calendar/events: an unrelated family never sees another family's trip", () => {
   const routes = buildHarness();
   makeTrip("C2");

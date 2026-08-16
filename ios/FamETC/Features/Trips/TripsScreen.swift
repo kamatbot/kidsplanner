@@ -8,6 +8,8 @@ import SwiftUI
 /// calendar via `GET /api/calendar/events`) are native. This tab is a thin
 /// `HybridWebView` host.
 struct TripsScreen: View {
+    @Environment(AppStore.self) private var store
+
     var body: some View {
         HybridWebView(path: "/trips", isEmbedded: true)
             // `HybridWebView` sets `contentInsetAdjustmentBehavior = .always`,
@@ -18,6 +20,13 @@ struct TripsScreen: View {
             // shrinking the visible viewport.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Color.clear.frame(height: Layout.tabBarClearance)
+            }
+            // Trip calendar rows are synthesized by the server rather than
+            // persisted as editable appointments. The embedded web surface can
+            // create, edit, or delete Trips without touching native AppStore
+            // state, so refresh that projection whenever the user leaves Trips.
+            .onDisappear {
+                Task { await store.loadCalendarAndHomework() }
             }
     }
 }

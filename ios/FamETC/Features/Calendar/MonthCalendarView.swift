@@ -8,62 +8,105 @@ import SwiftUI
 struct MonthCalendarView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
-    var onAdd: () -> Void
+    let events: [CalendarEvent]
+    let familyEvents: [FamilyEvent]
+    let homework: [HomeworkItem]
+    var showKidLabels = false
+    var compactLandscape = false
+    var onAdd: (() -> Void)?
     @State private var monthAnchor = MonthCalendarView.firstOfMonth(Date())
 
     private let cal = Calendar.current
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
-    private var cellHeight: CGFloat { hSize == .regular ? 104 : 72 }
+    private var gridSpacing: CGFloat { compactLandscape ? Space.xs : 6 }
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: 7)
+    }
+    private var weekCount: Int { max(1, gridDays.count / 7) }
 
     private var monthEventCount: Int {
         gridDays.compactMap { $0 }
             .filter { cal.isDate($0, equalTo: monthAnchor, toGranularity: .month) }
             .reduce(0) { total, date in
-                total + Agenda.items(on: DateFmt.ymd.string(from: date), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework).count
+                total + Agenda.items(on: DateFmt.ymd.string(from: date), events: events, familyEvents: familyEvents, homework: homework).count
             }
     }
 
     var body: some View {
-        VStack(spacing: Space.md) {
-            header
-            weekdayRow
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(Array(gridDays.enumerated()), id: \.offset) { _, date in
-                        if let date {
-                            DayCell(date: date, key: DateFmt.ymd.string(from: date),
-                                    dayNumber: cal.component(.day, from: date))
-                                .frame(height: cellHeight)
-                        } else {
-                            Color.clear.frame(height: cellHeight)
+        GeometryReader { proxy in
+            VStack(spacing: compactLandscape ? Space.xs : Space.md) {
+                header
+                    .frame(height: 44)
+                weekdayRow
+                    .frame(height: 16)
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: gridSpacing) {
+                        ForEach(Array(gridDays.enumerated()), id: \.offset) { _, date in
+                            if let date {
+                                DayCell(date: date, key: DateFmt.ymd.string(from: date),
+                                        dayNumber: cal.component(.day, from: date),
+                                        events: events, familyEvents: familyEvents, homework: homework,
+                                        showKidLabels: showKidLabels,
+                                        maxVisibleItems: compactLandscape ? 1 : 3)
+                                    .frame(height: cellHeight(availableHeight: proxy.size.height))
+                            } else {
+                                Color.clear.frame(height: cellHeight(availableHeight: proxy.size.height))
+                            }
                         }
                     }
+                    .padding(.bottom, compactLandscape || hSize == .compact ? Layout.tabBarClearance : Space.md)
                 }
-                .padding(.bottom, hSize == .compact ? Layout.tabBarClearance : Space.md)
+                if !compactLandscape {
+                    MicroLabel(text: "\(monthEventCount) item\(monthEventCount == 1 ? "" : "s") this month")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-            MicroLabel(text: "\(monthEventCount) item\(monthEventCount == 1 ? "" : "s") this month")
-                .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, compactLandscape ? Space.md : Space.lg)
+            .padding(.vertical, compactLandscape ? Space.xs : Space.lg)
         }
-        .padding(Space.lg)
         .background(ScreenBackground())
         .refreshable { await store.refreshDashboard() }
+    }
+
+    private func cellHeight(availableHeight: CGFloat) -> CGFloat {
+        guard compactLandscape else { return hSize == .regular ? 104 : 72 }
+        return Self.compactCellHeight(
+            availableHeight: availableHeight,
+            weekCount: weekCount,
+            gridSpacing: gridSpacing
+        )
+    }
+
+    static func compactCellHeight(
+        availableHeight: CGFloat,
+        weekCount: Int,
+        gridSpacing: CGFloat = Space.xs
+    ) -> CGFloat {
+        let fixedHeight = 44 + 16 + (Space.xs * 2) + (Space.xs * 2) + Layout.tabBarClearance
+        let rowGaps = CGFloat(max(0, weekCount - 1)) * gridSpacing
+        let availableRows = availableHeight - fixedHeight - rowGaps
+        return min(72, max(52, floor(availableRows / CGFloat(weekCount))))
     }
 
     private var header: some View {
         HStack {
             Text(monthAnchor.formatted(.dateTime.month(.wide).year()))
-                .font(Typography.title).foregroundStyle(Palette.text)
+                .font(compactLandscape ? Typography.cardTitle : Typography.title)
+                .foregroundStyle(Palette.text)
             Spacer()
-            Button(action: onAdd) {
-                Image(systemName: "plus").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.onAccent)
-                    .frame(width: 36, height: 36).background(Palette.accent, in: Circle())
+            if let onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.onAccent)
+                        .frame(width: 44, height: 44).background(Palette.accent, in: Circle())
+                }
+                .accessibilityLabel("New event")
             }
-            .accessibilityLabel("New event")
             Button { shift(-1) } label: { chevron("chevron.left") }
             Button { monthAnchor = Self.firstOfMonth(Date()) } label: {
                 Text("Today").font(Typography.caption.weight(.bold)).foregroundStyle(Palette.accent)
-                    .padding(.horizontal, Space.md).padding(.vertical, 7)
+                    .padding(.horizontal, Space.md)
+                    .frame(height: 36)
                     .background(Palette.accentSoft, in: Capsule())
+                    .frame(minHeight: 44)
             }
             Button { shift(1) } label: { chevron("chevron.right") }
         }
@@ -71,6 +114,7 @@ struct MonthCalendarView: View {
     private func chevron(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 15, weight: .bold)).foregroundStyle(Palette.accent)
             .frame(width: 36, height: 36).background(Palette.accentSoft, in: Circle())
+            .frame(width: 44, height: 44)
     }
 
     private var weekdayRow: some View {
@@ -115,23 +159,33 @@ private struct DayCell: View {
     let date: Date
     let key: String
     let dayNumber: Int
+    let events: [CalendarEvent]
+    let familyEvents: [FamilyEvent]
+    let homework: [HomeworkItem]
+    let showKidLabels: Bool
+    let maxVisibleItems: Int
     @State private var targeted = false
     @State private var eventDetailRef: DayEventRef?
 
-    private var items: [AgendaItem] { Agenda.items(on: key, events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework) }
+    private var items: [AgendaItem] { Agenda.items(on: key, events: events, familyEvents: familyEvents, homework: homework) }
     private var isToday: Bool { key == Agenda.todayKey() }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(dayNumber)")
-                .font(Typography.mono(12, isToday ? .heavy : .semibold))
-                .foregroundStyle(isToday ? Palette.onAccent : Palette.text)
-                .frame(width: 21, height: 21)
-                .background(isToday ? Palette.accent : Color.clear, in: Circle())
-            ForEach(items.prefix(3)) { chip($0) }
-            if items.count > 3 {
-                Text("+\(items.count - 3)").font(.system(size: 9, weight: .semibold)).foregroundStyle(Palette.textSecond)
+            HStack(spacing: 2) {
+                Text("\(dayNumber)")
+                    .font(Typography.mono(12, isToday ? .heavy : .semibold))
+                    .foregroundStyle(isToday ? Palette.onAccent : Palette.text)
+                    .frame(width: 21, height: 21)
+                    .background(isToday ? Palette.accent : Color.clear, in: Circle())
+                Spacer(minLength: 0)
+                if items.count > maxVisibleItems {
+                    Text("+\(items.count - maxVisibleItems)")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Palette.textSecond)
+                }
             }
+            ForEach(items.prefix(maxVisibleItems)) { chip($0) }
             Spacer(minLength: 0)
         }
         .padding(4)
@@ -158,7 +212,9 @@ private struct DayCell: View {
         let color: Color = Agenda.kidColor(item.kidId, kids: store.kids)
             ?? (item.familyEvent?.category == "trip" ? Palette.teal
                 : (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent)))
-        let titleText = (item.familyEvent?.isRecurring == true ? "↻ " : "") + item.title
+        let kidName = showKidLabels ? Agenda.kidName(item.kidId, kids: store.kids) : nil
+        let titleText = (item.familyEvent?.isRecurring == true ? "↻ " : "")
+            + (kidName.map { "\($0): " } ?? "") + item.title
         let label = HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 1, style: .continuous).fill(color).frame(width: 2.5)
             Text(titleText)

@@ -183,14 +183,18 @@ struct EventDetailSheet: View {
     var occurrenceDate: String? = nil
     @State private var showDeleteConfirm = false
     @State private var showEditSheet = false
+    @State private var reminderEnabled = false
 
     // Occurrences of a recurring series share `id`, so prefer the occurrence
     // that matches the date we were opened from; fall back to any occurrence
     // of the series (e.g. when opened from a chat card with no specific date).
     private var event: FamilyEvent? {
-        store.familyEvents.first { $0.id == eventId && (occurrenceDate == nil || $0.date == occurrenceDate) }
-            ?? store.familyEvents.first { $0.id == eventId }
+        let source = store.isParent ? store.familyEvents : store.visibleFamilyEvents
+        return source.first { $0.id == eventId && (occurrenceDate == nil || $0.date == occurrenceDate) }
+            ?? source.first { $0.id == eventId }
     }
+
+    private var eventKey: String? { event.map { NotificationScheduler.reminderPreferenceKey(for: $0) } }
 
     var body: some View {
         NavigationStack {
@@ -213,6 +217,21 @@ struct EventDetailSheet: View {
                                 Text("Notes").font(Typography.caption.weight(.bold)).foregroundStyle(Palette.textSecond)
                                 Text(notes).font(Typography.body).foregroundStyle(Palette.text)
                             }
+                        }
+                        if let time = ev.time, !time.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Toggle("Reminder", isOn: Binding(
+                                    get: { reminderEnabled },
+                                    set: { setReminder($0, for: ev) }
+                                ))
+                                .frame(minHeight: 44)
+                                Text(ev.isImportedTimetable
+                                     ? "Off by default for timetable lessons. Turn it on for a 10-minute reminder on this device."
+                                     : "Get a local reminder 10 minutes before this event on this device.")
+                                    .font(Typography.caption)
+                                    .foregroundStyle(Palette.textSecond)
+                            }
+                            .padding(.top, Space.sm)
                         }
                         Spacer()
                         // Server-computed: true when this user created the event OR is a
@@ -253,6 +272,24 @@ struct EventDetailSheet: View {
             .navigationTitle("Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+        .onAppear { syncReminderState() }
+        .onChange(of: eventKey) { _, _ in syncReminderState() }
+    }
+
+    private func syncReminderState() {
+        reminderEnabled = event.map { NotificationScheduler.reminderEnabled(for: $0) } ?? false
+    }
+
+    private func setReminder(_ enabled: Bool, for event: FamilyEvent) {
+        reminderEnabled = enabled
+        NotificationScheduler.setReminderEnabled(enabled, for: event)
+        Task {
+            await NotificationScheduler.reschedule(
+                events: store.visibleFamilyEvents,
+                homework: store.homework,
+                kids: store.kids
+            )
         }
     }
 

@@ -2,6 +2,13 @@ import Foundation
 import SwiftUI
 import Observation
 
+extension FamilyEvent {
+    /// Moodle timetable imports use the bridge's canonical school/Timetable shape.
+    var isImportedTimetable: Bool {
+        kidId != nil && category == "school" && notes == "Timetable"
+    }
+}
+
 /// The single source of truth for the native surfaces: the signed-in user's
 /// family (with its kids) and the chat thread. Cache-first load gives an
 /// instant, spinner-free cold start; chat is kept fresh with a long-poll loop
@@ -60,28 +67,26 @@ final class AppStore {
     /// signed-in kid's id for a kid session. `GET /api/calendar/events` and
     /// `/api/calendar/sync` return every family member's events unfiltered (no
     /// server-side kid scoping, unlike homework), so the client applies the
-    /// same rule the web app uses: a kid sees FAMILY events (kidId nil) plus
-    /// events scoped to themself — never a sibling's.
+    /// strict kid rule: a kid sees only events scoped to themself. A kid whose
+    /// profile has not resolved yet fails closed rather than seeing shared rows.
     var kidScope: String? { me?.role == "kid" ? me?.kidId : nil }
-
-    /// Moodle timetable imports use the bridge's canonical school/Timetable
-    /// shape. They belong only to the matching kid's calendar, not a parent's.
-    private func isImportedTimetableEvent(_ event: FamilyEvent) -> Bool {
-        event.kidId != nil && event.category == "school" && event.notes == "Timetable"
-    }
 
     /// Family (manually-added) calendar events visible to the current session.
     var visibleFamilyEvents: [FamilyEvent] {
-        guard let scope = kidScope else {
-            return familyEvents.filter { !isImportedTimetableEvent($0) }
+        if me?.role == "kid" {
+            guard let scope = kidScope else { return [] }
+            return familyEvents.filter { $0.kidId == scope }
         }
-        return familyEvents.filter { $0.kidId == nil || $0.kidId == scope }
+        return familyEvents.filter { !$0.isImportedTimetable }
     }
 
     /// School-feed calendar events visible to the current session.
     var visibleEvents: [CalendarEvent] {
-        guard let scope = kidScope else { return events }
-        return events.filter { $0.kidId == nil || $0.kidId == scope }
+        if me?.role == "kid" {
+            guard let scope = kidScope else { return [] }
+            return events.filter { $0.kidId == scope }
+        }
+        return events
     }
 
     // MARK: Enrichment gating (Notes / Today widgets)
@@ -940,6 +945,14 @@ final class AppStore {
             mergeIncoming([msg], roomId: roomId)   // NEVER append: the long-poll may already have delivered this id
             persist()
         } catch { handle(error) }
+    }
+
+    /// Sends one dedicated Buzz alert. Errors intentionally propagate so the
+    /// Chat composer can keep its draft and offer a retry.
+    func sendBuzz(text: String, roomId: String = familyRoomId) async throws {
+        let msg = try await api.sendChatBuzz(text: text, roomId: roomId)
+        mergeIncoming([msg], roomId: roomId)
+        persist()
     }
 
     /// Convenience used by the native Chat screen — sends as the signed-in user.
