@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Fam ETC",
+  "short_name": "Fam ETC",
+  "description": "A shared family hub for calendars, homework, meals, trips, and chat.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1efec",
+  "theme_color": "#f1efec",
+  "categories": ["family", "lifestyle", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/fametc-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/fametc-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

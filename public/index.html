@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f1efec">
   <title>Fam ETC — Family Planner</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <!-- Dark mode must be applied before first paint (no flash): read the saved
        preference or fall back to the OS setting. Settings > Appearance writes
        fam_theme ('light'|'dark'|'system') via setTheme() in app.js. -->
@@ -566,6 +569,17 @@
 
         <!-- Settings Tab: Manage Family -->
         <div class="tab-panel" id="tab-settings">
+        <section class="card" id="install-app-card" hidden>
+          <h3>📲 Install Fam ETC</h3>
+          <p class="text-muted" style="margin-bottom:12px">
+            Open Fam ETC from your desktop or shelf in its own app window.
+          </p>
+          <button type="button" class="btn-primary" id="install-app-btn" onclick="handleInstallApp()">
+            Install Fam ETC
+          </button>
+          <p id="install-app-status" class="text-muted" role="status" aria-live="polite" style="margin-top:8px"></p>
+        </section>
+
         <section class="card" id="appearance-settings-card">
           <h3>🎨 Appearance</h3>
           <p class="text-muted" style="margin-bottom:12px">Match your device, or pick a theme.</p>

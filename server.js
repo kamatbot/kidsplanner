@@ -585,6 +585,11 @@ const IMMUTABLE = "public, max-age=31536000, immutable";
 app.use("/css", express.static(path.join(PUBLIC, "css"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
 app.use("/js/vendor", express.static(path.join(PUBLIC, "js", "vendor"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
 app.use("/fonts", express.static(path.join(PUBLIC, "fonts"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
+app.use("/icons", express.static(path.join(PUBLIC, "icons"), { setHeaders: (res) => res.setHeader("Cache-Control", IMMUTABLE) }));
+app.get("/manifest.webmanifest", (req, res) => {
+  res.type("application/manifest+json").setHeader("Cache-Control", "no-cache");
+  res.sendFile(path.join(PUBLIC, "manifest.webmanifest"));
+});
 const jsCache = new Map();
 app.get(/^\/js\/([\w.-]+\.js)$/, (req, res, next) => {
   const file = req.params[0];

@@ -138,6 +138,9 @@ html { font-size: 16px; }
 .btn-primary:active { transform: translateY(1px); }
 .btn-primary.full-width { width: 100%; }
 .btn-primary:disabled { opacity: .55; cursor: default; filter: none; }
+#install-app-btn { min-height: 44px; }
+#install-app-btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+#install-app-card[hidden] { display: none; }
 
 .btn-secondary {
   background: var(--panel); color: var(--text);

@@ -5525,6 +5525,59 @@ async function handleLogout() {
 }
 
 /* ============================================================
+   INSTALLABLE WEB APP
+   Chrome owns the final install confirmation. The control is shown only
+   after beforeinstallprompt confirms this browser/profile can install it.
+============================================================ */
+let deferredInstallPrompt = null;
+
+function isInstalledWebApp() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function renderInstallAppControl() {
+  const card = document.getElementById('install-app-card');
+  const button = document.getElementById('install-app-btn');
+  if (!card || !button) return;
+  const canInstall = !!deferredInstallPrompt && !isInstalledWebApp();
+  card.hidden = !canInstall;
+  button.disabled = !canInstall;
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  renderInstallAppControl();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  renderInstallAppControl();
+  toast('✅ Fam ETC installed.');
+});
+
+async function handleInstallApp() {
+  const prompt = deferredInstallPrompt;
+  const button = document.getElementById('install-app-btn');
+  const status = document.getElementById('install-app-status');
+  if (!prompt || !button) return;
+  deferredInstallPrompt = null;
+  button.disabled = true;
+  if (status) status.textContent = 'Opening Chrome installation…';
+  try {
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+    if (choice && choice.outcome === 'dismissed' && status) {
+      status.textContent = 'Installation canceled. You can also install from Chrome’s address bar.';
+    }
+  } catch (e) {
+    if (status) status.textContent = 'Chrome could not start installation. Try the install icon in the address bar.';
+  } finally {
+    renderInstallAppControl();
+  }
+}
+
+/* ============================================================
    WEB PUSH NOTIFICATIONS (Settings tab)
    Registers a root-scope service worker and lets any session (parent OR
    kid — kids have chat access, so this is deliberately not gated behind
@@ -5551,9 +5604,9 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function registerServiceWorker() {
-  if (!pushSupported()) return null;
+  if (!('serviceWorker' in navigator)) return null;
   try {
-    swRegistration = await navigator.serviceWorker.register('/sw.js');
+    swRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
     return swRegistration;
   } catch (e) {
     console.error('Service worker registration failed:', e);
@@ -6199,6 +6252,7 @@ async function init() {
     switchNavTab(requestedTab);
   }
   startKidRequestPolling(); // parents: surface pending kid sign-in requests
+  renderInstallAppControl();
   registerServiceWorker().then(renderNotificationsControl).then(startReminderLoop);
 }
 
