@@ -5909,7 +5909,8 @@ function startReminderLoop() {
        }]
      }
    Returns: { homeworkAdded, eventsAdded, timetableEventsAdded,
-              activityEventsAdded, activityEventsRemoved, homeworkSkipped } (also toasted).
+              activityEventsAdded, activityEventsRemoved, homeworkSkipped,
+              intentionalSkipped, importWarnings } (also toasted).
 ============================================================ */
 
 // Dedupe key helpers — exported as plain functions so they're easy to unit
@@ -5932,7 +5933,7 @@ function parseEcaImportSource(event) {
     kidId: match[1], ecaId: match[2], clubId: match[3], sourceId: match[0],
   } : null;
 }
-function planEcaSnapshotReconciliation(events, kidId, ecaId, activities) {
+function planEcaSnapshotReconciliation(events, kidId, ecaId, activities, options = {}) {
   const desired = new Map((activities || []).map((activity) => [activity.sourceId, activity]));
   const remove = [];
   const ownedInScope = (events || []).filter((event) => {
@@ -5946,7 +5947,7 @@ function planEcaSnapshotReconciliation(events, kidId, ecaId, activities) {
     const unchanged = wanted && schoolImportEventKey(event.date, event.time, event.title, event.kidId) ===
       schoolImportEventKey(wanted.date, wanted.time, wanted.title, kidId);
     if (unchanged) desired.delete(parsed.sourceId);
-    else remove.push(event);
+    else if (!options.preserveOwned) remove.push(event);
   }
 
   const removeIds = new Set(remove.map((event) => event.id));
@@ -5964,12 +5965,94 @@ function planEcaSnapshotReconciliation(events, kidId, ecaId, activities) {
 }
 
 // Normalize a day value from the extension into a 0-4 (Mon-Fri) offset, or
-// null if it can't be mapped (weekend / unrecognized — skipped).
+// null if it can't be mapped (weekend / unrecognized — callers use a fallback).
 function schoolImportDayOffset(day) {
   if (typeof day === 'number' && day >= 0 && day <= 4) return day;
   const map = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4 };
   const key = String(day || '').trim().slice(0, 3).toLowerCase();
   return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+}
+
+const SCHOOL_IMPORT_HOMEWORK_FALLBACK_TITLE = 'Imported homework — needs review';
+const SCHOOL_IMPORT_TIMETABLE_FALLBACK_TITLE = 'Imported timetable item — needs review';
+const SCHOOL_IMPORT_ACTIVITY_FALLBACK_TITLE = 'Imported activity — needs review';
+const SCHOOL_IMPORT_WARNING_TEXT = 'Import warning — needs review';
+const SCHOOL_IMPORT_MAX_WARNINGS = 100;
+const SCHOOL_IMPORT_KID_ID_RE = /^[^:]{1,120}$/;
+const SCHOOL_IMPORT_NUMERIC_ID_RE = /^\d{1,20}$/;
+
+function schoolImportTodayIso(now) {
+  const date = now || new Date();
+  return isoDate(new Date(date.getFullYear(), date.getMonth(), date.getDate()));
+}
+
+function schoolImportHasRawContent(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.keys(value).some((key) => value[key] !== null && value[key] !== undefined && String(value[key]).trim() !== '');
+}
+
+function schoolImportRawValue(value) {
+  if (value === null || value === undefined) return '(missing)';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch (e) {
+    return String(value);
+  }
+}
+
+function schoolImportNotes(fields, message) {
+  const raw = Object.entries(fields)
+    .map(([key, value]) => `${key}: ${schoolImportRawValue(value)}`)
+    .join('; ');
+  return `${SCHOOL_IMPORT_WARNING_TEXT}: ${message}\nRaw values — ${raw}`.slice(0, 950);
+}
+
+function schoolImportWarning(result, type, title, message, added) {
+  if (result.importWarnings.length >= SCHOOL_IMPORT_MAX_WARNINGS) {
+    if (!result.importWarnings.some((warning) => warning.type === 'import-truncated' && warning.title === 'Import warnings truncated')) {
+      result.importWarnings.push({
+        type: 'import-truncated',
+        title: 'Import warnings truncated',
+        message: `Additional import warnings were omitted after ${SCHOOL_IMPORT_MAX_WARNINGS} entries.`,
+        added: false,
+      });
+    }
+    return;
+  }
+  const plain = (value, fallback, limit) => String(value || fallback).replace(/<[^>]*>/g, '').slice(0, limit);
+  result.importWarnings.push({
+    type: plain(type, 'import', 40),
+    title: plain(title, 'Imported item', 160),
+    message: plain(message, 'Import needs review.', 300),
+    added: added === true,
+  });
+}
+
+function schoolImportErrorMessage(error, fallback) {
+  return String((error && error.message) || error || fallback || 'Import failed.').slice(0, 260);
+}
+
+function schoolImportParserWarningText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    const detail = value.message || value.warning || value.text;
+    if (detail) return String(detail);
+    try {
+      return JSON.stringify(value);
+    } catch (e) {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function schoolImportMergeParserWarnings(result, parseWarnings) {
+  if (!Array.isArray(parseWarnings)) return;
+  for (const warning of parseWarnings) {
+    const message = schoolImportParserWarningText(warning).replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (message) schoolImportWarning(result, 'parser', 'School parser warning', message, false);
+  }
 }
 
 /* ============================================================
@@ -6056,6 +6139,16 @@ async function famImportSchoolData(payload) {
     activityEventsAdded: 0,
     activityEventsRemoved: 0,
     homeworkSkipped: 0,
+    intentionalSkipped: 0,
+    homeworkIntentionalSkipped: 0,
+    timetableIntentionalSkipped: 0,
+    activityIntentionalSkipped: 0,
+    importWarnings: [],
+  };
+  schoolImportMergeParserWarnings(result, payload && payload.parseWarnings);
+  const intentionalSkip = (counter) => {
+    result.intentionalSkipped++;
+    result[counter]++;
   };
   try {
     if (isKidSession()) {
@@ -6091,19 +6184,50 @@ async function famImportSchoolData(payload) {
         existing = await window.auth.getHomework({ kidId });
       } catch (e) {
         existing = [];
+        schoolImportWarning(result, 'homework-read', 'Homework import',
+          `Could not read existing homework: ${schoolImportErrorMessage(e, 'API read failed.')}`, false);
       }
-      const existingKeys = new Set(
-        (existing || []).map((h) => schoolImportHomeworkKey(h.title, h.dueDate))
-      );
+      const existingKeys = new Set();
+      for (const h of (existing || [])) {
+        const baseKey = schoolImportHomeworkKey(h.title, h.dueDate);
+        existingKeys.add(baseKey);
+        const notes = String(h.notes || '');
+        if (notes.startsWith(SCHOOL_IMPORT_WARNING_TEXT)) existingKeys.add(`${baseKey}|${notes}`);
+      }
       const seenThisRun = new Set();
 
       for (const hw of hwList) {
-        if (!hw || hw.completed) { result.homeworkSkipped++; continue; } // skip completed by default
-        const title = String(hw.title || '').trim();
-        const dueDate = normalizeSchoolImportDate(hw.dueDate);
-        if (!title || !dueDate) { result.homeworkSkipped++; continue; }
-        const key = schoolImportHomeworkKey(title, dueDate);
-        if (existingKeys.has(key) || seenThisRun.has(key)) { result.homeworkSkipped++; continue; }
+        if (!hw) {
+          schoolImportWarning(result, 'homework', SCHOOL_IMPORT_HOMEWORK_FALLBACK_TITLE,
+            'Empty homework row could not be imported.', false);
+          continue;
+        }
+        if (hw.completed) {
+          result.homeworkSkipped++;
+          intentionalSkip('homeworkIntentionalSkipped');
+          continue;
+        }
+        const rawTitle = hw.title;
+        const rawDueDate = hw.dueDate;
+        const title = String(rawTitle || '').trim() || SCHOOL_IMPORT_HOMEWORK_FALLBACK_TITLE;
+        const dueDate = normalizeSchoolImportDate(rawDueDate) || schoolImportTodayIso();
+        const normalizedRawDueDate = normalizeSchoolImportDate(rawDueDate);
+        const malformed = !String(rawTitle || '').trim() || !normalizedRawDueDate;
+        const warningMessage = [
+          !String(rawTitle || '').trim() ? 'title is missing' : '',
+          !normalizedRawDueDate ? 'due date is missing or unparseable' : '',
+        ].filter(Boolean).join('; ');
+        const notes = malformed
+          ? schoolImportNotes({ title: rawTitle, dueDate: rawDueDate, subject: hw.subject, setDate: hw.setDate, rawText: hw.rawText, warnings: hw.warnings }, warningMessage)
+          : (hw.setDate ? `Set ${hw.setDate}` : '');
+        const key = malformed
+          ? `${schoolImportHomeworkKey(title, dueDate)}|${notes}`
+          : schoolImportHomeworkKey(title, dueDate);
+        if (existingKeys.has(key) || seenThisRun.has(key)) {
+          result.homeworkSkipped++;
+          intentionalSkip('homeworkIntentionalSkipped');
+          continue;
+        }
         seenThisRun.add(key);
 
         try {
@@ -6113,23 +6237,36 @@ async function famImportSchoolData(payload) {
             subject: hw.subject || '',
             dueDate,
             source: 'school-portal',
-            notes: hw.setDate ? `Set ${hw.setDate}` : '',
+            notes,
           });
           result.homeworkAdded++;
+          existingKeys.add(key);
+          if (malformed) {
+            schoolImportWarning(result, 'homework', title, warningMessage, true);
+          }
         } catch (e) {
-          result.homeworkSkipped++;
+          schoolImportWarning(result, 'homework', title,
+            `Could not save homework: ${schoolImportErrorMessage(e, 'API write failed.')}`, false);
+          if (malformed) {
+            schoolImportWarning(result, 'homework', title, warningMessage, false);
+          }
         }
       }
 
       // The extension runs inside an already-open Fam ETC tab. Refresh every
       // homework-backed surface immediately so a successful import cannot
       // leave that tab showing the pre-import snapshot.
-      await loadHomework();
-      renderHomeworkHub();
-      renderCalendar();
-      renderTodayScreen();
-      applyEnrichmentGating();
-      updateHomeworkBadge();
+      try {
+        await loadHomework();
+        renderHomeworkHub();
+        renderCalendar();
+        renderTodayScreen();
+        applyEnrichmentGating();
+        updateHomeworkBadge();
+      } catch (e) {
+        schoolImportWarning(result, 'homework-refresh', 'Homework import',
+          `Homework was saved but the view could not refresh: ${schoolImportErrorMessage(e)}`, false);
+      }
     }
 
     /* ---------- Timetable -> calendar events (current Mon-Fri) ---------- */
@@ -6138,39 +6275,78 @@ async function famImportSchoolData(payload) {
       const monday = mondayOf(new Date());
       const events = getEvents();
       const existingKeys = new Set(events.map((e) => schoolImportEventKey(e.date, e.time, e.title, e.kidId)));
+      let eventsChanged = false;
 
       for (const lesson of ttList) {
-        if (!lesson) continue;
+        if (!lesson || typeof lesson !== 'object' || !schoolImportHasRawContent(lesson)) {
+          schoolImportWarning(result, 'timetable', SCHOOL_IMPORT_TIMETABLE_FALLBACK_TITLE,
+            'Empty timetable row was not a usable candidate.', false);
+          continue;
+        }
         const offset = schoolImportDayOffset(lesson.day);
-        if (offset === null) continue;
-        const title = String(lesson.subject || '').trim();
-        const time = String(lesson.time || '').trim();
-        if (!title || !time) continue;
-        const date = isoDate(new Date(+monday + offset * 86400000));
+        const parsedDate = lesson.date ? normalizeSchoolImportDate(lesson.date) : null;
+        const hasRawDate = !!String(lesson.date || '').trim();
+        const date = hasRawDate
+          ? (parsedDate || schoolImportTodayIso())
+          : (offset === null ? schoolImportTodayIso() : isoDate(new Date(+monday + offset * 86400000)));
+        const rawTitle = String(lesson.subject || '').trim() ? lesson.subject : lesson.title;
+        const title = String(rawTitle || '').trim() || SCHOOL_IMPORT_TIMETABLE_FALLBACK_TITLE;
+        const rawTime = lesson.time;
+        const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(rawTime || '').trim())
+          ? String(rawTime).trim()
+          : '';
+        const malformed = offset === null || (lesson.date && !parsedDate) || !String(rawTitle || '').trim() || !time;
+        const warningMessage = [
+          offset === null ? 'day is missing or unrecognized' : '',
+          lesson.date && !parsedDate ? 'date is missing or unparseable' : '',
+          !String(rawTitle || '').trim() ? 'subject/title is missing' : '',
+          !time ? 'time is missing or invalid' : '',
+        ].filter(Boolean).join('; ');
         const key = schoolImportEventKey(date, time, title, kidId);
-        if (existingKeys.has(key)) continue;
-        existingKeys.add(key);
+        if (existingKeys.has(key)) {
+          intentionalSkip('timetableIntentionalSkipped');
+          continue;
+        }
 
-        events.push({
-          id: uid(),
-          userId: sessionUser.id,
-          kidId,
-          title,
-          date,
-          time,
-          endTime: '',
-          category: 'school',
-          notes: 'Timetable',
-          source: 'timetable-import',
-        });
-        result.eventsAdded++;
-        result.timetableEventsAdded++;
+        try {
+          const response = await window.auth.addCalendarEvent({
+            kidId,
+            title,
+            date,
+            time,
+            endTime: '',
+            category: 'school',
+            notes: malformed
+              ? schoolImportNotes({ day: lesson.day, dayLabel: lesson.dayLabel, date: lesson.date, period: lesson.period, periodRaw: lesson.periodRaw, time: lesson.time, timeRaw: lesson.timeRaw, subject: lesson.subject, title: lesson.title, rawText: lesson.rawText, warnings: lesson.warnings }, warningMessage)
+              : 'Timetable',
+            silent: true,
+          });
+          if (!response || !response.event) throw new Error('API returned no calendar event.');
+          events.push(response.event);
+          existingKeys.add(key);
+          eventsChanged = true;
+          if (!response.existing) {
+            result.eventsAdded++;
+            result.timetableEventsAdded++;
+          } else {
+            intentionalSkip('timetableIntentionalSkipped');
+          }
+          if (malformed) schoolImportWarning(result, 'timetable', title, warningMessage, true);
+        } catch (e) {
+          schoolImportWarning(result, 'timetable', title,
+            `Could not save timetable item: ${schoolImportErrorMessage(e, 'API write failed.')}`, false);
+          if (malformed) schoolImportWarning(result, 'timetable', title, warningMessage, false);
+        }
       }
 
-      if (result.eventsAdded > 0) {
-        saveEvents(events);
-        loadFamilyEvents(); // push to the server (silent — no chat flood)
-        renderCalendar();
+      if (eventsChanged) {
+        try {
+          saveEvents(events);
+          renderCalendar();
+        } catch (e) {
+          schoolImportWarning(result, 'timetable-persistence', 'Timetable import',
+            `Timetable events were accepted but local persistence failed: ${schoolImportErrorMessage(e)}`, false);
+        }
       }
     }
 
@@ -6189,23 +6365,71 @@ async function famImportSchoolData(payload) {
       const moodleUserId = String((payload && payload.moodleUserId) || '');
 
       for (const snapshot of activitySnapshots) {
-        const ecaId = String((snapshot && snapshot.ecaId) || '');
-        if (!moodleUserId || !ecaId || !snapshot || !Array.isArray(snapshot.activities)) continue;
+        const ecaId = String((snapshot && snapshot.ecaId) || '').trim();
+        if (!moodleUserId || !ecaId || !snapshot || !Array.isArray(snapshot.activities)) {
+          schoolImportWarning(result, 'activity-snapshot', SCHOOL_IMPORT_ACTIVITY_FALLBACK_TITLE,
+            'Activity snapshot was incomplete and could not be reconciled.', false);
+          continue;
+        }
 
         const normalizedActivities = [];
+        const ordinaryActivities = [];
+        let unsafeRemoval = false;
+        const validEcaId = SCHOOL_IMPORT_NUMERIC_ID_RE.test(ecaId);
+        const validKidId = SCHOOL_IMPORT_KID_ID_RE.test(String(kidId));
         for (const activity of snapshot.activities) {
-          if (!activity) continue;
-          const clubId = String(activity.clubId || '');
+          if (!activity || typeof activity !== 'object') {
+            unsafeRemoval = true;
+            schoolImportWarning(result, 'activity', SCHOOL_IMPORT_ACTIVITY_FALLBACK_TITLE,
+              'Empty activity row could not be imported.', false);
+            continue;
+          }
+          const clubId = String(activity.clubId || '').trim();
           const title = String(activity.title || '').trim();
           const date = normalizeSchoolImportDate(activity.date);
           const time = String(activity.time || '').trim();
-          if (!clubId || !title || !date || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) continue;
-          const sourceId = ecaImportSourceId(kidId, ecaId, clubId);
-          normalizedActivities.push({ sourceType: ECA_SOURCE_TYPE, sourceId, title, date, time });
+          const validClubId = SCHOOL_IMPORT_NUMERIC_ID_RE.test(clubId) && validEcaId && validKidId;
+          const validTitle = !!title;
+          const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+          const malformed = !validTitle || !date || !validTime || !validClubId;
+          if (malformed) unsafeRemoval = true;
+          const fallbackTitle = validTitle ? title : SCHOOL_IMPORT_ACTIVITY_FALLBACK_TITLE;
+          const fallbackDate = date || schoolImportTodayIso();
+          const fallbackTime = validTime ? time : '';
+          const warningMessage = [
+            !validTitle ? 'title is missing' : '',
+            !date ? 'date is missing or unparseable' : '',
+            !validTime ? 'time is missing or invalid' : '',
+            !validClubId ? 'club or ECA identifier is missing or invalid; automatic ECA removal cannot be guaranteed' : '',
+          ].filter(Boolean).join('; ');
+          const fallbackNotes = malformed
+            ? schoolImportNotes({ title: activity.title, date: activity.date, time: activity.time, clubId: activity.clubId, timeslot: activity.timeslot, rawText: activity.rawText, warnings: activity.warnings }, warningMessage)
+            : 'Signed up activity';
+
+          if (validClubId) {
+            const sourceId = ecaImportSourceId(kidId, ecaId, clubId);
+            normalizedActivities.push({
+              sourceType: ECA_SOURCE_TYPE, sourceId, title: fallbackTitle, date: fallbackDate, time: fallbackTime,
+              ...(malformed ? { notes: fallbackNotes, warningMessage } : {}),
+            });
+          } else {
+            unsafeRemoval = true;
+            ordinaryActivities.push({
+              title: fallbackTitle, date: fallbackDate, time: fallbackTime,
+              notes: fallbackNotes, warningMessage,
+            });
+          }
         }
 
-        const plan = planEcaSnapshotReconciliation(events, kidId, ecaId, normalizedActivities);
+        const plan = planEcaSnapshotReconciliation(events, kidId, ecaId, normalizedActivities, { preserveOwned: unsafeRemoval });
         const failedRemovalMarkers = new Set();
+        const plannedSourceIds = new Set(plan.add.map((activity) => activity.sourceId));
+        for (const activity of normalizedActivities) {
+          if (activity.warningMessage && !plannedSourceIds.has(activity.sourceId)) {
+            schoolImportWarning(result, 'activity', activity.title,
+              `${activity.warningMessage}; existing event was preserved; fallback was not added.`, false);
+          }
+        }
         for (const event of plan.remove) {
           if (String(event.id).startsWith('ev_')) {
             try {
@@ -6213,6 +6437,8 @@ async function famImportSchoolData(payload) {
             } catch (e) {
               const parsed = parseEcaImportSource(event);
               if (parsed) failedRemovalMarkers.add(parsed.sourceId);
+              schoolImportWarning(result, 'activity-remove', event.title || SCHOOL_IMPORT_ACTIVITY_FALLBACK_TITLE,
+                `Could not remove old activity: ${schoolImportErrorMessage(e, 'API delete failed.')}; replacement was blocked.`, false);
               continue;
             }
           }
@@ -6222,7 +6448,62 @@ async function famImportSchoolData(payload) {
         }
 
         for (const activity of plan.add) {
-          if (failedRemovalMarkers.has(activity.sourceId)) continue;
+          if (failedRemovalMarkers.has(activity.sourceId)) {
+            schoolImportWarning(result, 'activity-replacement', activity.title,
+              'Replacement was blocked because the old activity could not be removed.', false);
+            continue;
+          }
+          try {
+            const activityPayload = {
+              kidId,
+              title: activity.title,
+              date: activity.date,
+              time: activity.time,
+              endTime: '',
+              category: 'school',
+              notes: 'Signed up activity',
+              silent: true,
+            };
+            if (activity.notes) activityPayload.notes = activity.notes;
+            if (activity.sourceType) {
+              Object.assign(activityPayload, {
+                sourceType: activity.sourceType,
+                sourceId: activity.sourceId,
+              });
+            }
+            const response = await window.auth.addCalendarEvent(activityPayload);
+            if (!response || !response.event) throw new Error('API returned no calendar event.');
+            const stored = response.event;
+            events = events.filter((event) => event.id !== stored.id).concat([stored]);
+            if (!response.existing) {
+              result.eventsAdded++;
+              result.activityEventsAdded++;
+            } else {
+              intentionalSkip('activityIntentionalSkipped');
+            }
+            changed = true;
+            if (activity.warningMessage) {
+              const warningAdded = !response.existing;
+              const warningMessage = warningAdded
+                ? activity.warningMessage
+                : `${activity.warningMessage}; existing event was preserved; fallback was not added.`;
+              schoolImportWarning(result, 'activity', activity.title, warningMessage, warningAdded);
+            }
+          } catch (e) {
+            schoolImportWarning(result, 'activity', activity.title,
+              `Could not save activity: ${schoolImportErrorMessage(e, 'API write failed.')}`, false);
+            if (activity.warningMessage) schoolImportWarning(result, 'activity', activity.title, activity.warningMessage, false);
+          }
+        }
+
+        for (const activity of ordinaryActivities) {
+          const key = schoolImportEventKey(activity.date, activity.time, activity.title, kidId);
+          if (events.some((event) => schoolImportEventKey(event.date, event.time, event.title, event.kidId) === key)) {
+            intentionalSkip('activityIntentionalSkipped');
+            if (activity.warningMessage) schoolImportWarning(result, 'activity', activity.title,
+              `${activity.warningMessage}; an equivalent calendar event already exists.`, true);
+            continue;
+          }
           try {
             const response = await window.auth.addCalendarEvent({
               kidId,
@@ -6231,28 +6512,41 @@ async function famImportSchoolData(payload) {
               time: activity.time,
               endTime: '',
               category: 'school',
-              notes: 'Signed up activity',
-              sourceType: activity.sourceType,
-              sourceId: activity.sourceId,
+              notes: activity.notes,
               silent: true,
             });
-            const stored = response.event;
-            events = events.filter((event) => event.id !== stored.id).concat([stored]);
+            if (!response || !response.event) throw new Error('API returned no calendar event.');
+            events = events.concat([response.event]);
+            changed = true;
             if (!response.existing) {
               result.eventsAdded++;
               result.activityEventsAdded++;
+            } else {
+              intentionalSkip('activityIntentionalSkipped');
             }
-            changed = true;
+            if (activity.warningMessage) {
+              const warningAdded = !response.existing;
+              const warningMessage = warningAdded
+                ? activity.warningMessage
+                : `${activity.warningMessage}; existing event was preserved; fallback was not added.`;
+              schoolImportWarning(result, 'activity', activity.title, warningMessage, warningAdded);
+            }
           } catch (e) {
-            // Do not claim a successful activity import unless the server
-            // accepted it; the next extension sync can safely retry.
+            schoolImportWarning(result, 'activity', activity.title,
+              `Could not save activity: ${schoolImportErrorMessage(e, 'API write failed.')}`, false);
+            if (activity.warningMessage) schoolImportWarning(result, 'activity', activity.title, activity.warningMessage, false);
           }
         }
       }
 
       if (changed) {
-        saveEvents(events);
-        renderCalendar();
+        try {
+          saveEvents(events);
+          renderCalendar();
+        } catch (e) {
+          schoolImportWarning(result, 'activity-persistence', 'Activity import',
+            `Activities were accepted but local persistence failed: ${schoolImportErrorMessage(e)}`, false);
+        }
       }
     }
 
@@ -6270,11 +6564,15 @@ async function famImportSchoolData(payload) {
       }
     }
 
+    const firstWarning = result.importWarnings[0];
     toast(`🎓 Imported: ${result.homeworkAdded} homework, ${result.timetableEventsAdded} timetable events, ${result.activityEventsAdded} activities added, ${result.activityEventsRemoved} removed` +
-      (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped)` : ''));
+      (result.intentionalSkipped ? ` (${result.intentionalSkipped} intentional skips)` : '') +
+      (firstWarning ? ` ⚠️ ${result.importWarnings.length} review/error warning${result.importWarnings.length === 1 ? '' : 's'}: ${firstWarning.title} — ${firstWarning.message}` : ''));
     return result;
   } catch (e) {
-    toast(`❌ Import failed: ${(e && e.message) || 'unknown error'}`);
+    schoolImportWarning(result, 'import', 'School import', schoolImportErrorMessage(e, 'unknown error'), false);
+    const firstWarning = result.importWarnings[0];
+    toast(`❌ Import failed — review/error warning: ${firstWarning.title} — ${firstWarning.message}`);
     return result;
   }
 }
@@ -6287,7 +6585,16 @@ async function famImportSchoolData(payload) {
 function normalizeSchoolImportDate(raw, now) {
   if (!raw) return null;
   const s = String(raw).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const validDate = (year, monthIdx, dayNum) => {
+    const date = new Date(0);
+    date.setHours(0, 0, 0, 0);
+    date.setFullYear(year, monthIdx, dayNum);
+    return date.getFullYear() === year && date.getMonth() === monthIdx && date.getDate() === dayNum
+      ? isoDate(date)
+      : null;
+  };
+  const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return validDate(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
 
   const weekdays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const weekdayText = s.toLowerCase().replace(/\.$/, '');
@@ -6304,7 +6611,8 @@ function normalizeSchoolImportDate(raw, now) {
   if (!m) return null;
   const dayNum = parseInt(m[1], 10);
   const monthName = m[2].toLowerCase();
-  const monthIdx = MONTHS.findIndex((month) => month === monthName || month.slice(0, 3) === monthName);
+  const monthIdx = MONTHS.findIndex((month, index) =>
+    month === monthName || month.slice(0, 3) === monthName || (index === 8 && monthName === 'sept'));
   if (monthIdx === -1 || !dayNum) return null;
 
   let year;
@@ -6321,7 +6629,7 @@ function normalizeSchoolImportDate(raw, now) {
     const academicStartYear = curMonth >= 7 ? curYear : curYear - 1;
     year = monthIdx >= 7 ? academicStartYear : academicStartYear + 1;
   }
-  return isoDate(new Date(year, monthIdx, dayNum));
+  return validDate(year, monthIdx, dayNum);
 }
 
 // The chrome extension's background.js calls window.famImportSchoolData(...)

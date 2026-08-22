@@ -118,8 +118,9 @@ of them synced from a single Moodle login, no per-kid manual steps needed.
 - **Teacher/room not split out**: each timetable cell's full text (subject,
   teacher, room, group) is stored as-is in the event title/notes rather
   than being parsed into separate fields.
-- **2-week (Wk1/Wk2) timetables**: if the school timetable page alternates
-  between two weeks, only the first week's rows are imported.
+- **2-week (Wk1/Wk2) timetables**: normal first-week rows import as usual;
+  unusual or second-week rows are kept as editable review items instead of
+  being silently discarded.
 - **A `fametc.com` tab must be open and logged in** for auto-sync or manual
   import to write anything — the callout banner exists specifically to
   prompt you to open one.

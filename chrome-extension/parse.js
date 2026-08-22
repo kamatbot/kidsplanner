@@ -21,6 +21,27 @@ function looksLikeMoodleLoginPage(html) {
   return hasPasswordField && !hasKnownContent;
 }
 
+const PARSER_MAX_TEXT = 600;
+const PARSER_MAX_WARNING = 300;
+const PARSER_MAX_WARNINGS = 40;
+
+function boundedParserText(value, max = PARSER_MAX_TEXT) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function addParserWarning(warnings, message) {
+  const warning = boundedParserText(message, PARSER_MAX_WARNING);
+  if (warning && warnings.length < PARSER_MAX_WARNINGS && !warnings.includes(warning)) {
+    warnings.push(warning);
+  }
+  return warning;
+}
+
+function attachParserWarnings(value, warnings) {
+  value.parserWarnings = warnings.slice(0, PARSER_MAX_WARNINGS);
+  return value;
+}
+
 /* ---------- homework parsing ----------
    GET /mod/homework/view.php?h=2&userid=<id>&showcompleted=0&limit=0
    Task = <div class="accordion-item applyhwclass ...">, completed tasks
@@ -32,35 +53,48 @@ function parseHomeworkHtml(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const nodes = doc.querySelectorAll(".accordion-item.applyhwclass");
   const items = [];
+  const parserWarnings = [];
 
-  nodes.forEach((node) => {
+  nodes.forEach((node, index) => {
     const subjectEl = node.querySelector(".subject");
     const titleEl = node.querySelector(".title");
     const dateEl = node.querySelector(".date");
-    if (!titleEl) return;
+    const rowWarnings = [];
 
     const completed = node.classList.contains("tickon");
-    const subject = (subjectEl && subjectEl.textContent.trim()) || "";
-    const title = titleEl.textContent.trim();
-    const visibleDate = (dateEl && dateEl.textContent.trim()) || "";
+    const subject = boundedParserText(subjectEl && subjectEl.textContent);
+    const title = boundedParserText(titleEl && titleEl.textContent);
+    const visibleDate = boundedParserText(dateEl && dateEl.textContent);
     const titleAttr = (dateEl && dateEl.getAttribute("title")) || "";
+
+    if (!subjectEl || !subject) rowWarnings.push(`Homework row ${index + 1} is missing a subject.`);
+    if (!titleEl || !title) rowWarnings.push(`Homework row ${index + 1} is missing a title.`);
+    if (!dateEl || !visibleDate) rowWarnings.push(`Homework row ${index + 1} is missing a due date.`);
 
     // titleAttr looks like: "This task was completed on <D>\nIt was set <D>"
     // or just "It was set <D>" for incomplete tasks.
     let setDate = null;
     const setMatch = titleAttr.match(/It was set\s+([^\n]+)/i);
-    if (setMatch) setDate = setMatch[1].trim();
+    if (setMatch) setDate = boundedParserText(setMatch[1]);
+    else if (titleAttr) rowWarnings.push(`Homework row ${index + 1} has an unrecognized set-date format.`);
 
-    items.push({
+    rowWarnings.forEach((warning) => addParserWarning(parserWarnings, warning));
+
+    const item = {
       subject,
       title,
       dueDate: visibleDate, // e.g. "Thu 18 June" — normalized app-side
       setDate,
       completed,
-    });
+    };
+    if (rowWarnings.length) {
+      item.rawText = boundedParserText(node.textContent);
+      item.warnings = rowWarnings.slice(0, PARSER_MAX_WARNINGS);
+    }
+    items.push(item);
   });
 
-  return items;
+  return attachParserWarnings(items, parserWarnings);
 }
 
 /* ---------- timetable parsing ----------
@@ -68,7 +102,8 @@ function parseHomeworkHtml(html) {
    <table class="sta_timetable generaltable table">: header cells like
    "Reg07:45","P108:00",... (period code + HH:MM). Each following <tr> is a
    day; each td.cell holds concatenated "SubjectTeacher Room Group" text.
-   May be a 2-week (Wk1/Wk2) timetable — best-effort, noted as a limitation.
+   May be a 2-week (Wk1/Wk2) timetable — populated rows from both weeks are
+   preserved, with unusual rows reported for review.
 */
 function splitPeriodHeader(text) {
   // e.g. "P108:00" -> { period: "P1", time: "08:00" }; "Reg07:45" -> { period: "Reg", time: "07:45" }
@@ -77,19 +112,39 @@ function splitPeriodHeader(text) {
   return { period: m[1].trim(), time: m[2].trim() };
 }
 
+function timetableDayValue(label) {
+  const raw = boundedParserText(label);
+  const match = raw.match(/^(?:wk\s*[12]\s*)?(mon|tue|wed|thu|fri)(?:day)?\b/i);
+  if (match && !/wk\s*2/i.test(raw)) {
+    return { value: { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4 }[match[1].toLowerCase()], raw };
+  }
+  return { value: raw, raw };
+}
+
 function parseTimetableHtml(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const table = doc.querySelector("table.sta_timetable");
-  if (!table) return { lessons: [], twoWeek: false };
+  if (!table) return attachParserWarnings(
+    { lessons: [], twoWeek: false },
+    ["Timetable table was not found; no lessons could be imported."]
+  );
 
   const rows = Array.from(table.querySelectorAll("tr"));
-  if (!rows.length) return { lessons: [], twoWeek: false };
+  if (!rows.length) return attachParserWarnings(
+    { lessons: [], twoWeek: false },
+    ["Timetable table has no rows; no lessons could be imported."]
+  );
 
-  const headerCells = Array.from(rows[0].querySelectorAll("th, td")).slice(1); // first cell is usually blank/day label col
+  const firstRowCells = Array.from(rows[0].querySelectorAll("th, td"));
+  const hasHeader = rows[0].querySelectorAll("th").length > 0 ||
+    !firstRowCells.length ||
+    firstRowCells.some((cell) => /\d{1,2}:\d{2}/.test(cell.textContent || ""));
+  const headerCells = hasHeader ? firstRowCells.slice(1) : []; // first cell is usually blank/day label col
   const periods = headerCells.map((c) => splitPeriodHeader(c.textContent));
 
-  const dayRows = rows.slice(1);
+  const dayRows = hasHeader ? rows.slice(1) : rows;
   const lessons = [];
+  const parserWarnings = [];
   let twoWeek = false;
 
   dayRows.forEach((row, dayIdx) => {
@@ -97,26 +152,40 @@ function parseTimetableHtml(html) {
     if (!cells.length) return;
     // First cell is typically the day name (may include "Wk1"/"Wk2" — treat
     // as a 2-week timetable if we see that pattern anywhere).
-    const dayLabel = cells[0].textContent.trim();
+    const dayLabel = boundedParserText(cells[0].textContent);
     if (/wk\s*[12]/i.test(dayLabel)) twoWeek = true;
-    if (dayIdx > 4) return; // only Mon-Fri (rows beyond index 4 likely a Wk2 block)
 
     const lessonCells = cells.slice(1);
     lessonCells.forEach((cell, i) => {
-      const text = cell.textContent.replace(/\s+/g, " ").trim();
+      const text = boundedParserText(cell.textContent);
       if (!text) return;
-      const period = periods[i] || {};
-      if (!period.time) return;
-      lessons.push({
-        day: dayIdx, // 0=Mon .. 4=Fri
+      const period = periods[i] || { period: "", time: "" };
+      const day = timetableDayValue(dayLabel);
+      const rowWarnings = [];
+      if (!hasHeader) rowWarnings.push("Timetable has no recognizable header row.");
+      if (!dayLabel || typeof day.value !== "number") rowWarnings.push(`Timetable lesson ${dayIdx + 1} has an unrecognized day label.`);
+      if (!period.period && !period.time) rowWarnings.push(`Timetable lesson ${dayIdx + 1} has no period header.`);
+      else if (!period.time) rowWarnings.push(`Timetable lesson ${dayIdx + 1} has an unrecognized period/time format.`);
+      rowWarnings.forEach((warning) => addParserWarning(parserWarnings, warning));
+      const lesson = {
+        day: day.value, // 0=Mon .. 4=Fri, or the raw value when malformed
         period: period.period || "",
         time: period.time,
         subject: text, // best-effort: whole cell text (Subject/Teacher/Room/Group concatenated)
-      });
+      };
+      if (rowWarnings.length) {
+        lesson.dayLabel = dayLabel;
+        lesson.periodRaw = boundedParserText(headerCells[i] && headerCells[i].textContent);
+        lesson.timeRaw = boundedParserText(period.time);
+        lesson.rawText = text;
+        lesson.warnings = rowWarnings.slice(0, PARSER_MAX_WARNINGS);
+      }
+      lessons.push(lesson);
     });
   });
 
-  return { lessons, twoWeek };
+  if (!lessons.length) addParserWarning(parserWarnings, "No populated timetable lesson cells were found.");
+  return attachParserWarnings({ lessons, twoWeek }, parserWarnings);
 }
 
 /* ---------- signed-up ECA/activity parsing ----------
@@ -125,7 +194,7 @@ function parseTimetableHtml(html) {
      <th><input class="timeslot-radio" data-index="1787215500">Thursday ...</th>
      <tr data-clubid="64894"><td class="wait">Signed up</td>
        <td class="name"><a>High School Flames Chess Tryouts</a></td></tr>
-   Only rows whose visible status is exactly "Signed up" are imported;
+   Only rows whose visible status is "Signed up" (case-insensitive) are imported;
    availability and waitlist rows are deliberately ignored.
 */
 function parseEcaTimeslot(text) {
@@ -153,32 +222,47 @@ function parseEcaTimeslot(text) {
 function parseSignedUpActivitiesHtml(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const table = doc.querySelector("table#ecastudentview");
-  if (!table) return [];
+  if (!table) return attachParserWarnings([], ["ECA signup table was not found; no activities could be imported."]);
 
   const activities = [];
+  const parserWarnings = [];
   let timeslot = null;
-  Array.from(table.querySelectorAll("tr")).forEach((row) => {
+  Array.from(table.querySelectorAll("tr")).forEach((row, index) => {
     const header = row.querySelector("th");
     if (header && header.querySelector(".timeslot-radio")) {
-      timeslot = parseEcaTimeslot(header.textContent);
+      const raw = boundedParserText(header.textContent);
+      timeslot = { raw, parsed: parseEcaTimeslot(raw) };
+      if (!timeslot.parsed) addParserWarning(parserWarnings, `ECA timeslot "${raw || "(empty)"}" could not be parsed.`);
       return;
     }
-    if (!timeslot) return;
 
-    const status = row.querySelector("td.wait");
-    if (!status || status.textContent.replace(/\s+/g, " ").trim().toLowerCase() !== "signed up") return;
+    const cells = typeof row.querySelectorAll === "function" ? Array.from(row.querySelectorAll("td")) : [];
+    const status = row.querySelector("td.wait") || cells.find((cell) => boundedParserText(cell.textContent).toLowerCase() === "signed up");
+    if (!status || boundedParserText(status.textContent).toLowerCase() !== "signed up") return;
     const nameEl = row.querySelector("td.name a") || row.querySelector("td.name");
-    const title = (nameEl && nameEl.textContent || "").replace(/\s+/g, " ").trim();
-    if (!title) return;
+    const title = boundedParserText(nameEl && nameEl.textContent);
+    const clubId = boundedParserText(row.getAttribute("data-clubid"));
+    const rowWarnings = [];
+    if (!timeslot) rowWarnings.push(`Signed-up ECA row ${index + 1} has no timeslot.`);
+    else if (!timeslot.parsed) rowWarnings.push(`Signed-up ECA row ${index + 1} has an unrecognized timeslot.`);
+    if (!title) rowWarnings.push(`Signed-up ECA row ${index + 1} is missing a title.`);
+    if (!clubId) rowWarnings.push(`Signed-up ECA row ${index + 1} is missing a club id.`);
+    rowWarnings.forEach((warning) => addParserWarning(parserWarnings, warning));
 
-    activities.push({
+    const activity = {
       title,
-      date: timeslot.date,
-      time: timeslot.time,
-      clubId: row.getAttribute("data-clubid") || "",
-    });
+      date: (timeslot && timeslot.parsed && timeslot.parsed.date) || "",
+      time: (timeslot && timeslot.parsed && timeslot.parsed.time) || "",
+      clubId,
+    };
+    if (rowWarnings.length) {
+      activity.timeslot = (timeslot && timeslot.raw) || "";
+      activity.rawText = boundedParserText(row.textContent);
+      activity.warnings = rowWarnings.slice(0, PARSER_MAX_WARNINGS);
+    }
+    activities.push(activity);
   });
-  return activities;
+  return attachParserWarnings(activities, parserWarnings);
 }
 
 /* ---------- school stats parsing (house points / attendance / canteen) ----------

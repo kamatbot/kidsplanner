@@ -141,3 +141,94 @@ test("keeps completed-task detection and userid encoding intact", () => {
     "https://bangkok.learn.nae.school/mod/homework/view.php?h=2&userid=id%20with%20%2F%20slash&showcompleted=0&limit=0",
   );
 });
+
+test("preserves a malformed homework candidate and reports bounded parser warnings", () => {
+  const items = parse.parseHomeworkHtml(`
+    <div class="accordion-item applyhwclass">
+      <span class="subject">Science</span>
+      <div class="accordion-body">Visible homework evidence — Fri 4 Sept</div>
+    </div>
+  `);
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].subject, "Science");
+  assert.equal(items[0].title, "");
+  assert.equal(items[0].dueDate, "");
+  assert.match(items[0].rawText, /Fri 4 Sept/);
+  assert.ok(items[0].warnings.some((warning) => /missing a title/i.test(warning)));
+  assert.ok(items[0].warnings.some((warning) => /missing a due date/i.test(warning)));
+  assert.ok(items.parserWarnings.length >= 2);
+
+  const exactDate = parse.parseHomeworkHtml(`
+    <div class="accordion-item applyhwclass">
+      <span class="title">Read chapter</span>
+      <div class="date">Fri 4 Sept</div>
+    </div>
+  `);
+  assert.equal(exactDate[0].dueDate, "Fri 4 Sept");
+});
+
+function loadParserWithDocument(document) {
+  const context = { DOMParser: class { parseFromString() { return document; } }, window: {} };
+  vm.runInNewContext(source, context, { filename: "chrome-extension/parse.js" });
+  return context.window.famParse;
+}
+
+test("preserves populated timetable cells when day or time fields are malformed", () => {
+  const textCell = (text) => ({ textContent: text });
+  const header = {
+    querySelectorAll: (selector) => selector === "th, td" || selector === "th" ? [textCell("Day"), textCell("P1") ] : [],
+  };
+  const dayRow = {
+    querySelectorAll: (selector) => selector === "td" ? [textCell("Mystery day"), textCell("Biology") ] : [],
+  };
+  const table = { querySelectorAll: () => [header, dayRow] };
+  const parser = loadParserWithDocument({ querySelector: (selector) => selector === "table.sta_timetable" ? table : null });
+  const result = parser.parseTimetableHtml("<malformed timetable>");
+
+  assert.equal(result.lessons.length, 1);
+  assert.equal(result.lessons[0].subject, "Biology");
+  assert.equal(result.lessons[0].day, "Mystery day");
+  assert.equal(result.lessons[0].period, "P1");
+  assert.equal(result.lessons[0].time, "");
+  assert.ok(result.lessons[0].warnings.some((warning) => /day label/i.test(warning)));
+  assert.ok(result.lessons[0].warnings.some((warning) => /period\/time/i.test(warning)));
+  assert.ok(result.parserWarnings.length >= 2);
+});
+
+test("preserves a signed-up ECA row with an unparseable timeslot and missing identifiers", () => {
+  const header = {
+    textContent: "Friday 4 Sept",
+    querySelector: (selector) => selector === ".timeslot-radio" ? {} : null,
+  };
+  const status = { textContent: "SIGNED UP" };
+  const row = {
+    textContent: "Signed up Chess",
+    querySelector: (selector) => {
+      if (selector === "th") return null;
+      if (selector === "td.wait") return status;
+      if (selector === "td.name a" || selector === "td.name") return null;
+      return null;
+    },
+    querySelectorAll: (selector) => selector === "td" ? [status] : [],
+    getAttribute: () => null,
+  };
+  const table = {
+    querySelectorAll: () => [
+      { querySelector: (selector) => selector === "th" ? header : null },
+      row,
+    ],
+  };
+  const parser = loadParserWithDocument({ querySelector: (selector) => selector === "table#ecastudentview" ? table : null });
+  const activities = parser.parseSignedUpActivitiesHtml("<malformed eca>");
+
+  assert.equal(activities.length, 1);
+  assert.equal(activities[0].title, "");
+  assert.equal(activities[0].date, "");
+  assert.equal(activities[0].time, "");
+  assert.equal(activities[0].clubId, "");
+  assert.equal(activities[0].timeslot, "Friday 4 Sept");
+  assert.ok(activities[0].warnings.some((warning) => /title/i.test(warning)));
+  assert.ok(activities[0].warnings.some((warning) => /club id/i.test(warning)));
+  assert.ok(activities.parserWarnings.length >= 3);
+});

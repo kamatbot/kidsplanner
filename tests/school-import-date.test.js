@@ -51,6 +51,10 @@ test("normalizeSchoolImportDate: preserves ISO and academic-year day/month parsi
   assert.equal(normalizeSchoolImportDate("2026-08-15", new Date(2026, 7, 9, 12)), "2026-08-15");
   assert.equal(normalizeSchoolImportDate("Thu 18 June", new Date(2026, 6, 3, 12)), "2026-06-18");
   assert.equal(normalizeSchoolImportDate("10 January", new Date(2026, 10, 15, 12)), "2027-01-10");
+  assert.equal(normalizeSchoolImportDate("Fri 4 Sept", new Date(2026, 7, 22, 12)), "2026-09-04");
+  assert.equal(normalizeSchoolImportDate("FRI 4 SEPTEMBER", new Date(2026, 7, 22, 12)), "2026-09-04");
+  assert.equal(normalizeSchoolImportDate("2026-02-30", new Date(2026, 7, 22, 12)), null);
+  assert.equal(normalizeSchoolImportDate("31 April", new Date(2026, 7, 22, 12)), null);
 });
 
 test("school import refreshes every homework-backed surface after processing homework", () => {

@@ -101,6 +101,32 @@ function showSuccessCallout(summary) {
   `, { autoHideMs: 15000 });
 }
 
+function warningMessage(warning) {
+  if (typeof warning === "string") return warning.slice(0, 300);
+  if (!warning || typeof warning !== "object") return "Import warning";
+  return [warning.title, warning.message].filter(Boolean).join(": ").slice(0, 300) || "Import warning";
+}
+
+function collectWarnings(...sources) {
+  const warnings = [];
+  sources.flat().forEach((warning) => {
+    const message = warningMessage(warning).trim();
+    if (message && !warnings.includes(message) && warnings.length < 40) warnings.push(message);
+  });
+  return warnings;
+}
+
+function showWarningCallout(summary, warnings) {
+  const el = showBanner(`
+    <div style="font-weight:700;margin-bottom:6px">Fam ETC ⚠️</div>
+    <div data-fam-warning-summary style="margin-bottom:6px"></div>
+    <div data-fam-warning-message style="margin-bottom:10px;color:#9c2f00"></div>
+    <button data-fam-close style="background:#eee;color:#333;border:none;border-radius:6px;padding:7px 10px;cursor:pointer">Dismiss</button>
+  `, { autoHideMs: 20000 });
+  el.querySelector("[data-fam-warning-summary]").textContent = summary;
+  el.querySelector("[data-fam-warning-message]").textContent = warnings[0] || "Import warning";
+}
+
 /* ---------- throttle (chrome.storage.local — persists across page loads) ---------- */
 function getLastSyncAt() {
   return new Promise((resolve) => {
@@ -132,8 +158,12 @@ async function fetchAndParseForKid(moodleUserId) {
   }
 
   const homework = parseHomeworkHtml(hwHtml);
-  const { lessons: timetable } = parseTimetableHtml(ttHtml);
-  return { homework, timetable };
+  const timetableResult = parseTimetableHtml(ttHtml);
+  return {
+    homework: Array.from(homework),
+    timetable: timetableResult.lessons,
+    parseWarnings: collectWarnings(homework.parserWarnings, timetableResult.parserWarnings),
+  };
 }
 
 /* Signed-up activities are available on ECA enrollment pages rather than a
@@ -145,10 +175,16 @@ function activitySnapshotVisibleForKid(moodleUserId) {
   if (url.searchParams.get("userid") !== String(moodleUserId)) return null;
   const ecaId = url.searchParams.get("e");
   if (!ecaId) return null;
-  return {
+  const activities = window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML);
+  const snapshot = {
     ecaId,
-    activities: window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML),
+    activities: Array.from(activities),
   };
+  Object.defineProperty(snapshot, "parseWarnings", {
+    value: collectWarnings(activities.parserWarnings),
+    enumerable: false,
+  });
+  return snapshot;
 }
 
 function visibleActivitiesSignature(activities) {
@@ -181,6 +217,7 @@ function watchEcaSignupChanges() {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const activities = window.famParse.parseSignedUpActivitiesHtml(document.documentElement.outerHTML);
+      const parseWarnings = collectWarnings(activities.parserWarnings);
       const nextSignature = visibleActivitiesSignature(activities);
       if (nextSignature === lastSignature) return;
       lastSignature = nextSignature;
@@ -200,17 +237,26 @@ function watchEcaSignupChanges() {
           moodleUserId,
           homework: [],
           timetable: [],
-          activitySnapshots: [{ ecaId, activities }],
+          activitySnapshots: [{ ecaId, activities: Array.from(activities) }],
           schoolStats: [],
+          parseWarnings,
         });
         if (response && response.result) {
-          showSuccessCallout(
-            `Synced activities: ${response.result.activityEventsAdded || 0} added, ${response.result.activityEventsRemoved || 0} removed.`
-          );
+          const warnings = collectWarnings(parseWarnings, response.result.importWarnings);
+          const summary = `Synced activities: ${response.result.activityEventsAdded || 0} added, ${response.result.activityEventsRemoved || 0} removed.`;
+          if (warnings.length) {
+            showWarningCallout(`${summary} Warnings (${warnings.length}):`, warnings);
+          } else {
+            showSuccessCallout(summary);
+          }
           await setLastSyncAt(Date.now());
         }
       } catch (e) {
         console.warn("[Fam ETC] live activity sync failed", e && e.message);
+        showWarningCallout(
+          "Live activity sync could not complete.",
+          ["Could not sync the signed-up activity change; retry the page sync or use Manual Import."]
+        );
       } finally {
         syncing = false;
       }
@@ -242,14 +288,18 @@ async function runAutoSync(mappings) {
   let totalHw = 0;
   let totalEvents = 0;
   let anySynced = false;
+  const parserWarnings = [];
+  const importWarnings = [];
 
   const schoolStats = await fetchSchoolStats();
 
   for (const mapping of mappings) {
     if (!mapping || !mapping.moodleUserId) continue;
     try {
-      const { homework, timetable } = await fetchAndParseForKid(mapping.moodleUserId);
+      const { homework, timetable, parseWarnings } = await fetchAndParseForKid(mapping.moodleUserId);
+      parserWarnings.push(...parseWarnings);
       const activitySnapshot = activitySnapshotVisibleForKid(mapping.moodleUserId);
+      if (activitySnapshot) parserWarnings.push(...(activitySnapshot.parseWarnings || []));
       const response = await chrome.runtime.sendMessage({
         type: "IMPORT",
         kidId: mapping.kidId,
@@ -258,21 +308,27 @@ async function runAutoSync(mappings) {
         timetable,
         activitySnapshots: activitySnapshot ? [activitySnapshot] : [],
         schoolStats,
+        parseWarnings: collectWarnings(parseWarnings, activitySnapshot && activitySnapshot.parseWarnings),
       });
       if (response && response.result) {
         totalHw += response.result.homeworkAdded || 0;
         totalEvents += response.result.eventsAdded || 0;
+        importWarnings.push(...(response.result.importWarnings || []));
         anySynced = true;
       }
     } catch (e) {
       // One kid failing (e.g. bad Moodle id) shouldn't block the others.
       console.warn("[Fam ETC] auto-sync failed for kid", mapping.kidId, e && e.message);
+      importWarnings.push("Auto-sync could not complete for one child; retry the sync or use Manual Import.");
     }
   }
 
-  if (anySynced) {
-    showSuccessCallout(`Synced ${mappings.length} kid(s): ${totalHw} homework item(s), ${totalEvents} calendar event(s) added.`);
-    await setLastSyncAt(Date.now());
+  const warnings = collectWarnings(parserWarnings, importWarnings);
+  if (anySynced || warnings.length) {
+    const summary = `Synced ${mappings.length} kid(s): ${totalHw} homework item(s), ${totalEvents} calendar event(s) added.`;
+    if (warnings.length) showWarningCallout(`${summary} Warnings (${warnings.length}):`, warnings);
+    else showSuccessCallout(summary);
+    if (anySynced) await setLastSyncAt(Date.now());
   }
 }
 

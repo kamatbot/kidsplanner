@@ -14,7 +14,7 @@ function loadParser(extraGlobals = {}) {
 
 test("extension version identifies the ECA reconciliation release", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "chrome-extension", "manifest.json"), "utf8"));
-  assert.equal(manifest.version, "0.3.1");
+  assert.equal(manifest.version, "0.3.2");
 });
 
 function extractFunction(source, name) {

@@ -77,6 +77,7 @@ async function handleImport(msg) {
     timetable: msg.timetable || [],
     activitySnapshots: msg.activitySnapshots || [],
     schoolStats: msg.schoolStats || [],
+    parseWarnings: msg.parseWarnings || [],
   };
   try {
     const result = await importIntoTab(tab.id, payload);

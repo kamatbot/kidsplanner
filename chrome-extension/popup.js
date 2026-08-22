@@ -43,6 +43,21 @@ function setStatus(msg, kind) {
   el.status.className = kind || "info";
 }
 
+function warningMessage(warning) {
+  if (typeof warning === "string") return warning.slice(0, 300);
+  if (!warning || typeof warning !== "object") return "Import warning";
+  return [warning.title, warning.message].filter(Boolean).join(": ").slice(0, 300) || "Import warning";
+}
+
+function collectWarnings(...sources) {
+  const warnings = [];
+  sources.flat().forEach((warning) => {
+    const message = warningMessage(warning).trim();
+    if (message && !warnings.includes(message) && warnings.length < 40) warnings.push(message);
+  });
+  return warnings;
+}
+
 /* ---------- prefill Moodle user id from the active Moodle tab's URL ---------- */
 async function prefillMoodleUserId() {
   try {
@@ -117,24 +132,36 @@ async function fetchSchoolStats() {
    Fetching the visible page URL reuses the parent's authenticated Moodle
    session and lets the popup remain a complete manual fallback. */
 async function fetchSignedUpActivitySnapshots(moodleUserId) {
+  const parserWarnings = [];
   try {
     const tabs = await chrome.tabs.query({ url: `${popupMoodleBase}/mod/eca/view_student.php*` });
     const byEcaId = new Map();
     for (const tab of tabs) {
-      if (!tab.url) continue;
-      const url = new URL(tab.url);
-      if (url.searchParams.get("userid") !== String(moodleUserId)) continue;
-      const ecaId = url.searchParams.get("e");
-      if (!ecaId) continue;
-      const html = await fetchMoodlePage(tab.url);
-      byEcaId.set(ecaId, {
-        ecaId,
-        activities: popupParseSignedUpActivitiesHtml(html),
-      });
+      try {
+        if (!tab.url) continue;
+        const url = new URL(tab.url);
+        if (url.searchParams.get("userid") !== String(moodleUserId)) continue;
+        const ecaId = url.searchParams.get("e");
+        if (!ecaId) continue;
+        const html = await fetchMoodlePage(tab.url);
+        const activities = popupParseSignedUpActivitiesHtml(html);
+        parserWarnings.push(...(activities.parserWarnings || []));
+        byEcaId.set(ecaId, {
+          ecaId,
+          activities: Array.from(activities),
+        });
+      } catch (e) {
+        parserWarnings.push(
+          e && e.code === "MOODLE_LOGIN_REQUIRED"
+            ? "Could not read a signed-up ECA page because Moodle login is required; log in and retry."
+            : "Could not read a signed-up ECA page; open it in Moodle and retry."
+        );
+      }
     }
-    return Array.from(byEcaId.values());
+    return { snapshots: Array.from(byEcaId.values()), parserWarnings: collectWarnings(parserWarnings) };
   } catch (e) {
-    return [];
+    parserWarnings.push("Could not find or read signed-up ECA pages; open the ECA page in Moodle and retry.");
+    return { snapshots: [], parserWarnings: collectWarnings(parserWarnings) };
   }
 }
 
@@ -174,12 +201,20 @@ async function handleImport() {
     }
 
     const homework = popupParseHomeworkHtml(hwHtml);
-    const { lessons: timetable, twoWeek } = popupParseTimetableHtml(ttHtml);
+    const homeworkRows = Array.from(homework);
+    const timetableResult = popupParseTimetableHtml(ttHtml);
+    const { lessons: timetable, twoWeek } = timetableResult;
 
-    const activitySnapshots = await fetchSignedUpActivitySnapshots(moodleUserId);
+    const activityResult = await fetchSignedUpActivitySnapshots(moodleUserId);
+    const activitySnapshots = activityResult.snapshots;
+    const parseWarnings = collectWarnings(
+      homework.parserWarnings,
+      timetableResult.parserWarnings,
+      activityResult.parserWarnings,
+    );
     const activityCount = activitySnapshots.reduce((sum, snapshot) => sum + snapshot.activities.length, 0);
 
-    if (!homework.length && !timetable.length && !activitySnapshots.length) {
+    if (!homeworkRows.length && !timetable.length && !activitySnapshots.length && !parseWarnings.length) {
       setStatus(
         "No homework, timetable, or signed-up activity rows were found. The page structure may have changed, or this Moodle account has nothing posted yet.",
         "error"
@@ -187,11 +222,15 @@ async function handleImport() {
       return;
     }
 
+    const parserWarningStatus = parseWarnings.length
+      ? ` Warning${parseWarnings.length === 1 ? "" : "s"} (${parseWarnings.length}): ${parseWarnings[0]}.`
+      : "";
     setStatus(
-      `Parsed ${homework.length} homework item(s), ${timetable.length} lesson(s), and ${activityCount} signed-up activity event(s)` +
-        (twoWeek ? " (looks like a 2-week timetable — only the first week shown was imported)." : ".") +
+      `Parsed ${homeworkRows.length} homework item(s), ${timetable.length} lesson(s), and ${activityCount} signed-up activity event(s)` +
+        (twoWeek ? " (2-week timetable detected; unusual rows will be marked for review)." : ".") +
+        parserWarningStatus +
         " Sending to Fam ETC…",
-      "info"
+      parseWarnings.length ? "error" : "info"
     );
 
     const schoolStats = await fetchSchoolStats();
@@ -201,10 +240,11 @@ async function handleImport() {
       kidId: null,
       kidName,
       moodleUserId,
-      homework,
+      homework: homeworkRows,
       timetable,
       activitySnapshots,
       schoolStats,
+      parseWarnings,
     });
 
     if (!response || response.error === "NO_FAMETC_TAB") {
@@ -227,10 +267,13 @@ async function handleImport() {
     }
 
     const result = response.result || {};
-    setStatus(
+    const warnings = collectWarnings(parseWarnings, result.importWarnings);
+    const summary =
       `Done! Added ${result.homeworkAdded || 0} homework item(s), ${result.timetableEventsAdded || 0} timetable event(s), and ${result.activityEventsAdded || 0} activit${result.activityEventsAdded === 1 ? "y" : "ies"}; removed ${result.activityEventsRemoved || 0} unsigned activit${result.activityEventsRemoved === 1 ? "y" : "ies"}` +
-        (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped, e.g. completed/duplicates).` : "."),
-      "ok"
+      (result.homeworkSkipped ? ` (${result.homeworkSkipped} skipped, e.g. completed/duplicates).` : ".");
+    setStatus(
+      warnings.length ? `${summary} Warning${warnings.length === 1 ? "" : "s"} (${warnings.length}): ${warnings[0]}` : summary,
+      warnings.length ? "error" : "ok"
     );
   } catch (e) {
     setStatus(`Import failed: ${(e && e.message) || e}`, "error");
