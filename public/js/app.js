@@ -2222,15 +2222,16 @@ function renderDailyPuzzle(result) {
           cells.push('<span class="crossword-blank" aria-hidden="true"></span>');
         } else {
           const number = starts.get(`${row},${col}`);
-          cells.push(`<label class="crossword-cell">${number ? `<span>${number}</span>` : ''}<input maxlength="1" inputmode="text" autocomplete="off" aria-label="Crossword row ${row + 1}, column ${col + 1}" data-solution="${esc(letter)}"></label>`);
+          cells.push(`<label class="crossword-cell">${number ? `<span>${number}</span>` : ''}<input inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Crossword row ${row + 1}, column ${col + 1}" data-row="${row}" data-col="${col}" data-solution="${esc(letter)}"></label>`);
         }
       });
     });
     grid.innerHTML = `<div class="crossword-grid" style="--puzzle-cols:${Number(crossword.cols) || 1}">${cells.join('')}</div>`;
     clues.innerHTML = ['across', 'down'].map((direction) => {
       const entries = (crossword.entries || []).filter((entry) => entry.direction === direction);
-      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<p><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</p>`).join('')}</section>` : '';
+      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<button type="button" class="crossword-clue" data-entry-id="${Number(entry.number)}-${direction}" aria-label="${Number(entry.number)} ${direction}: ${esc(entry.clue)}"><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</button>`).join('')}</section>` : '';
     }).join('');
+    wireCrosswordTyping(crossword, grid, clues);
   } else if (result.type === 'sudoku' && result.sudoku) {
     const sdk = result.sudoku;
     grid.innerHTML = `<div class="sudoku-grid">${Array.from(sdk.puzzle || '').map((value, index) => {
@@ -2243,6 +2244,97 @@ function renderDailyPuzzle(result) {
     }).join('')}</div>`;
     clues.innerHTML = '';
   }
+}
+
+function crosswordEntryCells(entry) {
+  const rowStep = entry.direction === 'down' ? 1 : 0;
+  const colStep = entry.direction === 'down' ? 0 : 1;
+  return Array.from(String(entry.answer || '')).map((_, index) => ({
+    row: Number(entry.row) + rowStep * index,
+    col: Number(entry.col) + colStep * index,
+  }));
+}
+
+function wireCrosswordTyping(crossword, grid, clues) {
+  const entries = (crossword.entries || []).map((entry) => ({
+    ...entry,
+    id: `${Number(entry.number)}-${entry.direction}`,
+    cells: crosswordEntryCells(entry),
+  }));
+  const inputs = new Map(Array.from(grid.querySelectorAll('input[data-row][data-col]')).map((input) => [
+    `${input.dataset.row},${input.dataset.col}`,
+    input,
+  ]));
+  let activeEntry = null;
+
+  const contains = (entry, row, col) => entry && entry.cells.some((cell) => cell.row === row && cell.col === col);
+  const entryForCell = (row, col) => {
+    if (contains(activeEntry, row, col)) return activeEntry;
+    return entries.find((entry) => entry.row === row && entry.col === col)
+      || entries.find((entry) => contains(entry, row, col))
+      || null;
+  };
+  const focusCell = (entry, index) => {
+    const cell = entry?.cells[index];
+    const input = cell && inputs.get(`${cell.row},${cell.col}`);
+    if (input) input.focus();
+  };
+  const selectEntry = (entry, focusFirstBlank = false) => {
+    activeEntry = entry;
+    clues.querySelectorAll('.crossword-clue').forEach((button) => {
+      const selected = button.dataset.entryId === entry?.id;
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    if (focusFirstBlank && entry) {
+      const firstBlank = entry.cells.findIndex((cell) => !inputs.get(`${cell.row},${cell.col}`)?.value);
+      focusCell(entry, firstBlank >= 0 ? firstBlank : 0);
+    }
+  };
+
+  clues.querySelectorAll('.crossword-clue').forEach((button) => {
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => selectEntry(entries.find((entry) => entry.id === button.dataset.entryId), true));
+  });
+
+  inputs.forEach((input) => {
+    input.addEventListener('focus', () => {
+      const row = Number(input.dataset.row), col = Number(input.dataset.col);
+      selectEntry(entryForCell(row, col));
+    });
+    input.addEventListener('input', (event) => {
+      const row = Number(input.dataset.row), col = Number(input.dataset.col);
+      const entry = entryForCell(row, col);
+      if (!entry) return;
+      selectEntry(entry);
+      const index = entry.cells.findIndex((cell) => cell.row === row && cell.col === col);
+      const letters = Array.from(String(input.value || '').toUpperCase()).filter((letter) => /[A-Z]/.test(letter));
+      input.classList.remove('right', 'wrong');
+      if (event.inputType === 'insertFromPaste' && letters.length > 1) {
+        letters.slice(0, entry.cells.length - index).forEach((letter, offset) => {
+          const cell = entry.cells[index + offset];
+          const target = inputs.get(`${cell.row},${cell.col}`);
+          if (target) { target.value = letter; target.classList.remove('right', 'wrong'); }
+        });
+        focusCell(entry, Math.min(index + letters.length, entry.cells.length - 1));
+      } else {
+        input.value = letters.at(-1) || '';
+        if (input.value && index < entry.cells.length - 1) focusCell(entry, index + 1);
+      }
+    });
+    input.addEventListener('keydown', (event) => {
+      const row = Number(input.dataset.row), col = Number(input.dataset.col);
+      const entry = entryForCell(row, col);
+      if (!entry) return;
+      const index = entry.cells.findIndex((cell) => cell.row === row && cell.col === col);
+      if (event.key === 'Backspace' && !input.value && index > 0) {
+        event.preventDefault();
+        const previous = entry.cells[index - 1];
+        const target = inputs.get(`${previous.row},${previous.col}`);
+        if (target) { target.value = ''; target.focus(); }
+      }
+    });
+  });
 }
 
 function clearDailyPuzzle() {

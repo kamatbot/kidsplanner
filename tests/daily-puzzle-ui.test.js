@@ -34,5 +34,57 @@ test("dashboard includes one hidden, gated puzzle surface with accessible status
   assert.match(appSource, /result\.type === 'crossword'/);
   assert.match(appSource, /result\.type === 'sudoku'/);
   assert.match(appSource, /data-solution=/);
+  assert.match(appSource, /wireCrosswordTyping\(crossword, grid, clues\)/);
+  assert.match(appSource, /input\.addEventListener\('input'/);
+  assert.match(appSource, /focusCell\(entry, index \+ 1\)/);
+  assert.match(appSource, /event\.key === 'Backspace'/);
+  assert.match(appSource, /event\.inputType === 'insertFromPaste'/);
+  assert.match(appSource, /class="crossword-clue"/);
+  assert.match(appSource, /aria-pressed/);
   assert.match(appSource, /'lock-puzzle'/);
+});
+
+test("crossword typing follows the selected clue, supports paste, and backs up", () => {
+  const behaviorSource = appSource.slice(
+    appSource.indexOf("function crosswordEntryCells"),
+    appSource.indexOf("function clearDailyPuzzle"),
+  );
+  const focused = { input: null };
+  const makeClassList = () => ({ toggle() {}, remove() {} });
+  const makeControl = (dataset = {}) => ({
+    dataset,
+    value: "",
+    classList: makeClassList(),
+    listeners: {},
+    attributes: {},
+    addEventListener(type, listener) { this.listeners[type] = listener; },
+    setAttribute(name, value) { this.attributes[name] = value; },
+    focus() { focused.input = this; this.listeners.focus?.({}); },
+  });
+  const inputs = [0, 1, 2].map((col) => makeControl({ row: "0", col: String(col) }));
+  const clue = makeControl({ entryId: "1-across" });
+  const grid = { querySelectorAll: () => inputs };
+  const clues = { querySelectorAll: () => [clue] };
+  const sandbox = {};
+  vm.runInNewContext(behaviorSource, sandbox, { filename: "crossword-behavior.js" });
+  sandbox.wireCrosswordTyping({ entries: [{ number: 1, direction: "across", answer: "CAT", row: 0, col: 0 }] }, grid, clues);
+
+  clue.listeners.click();
+  assert.equal(focused.input, inputs[0]);
+  inputs[0].value = "c";
+  inputs[0].listeners.input({ inputType: "insertText" });
+  assert.equal(inputs[0].value, "C");
+  assert.equal(focused.input, inputs[1]);
+
+  inputs[1].value = "at";
+  inputs[1].listeners.input({ inputType: "insertFromPaste" });
+  assert.deepEqual(inputs.map((input) => input.value), ["C", "A", "T"]);
+  assert.equal(focused.input, inputs[2]);
+
+  inputs[2].value = "";
+  let prevented = false;
+  inputs[2].listeners.keydown({ key: "Backspace", preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(focused.input, inputs[1]);
+  assert.equal(inputs[1].value, "");
 });

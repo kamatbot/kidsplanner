@@ -452,6 +452,8 @@ private struct DailyPuzzleView: View {
     let puzzle: DailyPuzzleResponse
     @State private var answers: [String: String] = [:]
     @State private var resultMessage: String?
+    @State private var activeCrosswordEntryID: String?
+    @FocusState private var focusedCrosswordCell: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
@@ -505,7 +507,7 @@ private struct DailyPuzzleView: View {
                         Color.clear.frame(width: cellSize, height: cellSize)
                     } else {
                         ZStack(alignment: .topLeading) {
-                            TextField("", text: letterBinding(row: row, col: col))
+                            TextField("", text: letterBinding(row: row, col: col, crossword: crossword))
                                 .textInputAutocapitalization(.characters)
                                 .autocorrectionDisabled()
                                 .multilineTextAlignment(.center)
@@ -514,6 +516,10 @@ private struct DailyPuzzleView: View {
                                 .frame(width: cellSize, height: cellSize)
                                 .background(Palette.panel)
                                 .overlay(Rectangle().strokeBorder(Palette.border, lineWidth: 1))
+                                .focused($focusedCrosswordCell, equals: crosswordCellKey(row: row, col: col))
+                                .onTapGesture {
+                                    activateCrosswordEntry(containingRow: row, col: col, in: crossword)
+                                }
                                 .accessibilityLabel("Crossword row \(row + 1), column \(col + 1)")
                             if let number = crossword.entries.first(where: { $0.row == row && $0.col == col })?.number {
                                 Text("\(number)")
@@ -547,10 +553,19 @@ private struct DailyPuzzleView: View {
                         .font(Typography.cardTitle)
                         .foregroundStyle(Palette.text)
                     ForEach(entries) { entry in
-                        Text("\(entry.number). \(entry.clue)")
-                            .font(Typography.body)
-                            .foregroundStyle(Palette.text)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            activateCrosswordEntry(entry, focusFirstBlank: true)
+                        } label: {
+                            Text("\(entry.number). \(entry.clue)")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(entry.number) \(direction), \(entry.clue)")
+                        .accessibilityHint("Selects this answer so you can type the whole word")
                     }
                 }
             }
@@ -597,12 +612,60 @@ private struct DailyPuzzleView: View {
         .accessibilityLabel("Nine by nine Sudoku grid, \(sudoku.difficulty) difficulty")
     }
 
-    private func letterBinding(row: Int, col: Int) -> Binding<String> {
-        let cellKey = "c-\(row)-\(col)"
+    private func letterBinding(row: Int, col: Int, crossword: CrosswordPuzzle) -> Binding<String> {
+        let cellKey = crosswordCellKey(row: row, col: col)
         return Binding(
             get: { answers[cellKey] ?? "" },
-            set: { answers[cellKey] = String($0.uppercased().filter(\.isLetter).suffix(1)) }
+            set: { value in
+                let letters = value.uppercased().filter(\.isLetter)
+                answers[cellKey] = String(letters.suffix(1))
+                guard !letters.isEmpty,
+                      let entry = activeEntry(containingRow: row, col: col, in: crossword),
+                      let index = crosswordCells(for: entry).firstIndex(where: { $0.row == row && $0.col == col }) else { return }
+                activeCrosswordEntryID = entry.id
+                let cells = crosswordCells(for: entry)
+                if index + 1 < cells.count {
+                    focusedCrosswordCell = crosswordCellKey(row: cells[index + 1].row, col: cells[index + 1].col)
+                }
+            }
         )
+    }
+
+    private func crosswordCellKey(row: Int, col: Int) -> String {
+        "c-\(row)-\(col)"
+    }
+
+    private func crosswordCells(for entry: CrosswordEntry) -> [(row: Int, col: Int)] {
+        let rowStep = entry.direction == "down" ? 1 : 0
+        let colStep = entry.direction == "down" ? 0 : 1
+        return Array(entry.answer).indices.map { index in
+            (entry.row + rowStep * index, entry.col + colStep * index)
+        }
+    }
+
+    private func activeEntry(containingRow row: Int, col: Int, in crossword: CrosswordPuzzle) -> CrosswordEntry? {
+        if let activeCrosswordEntryID,
+           let active = crossword.entries.first(where: { $0.id == activeCrosswordEntryID }),
+           crosswordCells(for: active).contains(where: { $0.row == row && $0.col == col }) {
+            return active
+        }
+        return crossword.entries.first(where: { $0.row == row && $0.col == col })
+            ?? crossword.entries.first(where: { crosswordCells(for: $0).contains(where: { $0.row == row && $0.col == col }) })
+    }
+
+    private func activateCrosswordEntry(containingRow row: Int, col: Int, in crossword: CrosswordPuzzle) {
+        guard let entry = activeEntry(containingRow: row, col: col, in: crossword) else { return }
+        activeCrosswordEntryID = entry.id
+    }
+
+    private func activateCrosswordEntry(_ entry: CrosswordEntry, focusFirstBlank: Bool) {
+        activeCrosswordEntryID = entry.id
+        guard focusFirstBlank else { return }
+        let cells = crosswordCells(for: entry)
+        let target = cells.first(where: { answers[crosswordCellKey(row: $0.row, col: $0.col), default: ""].isEmpty }) ?? cells.first
+        if let target {
+            focusedCrosswordCell = crosswordCellKey(row: target.row, col: target.col)
+        }
     }
 
     private func digitBinding(index: Int) -> Binding<String> {

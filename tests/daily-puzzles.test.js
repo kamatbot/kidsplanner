@@ -20,6 +20,7 @@ test("Saturday and Sunday serve deterministic crosswords containing exactly ten 
   for (const date of ["2026-08-15", "2026-08-16"]) {
     const result = puzzles.getDailyPuzzle(date);
     assert.equal(result.type, "crossword");
+    assert.match(result.instructions, /type the whole answer/i);
     assert.equal(result.crossword.entries.length, 10);
     assert.equal(new Set(result.crossword.entries.map((entry) => entry.answer)).size, 10);
     for (const entry of result.crossword.entries) {
