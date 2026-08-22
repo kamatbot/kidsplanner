@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 112 112" role="img" aria-labelledby="title">
+  <title id="title">Fam ETC</title>
+  <rect x="8" y="8" width="44" height="44" rx="14" fill="#f0704f"/>
+  <rect x="60" y="8" width="44" height="44" rx="14" fill="#6f43d6"/>
+  <rect x="8" y="60" width="44" height="44" rx="14" fill="#6f43d6" opacity=".45"/>
+  <rect x="60" y="60" width="44" height="44" rx="22" fill="#6f43d6"/>
+</svg>
