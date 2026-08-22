@@ -21,7 +21,7 @@ test("Fam ETC manifest is a standalone root-scoped Chrome app with valid icons",
   assert.equal(manifest.scope, "/");
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.name, "Fam ETC");
-  assert.deepEqual(manifest.icons.map((icon) => icon.sizes), ["192x192", "512x512"]);
+  assert.deepEqual(manifest.icons.map((icon) => icon.sizes), ["any", "192x192", "512x512"]);
   assert.deepEqual(pngSize("public/icons/fametc-192.png"), [192, 192]);
   assert.deepEqual(pngSize("public/icons/fametc-512.png"), [512, 512]);
   assert.deepEqual(pngSize("public/icons/apple-touch-icon.png"), [180, 180]);
