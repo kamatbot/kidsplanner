@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Fam ETC",
   "short_name": "Fam ETC",
-  "description": "The whole school week in one calm family app — STA Moodle, homework, timetables, activities, chat, chores, quizzes and reminders.",
+  "description": "The whole school week in one calm family app — STA Moodle, homework, timetables, activities, chat, meals, trips, family planning and reminders.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

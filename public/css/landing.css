@@ -35,6 +35,10 @@ button,
   overflow: clip;
 }
 
+section[id] {
+  scroll-margin-top: 88px;
+}
+
 .site-header {
   position: sticky;
   top: 0;
@@ -66,6 +70,7 @@ button,
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
+  min-height: 44px;
   color: var(--text);
 }
 
@@ -129,7 +134,7 @@ button,
   text-transform: uppercase;
 }
 
-.header-free {
+.header-trial {
   color: var(--text-2);
   white-space: nowrap;
 }
@@ -185,8 +190,15 @@ button,
 
 .button:focus-visible,
 a:focus-visible {
-  outline: 3px solid var(--accent-soft);
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
+}
+
+.site-nav a,
+.footer-links a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .hero {
@@ -463,6 +475,23 @@ a:focus-visible {
 
 .moodle-copy p {
   margin: 12px 0 0;
+}
+
+.moodle-trust {
+  color: var(--text);
+}
+
+.moodle-trust a,
+.hero-pricing a,
+.faq-card a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hero-pricing {
+  margin: 12px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
 }
 
 .moodle-items {
@@ -788,15 +817,15 @@ a:focus-visible {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
   .header-inner,
   .section,
   .footer-inner {
     padding-inline: 20px;
   }
 
-  .header-free,
-  .header-signin {
+  .header-trial,
+  .header-create {
     display: none;
   }
 
@@ -854,7 +883,7 @@ a:focus-visible {
     font-size: 13px;
   }
 
-  .header-create {
+  .header-signin {
     padding-inline: 13px;
   }
 

@@ -96,11 +96,11 @@
   }
 
   /* ---------- passkey sign-up (PARENT ONLY — no kid signup route exists) ---------- */
-  async function signUp(name) {
+  async function signUp(name, inviteCode) {
     if (!window.PublicKeyCredential) throw new Error("Passkeys are not supported in this browser.");
     const options = await api("/api/webauthn/signup/options", {
       method: "POST",
-      body: JSON.stringify({ name: name || "" }),
+      body: JSON.stringify({ name: name || "", inviteCode: inviteCode || "" }),
     });
     const publicKey = convertCreationOptions(options);
     const credential = await navigator.credentials.create({ publicKey });
