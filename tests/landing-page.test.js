@@ -17,14 +17,41 @@ function pngDimensions(file) {
   return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
 }
 
-test("landing page states free-forever STA access and keeps pricing/signup paths", () => {
-  assert.match(landing, /Free forever for STA parents/);
+test("landing page states free STA access and keeps pricing/signup paths", () => {
+  assert.match(landing, /Free for STA parents/);
   assert.match(landing, /Invite-only pilot/);
   assert.match(landing, /STA invite code/);
   assert.match(landing, /href="\/signup"/);
   assert.match(landing, /href="\/pricing"/);
   assert.doesNotMatch(landing, /30-day free trial|free for 30 days|annual plan|TBD/i);
   assert.doesNotMatch(landing, /chores/i);
+});
+
+test("landing hero centers the intro above a browser-framed full-width preview", () => {
+  const hero = landing.match(/<section class="section hero"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(hero);
+  assert.match(hero, /class="hero-copy"/);
+  assert.match(hero, /class="preview-card" aria-label="Example of the Fam ETC Today view"/);
+  assert.match(hero, /class="preview-browser-bar" aria-hidden="true"/);
+  assert.equal((hero.match(/class="preview-browser-dots"/g) || []).length, 1);
+  assert.equal((hero.match(/<span><\/span>/g) || []).length, 3);
+  assert.match(hero, /www\.fametc\.com/);
+  assert.match(hero, /Maths — Fractions worksheet/);
+  assert.match(hero, /Can Leo bring my goggles\?/);
+  assert.match(styles, /\.hero\s*\{[\s\S]*?display:\s*block;/);
+  assert.match(styles, /\.hero-copy\s*\{[\s\S]*?max-width:\s*none;[\s\S]*?text-align:\s*center;/);
+  assert.match(styles, /\.hero h1\s*\{[\s\S]*?max-width:\s*none;[\s\S]*?font-size:\s*clamp\(44px, 5vw, 46px\);/);
+  assert.match(styles, /\.hero-lede\s*\{[\s\S]*?max-width:\s*none;/);
+  assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.hero-copy\s*\{\s*max-width:\s*760px;/);
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.hero h1\s*\{\s*font-size:\s*clamp\(38px, 11vw, 50px\);/);
+  assert.match(styles, /\.preview-stack\s*\{[\s\S]*?grid-template-columns:\s*1\.2fr 1fr 1fr;/);
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.preview-stack\s*\{\s*grid-template-columns:\s*1fr;/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("landing public copy makes no permanence or obsolete product promise", () => {
+  assert.doesNotMatch(landing, /forever|30-day|trial deadline|annual plan|TBD|TODO|no-cost/i);
+  assert.doesNotMatch(landing, /keeps itself current|checks again through the day|automatic(?:ally)? sync/i);
 });
 
 test("landing page describes the honest Moodle and privacy flow", () => {

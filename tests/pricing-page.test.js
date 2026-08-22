@@ -5,10 +5,10 @@ const test = require("node:test");
 
 const pricing = fs.readFileSync(path.join(__dirname, "..", "public/pricing.html"), "utf8");
 
-test("pricing promises free-forever access for STA parents", () => {
-  assert.match(pricing, /Free forever for STA parents/);
-  assert.match(pricing, /no trial deadline and no card is required/i);
+test("pricing states free STA access without a permanence or trial promise", () => {
+  assert.match(pricing, /Free for STA parents/);
+  assert.match(pricing, /no card is required/i);
   assert.match(pricing, /STA invite code/);
   assert.match(pricing, /href="\/signup"/);
-  assert.doesNotMatch(pricing, /30-day trial|annual plan|TBD|TODO/i);
+  assert.doesNotMatch(pricing, /forever|30-day trial|trial deadline|annual plan|TBD|TODO/i);
 });
