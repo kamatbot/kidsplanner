@@ -65,7 +65,7 @@
         <p class="hero-pricing"><a href="/pricing">See pricing</a> · Invitations are required to sign up.</p>
       </div>
 
-      <div class="preview-card" aria-label="Example of the Fam ETC Today view">
+      <div class="preview-card" role="img" aria-label="Fam ETC family dashboard preview">
         <div class="preview-browser-bar" aria-hidden="true">
           <div class="preview-browser-dots">
             <span></span>
@@ -74,36 +74,97 @@
           </div>
           <span class="preview-browser-address">www.fametc.com</span>
         </div>
-        <div class="preview-header">
-          <div class="preview-title">Today · Wednesday</div>
-          <div class="kid-switcher" aria-hidden="true">
-            <span class="kid-pill active">Mia</span>
-            <span class="kid-pill">Leo</span>
-          </div>
-        </div>
-        <div class="preview-stack">
-          <div class="preview-block">
-            <div class="preview-label micro">From Moodle · due today</div>
-            <div class="preview-row"><span>Maths — Fractions worksheet</span><span class="preview-time">16:00</span></div>
-            <div class="preview-row"><span>English — Reading log</span><span class="preview-time preview-done">Done</span></div>
-          </div>
-          <div class="preview-grid">
-            <div class="preview-block">
-              <div class="preview-label micro">ECA today</div>
-              <div class="preview-copy">Swim squad</div>
-              <div class="preview-sub">15:30 · Pool 2</div>
+
+        <div class="dashboard-viewport" aria-hidden="true">
+          <div class="dashboard-preview">
+            <div class="dashboard-sidebar">
+              <div class="dashboard-brand">
+                <span class="dashboard-brand-mark"><span></span><span></span><span></span><span></span></span>
+                <span>Fam<strong>ETC</strong></span>
+              </div>
+              <div class="dashboard-nav">
+                <div class="dashboard-nav-item active"><span></span>Today</div>
+                <div class="dashboard-nav-item"><span></span>Calendar</div>
+                <div class="dashboard-nav-item"><span></span>Homework</div>
+                <div class="dashboard-nav-item"><span></span>Chat</div>
+                <div class="dashboard-nav-item"><span></span>Meals</div>
+                <div class="dashboard-nav-item"><span></span>Trips</div>
+              </div>
+              <div class="dashboard-sidebar-note">
+                <span class="dashboard-avatar">P</span>
+                <span><strong>Priya</strong><small>Parent</small></span>
+              </div>
             </div>
-            <div class="preview-block">
-              <div class="preview-label micro">House points</div>
-              <div class="points-value">148</div>
-              <div class="points-change">+6 this week</div>
+
+            <div class="dashboard-main">
+              <div class="dashboard-heading">
+                <div>
+                  <span class="dashboard-eyebrow">Wednesday, August 22</span>
+                  <div class="dashboard-greeting">Good afternoon, Priya</div>
+                </div>
+                <div class="dashboard-heading-actions">
+                  <span class="dashboard-import"><i></i>Moodle import · 08:10</span>
+                  <span class="dashboard-add">Add event</span>
+                </div>
+              </div>
+
+              <div class="dashboard-card dashboard-actions-card">
+                <div class="dashboard-card-heading">
+                  <div><span class="dashboard-eyebrow">Family actions</span><strong>What matters next</strong></div>
+                  <span class="dashboard-card-link">Add action</span>
+                </div>
+                <div class="dashboard-action-list">
+                  <div><span class="dashboard-checkbox"></span><strong>Sign Mia’s swim gala permission slip</strong><small>Priya</small><em>Due today</em></div>
+                  <div><span class="dashboard-checkbox"></span><strong>Pack Leo’s football kit</strong><small>Dad</small><em>Tomorrow</em></div>
+                  <div><span class="dashboard-checkbox"></span><strong>Choose Friday dinner</strong><small>Family</small><em>Meals</em></div>
+                </div>
+              </div>
+
+              <div class="dashboard-card-grid">
+                <div class="dashboard-card">
+                  <div class="dashboard-card-heading"><span class="dashboard-eyebrow">Today’s schedule</span><span class="dashboard-card-link">Week</span></div>
+                  <div class="dashboard-schedule">
+                    <div><time>08:20</time><i class="green"></i><span><strong>Football · Leo</strong><small>Astro pitch · kit + boots</small></span></div>
+                    <div><time>10:00</time><i class="purple"></i><span><strong>Clarinet · Mia</strong><small>Music block · room 4</small></span></div>
+                    <div><time>15:30</time><i class="coral"></i><span><strong>Swim squad</strong><small>Pool 2 · bring goggles</small></span></div>
+                  </div>
+                </div>
+
+                <div class="dashboard-card">
+                  <div class="dashboard-card-heading"><span class="dashboard-eyebrow">Homework due</span><span class="dashboard-card-link">All</span></div>
+                  <div class="dashboard-homework">
+                    <div><span class="dashboard-status done"></span><strong>English · Reading log</strong><time>Done</time></div>
+                    <div><span class="dashboard-status"></span><strong>Maths · Fractions worksheet</strong><time>16:00</time></div>
+                    <div><span class="dashboard-status"></span><strong>Science · Food chains poster</strong><time>Mon</time></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="dashboard-card-grid dashboard-card-grid-small">
+                <div class="dashboard-card dashboard-daily">
+                  <div class="dashboard-card-heading"><span class="dashboard-eyebrow">Daily 5</span><span class="dashboard-streak">7 day streak</span></div>
+                  <strong>Coherent</strong>
+                  <p>Forming a unified whole.</p>
+                </div>
+                <div class="dashboard-card dashboard-points">
+                  <span class="dashboard-eyebrow">House points</span>
+                  <div><strong>148<small>Mia</small></strong><strong>96<small>Leo</small></strong><em>+11 this week</em></div>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="preview-block">
-            <div class="preview-label micro">Family chat</div>
-            <div class="chat-row">
-              <span class="chat-avatar">M</span>
-              <span class="chat-copy">Can Leo bring my goggles? 🙂</span>
+
+            <div class="dashboard-chat">
+              <div class="dashboard-chat-heading">
+                <span class="dashboard-eyebrow">Family Chat</span>
+                <span class="dashboard-chat-avatars"><i>P</i><i>M</i><i>L</i></span>
+              </div>
+              <div class="dashboard-messages">
+                <div><small>Moodle import</small><p>Maths worksheet added for Mia, due today.</p><time>09:12</time></div>
+                <div><small>Mia</small><p>Finished my reading log.</p><time>11:40</time></div>
+                <div><small>Leo</small><p>Can someone bring my goggles?</p><time>12:05</time></div>
+                <div><small>Priya</small><p>They’re in the swim bag.</p><time>12:07</time></div>
+              </div>
+              <div class="dashboard-composer"><span>Message the family…</span><i>Send</i></div>
             </div>
           </div>
         </div>

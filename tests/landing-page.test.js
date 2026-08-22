@@ -31,21 +31,35 @@ test("landing hero centers the intro above a browser-framed full-width preview",
   const hero = landing.match(/<section class="section hero"[\s\S]*?<\/section>/)?.[0];
   assert.ok(hero);
   assert.match(hero, /class="hero-copy"/);
-  assert.match(hero, /class="preview-card" aria-label="Example of the Fam ETC Today view"/);
+  assert.match(hero, /class="preview-card" role="img" aria-label="Fam ETC family dashboard preview"/);
   assert.match(hero, /class="preview-browser-bar" aria-hidden="true"/);
   assert.equal((hero.match(/class="preview-browser-dots"/g) || []).length, 1);
-  assert.equal((hero.match(/<span><\/span>/g) || []).length, 3);
   assert.match(hero, /www\.fametc\.com/);
-  assert.match(hero, /Maths — Fractions worksheet/);
-  assert.match(hero, /Can Leo bring my goggles\?/);
+  assert.match(hero, /class="dashboard-viewport" aria-hidden="true"/);
+  assert.match(hero, /class="dashboard-sidebar"/);
+  assert.match(hero, /class="dashboard-main"/);
+  assert.match(hero, /class="dashboard-chat"/);
+  for (const label of ["Today", "Calendar", "Homework", "Chat", "Meals", "Trips"]) {
+    assert.match(hero, new RegExp(`class="dashboard-nav-item(?: active)?"[^>]*><span><\\/span>${label}`));
+  }
+  assert.match(hero, /Good afternoon, Priya/);
+  assert.match(hero, /Family actions/);
+  assert.match(hero, /Today’s schedule/);
+  assert.match(hero, /Homework due/);
+  assert.match(hero, /Daily 5/);
+  assert.match(hero, /House points/);
+  assert.match(hero, /Family Chat/);
+  assert.match(hero, /Message the family…/);
+  assert.doesNotMatch(hero, /preview-stack|preview-block|preview-grid|kid-switcher/);
   assert.match(styles, /\.hero\s*\{[\s\S]*?display:\s*block;/);
   assert.match(styles, /\.hero-copy\s*\{[\s\S]*?max-width:\s*none;[\s\S]*?text-align:\s*center;/);
   assert.match(styles, /\.hero h1\s*\{[\s\S]*?max-width:\s*none;[\s\S]*?font-size:\s*clamp\(44px, 5vw, 46px\);/);
   assert.match(styles, /\.hero-lede\s*\{[\s\S]*?max-width:\s*none;/);
   assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.hero-copy\s*\{\s*max-width:\s*760px;/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.hero h1\s*\{\s*font-size:\s*clamp\(38px, 11vw, 50px\);/);
-  assert.match(styles, /\.preview-stack\s*\{[\s\S]*?grid-template-columns:\s*1\.2fr 1fr 1fr;/);
-  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.preview-stack\s*\{\s*grid-template-columns:\s*1fr;/);
+  assert.match(styles, /\.dashboard-viewport\s*\{[\s\S]*?aspect-ratio:\s*1120 \/ 700;[\s\S]*?overflow:\s*hidden;/);
+  assert.match(styles, /\.dashboard-preview\s*\{[\s\S]*?grid-template-columns:\s*176px minmax\(0, 1fr\) 254px;[\s\S]*?scale:\s*calc\(100cqw \/ 1120px\);/);
+  assert.doesNotMatch(styles, /\.preview-(?:stack|block|grid)\b/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
