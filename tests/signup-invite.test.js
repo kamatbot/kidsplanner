@@ -83,6 +83,7 @@ test("signup page and client require and submit the invite code", () => {
   const client = fs.readFileSync(path.join(root, "public/js/auth.js"), "utf8");
   assert.match(html, /id="signup-invite-code"[^>]*required/);
   assert.match(html, /Invite-only access/);
+  assert.match(html, /Free forever for STA parents/);
   assert.match(html, /id="signup-error"[^>]*role="alert"[^>]*aria-live="polite"/);
   assert.match(html, /window\.auth\.signUp\(name, inviteCode\)/);
   assert.match(client, /async function signUp\(name, inviteCode\)/);

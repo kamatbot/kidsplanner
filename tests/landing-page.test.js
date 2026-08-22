@@ -17,12 +17,13 @@ function pngDimensions(file) {
   return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
 }
 
-test("landing page states invite-only trial and keeps pricing/signup paths", () => {
-  assert.match(landing, /30-day free trial, no card required/);
+test("landing page states free-forever STA access and keeps pricing/signup paths", () => {
+  assert.match(landing, /Free forever for STA parents/);
   assert.match(landing, /Invite-only pilot/);
+  assert.match(landing, /STA invite code/);
   assert.match(landing, /href="\/signup"/);
   assert.match(landing, /href="\/pricing"/);
-  assert.doesNotMatch(landing, /free forever|no cost|nothing to upgrade/i);
+  assert.doesNotMatch(landing, /30-day free trial|free for 30 days|annual plan|TBD/i);
   assert.doesNotMatch(landing, /chores/i);
 });
 
