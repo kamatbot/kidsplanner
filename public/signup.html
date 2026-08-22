@@ -21,17 +21,21 @@
   <div class="auth-hero">
     <div class="auth-logo">🗂️</div>
     <h1 class="auth-title">Fam ETC</h1>
-    <p class="auth-subtitle">Create your family's hub. Free for 30 days, no card required.</p>
+    <p class="auth-subtitle">Invite-only access. Free for 30 days, no card required.</p>
   </div>
   <div class="auth-card">
 
     <!-- Parent-only signup — no role picker, no kid path. -->
     <form id="signup-form">
       <div class="form-group">
-        <label>Your Name</label>
+        <label for="signup-name">Your Name</label>
         <input type="text" id="signup-name" placeholder="Alex Johnson" required autocomplete="name">
       </div>
-      <div id="signup-error" class="error-msg"></div>
+      <div class="form-group">
+        <label for="signup-invite-code">Invite code</label>
+        <input type="text" id="signup-invite-code" placeholder="Enter your invite code" required autocomplete="off" autocapitalize="none" spellcheck="false">
+      </div>
+      <div id="signup-error" class="error-msg" role="alert" aria-live="polite"></div>
       <button type="submit" class="btn-primary full-width" id="signup-submit">Create your passkey 🎉</button>
       <p class="demo-hint">You'll be asked to create a passkey (Face ID / Touch ID / device PIN) — no password needed. This account is for parents; you'll add kid profiles once you're in.</p>
     </form>
@@ -47,10 +51,11 @@ document.getElementById('signup-form').addEventListener('submit', async (e) => {
   const errEl = document.getElementById('signup-error');
   const btn = document.getElementById('signup-submit');
   const name = document.getElementById('signup-name').value.trim();
+  const inviteCode = document.getElementById('signup-invite-code').value.trim();
   errEl.textContent = '';
   btn.disabled = true;
   try {
-    await window.auth.signUp(name);
+    await window.auth.signUp(name, inviteCode);
     window.location.href = '/';
   } catch (err) {
     errEl.textContent = err.message || 'Could not create your account. Please try again.';

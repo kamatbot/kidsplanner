@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Fam ETC",
   "short_name": "Fam ETC",
-  "description": "A shared family hub for calendars, homework, meals, trips, and chat.",
+  "description": "The whole school week in one calm family app — STA Moodle, homework, timetables, activities, chat, meals, trips, family planning and reminders.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
@@ -11,6 +11,12 @@
   "categories": ["family", "lifestyle", "productivity"],
   "prefer_related_applications": false,
   "icons": [
+    {
+      "src": "/icons/fametc-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
     {
       "src": "/icons/fametc-192.png",
       "sizes": "192x192",

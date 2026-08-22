@@ -3,39 +3,215 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fam ETC — the etcetera hub for your family</title>
-  <meta name="description" content="School calendars, homework, activities, goals, and family chat in one place.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <title>Fam ETC — the whole school week in one family app</title>
+  <meta name="description" content="Fam ETC brings STA Moodle homework, timetables, ECAs, house points, family chat, meals, trips and family planning into one calm family app.">
+  <meta name="theme-color" content="#f1efec">
+  <link rel="canonical" href="https://www.fametc.com/">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/fametc-mark.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="stylesheet" href="/fonts/fonts.css">
   <link rel="stylesheet" href="/css/horizon.css">
-  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/landing.css">
 </head>
 <body>
+<div class="landing-shell">
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="Fam ETC home">
+        <svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true">
+          <rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect>
+          <rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect>
+          <rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect>
+          <rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect>
+        </svg>
+        <span class="brand-name">Fam<span class="brand-etc">ETC</span></span>
+      </a>
 
-<div class="auth-bg">
-  <div class="auth-blob auth-blob-1"></div>
-  <div class="auth-blob auth-blob-2"></div>
-  <div class="auth-blob auth-blob-3"></div>
-</div>
-<div class="auth-container">
-  <div class="auth-hero">
-    <div class="auth-logo">🗂️</div>
-    <h1 class="auth-title">Fam ETC</h1>
-    <p class="auth-subtitle">The etcetera hub for your family — school calendars, homework, activities, goals, and family chat in one place.</p>
-  </div>
-  <div class="auth-card" style="text-align:center">
-    <p style="margin-bottom:20px;color:var(--text-2);font-weight:700">Start with a free 30-day trial. No card required.</p>
-    <a href="/signup" class="btn-primary full-width" style="display:block;text-decoration:none;margin-bottom:12px">Get started 🚀</a>
-    <a href="/login" class="btn-secondary full-width" style="display:block;text-decoration:none">Sign in</a>
-    <p class="demo-hint" style="margin-top:22px">
-      <a href="/pricing" style="color:var(--accent);font-weight:700">Pricing</a> ·
-      <a href="/help" style="color:var(--accent);font-weight:700">Help</a> ·
-      <a href="/privacy" style="color:var(--accent);font-weight:700">Privacy</a> ·
-      <a href="/terms" style="color:var(--accent);font-weight:700">Terms</a>
-    </p>
-  </div>
-</div>
+      <nav class="site-nav" aria-label="Landing page navigation">
+        <a href="#features">Features</a>
+        <a href="#moodle">Moodle sync</a>
+        <a href="#kids">For kids</a>
+        <a href="#faq">FAQ</a>
+      </nav>
 
+      <div class="header-actions">
+        <span class="header-trial micro">30-day free trial · no card required</span>
+        <a class="button button-secondary header-signin" href="/login">Sign in</a>
+        <a class="button button-primary header-create" href="/signup">Create family</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="section hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="school-badge">
+          <span class="school-badge-dot" aria-hidden="true"></span>
+          <span class="micro">Built for STA · St Andrews International School, Bangkok</span>
+        </div>
+        <h1 id="hero-title">The whole school week, in one calm family app.</h1>
+        <p class="hero-lede">Fam ETC brings homework, ECAs, activities, the timetable and house points together with family chat, meals, trips and planning — so everyone knows what today looks like.</p>
+        <div class="hero-actions">
+          <a class="button button-primary button-large" href="/signup">Create your family</a>
+          <a class="button button-secondary button-large" href="#moodle">See how Moodle sync works</a>
+        </div>
+        <div class="hero-proof micro" aria-label="Product benefits">
+          <span>30-day free trial, no card required</span>
+          <span>Invite-only pilot</span>
+          <span>Parent + kid modes</span>
+          <span>iPad, iPhone &amp; web</span>
+        </div>
+        <p class="hero-pricing"><a href="/pricing">See pricing</a> · Invitations are required to sign up.</p>
+      </div>
+
+      <div class="preview-card" aria-label="Example of the Fam ETC Today view">
+        <div class="preview-header">
+          <div class="preview-title">Today · Wednesday</div>
+          <div class="kid-switcher" aria-hidden="true">
+            <span class="kid-pill active">Mia</span>
+            <span class="kid-pill">Leo</span>
+          </div>
+        </div>
+        <div class="preview-stack">
+          <div class="preview-block">
+            <div class="preview-label micro">From Moodle · due today</div>
+            <div class="preview-row"><span>Maths — Fractions worksheet</span><span class="preview-time">16:00</span></div>
+            <div class="preview-row"><span>English — Reading log</span><span class="preview-time preview-done">Done</span></div>
+          </div>
+          <div class="preview-grid">
+            <div class="preview-block">
+              <div class="preview-label micro">ECA today</div>
+              <div class="preview-copy">Swim squad</div>
+              <div class="preview-sub">15:30 · Pool 2</div>
+            </div>
+            <div class="preview-block">
+              <div class="preview-label micro">House points</div>
+              <div class="points-value">148</div>
+              <div class="points-change">+6 this week</div>
+            </div>
+          </div>
+          <div class="preview-block">
+            <div class="preview-label micro">Family chat</div>
+            <div class="chat-row">
+              <span class="chat-avatar">M</span>
+              <span class="chat-copy">Can Leo bring my goggles? 🙂</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="moodle" class="section moodle-section" aria-labelledby="moodle-title">
+      <div class="panel-card">
+        <div class="moodle-grid">
+          <div class="moodle-copy">
+            <div class="kicker">Moodle integration</div>
+            <h2 id="moodle-title">Bring Moodle into Fam ETC</h2>
+            <p>From Settings, a parent can connect Moodle and import homework and timetable. Or use the Fam ETC Chrome extension while signed into Moodle.</p>
+            <p class="moodle-trust"><strong>Parent-only and read-only.</strong> Fam ETC never posts as you. <a href="/privacy">Read our privacy policy.</a></p>
+          </div>
+          <div class="moodle-items">
+            <div class="moodle-item"><strong>Homework</strong><span>Set dates, due dates, submissions</span></div>
+            <div class="moodle-item"><strong>Timetable</strong><span>Periods, rooms, week A/B</span></div>
+            <div class="moodle-item"><strong>ECA &amp; activities</strong><span>Sign-ups, venues, kit reminders</span></div>
+            <div class="moodle-item"><strong>House points</strong><span>Per child, with weekly trend</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="section" aria-labelledby="features-title">
+      <h2 id="features-title">Everything else a family week needs</h2>
+      <p class="section-intro">School data on one side, home life on the other — same app, same calm layout.</p>
+      <div class="feature-grid">
+        <article class="feature-card"><div class="feature-number">01</div><div class="feature-title">Family chat</div><p>One thread per family, plus quick pings for pickups and kit. Kids can read and reply safely.</p></article>
+        <article class="feature-card"><div class="feature-number">02</div><div class="feature-title">Family planning</div><p>Plan meals, trips and the moving parts of family life together in one shared place.</p></article>
+        <article class="feature-card"><div class="feature-number">03</div><div class="feature-title">Quizzes</div><p>Short rounds that follow this term's subjects — five minutes before dinner counts.</p></article>
+        <article class="feature-card"><div class="feature-number">04</div><div class="feature-title">Puzzles</div><p>A daily puzzle for each age band. Siblings can race; parents usually lose.</p></article>
+        <article class="feature-card"><div class="feature-number">05</div><div class="feature-title">Shared calendar</div><p>School events and family plans in one week view, filtered per child.</p></article>
+        <article class="feature-card"><div class="feature-number">06</div><div class="feature-title">Goals &amp; habits</div><p>Reading, practice, bedtime — small habits tracked without nagging.</p></article>
+        <article class="feature-card"><div class="feature-number">07</div><div class="feature-title">Homework hub</div><p>Due today, due soon, overdue — plus a photo of the diary page when Moodle is thin.</p></article>
+        <article class="feature-card"><div class="feature-number">08</div><div class="feature-title">Reminders</div><p>Kit bags, permission slips, deadlines — nudges that arrive the night before, not after.</p></article>
+      </div>
+    </section>
+
+    <section id="kids" class="section" aria-label="Parent and kid modes">
+      <div class="mode-grid">
+        <article class="mode-card">
+          <div class="kicker">Kid mode</div>
+          <h3>Big, bright and only today</h3>
+          <p>Kids see three things: what's due, what's on after school, and their streak. Nothing they can break, nothing they need a parent for.</p>
+          <div class="mode-pills" aria-hidden="true">
+            <span class="mode-pill primary">2 things due</span>
+            <span class="mode-pill">Swim 15:30</span>
+            <span class="mode-pill mono">9-day streak</span>
+          </div>
+        </article>
+        <article class="mode-card">
+          <div class="kicker">Parent mode</div>
+          <h3>The whole family at a glance</h3>
+          <p>Every child, every deadline, every ECA in one week. Plan meals and trips, set reminders, and keep chat in one place instead of five group threads.</p>
+          <div class="stats-grid" aria-hidden="true">
+            <div class="stat-box"><div class="stat-value">3</div><div class="stat-label micro">Children</div></div>
+            <div class="stat-box"><div class="stat-value">7</div><div class="stat-label micro">Due soon</div></div>
+            <div class="stat-box"><div class="stat-value">4</div><div class="stat-label micro">ECAs</div></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section steps-section" aria-label="How Fam ETC works">
+      <div class="steps-grid">
+        <article class="step-card"><div class="step-label">Step 01</div><div class="step-title">Create your family</div><p>One account, add each child. Takes about a minute.</p></article>
+        <article class="step-card"><div class="step-label">Step 02</div><div class="step-title">Link STA Moodle</div><p>From Settings, a parent can import, or use the Chrome extension while signed into Moodle. Read-only — we never post as you.</p></article>
+        <article class="step-card"><div class="step-label">Step 03</div><div class="step-title">Open Today</div><p>Homework, ECAs, timetable and points are already there.</p></article>
+      </div>
+    </section>
+
+    <section id="faq" class="section faq-section" aria-labelledby="faq-title">
+      <h2 id="faq-title">Questions parents ask first</h2>
+      <div class="faq-grid">
+        <article class="faq-card"><div class="faq-question">How does the trial work?</div><p>Fam ETC includes a 30-day free trial, no card required. This is an invite-only pilot for STA families. <a href="/pricing">See pricing</a>.</p></article>
+        <article class="faq-card"><div class="faq-question">Is this an official STA app?</div><p>No — Fam ETC is built by parents for STA families and reads the Moodle you already use.</p></article>
+        <article class="faq-card"><div class="faq-question">Who can see our data?</div><p>Only your family. Moodle access is parent-only and read-only; Fam ETC never posts as you. <a href="/privacy">Read our privacy policy</a>.</p></article>
+        <article class="faq-card"><div class="faq-question">What if a teacher doesn't use Moodle?</div><p>Snap the homework diary page — Fam ETC reads it and adds the tasks alongside the synced ones.</p></article>
+      </div>
+    </section>
+
+    <section class="section cta-section" aria-labelledby="cta-title">
+      <div class="cta-panel">
+        <h2 id="cta-title">Start with this week</h2>
+        <p>Invite-only pilot for STA families. 30-day free trial, no card required.</p>
+        <div class="cta-actions">
+          <a class="button button-primary button-large" href="/signup">Create your family</a>
+          <a class="button button-secondary button-large" href="#moodle">See how Moodle sync works</a>
+          <a class="button button-secondary button-large" href="/pricing">See pricing</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <a class="brand footer-brand" href="/" aria-label="Fam ETC home">
+        <svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true">
+          <rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect>
+          <rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect>
+          <rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect>
+          <rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect>
+        </svg>
+        <span class="brand-name">Fam<span class="brand-etc">ETC</span></span>
+      </a>
+      <div class="footer-note micro">www.fametc.com · for STA families, Bangkok</div>
+      <div class="footer-links">
+        <a href="/privacy">Privacy</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/help">Support</a>
+        <a href="#moodle">Moodle sync</a>
+      </div>
+    </div>
+  </footer>
+</div>
 </body>
 </html>
