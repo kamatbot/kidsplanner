@@ -19,9 +19,11 @@ function pngDimensions(file) {
 
 test("landing page states free STA access and keeps pricing/signup paths", () => {
   assert.match(landing, /Free for STA parents/);
-  assert.match(landing, /Invite-only pilot/);
   assert.match(landing, /STA invite code/);
   assert.match(landing, /href="\/signup"/);
+  for (const destination of ["/login", "/pricing", "/privacy", "/help", "#moodle", "#features", "#kids", "#faq"]) {
+    assert.match(landing, new RegExp(`href="${destination.replace("#", "\\#")}"`));
+  }
   assert.match(landing, /href="\/pricing"/);
   assert.doesNotMatch(landing, /30-day free trial|free for 30 days|annual plan|TBD/i);
   assert.doesNotMatch(landing, /chores/i);
@@ -39,6 +41,10 @@ test("landing hero centers the intro above a browser-framed full-width preview",
   assert.match(hero, /class="dashboard-sidebar"/);
   assert.match(hero, /class="dashboard-main"/);
   assert.match(hero, /class="dashboard-chat"/);
+  assert.match(hero, /class="hero-stage"/);
+  assert.doesNotMatch(hero, /class="hero-proof"/);
+  assert.doesNotMatch(hero, /class="hero-pricing"/);
+  assert.doesNotMatch(hero, /See pricing|Invitations are required to sign up\./);
   for (const label of ["Today", "Calendar", "Homework", "Chat", "Meals", "Trips"]) {
     assert.match(hero, new RegExp(`class="dashboard-nav-item(?: active)?"[^>]*><span><\\/span>${label}`));
   }
@@ -57,10 +63,46 @@ test("landing hero centers the intro above a browser-framed full-width preview",
   assert.match(styles, /\.hero-lede\s*\{[\s\S]*?max-width:\s*none;/);
   assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.hero-copy\s*\{\s*max-width:\s*760px;/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.hero h1\s*\{\s*font-size:\s*clamp\(38px, 11vw, 50px\);/);
-  assert.match(styles, /\.dashboard-viewport\s*\{[\s\S]*?aspect-ratio:\s*1120 \/ 700;[\s\S]*?overflow:\s*hidden;/);
-  assert.match(styles, /\.dashboard-preview\s*\{[\s\S]*?grid-template-columns:\s*176px minmax\(0, 1fr\) 254px;[\s\S]*?scale:\s*calc\(100cqw \/ 1120px\);/);
+  assert.match(styles, /\.hero-stage\s*\{[\s\S]*?width:\s*min\(1440px, calc\(100vw - 40px\)\);[\s\S]*?transform:\s*translateX\(-50%\);/);
+  assert.match(styles, /\.dashboard-viewport\s*\{[\s\S]*?aspect-ratio:\s*1360 \/ 700;[\s\S]*?overflow:\s*hidden;/);
+  assert.match(styles, /\.dashboard-preview\s*\{[\s\S]*?width:\s*1360px;[\s\S]*?grid-template-columns:\s*208px minmax\(0, 1fr\) 308px;[\s\S]*?scale:\s*calc\(100cqw \/ 1360px\);/);
   assert.doesNotMatch(styles, /\.preview-(?:stack|block|grid)\b/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("landing page adds exactly two semantic product proof previews", () => {
+  const proofSection = landing.match(/<section class="section proof-section"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(proofSection);
+  assert.equal((proofSection.match(/<figure class="product-preview/g) || []).length, 2);
+  assert.match(proofSection, /id="proof-title"/);
+  assert.match(proofSection, /Calendar/);
+  assert.match(proofSection, /ALL DAY/);
+  assert.match(proofSection, /08:00/);
+  assert.match(proofSection, /class="calendar-times"/);
+  assert.match(proofSection, /class="audience-chip kid-chip"/);
+  assert.match(proofSection, /class="audience-chip parent-chip"/);
+  assert.match(proofSection, /Chat Actions/);
+  assert.match(proofSection, /Turn this message into/);
+  assert.match(proofSection, /Shopping item ready/);
+  assert.match(proofSection, /<figcaption>/);
+  assert.match(proofSection, /aria-hidden="true"/);
+  for (const privateName of ["Ryshi", "Arya", "Mona"]) {
+    assert.doesNotMatch(proofSection, new RegExp(privateName, "i"));
+  }
+  assert.doesNotMatch(proofSection, /https?:\/\/|private|school-specific/i);
+});
+
+test("landing FAQ uses the restored native disclosure bars", () => {
+  const faq = landing.match(/<section id="faq"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(faq);
+  assert.equal((faq.match(/<details class="faq-item">/g) || []).length, 4);
+  assert.equal((faq.match(/<summary>/g) || []).length, 4);
+  assert.equal((faq.match(/class="faq-answer"/g) || []).length, 4);
+  assert.doesNotMatch(landing, /faq-grid|faq-card|faq-question/);
+  assert.match(styles, /\.faq-list\s*\{[\s\S]*?border-top:\s*1px solid var\(--border\);/);
+  assert.match(styles, /\.faq-item summary\s*\{[\s\S]*?min-height:\s*64px;[\s\S]*?cursor:\s*pointer;/);
+  assert.match(styles, /\.faq-item\[open\] summary::after/);
+  assert.match(styles, /\.faq-item summary:focus-visible/);
 });
 
 test("landing public copy makes no permanence or obsolete product promise", () => {
