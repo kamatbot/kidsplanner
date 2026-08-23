@@ -10,7 +10,7 @@
     "postinstall": "node scripts/ensure-sqlite.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "dependencies": {
     "@simplewebauthn/server": "^13.3.1",

@@ -10,7 +10,7 @@
 # Usage:
 #   scripts/deploy-hostinger.sh
 # Then deploy the printed archive to fametc.com via the Hostinger
-# "deploy JS application" tool (app_type=express, node 20, entry server.js) with
+# "deploy JS application" tool (app_type=express, node 24, entry server.js) with
 # removeArchive=FALSE so the artifact in ../Builds/ is preserved, and poll until
 # the build state is "completed".
 #
