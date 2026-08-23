@@ -19,10 +19,16 @@ a {
 a {
   color: var(--accent);
   text-decoration: none;
+  text-underline-offset: 3px;
 }
 
 a:hover {
   color: var(--coral);
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 button,
@@ -160,6 +166,11 @@ section[id] {
   transform: translateY(-1px);
 }
 
+.button:active {
+  transform: translateY(1px);
+  filter: brightness(0.96);
+}
+
 .button-primary {
   background: var(--accent);
   color: var(--on-accent);
@@ -202,16 +213,15 @@ a:focus-visible {
 }
 
 .hero {
-  padding-top: 64px;
+  padding-top: 72px;
   padding-bottom: 24px;
   display: block;
 }
 
 .hero-copy {
-  max-width: none;
+  max-width: 880px;
   margin-inline: auto;
   text-align: center;
-  animation: famRise 0.5s ease both;
 }
 
 .school-badge {
@@ -238,9 +248,9 @@ a:focus-visible {
 }
 
 .hero h1 {
-  max-width: none;
+  max-width: 780px;
   margin: 22px 0 0;
-  font-size: clamp(44px, 5vw, 46px);
+  font-size: clamp(3rem, 7vw, 5.25rem);
   line-height: 1.02;
   letter-spacing: -0.03em;
   font-weight: 700;
@@ -249,7 +259,7 @@ a:focus-visible {
 
 .hero-lede {
   margin: 18px auto 0;
-  max-width: none;
+  max-width: 62ch;
   color: var(--text-2);
   font-size: 18px;
   line-height: 1.55;
@@ -273,11 +283,74 @@ a:focus-visible {
   color: var(--text-2);
 }
 
+.resolution-flow {
+  display: grid;
+  grid-template-columns: 1fr 28px 1fr 28px 1fr;
+  align-items: center;
+  gap: 10px;
+  max-width: 760px;
+  margin: 34px auto 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel-2);
+  text-align: left;
+  animation: famResolve 0.75s 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.resolution-step {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.resolution-step > span,
+.resolution-step > strong {
+  display: block;
+}
+
+.resolution-label {
+  color: var(--accent);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.resolution-step strong {
+  margin-top: 5px;
+  font-size: 15px;
+  letter-spacing: -0.015em;
+}
+
+.resolution-step > span:last-child {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.resolution-connector {
+  position: relative;
+  height: 1px;
+  background: var(--border);
+}
+
+.resolution-connector::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: 0;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid var(--accent);
+  border-right: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+
 .preview-card,
 .panel-card,
-.feature-card,
 .mode-card,
-.faq-card,
 .cta-panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -287,8 +360,7 @@ a:focus-visible {
 .preview-card {
   margin-top: 48px;
   border-radius: 20px;
-  padding: 0 22px 22px;
-  animation: famRise 0.6s 0.08s ease both;
+  padding: 0 26px 26px;
 }
 
 .preview-browser-bar {
@@ -328,6 +400,8 @@ a:focus-visible {
   container-type: inline-size;
   overflow: hidden;
   background: var(--bg);
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
 }
 
 .dashboard-preview {
@@ -340,7 +414,7 @@ a:focus-visible {
   color: var(--text);
   font-family: "Space Grotesk", system-ui, sans-serif;
   transform-origin: top left;
-  scale: calc(100cqw / 1120px);
+  scale: min(1, calc(100cqw / 1120px));
 }
 
 .dashboard-sidebar {
@@ -871,8 +945,8 @@ a:focus-visible {
 }
 
 .section {
-  padding-top: 24px;
-  padding-bottom: 56px;
+  padding-top: 32px;
+  padding-bottom: 72px;
 }
 
 .moodle-section {
@@ -904,7 +978,9 @@ a:focus-visible {
 
 .section h2 {
   margin: 0;
-  font-size: 34px;
+  max-width: 22ch;
+  font-size: 38px;
+  line-height: 1.08;
 }
 
 .moodle-copy h2 {
@@ -928,8 +1004,7 @@ a:focus-visible {
 }
 
 .moodle-trust a,
-.hero-pricing a,
-.faq-card a {
+.hero-pricing a {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -964,47 +1039,66 @@ a:focus-visible {
 }
 
 .section-intro {
-  margin: 10px 0 26px;
+  max-width: 62ch;
+  margin: 12px 0 30px;
   color: var(--text-2);
   font-size: 17px;
+  line-height: 1.5;
 }
 
-.feature-grid {
+.feature-groups {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(28px, 6vw, 84px);
+  border-top: 1px solid var(--border);
 }
 
-.feature-card {
-  border-radius: 16px;
-  padding: 20px;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+.feature-group {
+  min-width: 0;
+  padding-top: 24px;
 }
 
-.feature-card:hover {
-  transform: translateY(-2px);
+.feature-group-intro {
+  max-width: 28ch;
 }
 
-.feature-number {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+.feature-group-intro h3 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.feature-group-intro p {
+  margin: 10px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.feature-list {
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.feature-list li {
   display: grid;
-  place-items: center;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 13px;
-  font-weight: 700;
+  grid-template-columns: minmax(120px, 0.75fr) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.feature-title {
-  margin-top: 14px;
-  font-weight: 700;
+.feature-list h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.3;
 }
 
-.feature-card p {
-  margin: 6px 0 0;
+.feature-list p {
+  margin: 0;
   color: var(--text-2);
   font-size: 14px;
   line-height: 1.5;
@@ -1113,30 +1207,70 @@ a:focus-visible {
 }
 
 .faq-section h2 {
-  margin-bottom: 20px;
-  font-size: 30px;
+  margin-bottom: 24px;
+  font-size: 34px;
 }
 
-.faq-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+.faq-list {
+  max-width: 900px;
+  border-top: 1px solid var(--border);
 }
 
-.faq-card {
-  border-radius: 16px;
-  padding: 20px;
+.faq-item {
+  border-bottom: 1px solid var(--border);
 }
 
-.faq-question {
+.faq-item summary {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 0;
+  cursor: pointer;
   font-weight: 700;
+  list-style: none;
 }
 
-.faq-card p {
-  margin: 8px 0 0;
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item summary::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--accent);
+  border-bottom: 1.5px solid var(--accent);
+  transform: rotate(45deg) translateY(-3px);
+  transition: transform 0.15s ease;
+}
+
+.faq-item[open] summary::after {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+
+.faq-item summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.faq-answer {
+  padding: 0 40px 18px 0;
+}
+
+.faq-answer p {
+  max-width: 68ch;
+  margin: 0;
   color: var(--text-2);
   font-size: 14px;
   line-height: 1.5;
+}
+
+.faq-answer a {
+  text-decoration: underline;
 }
 
 .cta-section {
@@ -1210,13 +1344,11 @@ a:focus-visible {
   font-size: 14px;
 }
 
-@keyframes famRise {
+@keyframes famResolve {
   from {
-    opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
-    opacity: 1;
     transform: none;
   }
 }
@@ -1231,6 +1363,10 @@ a:focus-visible {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .resolution-flow {
+    animation: none;
   }
 }
 
@@ -1256,9 +1392,6 @@ a:focus-visible {
     gap: 24px;
   }
 
-  .feature-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 760px) {
@@ -1291,8 +1424,8 @@ a:focus-visible {
   }
 
   .mode-grid,
-  .faq-grid,
-  .steps-grid {
+  .steps-grid,
+  .feature-groups {
     grid-template-columns: 1fr;
   }
 
@@ -1339,9 +1472,56 @@ a:focus-visible {
     gap: 10px 18px;
   }
 
-  .feature-grid,
   .moodle-items {
     grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    font-size: clamp(2.5rem, 11vw, 3.5rem);
+  }
+
+  .preview-card {
+    padding-inline: 12px;
+    padding-bottom: 12px;
+  }
+
+  .dashboard-viewport {
+    height: 364px;
+    aspect-ratio: auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .dashboard-preview {
+    scale: 0.52;
+  }
+
+  .resolution-flow {
+    grid-template-columns: 1fr;
+    gap: 0;
+    text-align: left;
+  }
+
+  .resolution-connector {
+    width: 1px;
+    height: 18px;
+    margin-left: 20px;
+  }
+
+  .resolution-connector::after {
+    top: auto;
+    right: auto;
+    bottom: 0;
+    left: -3px;
+    border-top: 0;
+    border-right: 1px solid var(--accent);
+    border-bottom: 1px solid var(--accent);
+    transform: rotate(45deg);
+  }
+
+  .feature-list li {
+    grid-template-columns: 1fr;
+    gap: 5px;
   }
 
   .stats-grid {

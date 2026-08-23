@@ -27,7 +27,7 @@ test("landing page states free STA access and keeps pricing/signup paths", () =>
   assert.doesNotMatch(landing, /chores/i);
 });
 
-test("landing hero centers the intro above a browser-framed full-width preview", () => {
+test("landing hero has controlled hierarchy, one proof artifact, and a useful resolution moment", () => {
   const hero = landing.match(/<section class="section hero"[\s\S]*?<\/section>/)?.[0];
   assert.ok(hero);
   assert.match(hero, /class="hero-copy"/);
@@ -50,17 +50,24 @@ test("landing hero centers the intro above a browser-framed full-width preview",
   assert.match(hero, /House points/);
   assert.match(hero, /Family Chat/);
   assert.match(hero, /Message the family…/);
+  assert.match(hero, /class="resolution-flow" aria-label="How school information becomes a family plan"/);
+  for (const label of ["Moodle", "Today", "Family-ready"]) {
+    assert.match(hero, new RegExp(`class="resolution-label">${label}<`));
+  }
+  assert.equal((hero.match(/class="resolution-flow"/g) || []).length, 1);
   assert.doesNotMatch(hero, /preview-stack|preview-block|preview-grid|kid-switcher/);
   assert.match(styles, /\.hero\s*\{[\s\S]*?display:\s*block;/);
-  assert.match(styles, /\.hero-copy\s*\{[\s\S]*?max-width:\s*none;[\s\S]*?text-align:\s*center;/);
-  assert.match(styles, /\.hero h1\s*\{[\s\S]*?max-width:\s*none;[\s\S]*?font-size:\s*clamp\(44px, 5vw, 46px\);/);
-  assert.match(styles, /\.hero-lede\s*\{[\s\S]*?max-width:\s*none;/);
-  assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.hero-copy\s*\{\s*max-width:\s*760px;/);
-  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.hero h1\s*\{\s*font-size:\s*clamp\(38px, 11vw, 50px\);/);
+  assert.match(styles, /\.hero-copy\s*\{[\s\S]*?max-width:\s*880px;[\s\S]*?text-align:\s*center;/);
+  assert.match(styles, /\.hero h1\s*\{[\s\S]*?max-width:\s*780px;[\s\S]*?font-size:\s*clamp\(3rem, 7vw, 5\.25rem\);/);
+  assert.match(styles, /\.hero-lede\s*\{[\s\S]*?max-width:\s*62ch;/);
+  assert.match(styles, /\.resolution-flow\s*\{[\s\S]*?animation:\s*famResolve/);
   assert.match(styles, /\.dashboard-viewport\s*\{[\s\S]*?aspect-ratio:\s*1120 \/ 700;[\s\S]*?overflow:\s*hidden;/);
-  assert.match(styles, /\.dashboard-preview\s*\{[\s\S]*?grid-template-columns:\s*176px minmax\(0, 1fr\) 254px;[\s\S]*?scale:\s*calc\(100cqw \/ 1120px\);/);
+  assert.match(styles, /\.dashboard-preview\s*\{[\s\S]*?grid-template-columns:\s*176px minmax\(0, 1fr\) 254px;[\s\S]*?scale:\s*min\(1, calc\(100cqw \/ 1120px\)\);/);
   assert.doesNotMatch(styles, /\.preview-(?:stack|block|grid)\b/);
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /@media \(max-width: 520px\)[\s\S]*?\.dashboard-viewport\s*\{[\s\S]*?overflow-x:\s*auto;/);
+  assert.match(styles, /@media \(max-width: 520px\)[\s\S]*?\.dashboard-preview\s*\{[\s\S]*?scale:\s*0\.52;/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.resolution-flow\s*\{\s*animation:\s*none;/);
+  assert.doesNotMatch(styles, /@keyframes famRise|animation:\s*famRise/);
 });
 
 test("landing public copy makes no permanence or obsolete product promise", () => {
@@ -85,10 +92,32 @@ test("landing page uses shipped family planning language", () => {
   assert.doesNotMatch(landing, /approve chores|Chores/i);
 });
 
+test("landing features use editorial groups and FAQ uses native disclosures", () => {
+  const features = landing.match(/<section id="features"[\s\S]*?<\/section>\s*<section id="kids"/)?.[0];
+  assert.ok(features);
+  assert.match(features, /class="feature-groups"/);
+  assert.equal((features.match(/class="feature-group"/g) || []).length, 2);
+  assert.equal((features.match(/<li>/g) || []).length, 8);
+  assert.doesNotMatch(features, /feature-number|feature-card|feature-grid/);
+
+  const faq = landing.match(/<section id="faq"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(faq);
+  assert.equal((faq.match(/<details class="faq-item">/g) || []).length, 4);
+  assert.equal((faq.match(/<summary>/g) || []).length, 4);
+  assert.doesNotMatch(faq, /onclick|aria-expanded/);
+  assert.match(styles, /\.faq-item summary\s*\{[\s\S]*?min-height:\s*64px;/);
+  assert.match(styles, /\.faq-item summary:focus-visible\s*\{[\s\S]*?outline:\s*3px solid var\(--accent\)/);
+  assert.doesNotMatch(styles, /\.feature-card|\.feature-grid|\.faq-card|\.faq-grid/);
+});
+
 test("landing CSS protects anchors, focus, touch targets, and narrow layouts", () => {
   assert.match(styles, /section\[id\]\s*\{[^}]*scroll-margin-top:\s*88px/s);
   assert.match(styles, /outline:\s*3px solid var\(--accent\)/);
   assert.match(styles, /\.site-nav a,\s*\.footer-links a\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(styles, /\.button\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(styles, /\.landing-shell\s*\{[^}]*overflow:\s*clip/s);
+  assert.match(styles, /::selection\s*\{[\s\S]*?background:\s*var\(--accent\)/);
+  assert.match(styles, /\.button:active\s*\{[\s\S]*?transform:\s*translateY\(1px\)/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.header-create\s*\{\s*display: none;/);
   assert.doesNotMatch(styles, /\.header-signin\s*\{\s*display:\s*none;/);
 });
