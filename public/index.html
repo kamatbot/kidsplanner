@@ -457,8 +457,7 @@
         </div>
 
         <!-- Calendar Tab (canvas 1b) — one calendar surface with the header
-             carrying view/date controls plus compact utility actions, and a
-             footer legend + sync status row. -->
+             carrying view/date controls plus compact utility actions. -->
         <div class="tab-panel" id="tab-calendar">
           <div class="cal-page-header">
             <h1 class="page-title">Calendar</h1>
@@ -474,20 +473,22 @@
               <button class="cal-nav-btn" onclick="calNext()" aria-label="Next">›</button>
             </div>
             <div class="cal-header-actions" aria-label="Calendar tools">
-              <button type="button" class="btn-secondary cal-header-action" onclick="openUploadModal()">
-                <span aria-hidden="true">📎</span> Upload schedule
-              </button>
+              <div class="cal-upload-utility">
+                <button type="button" class="btn-secondary cal-header-action" onclick="openUploadModal()">
+                  <span aria-hidden="true">📎</span> Upload schedule
+                </button>
+                <div class="calendar-footer" id="calendar-footer"></div>
+              </div>
               <button type="button" class="btn-secondary cal-header-action" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">
                 <span aria-hidden="true">🎓</span> Add school calendar
               </button>
             </div>
-            <button class="btn-primary" onclick="openAddEventModal()">+ Add</button>
+            <button class="btn-primary" id="calendar-add-event-btn" onclick="openCalendarAddEvent()">+ Add</button>
           </div>
 
           <div class="calendar-tab-layout">
             <section class="calendar-main">
               <div class="calendar-grid-scroll"><div id="calendar-grid" class="calendar-grid"></div></div>
-              <div class="calendar-footer" id="calendar-footer"></div>
               <div class="calendar-upload-history" id="uploads-history" hidden>
                 <div class="micro-label">Uploaded schedules</div>
                 <div id="uploads-list" class="uploads-list"></div>

@@ -93,11 +93,12 @@ test("Calendar keeps one main surface and header utility actions", () => {
   assert.match(app, /function renderCalendar\(\)/);
   assert.doesNotMatch(app, /renderMiniCal|miniMonth|miniCalPrev|miniCalNext|eventSpanDates|function jumpTo/);
   assert.doesNotMatch(school, /renderMiniCal/);
-  assert.match(css, /--calendar-canvas-height:\s*560px/);
-  assert.match(css, /\.week-view[^\n]*height:\s*var\(--calendar-canvas-height\)/);
-  assert.match(css, /\.month-view[^\n]*height:\s*var\(--calendar-canvas-height\)/);
-  assert.match(css, /\.calendar-tab-layout[^\n]*--calendar-canvas-height:\s*480px/);
+  assert.match(css, /\.week-grid-head/);
+  assert.match(css, /\.week-grid-head[^\n]*repeat\(7, minmax\(132px, 1fr\)\)/);
+  assert.match(css, /\.month-view[^\n]*height:\s*max\(/);
   assert.match(css, /\.cal-header-action[^\n]*min-height:\s*44px/);
+  assert.match(html, /id="calendar-footer"/);
+  assert.match(html, /cal-upload-utility[\s\S]*calendar-footer/);
 });
 
 test("standalone Trips and Meals pages retain the shared navigation shell", () => {

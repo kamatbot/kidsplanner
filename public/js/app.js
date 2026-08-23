@@ -1230,13 +1230,13 @@ function setCalView(v) {
 }
 
 function calPrev() {
-  if (currentView === 'week') weekStart = new Date(+weekStart - 7 * 86400000);
+  if (currentView === 'week') weekStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - 7);
   else monthDate = new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1);
   renderCalendar();
 }
 
 function calNext() {
-  if (currentView === 'week') weekStart = new Date(+weekStart + 7 * 86400000);
+  if (currentView === 'week') weekStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7);
   else monthDate = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
   renderCalendar();
 }
@@ -1322,6 +1322,8 @@ function visibleEvents() {
 function renderCalendar() {
   currentView === 'week' ? renderWeekView() : renderMonthView();
   renderCalendarFooter();
+  const addButton = document.getElementById('calendar-add-event-btn');
+  if (addButton) addButton.hidden = isTimetableMode();
 }
 
 // Horizon event styling: a left bar in the owning kid's color (violet for
@@ -1349,94 +1351,220 @@ function repeatLabel(ev) {
 
 const allDayIconSvg = '<svg class="evt-allday-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"></path><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"></path></svg>';
 
+function calendarMinutes(value) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  return minutes >= 0 && minutes < 1440 && Number(match[2]) < 60 ? minutes : null;
+}
+
+function calendarDateAt(date, offset) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset);
+}
+
+function calendarIsoDateAt(date, offset) {
+  return isoDate(calendarDateAt(date, offset));
+}
+
+function calendarWeekAxis(events, start, end) {
+  let axisStart = 6 * 60;
+  let axisEnd = 22 * 60;
+  events.forEach((ev) => {
+    if (calendarMinutes(ev.time) === null || ev.date > end || (ev.endDate || ev.date) < start) return;
+    const startMinutes = calendarMinutes(ev.time);
+    const endMinutes = calendarMinutes(ev.endTime);
+    if (startMinutes < axisStart) axisStart = 0;
+    if (endMinutes !== null && endMinutes > axisEnd) axisEnd = 1440;
+    if (startMinutes >= axisEnd) axisEnd = 1440;
+  });
+  return { start: axisStart, end: axisEnd };
+}
+
+function calendarTimedEventRange(ev, ds, axis) {
+  const startMinutes = ds === ev.date ? calendarMinutes(ev.time) : axis.start;
+  if (startMinutes === null) return null;
+  let endMinutes = null;
+  if (ds === ev.date && (!ev.endDate || ev.endDate === ds)) {
+    const candidate = calendarMinutes(ev.endTime);
+    if (candidate !== null && candidate > startMinutes) endMinutes = candidate;
+  }
+  if (endMinutes === null) endMinutes = Math.min(axis.end, startMinutes + 60);
+  if (ev.endDate && ev.endDate > ds) endMinutes = axis.end;
+  return { start: startMinutes, end: Math.max(endMinutes, startMinutes + 30) };
+}
+
+function layoutTimedEventsForDay(events, ds, axis, rowHeight) {
+  const items = events.filter((ev) => calendarMinutes(ev.time) !== null && ev.date <= ds && (ev.endDate || ev.date) >= ds)
+    .map((ev, index) => {
+      const range = calendarTimedEventRange(ev, ds, axis);
+      return range ? { ev, index, start: range.start, end: range.end } : null;
+    }).filter(Boolean)
+    .sort((a, b) => a.start - b.start || a.end - b.end || String(a.ev.id || '').localeCompare(String(b.ev.id || '')) || a.index - b.index);
+
+  const laidOut = [];
+  let group = [];
+  let groupEnd = -1;
+  const flush = () => {
+    if (!group.length) return;
+    const columns = [];
+    group.forEach((item) => {
+      let column = columns.findIndex((columnItems) => !columnItems.some((other) => other.start < item.end && other.end > item.start));
+      if (column < 0) { column = columns.length; columns.push([]); }
+      columns[column].push(item);
+      item.column = column;
+    });
+    group.forEach((item) => {
+      item.columns = columns.length;
+      item.top = (item.start - axis.start) / 30 * rowHeight;
+      item.height = Math.max((item.end - item.start) / 30 * rowHeight, 34);
+      laidOut.push(item);
+    });
+    group = [];
+    groupEnd = -1;
+  };
+  items.forEach((item) => {
+    if (group.length && item.start >= groupEnd) flush();
+    group.push(item);
+    groupEnd = Math.max(groupEnd, item.end);
+  });
+  flush();
+  return laidOut.sort((a, b) => a.start - b.start || a.column - b.column || a.index - b.index);
+}
+
+function formatCalendarTime(minutes) {
+  if (minutes === 0 || minutes === 1440) return minutes === 0 ? '12 AM' : '12 AM';
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}${minute ? `:${String(minute).padStart(2, '0')}` : ''} ${suffix}`;
+}
+
+function calendarPeriodDefaultDate() {
+  const today = new Date();
+  const todayIso = isoDate(today);
+  if (currentView === 'week' && weekStart) {
+    const start = isoDate(weekStart);
+    const end = calendarIsoDateAt(weekStart, 6);
+    return todayIso >= start && todayIso <= end ? todayIso : start;
+  }
+  if (currentView === 'month' && monthDate) {
+    return today.getFullYear() === monthDate.getFullYear() && today.getMonth() === monthDate.getMonth()
+      ? todayIso
+      : isoDate(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1));
+  }
+  return todayIso;
+}
+
+function openCalendarAddEvent() {
+  openAddEventModal(calendarPeriodDefaultDate());
+}
+
+function renderWeekEvent(ev, ds, continuation, className, style, onClick) {
+  const rLabel = repeatLabel(ev);
+  return `<button type="button" class="${className}${ev.source === 'school' ? ' school-evt' : ''}${continuation ? ' evt-continuation' : ''}" style="${style}"
+    onclick="${onClick}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
+    <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
+    <span class="evt-title">${timetableEventKidLabel(ev)}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
+  </button>`;
+}
+
 function renderWeekView() {
   const today  = isoDate(new Date());
   const events = visibleEvents();
   const timetable = isTimetableMode();
   const days   = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const weekEnd = new Date(+weekStart + 6 * 86400000);
+  const weekEnd = calendarDateAt(weekStart, 6);
+  const weekStartIso = isoDate(weekStart);
+  const weekEndIso = isoDate(weekEnd);
+  const axis = calendarWeekAxis(events, weekStartIso, weekEndIso);
+  const rowHeight = 44;
+  const axisHeight = Math.max((axis.end - axis.start) / 30, 1) * rowHeight;
 
   document.getElementById('cal-title').textContent =
     `${formatShort(weekStart)} – ${formatShort(weekEnd)}, ${weekEnd.getFullYear()}`;
 
-  let html = '<div class="week-view">';
+  let html = `<div class="week-view timed-week-view" style="--week-axis-height:${axisHeight}px;--week-row-height:${rowHeight}px">`;
+  html += `<div class="week-grid-head"><div class="week-grid-corner" aria-hidden="true"></div>`;
   for (let i = 0; i < 7; i++) {
-    const d   = new Date(+weekStart + i * 86400000);
+    const d   = calendarDateAt(weekStart, i);
     const ds  = isoDate(d);
     const isT = ds === today;
     const isW = i >= 5;
-    const evs = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
-    const dueHw = timetable ? [] : visibleHomeworkDueItems().filter(h => h.dueDate === ds);
-    html += `<div class="week-day-col${isT?' is-today':''}${isW?' is-weekend':''}">
-      <div class="week-day-col-hdr">
-        <div class="wday-name">${days[i]}${isT ? ' · today' : ''}</div>
-        <div class="wday-num">${d.getDate()}</div>
-      </div>
-      <div class="week-day-events">
-        ${dueHw.map(h => {
-          const overdue = h.dueDate < today;
-          return `<div class="week-evt hw-due-chip${overdue ? ' hw-due-overdue' : ''}" onclick="switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">
-            <span class="hw-due-icon">📚</span>${esc(h.title)}
-          </div>`;
-        }).join('')}
-        ${evs.map(ev => {
-          const isCont = ev.date !== ds; // continuation day of a multi-day event
-          const rLabel = repeatLabel(ev);
-          return `
-          <div class="week-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
-            <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
-            <span class="evt-title">${timetableEventKidLabel(ev)}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
-          </div>`;
-        }).join('')}
-        ${timetable ? '' : `<button class="week-add-btn" onclick="openAddEventModal('${ds}')">+ Add</button>`}
-      </div>
+    html += `<div class="week-day-col-hdr${isT?' is-today':''}${isW?' is-weekend':''}">
+      <div class="wday-name">${days[i]}${isT ? ' · today' : ''}</div><div class="wday-num">${d.getDate()}</div>
     </div>`;
   }
+  html += '</div><div class="week-all-day-row"><div class="week-all-day-label">All day</div>';
+  for (let i = 0; i < 7; i++) {
+    const d = calendarDateAt(weekStart, i);
+    const ds = isoDate(d);
+    const evs = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
+    const dueHw = timetable ? [] : visibleHomeworkDueItems().filter(h => h.dueDate === ds);
+    const allDayEvents = evs.filter(ev => calendarMinutes(ev.time) === null);
+    html += `<div class="week-all-day-track${ds === today ? ' is-today' : ''}">
+        ${dueHw.map(h => {
+          const overdue = h.dueDate < today;
+          return `<button type="button" class="week-evt hw-due-chip all-day-event${overdue ? ' hw-due-overdue' : ''}" onclick="switchNavTab('homework');openHomeworkDetail('${h.id}')" title="Homework due">
+            <span class="hw-due-icon">📚</span>${esc(h.title)}
+          </button>`;
+        }).join('')}
+        ${allDayEvents.map(ev => renderWeekEvent(ev, ds, ev.date !== ds, 'week-evt all-day-event', `border-left-color:${eventBarColor(ev)}`, `showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')`)).join('')}
+      </div>`;
+  }
+  html += '</div><div class="week-timed-row"><div class="week-time-axis" style="height:${axisHeight}px">';
+  for (let minutes = axis.start; minutes <= axis.end; minutes += 60) {
+    html += `<span class="week-time-label" style="top:${(minutes - axis.start) / 30 * rowHeight}px">${formatCalendarTime(minutes)}</span>`;
+  }
   html += '</div>';
+  for (let i = 0; i < 7; i++) {
+    const d = calendarDateAt(weekStart, i);
+    const ds = isoDate(d);
+    const isT = ds === today;
+    const isW = i >= 5;
+    const evs = events.filter(e => e.date <= ds && (e.endDate || e.date) >= ds);
+    const timed = layoutTimedEventsForDay(evs, ds, axis, rowHeight);
+    html += `<div class="week-day-track${isT?' is-today':''}${isW?' is-weekend':''}" style="height:${axisHeight}px">`;
+    if (!timetable) {
+      for (let minutes = axis.start; minutes < axis.end; minutes += 30) {
+        const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+        const displayDate = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        html += `<button type="button" class="week-time-slot" style="top:${(minutes - axis.start) / 30 * rowHeight}px;height:${rowHeight}px" onclick="openAddEventModal('${ds}','${time}')" aria-label="Add event on ${displayDate} at ${formatCalendarTime(minutes)}"></button>`;
+      }
+    }
+    html += timed.map((item) => {
+      const width = 100 / item.columns;
+      const left = width * item.column;
+      return renderWeekEvent(item.ev, ds, item.ev.date !== ds, 'week-evt timed-event', `border-left-color:${eventBarColor(item.ev)};top:${item.top}px;height:${item.height}px;left:calc(${left}% + 2px);width:calc(${width}% - 4px)`, `showDetail('${item.ev.id}','${item.ev.occurrenceDate || item.ev.date}')`);
+    }).join('');
+    html += '</div>';
+  }
+  html += '</div></div>';
   document.getElementById('calendar-grid').innerHTML = html;
 }
 
-// Footer legend + sync status (canvas 1b) — kid colors from the same family
-// order as kidColorFor, plus real school-feed sync state (schoolFeedsInfo /
-// schoolEvents), not invented numbers.
+// Calendar legend only. Sync state remains available in the school settings
+// surface; the Calendar utility group is intentionally kept task-focused.
 function renderCalendarFooter() {
   const el = document.getElementById('calendar-footer');
   if (!el) return;
   const kids = (currentFamily && currentFamily.kids) || [];
-  const kidLegend = kids.map((k) =>
+  const legendKids = activeKidId ? kids.filter((k) => k.id === activeKidId) : kids;
+  const kidLegend = legendKids.map((k) =>
     `<span class="cal-legend-item"><span class="cal-legend-swatch" style="background:${kidColorFor(k.id) || 'var(--c-violet)'}"></span>${esc(k.name)}</span>`
   ).join('');
 
-  const monday = mondayOf(new Date());
-  const sunday = new Date(+monday + 6 * 86400000);
-  const weekEventCount = schoolEvents
-    .map(normalizeSchoolEvent)
-    .filter((ev) => ev.date >= isoDate(monday) && ev.date <= isoDate(sunday)).length;
-  const syncedText = (schoolFeedsInfo && schoolFeedsInfo.lastSyncAt)
-    ? `Synced ${timeAgo(schoolFeedsInfo.lastSyncAt)} · ${weekEventCount} school event${weekEventCount === 1 ? '' : 's'} this week`
-    : 'Not synced yet';
-
   if (isTimetableMode()) {
-    const rangeStart = currentView === 'week'
-      ? (weekStart ? isoDate(weekStart) : null)
-      : (monthDate ? isoDate(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)) : null);
-    const rangeEnd = currentView === 'week'
-      ? (weekStart ? isoDate(new Date(+weekStart + 6 * 86400000)) : null)
-      : (monthDate ? isoDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)) : null);
-    const lessons = visibleEvents().filter((ev) => !rangeStart || (ev.date <= rangeEnd && (ev.endDate || ev.date) >= rangeStart));
-    const lessonText = `${lessons.length} lesson${lessons.length === 1 ? '' : 's'} in this ${currentView}`;
     el.innerHTML = `
       ${kidLegend}
-      <span class="cal-legend-item cal-timetable-key"><span class="cal-legend-swatch" style="background:var(--accent)"></span>Timetable</span>
-      <span class="cal-sync-status micro-label" role="status" aria-live="polite">Timetable · ${lessonText} · all kids</span>`;
+      <span class="cal-legend-item cal-timetable-key"><span class="cal-legend-swatch" style="background:var(--accent)"></span>Timetable</span>`;
     return;
   }
 
   el.innerHTML = `
     ${kidLegend}
     <span class="cal-legend-item"><span class="cal-legend-swatch" style="background:var(--c-violet)"></span>School feed</span>
-    <span class="cal-legend-item"><span class="cal-legend-swatch cal-legend-dashed"></span>Homework due</span>
-    <span class="cal-sync-status micro-label">${esc(syncedText)}</span>`;
+    <span class="cal-legend-item"><span class="cal-legend-swatch cal-legend-dashed"></span>Homework due</span>`;
 }
 
 function renderMonthView() {
@@ -1591,14 +1719,14 @@ function populateEventAudienceOptions(selected) {
   sel.value = selected && sel.querySelector(`option[value="${selected}"]`) ? selected : 'family';
 }
 
-function openAddEventModal(ds) {
+function openAddEventModal(ds, time) {
   editingEventId = null; // adding fresh — make sure a stale edit session can't hijack this save
   chatEventComposerSource = null;
   pendingDate = ds || null;
   const startDate = ds || isoDate(new Date());
   document.getElementById('event-title').value   = '';
   document.getElementById('event-date').value    = startDate;
-  document.getElementById('event-time').value    = '';
+  document.getElementById('event-time').value    = time || '';
   document.getElementById('event-end-time').value= '';
   document.getElementById('event-notes').value   = '';
   document.getElementById('event-end-date').value = '';

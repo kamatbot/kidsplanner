@@ -265,6 +265,7 @@ html { font-size: 16px; }
 
 .tab-panel { display: none; flex-direction: column; gap: 18px; }
 .tab-panel.active { display: flex; }
+#tab-calendar.tab-panel.active { flex: 1; min-height: 0; }
 
 .card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -796,13 +797,14 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 /* ============================================================
    CALENDAR SURFACE — one main canvas with header utility actions
 ============================================================ */
-.calendar-tab-layout { display: flex; flex-direction: column; gap: 16px; }
-.calendar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
-.calendar-grid-scroll { overflow-x: auto; min-height: var(--calendar-canvas-height); }
+.calendar-tab-layout { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 16px; }
+.calendar-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.calendar-grid-scroll { flex: 1; min-height: 0; overflow: auto; }
 .calendar-upload-history { display: flex; flex-direction: column; gap: 8px; }
 .cal-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .cal-header-action { min-height: 44px; padding: 9px 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .cal-header-action:focus-visible, .cal-nav-btn:focus-visible, .view-btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+.cal-upload-utility { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .uploads-list { display: flex; flex-direction: column; gap: 8px; }
 .upload-item {
@@ -846,28 +848,51 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 .view-btn.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow-sm); }
 
-.week-view { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; min-width: 760px; height: var(--calendar-canvas-height); }
-.week-day-col { border-radius: var(--radius-sm); border: 1px solid var(--border); overflow: hidden; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.week-day-col-hdr { padding: 8px 6px; text-align: center; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+.week-view { min-width: 1100px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: visible; background: var(--panel); }
+.week-grid-head, .week-all-day-row, .week-timed-row { display: grid; grid-template-columns: 64px repeat(7, minmax(132px, 1fr)); }
+.week-grid-head { position: sticky; top: 0; z-index: 20; min-height: 52px; background: var(--panel-2); }
+.week-grid-corner, .week-all-day-label { background: var(--panel-2); border-right: 1px solid var(--border); }
+.week-day-col-hdr { min-width: 0; padding: 9px 6px; text-align: center; background: var(--panel-2); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.week-day-col-hdr:last-child, .week-all-day-track:last-child, .week-day-track:last-child { border-right: none; }
 .week-day-col-hdr .wday-name { font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); }
 .week-day-col-hdr .wday-num { font-family: "JetBrains Mono", monospace; font-size: 17px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
-.week-day-col.is-today { border-color: var(--accent); }
-.week-day-col.is-today .week-day-col-hdr { background: var(--accent-soft); }
-.week-day-col.is-today .wday-name, .week-day-col.is-today .wday-num { color: var(--accent); }
-.week-day-col.is-weekend .week-day-col-hdr { background: var(--panel-2); }
+.week-day-col-hdr.is-today { background: var(--accent-soft); }
+.week-day-col-hdr.is-today .wday-name, .week-day-col-hdr.is-today .wday-num { color: var(--accent); }
+.week-day-col-hdr.is-weekend { background: var(--panel-2); }
 
-.week-day-events { padding: 6px; min-height: 56px; flex: 1; overflow-y: auto; }
+.week-all-day-row { position: sticky; top: 52px; z-index: 19; min-height: 52px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.week-all-day-label { padding: 10px 7px; font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+.week-all-day-track { min-width: 0; padding: 5px; border-right: 1px solid var(--border); background: var(--panel); }
+.week-all-day-track.is-today { background: color-mix(in srgb, var(--accent-soft) 38%, var(--panel)); }
+.week-all-day-track:empty::after { content: ' '; display: block; min-height: 34px; }
+
+.week-timed-row { align-items: stretch; }
+.week-time-axis { position: relative; background: var(--panel-2); border-right: 1px solid var(--border); }
+.week-time-label { position: absolute; right: 7px; transform: translateY(-50%); font-family: "JetBrains Mono", monospace; font-size: 9px; color: var(--text-2); white-space: nowrap; }
+.week-time-label:first-child { transform: none; }
+.week-day-track { min-width: 0; position: relative; overflow: visible; border-right: 1px solid var(--border); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--week-row-height) - 1px), var(--border) calc(var(--week-row-height) - 1px), var(--border) var(--week-row-height)); }
+.week-day-track.is-today { background-color: color-mix(in srgb, var(--accent-soft) 30%, var(--panel)); }
+.week-day-track.is-weekend { background-color: color-mix(in srgb, var(--panel-2) 32%, var(--panel)); }
+.week-time-slot { position: absolute; left: 0; right: 0; z-index: 1; border: 0; border-bottom: 1px solid transparent; background: transparent; cursor: pointer; font: inherit; }
+.week-time-slot:hover { background: color-mix(in srgb, var(--accent-soft) 42%, transparent); }
+.week-time-slot:focus-visible { z-index: 3; outline: 3px solid var(--accent); outline-offset: -3px; background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 .week-evt {
-  font-size: 12px; font-weight: 600; padding: 6px 8px; border-radius: 6px; margin-bottom: 6px;
-  cursor: pointer; line-height: 1.3; transition: opacity .15s;
+  display: block; font-family: inherit; text-align: left; color: var(--text); font-size: 12px; font-weight: 600; padding: 5px 7px; border-radius: 6px;
+  cursor: pointer; line-height: 1.3; transition: opacity .15s; border-top: 0; border-right: 0; border-bottom: 0;
   background: var(--panel-2); border-left: 3px solid var(--c-violet);
 }
 .week-evt:hover { opacity: .85; }
+.week-evt:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; z-index: 5; }
+.week-all-day-track .week-evt { position: relative; width: 100%; min-height: 34px; margin: 0 0 3px; overflow: hidden; }
+.week-all-day-track .week-evt:last-child { margin-bottom: 0; }
+.timed-event { position: absolute; z-index: 2; overflow: hidden; min-height: 34px; font-size: 11px; padding: 4px 5px; }
+.timed-event .evt-title { overflow-wrap: break-word; word-break: normal; }
 .week-evt .evt-time {
   font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--text-2);
   display: flex; align-items: center; gap: 4px; margin-bottom: 1px;
 }
 .week-evt .evt-allday-icon { flex: none; }
+.week-evt .evt-title { display: block; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; }
 
 /* Multi-day continuation days + recurring-series affordance — shared by week
    and month chips. Subtle/token-only: same reduced-opacity treatment already
@@ -875,14 +900,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .week-evt.evt-continuation, .month-evt.evt-continuation { opacity: .7; }
 .evt-repeat-badge { margin-right: 3px; font-size: 11px; opacity: .75; }
 
-.week-add-btn {
-  width: 100%; background: none; border: 1px dashed var(--border); border-radius: 5px;
-  padding: 4px; font-size: 11px; color: var(--text-2); cursor: pointer;
-  margin-top: 4px; font-family: inherit; font-weight: 600; transition: all .15s;
-}
-.week-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-
-.month-view { display: grid; grid-template-columns: repeat(7,1fr); grid-template-rows: auto repeat(6, minmax(0, 1fr)); height: var(--calendar-canvas-height); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
+.month-view { display: grid; grid-template-columns: repeat(7,1fr); grid-template-rows: auto repeat(6, minmax(0, 1fr)); height: max(var(--calendar-canvas-height), calc(100vh - 240px)); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
 .month-day-hdr {
   padding: 8px; text-align: center; font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700;
   text-transform: uppercase; color: var(--text-2); background: var(--panel-2); border-bottom: 1px solid var(--border);
@@ -906,12 +924,11 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .month-evt:hover { opacity: .8; }
 .month-more { font-size: 10px; font-weight: 600; color: var(--text-2); padding: 1px 4px; }
 
-/* Footer legend + sync status (canvas 1b) */
-.calendar-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text-2); }
+/* Calendar legend lives beside Upload schedule in the header utility group. */
+.calendar-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-2); }
 .cal-legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .cal-legend-swatch { width: 8px; height: 8px; border-radius: 2px; }
 .cal-legend-dashed { background: none; border: 1px dashed var(--text-2); }
-.cal-sync-status { margin-left: auto; }
 
 .timetable-event-kid {
   display: inline-flex; align-items: center; margin-right: 5px;
@@ -1153,8 +1170,11 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .chat-dock.chat-collapsed .chat-dock-title { display: block; }
   .chat-dock.chat-collapsed .chat-dock-avatars { flex-direction: row; }
   .chat-fab { display: flex; }
-  .calendar-tab-layout { --calendar-canvas-height: 480px; }
+  #tab-calendar.tab-panel.active { flex: none; }
+  .calendar-tab-layout { min-height: 0; }
   .cal-header-actions { width: 100%; margin-left: 0; }
+  .cal-upload-utility { flex: 1 1 100%; width: 100%; min-width: 0; }
+  .cal-upload-utility .calendar-footer { flex: 1 1 auto; min-width: 0; }
   .cal-header-action { flex: 1 1 auto; justify-content: center; }
   /* Kid sessions swap the shared horizontal sidebar for their own playful top
      rail on narrow screens; on desktop (>900px) they use the normal sidebar. */
@@ -1168,7 +1188,8 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .cal-page-header, .homework-hub-header { flex-direction: column; align-items: flex-start; }
   .cal-header-actions { width: 100%; flex-direction: column; align-items: stretch; }
   .cal-header-action { width: 100%; }
-  .calendar-tab-layout { --calendar-canvas-height: 420px; }
+  .cal-upload-utility { align-items: stretch; flex: 0 1 auto; flex-direction: column; gap: 8px; }
+  .calendar-footer { gap: 8px 12px; }
   .today-actions-header { flex-direction: column; }
   .today-actions-header-actions { width: 100%; }
   .today-actions-header-actions .btn-primary { width: 100%; }
