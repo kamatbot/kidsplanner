@@ -144,7 +144,7 @@ struct AddEventSheet: View {
                 if !initialTitle.isEmpty { title = initialTitle }
                 if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
                     let comps = Calendar.current.dateComponents([.hour, .minute], from: parsed)
-                    if let combined = Calendar.current.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: 0, of: Date()) {
+                    if let combined = Calendar.current.date(bySettingHour: comps.hour ?? 0, minute: comps.minute ?? 0, second: 0, of: date) {
                         hasTime = true
                         time = combined
                     }

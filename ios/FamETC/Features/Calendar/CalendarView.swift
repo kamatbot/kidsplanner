@@ -1,19 +1,17 @@
 import SwiftUI
 
-/// Calendar tab. A full month GRID on iPad and iPhone-landscape (like the web),
-/// and a compact AGENDA LIST on iPhone-portrait where a grid would be cramped.
-/// On the roomier layouts a Week|Month segmented control (canvas-1b) lets the
-/// user pick between the grid and a 7-day agenda window explicitly.
+/// Calendar tab. Portrait iPad offers the full Month grid or timed Week view;
+/// landscape uses the timed Week view directly so events stay legible at their
+/// actual times. iPhone portrait keeps the compact agenda list.
 struct CalendarScreen: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
-    @Environment(\.verticalSizeClass) private var vSize
     @State private var showAddEvent = false
+    @State private var addEventDate = Date()
+    @State private var addEventTime: String?
     @State private var mode: CalendarMode = .month
     @State private var audience: CalendarAudience = .parents
 
-    private var useGrid: Bool { hSize == .regular || vSize == .compact }
-    private var isCompactLandscape: Bool { vSize == .compact }
     /// Only offer the Week|Month toggle where there's room to show it above
     /// either surface without crowding the iPhone-portrait agenda list.
     private var canToggleMode: Bool { hSize == .regular }
@@ -30,54 +28,75 @@ struct CalendarScreen: View {
     private var isTimetable: Bool { store.isParent && audience == .timetable }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if store.isParent {
-                if isCompactLandscape && canToggleMode {
-                    landscapeToolbar
-                } else if isCompactLandscape {
-                    CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
-                        .padding(.horizontal, Space.md)
-                        .padding(.vertical, Space.xs)
-                } else {
-                    CalendarAudienceBar(selection: $audience, kids: store.kids)
+        GeometryReader { proxy in
+            let isLandscape = CalendarMode.isLandscape(width: proxy.size.width, height: proxy.size.height)
+            let displayedMode = mode.resolved(isLandscape: isLandscape)
+            let useGrid = hSize == .regular || isLandscape
+
+            VStack(spacing: 0) {
+                if store.isParent {
+                    if isLandscape {
+                        CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                            .padding(.horizontal, Space.md)
+                            .padding(.vertical, Space.xs)
+                    } else {
+                        CalendarAudienceBar(selection: $audience, kids: store.kids)
+                    }
                 }
-            }
-            if canToggleMode && !(store.isParent && isCompactLandscape) {
-                modeBar
-            }
-            Group {
-                if useGrid && mode == .month {
-                    MonthCalendarView(
-                        events: displayData.events,
-                        familyEvents: displayData.familyEvents,
-                        homework: displayData.homework,
-                        showKidLabels: isTimetable,
-                        compactLandscape: isCompactLandscape,
-                        onAdd: isTimetable ? nil : { showAddEvent = true }
-                    )
-                } else {
-                    CalendarAgendaList(
-                        events: displayData.events,
-                        familyEvents: displayData.familyEvents,
-                        homework: displayData.homework,
-                        showKidLabels: isTimetable,
-                        includeCurrentWeek: isTimetable,
-                        emptyTitle: isTimetable ? "No timetable lessons" : "Nothing on the calendar yet",
-                        emptyDetail: isTimetable
-                            ? "Imported lessons for your children will appear here after their school timetables sync."
-                            : "School events and homework show up here. Subscribe to your school's calendar and add homework from Settings, then pull to refresh.",
-                        onAdd: isTimetable ? nil : { showAddEvent = true },
-                        days: mode == .week ? 7 : 45
-                    )
+                if canToggleMode && !isLandscape {
+                    modeBar
+                }
+                Group {
+                    if useGrid && displayedMode == .month {
+                        MonthCalendarView(
+                            events: displayData.events,
+                            familyEvents: displayData.familyEvents,
+                            homework: displayData.homework,
+                            showKidLabels: isTimetable,
+                            compactLandscape: isLandscape,
+                            onAdd: isTimetable ? nil : { presentAddEvent(date: Date()) }
+                        )
+                    } else if useGrid && displayedMode == .week {
+                        WeekCalendarView(
+                            events: displayData.events,
+                            familyEvents: displayData.familyEvents,
+                            homework: displayData.homework,
+                            showKidLabels: isTimetable,
+                            compactLandscape: isLandscape,
+                            onAdd: isTimetable ? nil : presentAddEvent(date:time:)
+                        )
+                    } else {
+                        CalendarAgendaList(
+                            events: displayData.events,
+                            familyEvents: displayData.familyEvents,
+                            homework: displayData.homework,
+                            showKidLabels: isTimetable,
+                            includeCurrentWeek: isTimetable,
+                            emptyTitle: isTimetable ? "No timetable lessons" : "Nothing on the calendar yet",
+                            emptyDetail: isTimetable
+                                ? "Imported lessons for your children will appear here after their school timetables sync."
+                                : "School events and homework show up here. Subscribe to your school's calendar and add homework from Settings, then pull to refresh.",
+                            onAdd: isTimetable ? nil : { presentAddEvent(date: Date()) },
+                            days: displayedMode == .week ? 7 : 45
+                        )
+                    }
                 }
             }
         }
         .background(ScreenBackground())
-        .sheet(isPresented: $showAddEvent) { AddEventSheet() }
+        .sheet(isPresented: $showAddEvent) {
+            AddEventSheet(initialDate: addEventDate, initialTime: addEventTime)
+        }
         .onChange(of: store.kids.map(\.id)) { _, kidIDs in
             guard case let .kid(id) = audience, !kidIDs.contains(id) else { return }
             audience = .parents
         }
+    }
+
+    private func presentAddEvent(date: Date, time: String? = nil) {
+        addEventDate = date
+        addEventTime = time
+        showAddEvent = true
     }
 
     private var modeBar: some View {
@@ -89,19 +108,6 @@ struct CalendarScreen: View {
         }
         .padding(.horizontal, Space.lg)
         .padding(.top, Space.md)
-    }
-
-    private var landscapeToolbar: some View {
-        HStack(spacing: Space.sm) {
-            CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(1)
-            modePicker
-                .frame(width: 164)
-                .frame(minHeight: 44)
-        }
-        .padding(.horizontal, Space.md)
-        .padding(.vertical, Space.xs)
     }
 
     private var modePicker: some View {
@@ -221,10 +227,18 @@ enum CalendarMode: String, CaseIterable, Identifiable {
     case week, month
     var id: String { rawValue }
     var label: String { self == .week ? "Week" : "Month" }
+
+    static func isLandscape(width: CGFloat, height: CGFloat) -> Bool {
+        width > height
+    }
+
+    func resolved(isLandscape: Bool) -> CalendarMode {
+        isLandscape ? .week : self
+    }
 }
 
 /// Agenda list — upcoming events + homework grouped by day. Used as the
-/// iPhone-portrait fallback, and as the "Week" mode on wider layouts.
+/// iPhone-portrait fallback where a seven-column time grid would be cramped.
 private struct CalendarAgendaList: View {
     @Environment(AppStore.self) private var store
     let events: [CalendarEvent]

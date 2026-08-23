@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 const learningRoutes = require("../lib/routes/learning");
 const dailyPuzzles = require("../lib/daily-puzzles");
 
-function buildRoute() {
+function buildRoute(news = {}) {
   const routes = {};
   const app = {
     get(route, ...handlers) { routes[`GET ${route}`] = handlers; },
@@ -23,7 +23,7 @@ function buildRoute() {
 
   learningRoutes(app, {
     dailyPuzzles,
-    news: {},
+    news,
     notes: {},
     wordbank: {},
     brainteaser: {},
@@ -83,4 +83,48 @@ test("daily puzzle route rejects malformed dates without producing a puzzle", as
   });
   assert.equal(response.statusCode, 400);
   assert.deepEqual(response.body, { error: "Use a real date in YYYY-MM-DD format." });
+});
+
+test("weekend route awaits same-week news, while weekdays do not fetch it", async () => {
+  let calls = 0;
+  const route = buildRoute({
+    getRecentNews: async () => {
+      calls++;
+      return {
+        items: [
+          { id: "story-1", source: "Science News Explores", headline: "Healing Coral", answer: "HEALING", publishedAt: "2026-08-10T12:00:00Z" },
+          { id: "story-2", headline: "Robot Builders", answer: "ROBOT", publishedAt: "2026-08-11T12:00:00Z" },
+          { id: "story-3", headline: "Ocean Tides", answer: "OCEAN", publishedAt: "2026-08-12T12:00:00Z" },
+          { id: "out-of-week", headline: "Outside Week", answer: "OUTSIDE", publishedAt: "2026-08-17T12:00:00Z" },
+        ],
+      };
+    },
+  });
+  const weekend = await call(route, {
+    user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-15",
+  });
+  assert.equal(weekend.statusCode, 200);
+  assert.equal(calls, 1);
+  const weekendAnswers = weekend.body.crossword.entries.map((entry) => entry.answer);
+  assert.ok(weekendAnswers.includes("HEALING"));
+  assert.ok(weekendAnswers.includes("ROBOT"));
+  assert.ok(weekendAnswers.includes("OCEAN"));
+  assert.equal(weekendAnswers.includes("OUTSIDE"), false);
+  assert.equal(weekend.body.crossword.entries.length, 10);
+
+  const weekday = await call(route, {
+    user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-13",
+  });
+  assert.deepEqual(weekday.body, { date: "2026-08-13", available: false, type: null });
+  assert.equal(calls, 1);
+});
+
+test("news failure returns the deterministic SAT/static fallback", async () => {
+  const route = buildRoute({ getRecentNews: async () => { throw new Error("offline"); } });
+  const response = await call(route, {
+    user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-16",
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.crossword.entries.length, 10);
+  assert.equal(new Set(response.body.crossword.entries.map((entry) => entry.answer)).size, 10);
 });

@@ -448,12 +448,95 @@ struct NewsWidget: View {
 
 // MARK: - Wednesday / weekend puzzle
 
+private final class CrosswordUITextField: UITextField {
+    var onDeleteBackward: (() -> Void)?
+
+    override func deleteBackward() {
+        onDeleteBackward?()
+    }
+}
+
+private struct CrosswordCellField: UIViewRepresentable {
+    let text: String
+    let isFocused: Bool
+    let fontSize: CGFloat
+    let onFocus: () -> Void
+    let onInput: (String) -> Void
+    let onDeleteBackward: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> CrosswordUITextField {
+        let field = CrosswordUITextField()
+        field.delegate = context.coordinator
+        field.autocapitalizationType = .allCharacters
+        field.autocorrectionType = .no
+        field.spellCheckingType = .no
+        field.textAlignment = .center
+        field.borderStyle = .none
+        field.backgroundColor = .clear
+        field.adjustsFontSizeToFitWidth = true
+        return field
+    }
+
+    func updateUIView(_ field: CrosswordUITextField, context: Context) {
+        context.coordinator.parent = self
+        field.text = text
+        field.font = .systemFont(ofSize: fontSize, weight: .bold)
+        field.textColor = UIColor(Palette.text)
+        field.onDeleteBackward = onDeleteBackward
+        if isFocused, !field.isFirstResponder {
+            DispatchQueue.main.async { field.becomeFirstResponder() }
+        } else if !isFocused, field.isFirstResponder {
+            field.resignFirstResponder()
+        }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: CrosswordCellField
+
+        init(parent: CrosswordCellField) {
+            self.parent = parent
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.onFocus()
+        }
+
+        func textField(
+            _ textField: UITextField,
+            shouldChangeCharactersIn range: NSRange,
+            replacementString string: String
+        ) -> Bool {
+            if !string.isEmpty {
+                parent.onInput(string)
+            }
+            return false
+        }
+    }
+}
+
 private struct DailyPuzzleView: View {
     let puzzle: DailyPuzzleResponse
-    @State private var answers: [String: String] = [:]
+    private let progressIdentity: DailyPuzzleProgressIdentity
+    private let progressKeys: Set<String>
+    @State private var answers: [String: String]
     @State private var resultMessage: String?
     @State private var activeCrosswordEntryID: String?
-    @FocusState private var focusedCrosswordCell: String?
+    @State private var focusedCrosswordCell: String?
+
+    init(puzzle: DailyPuzzleResponse) {
+        self.puzzle = puzzle
+        let identity = DailyPuzzleProgressIdentity(puzzle: puzzle)
+        progressIdentity = identity
+        progressKeys = DailyPuzzleProgressStore.allowedKeys(for: puzzle)
+        _answers = State(initialValue: DailyPuzzleProgressStore.load(
+            for: identity,
+            allowedKeys: progressKeys
+        ))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
@@ -481,6 +564,7 @@ private struct DailyPuzzleView: View {
                 Button("Clear") {
                     answers = [:]
                     resultMessage = nil
+                    DailyPuzzleProgressStore.clear(for: progressIdentity)
                 }
                 .buttonStyle(.bordered)
                 .tint(Palette.textSecond)
@@ -507,19 +591,24 @@ private struct DailyPuzzleView: View {
                         Color.clear.frame(width: cellSize, height: cellSize)
                     } else {
                         ZStack(alignment: .topLeading) {
-                            TextField("", text: letterBinding(row: row, col: col, crossword: crossword))
-                                .textInputAutocapitalization(.characters)
-                                .autocorrectionDisabled()
-                                .multilineTextAlignment(.center)
-                                .font(.system(size: max(12, cellSize * 0.55), weight: .bold, design: .rounded))
-                                .foregroundStyle(Palette.text)
+                            CrosswordCellField(
+                                text: answers[crosswordCellKey(row: row, col: col)] ?? "",
+                                isFocused: focusedCrosswordCell == crosswordCellKey(row: row, col: col),
+                                fontSize: max(12, cellSize * 0.55),
+                                onFocus: {
+                                    activateCrosswordEntry(containingRow: row, col: col, in: crossword)
+                                    focusedCrosswordCell = crosswordCellKey(row: row, col: col)
+                                },
+                                onInput: { value in
+                                    letterBinding(row: row, col: col, crossword: crossword).wrappedValue = value
+                                },
+                                onDeleteBackward: {
+                                    deleteCrosswordLetter(row: row, col: col, crossword: crossword)
+                                }
+                            )
                                 .frame(width: cellSize, height: cellSize)
                                 .background(Palette.panel)
                                 .overlay(Rectangle().strokeBorder(Palette.border, lineWidth: 1))
-                                .focused($focusedCrosswordCell, equals: crosswordCellKey(row: row, col: col))
-                                .onTapGesture {
-                                    activateCrosswordEntry(containingRow: row, col: col, in: crossword)
-                                }
                                 .accessibilityLabel("Crossword row \(row + 1), column \(col + 1)")
                             if let number = crossword.entries.first(where: { $0.row == row && $0.col == col })?.number {
                                 Text("\(number)")
@@ -618,29 +707,53 @@ private struct DailyPuzzleView: View {
             get: { answers[cellKey] ?? "" },
             set: { value in
                 let letters = value.uppercased().filter(\.isLetter)
-                answers[cellKey] = String(letters.suffix(1))
-                guard !letters.isEmpty,
-                      let entry = activeEntry(containingRow: row, col: col, in: crossword),
-                      let index = crosswordCells(for: entry).firstIndex(where: { $0.row == row && $0.col == col }) else { return }
-                activeCrosswordEntryID = entry.id
-                let cells = crosswordCells(for: entry)
-                if index + 1 < cells.count {
-                    focusedCrosswordCell = crosswordCellKey(row: cells[index + 1].row, col: cells[index + 1].col)
+                guard let entry = activeEntry(containingRow: row, col: col, in: crossword),
+                      let index = crosswordCells(for: entry).firstIndex(where: { $0.row == row && $0.col == col }) else {
+                    return
                 }
+                activeCrosswordEntryID = entry.id
+                if letters.isEmpty {
+                    answers.removeValue(forKey: cellKey)
+                } else if letters.count > 1 {
+                    _ = DailyPuzzleCrosswordInput.distribute(
+                        String(letters),
+                        into: &answers,
+                        entry: entry,
+                        selectedCellIndex: index
+                    )
+                } else {
+                    answers[cellKey] = String(letters)
+                    let cells = crosswordCells(for: entry)
+                    if index + 1 < cells.count {
+                        focusedCrosswordCell = crosswordCellKey(row: cells[index + 1].row, col: cells[index + 1].col)
+                    }
+                }
+                DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
             }
         )
     }
 
     private func crosswordCellKey(row: Int, col: Int) -> String {
-        "c-\(row)-\(col)"
+        DailyPuzzleCrosswordInput.cellKey(row: row, col: col)
     }
 
     private func crosswordCells(for entry: CrosswordEntry) -> [(row: Int, col: Int)] {
-        let rowStep = entry.direction == "down" ? 1 : 0
-        let colStep = entry.direction == "down" ? 0 : 1
-        return Array(entry.answer).indices.map { index in
-            (entry.row + rowStep * index, entry.col + colStep * index)
+        DailyPuzzleCrosswordInput.cells(for: entry)
+    }
+
+    private func deleteCrosswordLetter(row: Int, col: Int, crossword: CrosswordPuzzle) {
+        guard let entry = activeEntry(containingRow: row, col: col, in: crossword),
+              let index = crosswordCells(for: entry).firstIndex(where: { $0.row == row && $0.col == col }) else {
+            return
         }
+        activeCrosswordEntryID = entry.id
+        focusedCrosswordCell = DailyPuzzleCrosswordInput.deleteBackward(
+            from: &answers,
+            entry: entry,
+            selectedCellIndex: index
+        )
+        resultMessage = nil
+        DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
     }
 
     private func activeEntry(containingRow row: Int, col: Int, in crossword: CrosswordPuzzle) -> CrosswordEntry? {
@@ -672,7 +785,10 @@ private struct DailyPuzzleView: View {
         let cellKey = "s-\(index)"
         return Binding(
             get: { answers[cellKey] ?? "" },
-            set: { answers[cellKey] = String($0.filter { ("1"..."9").contains(String($0)) }.suffix(1)) }
+            set: {
+                answers[cellKey] = String($0.filter { ("1"..."9").contains(String($0)) }.suffix(1))
+                DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
+            }
         )
     }
 

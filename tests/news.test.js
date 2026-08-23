@@ -17,12 +17,13 @@ function iso(ms) {
   return new Date(ms).toISOString();
 }
 
-function item({ title, date, url, summary = "A short summary.", category, includeDate = true }) {
+function item({ title, date, url, summary = "A short summary.", category, categories, includeDate = true }) {
   const fields = [];
   if (title !== undefined) fields.push(`<title>${title}</title>`);
   if (summary !== undefined) fields.push(`<description>${summary}</description>`);
   if (url !== undefined) fields.push(`<link>${url}</link>`);
   if (category !== undefined) fields.push(`<category>${category}</category>`);
+  for (const value of categories || []) fields.push(`<category><![CDATA[${value}]]></category>`);
   if (includeDate && date !== undefined) fields.push(`<pubDate>${date}</pubDate>`);
   return `<item>${fields.join("")}</item>`;
 }
@@ -50,17 +51,18 @@ function streamResponse(chunks, status = 200) {
   return { ok: status >= 200 && status < 300, status, body };
 }
 
-test("recent NASA news filters the boundary, sanitizes text, orders, deduplicates, and maps categories", async () => {
-  const duplicateUrl = "https://www.nasa.gov/news/duplicate";
+test("production Science News Explores filters fresh science stories across varied domains", async () => {
+  const duplicateUrl = "https://www.snexplores.org/news/duplicate";
   const xml = feed([
-    item({ title: "Too old", date: iso(NOW - 15 * DAY), url: "https://www.nasa.gov/news/old" }),
-    item({ title: "Invalid date", date: "not a date", url: "https://www.nasa.gov/news/invalid" }),
-    item({ title: "Missing date", url: "https://www.nasa.gov/news/missing" }),
-    item({ title: undefined, date: iso(NOW - DAY), url: "https://www.nasa.gov/news/no-title" }),
-    item({ title: "Too far ahead", date: iso(NOW + 61 * 60 * 1000), url: "https://www.nasa.gov/news/future" }),
-    item({ title: "Wrong protocol", date: iso(NOW - DAY), url: "http://www.nasa.gov/news/http" }),
+    item({ title: "Too old", date: iso(NOW - 15 * DAY), url: "https://www.snexplores.org/news/old" }),
+    item({ title: "Invalid date", date: "not a date", url: "https://www.snexplores.org/news/invalid" }),
+    item({ title: "Missing date", url: "https://www.snexplores.org/news/missing" }),
+    item({ title: undefined, date: iso(NOW - DAY), url: "https://www.snexplores.org/news/no-title" }),
+    item({ title: "Too far ahead", date: iso(NOW + 61 * 60 * 1000), url: "https://www.snexplores.org/news/future" }),
+    item({ title: "Wrong protocol", date: iso(NOW - DAY), url: "http://www.snexplores.org/news/http" }),
     item({ title: "Wrong host", date: iso(NOW - DAY), url: "https://example.com/news" }),
-    item({ title: "Lookalike host", date: iso(NOW - DAY), url: "https://nasa.gov.example.com/news" }),
+    item({ title: "Lookalike host", date: iso(NOW - DAY), url: "https://snexplores.org.example.com/news" }),
+    item({ title: "Crossword solution", date: iso(NOW - DAY), url: "https://www.snexplores.org/news/puzzle" }),
     item({
       title: "Older duplicate",
       date: iso(NOW - 2 * DAY),
@@ -76,15 +78,17 @@ test("recent NASA news filters the boundary, sanitizes text, orders, deduplicate
     item({
       title: "<![CDATA[<b>Fresh &amp; Flight</b>]]>",
       date: iso(NOW - 3 * DAY),
-      url: "https://science.nasa.gov/news/tech",
+      url: "https://www.snexplores.org/news/tech",
       category: "Technology",
       summary: "<![CDATA[<p>Launch &amp; <strong>science</strong> &hellip; &#x1F680;</p>]]>",
     }),
-    item({ title: "Climate watch", date: iso(NOW - 4 * DAY), url: "https://earth.nasa.gov/news/climate", category: "Environment" }),
-    item({ title: "Science update", date: iso(NOW - 5 * DAY), url: "https://science.nasa.gov/news/update", category: "Science" }),
-    item({ title: "A space story", date: iso(NOW - 6 * DAY), url: "https://www.nasa.gov/news/space", category: "NASA" }),
-    item({ title: "Fresh boundary", date: iso(NOW - (13 * DAY + 23 * 60 * 60 * 1000)), url: "https://www.nasa.gov/news/boundary" }),
-    item({ title: "Allowed one-hour future", date: iso(NOW + 30 * 60 * 1000), url: "https://www.nasa.gov/news/soon" }),
+    item({ title: "Climate watch", date: iso(NOW - 4 * DAY), url: "https://www.snexplores.org/news/climate", category: "Environment" }),
+    item({ title: "Science update", date: iso(NOW - 5 * DAY), url: "https://www.snexplores.org/news/update", category: "Science" }),
+    item({ title: "A space story", date: iso(NOW - 6 * DAY), url: "https://www.snexplores.org/news/space", category: "Space" }),
+    item({ title: "Planet fossil discovery", date: iso(NOW - 7 * DAY), url: "https://www.snexplores.org/news/fossil", categories: ["Feature", "Fossils"] }),
+    item({ title: "Unclassified research", date: iso(NOW - 8 * DAY), url: "https://www.snexplores.org/news/general", category: "Research update" }),
+    item({ title: "Fresh boundary", date: iso(NOW - (13 * DAY + 23 * 60 * 60 * 1000)), url: "https://www.snexplores.org/news/boundary", category: "Nature" }),
+    item({ title: "Allowed one-hour future", date: iso(NOW + 30 * 60 * 1000), url: "https://www.snexplores.org/news/soon", category: "Health" }),
   ]);
   let calls = 0;
   let calledUrl = "";
@@ -98,7 +102,7 @@ test("recent NASA news filters the boundary, sanitizes text, orders, deduplicate
   });
 
   assert.equal(calls, 1);
-  assert.equal(calledUrl, "https://www.nasa.gov/feed/");
+  assert.equal(calledUrl, "https://www.snexplores.org/feed/");
   assert.equal(result.maxAgeDays, 14);
   assert.deepEqual(result.items.map((news) => news.headline), [
     "Allowed one-hour future",
@@ -107,6 +111,8 @@ test("recent NASA news filters the boundary, sanitizes text, orders, deduplicate
     "Climate watch",
     "Science update",
     "A space story",
+    "Planet fossil discovery",
+    "Unclassified research",
     "Fresh boundary",
   ]);
   assert.equal(result.items[1].id, duplicateUrl);
@@ -114,33 +120,37 @@ test("recent NASA news filters the boundary, sanitizes text, orders, deduplicate
   assert.equal(result.items[3].cat, "🌿 Environment");
   assert.equal(result.items[4].cat, "🔬 Science");
   assert.equal(result.items[5].cat, "🚀 Space");
+  assert.equal(result.items[6].cat, "🌱 Nature");
+  assert.equal(result.items[7].cat, "🔬 Science");
   assert.equal(result.items[2].summary, "Launch & science … 🚀");
-  assert.equal(result.items.every((news) => news.source === "NASA"), true);
+  assert.equal(result.items.every((news) => news.source === "Science News Explores"), true);
   assert.equal(result.items.every((news) => typeof news.question === "string" && news.question.endsWith("?")), true);
-  assert.equal(result.items.every((news) => news.url.startsWith("https://") && new URL(news.url).hostname.endsWith("nasa.gov")), true);
+  assert.equal(result.items.every((news) => news.url.startsWith("https://") && (new URL(news.url).hostname === "snexplores.org" || new URL(news.url).hostname.endsWith(".snexplores.org"))), true);
   assert.equal(result.items.some((news) => news.headline === "Too old"), false);
+  assert.equal(result.items.some((news) => news.headline === "Crossword solution"), false);
 });
 
-test("combines allow-listed NASA feeds and gives every story a thinking question", async () => {
-  const nasa = { url: "https://www.nasa.gov/feed/", source: "NASA", hosts: ["nasa.gov"] };
-  const stem = { url: "https://www.nasa.gov/learning-resources/feed/", source: "NASA STEM", hosts: ["nasa.gov"] };
+test("custom injected feeds remain available to focused parser tests", async () => {
+  const primary = { url: "https://custom.example/feed/", source: "Custom source", hosts: ["custom.example"] };
+  const secondary = { url: "https://science.custom.example/feed/", source: "Custom STEM", hosts: ["custom.example"] };
   const bodies = {
-    [nasa.url]: feed([item({ title: "A new Earth view", date: iso(NOW - DAY), url: "https://science.nasa.gov/earth/story", category: "Environment" })]),
-    [stem.url]: feed([item({ title: "Robot explores Mars", date: iso(NOW - 2 * DAY), url: "https://www.nasa.gov/learning-resources/robot", category: "Technology" })]),
+    [primary.url]: feed([item({ title: "A new Earth view", date: iso(NOW - DAY), url: "https://custom.example/earth/story", category: "Environment" })]),
+    [secondary.url]: feed([item({ title: "Robot explores Mars", date: iso(NOW - 2 * DAY), url: "https://custom.example/robot", category: "Technology" })]),
   };
   const result = await freshNews().getRecentNews({
     now: NOW,
-    feeds: [nasa, stem],
+    feeds: [primary, secondary],
     fetch: async (url) => textResponse(bodies[url]),
   });
-  assert.deepEqual(result.items.map((story) => story.source), ["NASA", "NASA STEM"]);
+  assert.deepEqual(result.items.map((story) => story.source), ["Custom source", "Custom STEM"]);
   assert.match(result.items[0].question, /trade-off/);
   assert.match(result.items[1].question, /Who could/);
 });
 
 test("successful results are cached for 30 minutes, then a failed fetch reuses only still-fresh items", async () => {
+  const testFeed = { url: "https://example.test/feed", source: "Test source", hosts: ["example.test"] };
   const xml = feed([
-    item({ title: "Still fresh", date: iso(NOW - 2 * DAY), url: "https://www.nasa.gov/news/fresh" }),
+    item({ title: "Still fresh", date: iso(NOW - 2 * DAY), url: "https://example.test/news/fresh" }),
   ]);
   const news = freshNews();
   let calls = 0;
@@ -150,9 +160,9 @@ test("successful results are cached for 30 minutes, then a failed fetch reuses o
     return textResponse(xml);
   };
 
-  const first = await news.getRecentNews({ now: NOW, fetch });
-  const hit = await news.getRecentNews({ now: NOW + 29 * 60 * 1000, fetch });
-  const staleFallback = await news.getRecentNews({ now: NOW + 31 * 60 * 1000, fetch });
+  const first = await news.getRecentNews({ now: NOW, feeds: [testFeed], fetch });
+  const hit = await news.getRecentNews({ now: NOW + 29 * 60 * 1000, feeds: [testFeed], fetch });
+  const staleFallback = await news.getRecentNews({ now: NOW + 31 * 60 * 1000, feeds: [testFeed], fetch });
 
   assert.equal(calls, 2);
   assert.deepEqual(hit, first);
@@ -161,17 +171,19 @@ test("successful results are cached for 30 minutes, then a failed fetch reuses o
 });
 
 test("an expired cache is re-filtered on a failed fetch instead of returning stale news", async () => {
+  const testFeed = { url: "https://example.test/feed", source: "Test source", hosts: ["example.test"] };
   const xml = feed([
     item({
       title: "At the 14-day edge",
       date: iso(NOW - (13 * DAY + 23 * 60 * 60 * 1000)),
-      url: "https://www.nasa.gov/news/edge",
+      url: "https://example.test/news/edge",
     }),
   ]);
   const news = freshNews();
-  await news.getRecentNews({ now: NOW, fetch: async () => textResponse(xml) });
+  await news.getRecentNews({ now: NOW, feeds: [testFeed], fetch: async () => textResponse(xml) });
   const result = await news.getRecentNews({
     now: NOW + 2 * 60 * 60 * 1000,
+    feeds: [testFeed],
     fetch: async () => { throw new Error("network down"); },
   });
 
@@ -187,21 +199,25 @@ test("a fetch failure without a cache returns the stable empty DTO", async () =>
 });
 
 test("caps the feed body at 512 KiB and never parses an oversized response", async () => {
+  const testFeed = { url: "https://example.test/feed", source: "Test source", hosts: ["example.test"] };
   const oversized = "x".repeat(512 * 1024 + 1);
   const result = await freshNews().getRecentNews({
     now: NOW,
+    feeds: [testFeed],
     fetch: async () => streamResponse([oversized]),
   });
   assert.deepEqual(result, { items: [], maxAgeDays: 14 });
 });
 
 test("aborts a request after five seconds", async () => {
+  const testFeed = { url: "https://example.test/feed", source: "Test source", hosts: ["example.test"] };
   const news = freshNews();
   let aborted = false;
   mock.timers.enable();
   try {
     const pending = news.getRecentNews({
       now: NOW,
+      feeds: [testFeed],
       fetch: async (_url, { signal }) => new Promise((resolve, reject) => {
         signal.addEventListener("abort", () => {
           aborted = true;
@@ -219,17 +235,19 @@ test("aborts a request after five seconds", async () => {
 });
 
 test("limits output to 20 newest unique items and bounds text fields", async () => {
+  const testFeed = { url: "https://example.test/feed", source: "Test source", hosts: ["example.test"] };
   const entries = [];
   for (let index = 0; index < 25; index++) {
     entries.push(item({
       title: index === 0 ? "H".repeat(500) : `Story ${index}`,
       date: iso(NOW - index * 60 * 60 * 1000),
-      url: `https://www.nasa.gov/news/${index}`,
+      url: `https://example.test/news/${index}`,
       summary: index === 0 ? `<p>${"S".repeat(2000)}</p>` : "Summary",
     }));
   }
   const result = await freshNews().getRecentNews({
     now: NOW,
+    feeds: [testFeed],
     fetch: async () => textResponse(feed(entries)),
   });
 

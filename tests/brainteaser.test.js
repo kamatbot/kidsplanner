@@ -9,6 +9,7 @@ process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-test-br
 
 const store = require("../lib/store");
 const family = require("../lib/family");
+const db = require("../lib/db");
 const brainteaser = require("../lib/brainteaser");
 const { QUESTIONS } = require("../lib/brainteaser-questions");
 
@@ -85,6 +86,45 @@ test("getToday: a new day re-shuffles / re-selects (served set is not forced ide
   const thu = brainteaser.getToday(kid.id, WEEKDAY_DATES.Thu);
   assert.equal(wed.count, 3);
   assert.equal(thu.count, 4); // different weekday count proves a fresh serve happened
+});
+
+test("getToday: viewed but unanswered questions do not repeat on the next day", () => {
+  const { kid } = makeFamilyWithKid("D2");
+  const first = brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon);
+  const second = brainteaser.getToday(kid.id, WEEKDAY_DATES.Tue);
+  const firstIds = new Set(first.questions.map((q) => q.qid));
+
+  assert.equal(first.count, 1);
+  assert.equal(second.count, 2);
+  assert.ok(second.questions.every((q) => !firstIds.has(q.qid)));
+});
+
+test("getToday: legacy state migrates servedIds into seen history", () => {
+  const { kid } = makeFamilyWithKid("D3");
+  const first = brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon);
+  const state = db.load().brainteaser[kid.id];
+  delete state.seenIds;
+
+  const second = brainteaser.getToday(kid.id, WEEKDAY_DATES.Tue);
+  assert.ok(second.questions.every((q) => q.qid !== first.questions[0].qid));
+  assert.ok(state.seenIds.includes(first.questions[0].qid));
+});
+
+test("getToday: exhausted history avoids the immediately previous set before rotating", () => {
+  const { kid } = makeFamilyWithKid("D4");
+  const state = db.load().brainteaser[kid.id] = {
+    answered: {},
+    servedDate: "2026-06-18",
+    servedIds: QUESTIONS.slice(0, 5).map((q) => q.qid),
+    seenIds: QUESTIONS.map((q) => q.qid),
+    served: [],
+  };
+  const previousIds = new Set(state.servedIds);
+
+  const next = brainteaser.getToday(kid.id, WEEKDAY_DATES.Fri);
+  assert.equal(next.questions.length, 5);
+  assert.ok(next.questions.every((q) => !previousIds.has(q.qid)));
+  assert.equal(new Set(next.questions.map((q) => q.qid)).size, 5);
 });
 
 // ---------- wrong -> resurface ----------
