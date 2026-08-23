@@ -141,11 +141,11 @@ test("only the parent Calendar switcher renders Timetable", () => {
   assert.doesNotMatch(kid.calendar, /<button/);
 });
 
-test("Timetable suppresses homework chips and per-day Add while preserving header Add", () => {
+test("Timetable suppresses homework chips and timed slots while preserving header Add", () => {
   assert.match(source, /const dueHw = timetable \? \[\] : visibleHomeworkDueItems\(\)/);
-  assert.match(source, /\$\{timetable \? '' : `?<button class="week-add-btn"/);
+  assert.match(source, /if \(!timetable\) \{[\s\S]*class="week-time-slot"/);
   assert.match(source, /timetable \? '' : ` onclick="openAddEventModal\('\$\{ds\}'\)"/);
-  assert.match(indexHtml, /<button class="btn-primary" onclick="openAddEventModal\(\)">\+ Add<\/button>/);
+  assert.match(indexHtml, /<button class="btn-primary" id="calendar-add-event-btn" onclick="openCalendarAddEvent\(\)">\+ Add<\/button>/);
 });
 
 test("Timetable controls are semantic, keyboard-visible, and safe to wrap", () => {
