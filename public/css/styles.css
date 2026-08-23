@@ -799,7 +799,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 ============================================================ */
 .calendar-tab-layout { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 16px; }
 .calendar-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
-.calendar-grid-scroll { flex: 1; min-height: 0; overflow: auto; }
+.calendar-grid-scroll { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 .calendar-upload-history { display: flex; flex-direction: column; gap: 8px; }
 .cal-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .cal-header-action { min-height: 44px; padding: 9px 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -848,8 +848,8 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 .view-btn.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow-sm); }
 
-.week-view { min-width: 1100px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: visible; background: var(--panel); }
-.week-grid-head, .week-all-day-row, .week-timed-row { display: grid; grid-template-columns: 64px repeat(7, minmax(132px, 1fr)); }
+.week-view { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: visible; background: var(--panel); }
+.week-grid-head, .week-all-day-row, .week-timed-row { display: grid; grid-template-columns: 48px repeat(7, minmax(0, 1fr)); }
 .week-grid-head { position: sticky; top: 0; z-index: 20; min-height: 52px; background: var(--panel-2); }
 .week-grid-corner, .week-all-day-label { background: var(--panel-2); border-right: 1px solid var(--border); }
 .week-day-col-hdr { min-width: 0; padding: 9px 6px; text-align: center; background: var(--panel-2); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -1190,6 +1190,8 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .cal-header-action { width: 100%; }
   .cal-upload-utility { align-items: stretch; flex: 0 1 auto; flex-direction: column; gap: 8px; }
   .calendar-footer { gap: 8px 12px; }
+  .calendar-grid-scroll { overflow-x: auto; }
+  .week-view { min-width: 680px; }
   .today-actions-header { flex-direction: column; }
   .today-actions-header-actions { width: 100%; }
   .today-actions-header-actions .btn-primary { width: 100%; }

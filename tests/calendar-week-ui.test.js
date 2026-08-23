@@ -177,7 +177,9 @@ test("Calendar legend is beside Upload schedule and excludes sync counters", () 
   assert.doesNotMatch(footer, /Synced|school event|timeAgo|weekEventCount|lessonText/);
   assert.match(html, /cal-upload-utility[\s\S]*openUploadModal\(\)[\s\S]*calendar-footer/);
   assert.doesNotMatch(html, /calendar-main[\s\S]*calendar-footer/);
-  assert.match(css, /\.week-view\s*\{[^}]*min-width:\s*1100px/);
+  assert.match(css, /\.week-view\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0/);
+  assert.match(css, /\.week-grid-head[^\n]*grid-template-columns:\s*48px repeat\(7, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.calendar-grid-scroll\s*\{[^}]*overflow-x:\s*hidden/);
   assert.match(css, /\.month-view\s*\{[^}]*height:\s*max\(/);
   assert.match(css, /\.week-grid-head\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*z-index:\s*20/);
   assert.match(css, /\.week-all-day-row\s*\{[^}]*position:\s*sticky[^}]*top:\s*52px[^}]*z-index:\s*19/);

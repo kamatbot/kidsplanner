@@ -94,7 +94,7 @@ test("Calendar keeps one main surface and header utility actions", () => {
   assert.doesNotMatch(app, /renderMiniCal|miniMonth|miniCalPrev|miniCalNext|eventSpanDates|function jumpTo/);
   assert.doesNotMatch(school, /renderMiniCal/);
   assert.match(css, /\.week-grid-head/);
-  assert.match(css, /\.week-grid-head[^\n]*repeat\(7, minmax\(132px, 1fr\)\)/);
+  assert.match(css, /\.week-grid-head[^\n]*grid-template-columns:\s*48px repeat\(7, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.month-view[^\n]*height:\s*max\(/);
   assert.match(css, /\.cal-header-action[^\n]*min-height:\s*44px/);
   assert.match(html, /id="calendar-footer"/);
