@@ -63,11 +63,18 @@ test("landing hero centers the intro above a browser-framed full-width preview",
   assert.match(styles, /\.hero-lede\s*\{[\s\S]*?max-width:\s*none;/);
   assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?\.hero-copy\s*\{\s*max-width:\s*760px;/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*?\.hero h1\s*\{\s*font-size:\s*clamp\(38px, 11vw, 50px\);/);
-  assert.match(styles, /\.hero-stage\s*\{[\s\S]*?width:\s*min\(1440px, calc\(100vw - 40px\)\);[\s\S]*?transform:\s*translateX\(-50%\);/);
+  assert.match(styles, /\.hero-stage\s*\{[\s\S]*?width:\s*min\(var\(--landing-stage\), calc\(100vw - 40px\)\);[\s\S]*?transform:\s*translateX\(-50%\);/);
   assert.match(styles, /\.dashboard-viewport\s*\{[\s\S]*?aspect-ratio:\s*1360 \/ 700;[\s\S]*?overflow:\s*hidden;/);
   assert.match(styles, /\.dashboard-preview\s*\{[\s\S]*?width:\s*1360px;[\s\S]*?grid-template-columns:\s*208px minmax\(0, 1fr\) 308px;[\s\S]*?scale:\s*calc\(100cqw \/ 1360px\);/);
   assert.doesNotMatch(styles, /\.preview-(?:stack|block|grid)\b/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("landing uses one wide stage for header, sections, FAQ, and footer", () => {
+  assert.match(styles, /:root\s*\{[\s\S]*?--landing-stage:\s*1440px;/);
+  assert.match(styles, /\.header-inner,\s*\n\.section,\s*\n\.footer-inner\s*\{[\s\S]*?width:\s*min\(var\(--landing-stage\), 100%\);/);
+  assert.match(styles, /\.faq-list\s*\{[\s\S]*?width:\s*100%;/);
+  assert.doesNotMatch(styles, /width:\s*min\(1180px, 100%\)|\.faq-list\s*\{[\s\S]*?max-width:\s*900px;/);
 });
 
 test("landing page adds exactly two semantic product proof previews", () => {

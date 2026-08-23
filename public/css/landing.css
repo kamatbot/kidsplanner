@@ -1,6 +1,7 @@
 /* Fam ETC public landing page — based on the August 2026 redesign. */
 :root {
   scroll-behavior: smooth;
+  --landing-stage: 1440px;
 }
 
 body {
@@ -52,7 +53,7 @@ section[id] {
 .header-inner,
 .section,
 .footer-inner {
-  width: min(1180px, 100%);
+  width: min(var(--landing-stage), 100%);
   margin: 0 auto;
   padding-inline: 28px;
 }
@@ -284,7 +285,7 @@ a:focus-visible {
 .hero-stage {
   position: relative;
   left: 50%;
-  width: min(1440px, calc(100vw - 40px));
+  width: min(var(--landing-stage), calc(100vw - 40px));
   margin-top: 48px;
   transform: translateX(-50%);
 }
@@ -1496,7 +1497,7 @@ a:focus-visible {
 }
 
 .faq-list {
-  max-width: 900px;
+  width: 100%;
   border-top: 1px solid var(--border);
 }
 
@@ -1662,7 +1663,7 @@ a:focus-visible {
   }
 
   .hero-stage {
-    width: min(1440px, calc(100vw - 32px));
+    width: min(var(--landing-stage), calc(100vw - 32px));
   }
 
   .moodle-grid {
