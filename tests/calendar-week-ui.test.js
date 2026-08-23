@@ -107,6 +107,7 @@ test("timed week helpers use minute offsets and tile overlapping events", () => 
   const axis = calendarWeekAxis(events, "2026-08-17", "2026-08-23");
   assert.equal(axis.start, 0);
   assert.equal(axis.end, 1440);
+  assert.equal(calendarWeekAxis(events.slice(0, 4), "2026-08-17", "2026-08-23").start, 480);
 
   const laidOut = layoutTimedEventsForDay(events, "2026-08-19", axis, 44);
   const first = laidOut.filter((item) => item.ev.time === "14:45");
@@ -133,10 +134,12 @@ test("calendar period add defaults follow the displayed week or month", () => {
   assert.equal(helpers.calendarPeriodDefaultDate(), "2020-01-01");
 });
 
-test("week slots provide displayed local date/time and stay disabled for Timetable", () => {
+test("week uses compact hourly slots from 8 AM and keeps Timetable read-only", () => {
   const markup = renderWeekMarkup([{ id: "evt-1", date: "2026-08-19", time: "15:30", title: "Practice" }]);
   assert.match(markup, /class="week-all-day-row"/);
-  assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 3:30 PM"/);
+  assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 8 AM"/);
+  assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 3 PM"/);
+  assert.doesNotMatch(markup, /aria-label="Add event[^\"]+3:30 PM"/);
   assert.match(markup, /class="week-evt timed-event/);
   const timetableMarkup = renderWeekMarkup([{ id: "lesson-1", date: "2026-08-19", time: "15:30", title: "Math" }], true);
   assert.doesNotMatch(timetableMarkup, /week-time-slot/);

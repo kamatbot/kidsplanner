@@ -1367,7 +1367,7 @@ function calendarIsoDateAt(date, offset) {
 }
 
 function calendarWeekAxis(events, start, end) {
-  let axisStart = 6 * 60;
+  let axisStart = 8 * 60;
   let axisEnd = 22 * 60;
   events.forEach((ev) => {
     if (calendarMinutes(ev.time) === null || ev.date > end || (ev.endDate || ev.date) < start) return;
@@ -1415,8 +1415,8 @@ function layoutTimedEventsForDay(events, ds, axis, rowHeight) {
     });
     group.forEach((item) => {
       item.columns = columns.length;
-      item.top = (item.start - axis.start) / 30 * rowHeight;
-      item.height = Math.max((item.end - item.start) / 30 * rowHeight, 34);
+      item.top = (item.start - axis.start) / 60 * rowHeight;
+      item.height = Math.max((item.end - item.start) / 60 * rowHeight, 34);
       laidOut.push(item);
     });
     group = [];
@@ -1479,7 +1479,7 @@ function renderWeekView() {
   const weekEndIso = isoDate(weekEnd);
   const axis = calendarWeekAxis(events, weekStartIso, weekEndIso);
   const rowHeight = 44;
-  const axisHeight = Math.max((axis.end - axis.start) / 30, 1) * rowHeight;
+  const axisHeight = Math.max((axis.end - axis.start) / 60, 1) * rowHeight;
 
   document.getElementById('cal-title').textContent =
     `${formatShort(weekStart)} – ${formatShort(weekEnd)}, ${weekEnd.getFullYear()}`;
@@ -1514,7 +1514,7 @@ function renderWeekView() {
   }
   html += '</div><div class="week-timed-row"><div class="week-time-axis" style="height:${axisHeight}px">';
   for (let minutes = axis.start; minutes <= axis.end; minutes += 60) {
-    html += `<span class="week-time-label" style="top:${(minutes - axis.start) / 30 * rowHeight}px">${formatCalendarTime(minutes)}</span>`;
+    html += `<span class="week-time-label" style="top:${(minutes - axis.start) / 60 * rowHeight}px">${formatCalendarTime(minutes)}</span>`;
   }
   html += '</div>';
   for (let i = 0; i < 7; i++) {
@@ -1526,10 +1526,10 @@ function renderWeekView() {
     const timed = layoutTimedEventsForDay(evs, ds, axis, rowHeight);
     html += `<div class="week-day-track${isT?' is-today':''}${isW?' is-weekend':''}" style="height:${axisHeight}px">`;
     if (!timetable) {
-      for (let minutes = axis.start; minutes < axis.end; minutes += 30) {
+      for (let minutes = axis.start; minutes < axis.end; minutes += 60) {
         const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
         const displayDate = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-        html += `<button type="button" class="week-time-slot" style="top:${(minutes - axis.start) / 30 * rowHeight}px;height:${rowHeight}px" onclick="openAddEventModal('${ds}','${time}')" aria-label="Add event on ${displayDate} at ${formatCalendarTime(minutes)}"></button>`;
+        html += `<button type="button" class="week-time-slot" style="top:${(minutes - axis.start) / 60 * rowHeight}px;height:${rowHeight}px" onclick="openAddEventModal('${ds}','${time}')" aria-label="Add event on ${displayDate} at ${formatCalendarTime(minutes)}"></button>`;
       }
     }
     html += timed.map((item) => {
