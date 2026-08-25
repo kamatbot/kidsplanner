@@ -26,6 +26,27 @@ test("FamETC signs PathOdds ID tokens with the published Ed25519 key", () => {
   }
 });
 
+test("FamETC accepts base64-encoded PEM and DER PKCS#8 Ed25519 signing keys", () => {
+  const previousKey = process.env.OIDC_SIGNING_PRIVATE_KEY;
+  const { privateKey } = crypto.generateKeyPairSync("ed25519");
+  const pem = privateKey.export({ format: "pem", type: "pkcs8" });
+  const der = privateKey.export({ format: "der", type: "pkcs8" });
+  try {
+    for (const value of [Buffer.from(pem).toString("base64"), Buffer.from(der).toString("base64")]) {
+      process.env.OIDC_SIGNING_PRIVATE_KEY = value;
+      const token = oidc.signIdToken({ iss: "https://www.fametc.com", sub: "pws_test", aud: "pathodds", exp: 9999999999 });
+      const [headerPart, payloadPart, signaturePart] = token.split(".");
+      const jwk = oidc.publicJwk();
+      assert.equal(
+        crypto.verify(null, Buffer.from(`${headerPart}.${payloadPart}`), crypto.createPublicKey({ key: jwk, format: "jwk" }), Buffer.from(signaturePart, "base64url")),
+        true
+      );
+    }
+  } finally {
+    if (previousKey === undefined) delete process.env.OIDC_SIGNING_PRIVATE_KEY; else process.env.OIDC_SIGNING_PRIVATE_KEY = previousKey;
+  }
+});
+
 test("S256 helper matches the OAuth PKCE definition", () => {
   const verifier = "v".repeat(43);
   assert.equal(oidc.sha256(verifier), crypto.createHash("sha256").update(verifier).digest("base64url"));
