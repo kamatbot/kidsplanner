@@ -216,7 +216,7 @@ async function handlePinSatWord() {
 }
 
 /* ============================================================
-   PATHODDS DAILY QUEST — projection only, deep work stays in PathOdds
+   PATHODDS DAILY QUEST — the learner completes post-diagnostic work here.
 ============================================================ */
 let pathOddsLoading = false;
 let pathOddsLastLoadedAt = 0;
@@ -230,6 +230,8 @@ function ensurePathOddsStyles() {
     .fam-pathodds-card .po-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}.fam-pathodds-card .po-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:#17151f;color:#fff;font-size:13px;font-weight:800}.fam-pathodds-card .po-label{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}.fam-pathodds-card .po-spacer{flex:1}.fam-pathodds-card .po-streak{font-size:12px;font-weight:700;color:var(--text-2,#666)}
     .fam-pathodds-card h4{font-size:17px;margin:0 0 5px}.fam-pathodds-card p{margin:0;color:var(--text-2,#666);font-size:13px;line-height:1.45}.fam-pathodds-card .po-progress{height:7px;background:var(--surface-2,#ecebe8);border-radius:99px;overflow:hidden;margin:12px 0 6px}.fam-pathodds-card .po-progress>span{display:block;height:100%;background:currentColor;border-radius:inherit}.fam-pathodds-card .po-meta{font-size:11px;color:var(--text-2,#777);margin:0 0 12px}.fam-pathodds-card .po-actions{display:flex;gap:8px;align-items:center;margin-top:12px}.fam-pathodds-card .po-actions button,.fam-pathodds-card .po-actions a{flex:0 0 auto}.fam-pathodds-card.is-complete{border-color:color-mix(in srgb,#2f9d68 45%,var(--border,#ddd))}
     .fam-pathodds-family{display:grid;gap:8px;margin-top:10px}.fam-pathodds-kid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px;border-radius:12px;background:var(--surface-2,#f5f4f2)}.fam-pathodds-kid strong{font-size:13px}.fam-pathodds-kid span{font-size:12px;color:var(--text-2,#666)}.fam-pathodds-kid em{font-style:normal;font-size:12px;font-weight:750;grid-row:1/3;grid-column:2}.fam-pathodds-unavailable{opacity:.78}
+    .fam-pathodds-card.is-learning{padding:0;overflow:hidden}.fam-pathodds-learner-head{display:flex;align-items:center;gap:8px;padding:14px 16px 10px}.fam-pathodds-learner-head strong{font-size:14px}.fam-pathodds-learner-head button{margin-left:auto}.fam-pathodds-frame{display:block;width:100%;height:min(760px,calc(100vh - 120px));min-height:560px;border:0;background:var(--card,#fff)}
+    @media (max-width:600px){.fam-pathodds-frame{height:calc(100vh - 86px);min-height:520px}.fam-pathodds-card.is-learning{margin-inline:-12px;border-radius:0}}
   `;
   document.head.appendChild(style);
 }
@@ -278,7 +280,7 @@ function renderPathOddsSelf(payload) {
     card.innerHTML = `
       <div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div>
       <h4>Connect your daily SAT plan</h4>
-      <p>FamETC keeps the habit visible. PathOdds does the diagnostic, adaptive practice and deep work.</p>
+      <p>Set up your target and baseline in PathOdds. Your personalized daily work will then be completed here.</p>
       <div class="po-actions"><a class="btn-primary" href="${esc((payload && payload.linkUrl) || 'https://www.pathodds.com/api/auth/fametc/start')}">Connect PathOdds</a></div>`;
     return;
   }
@@ -295,7 +297,7 @@ function renderPathOddsSelf(payload) {
     <div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span><span class="po-spacer"></span><span class="po-streak">${esc(streak)}</span></div>
     <h4>${esc(copy.title)}</h4><p>${esc(copy.detail)}</p>
     ${(state && ['ready','in-progress','completed'].includes(state.readiness)) ? `<div class="po-progress"><span style="width:${percent}%"></span></div><div class="po-meta">${answered}/${total} questions${state.xpAvailable ? ` · ${state.xpAvailable} XP available` : ''}</div>` : ''}
-    <div class="po-actions"><button type="button" class="btn-primary" onclick="launchPathOdds('${esc(route)}')">${esc(copy.cta)}</button></div>`;
+    <div class="po-actions"><button type="button" class="btn-primary" onclick="${state && ['ready','in-progress'].includes(state.readiness) ? 'embedPathOddsQuest()' : `launchPathOdds('${esc(route)}')`}">${esc(copy.cta)}</button></div>`;
   if (state && state.readiness === 'completed' && typeof markDaily5Done === 'function') {
     try { markDaily5Done('sat'); } catch (e) { /* Daily 5 is independent presentation state */ }
   }
@@ -319,7 +321,11 @@ function parentPathOddsAction(result) {
   if (!payload || payload.linked === false) {
     return `<a class="btn-primary" href="${esc((payload && payload.linkUrl) || 'https://www.pathodds.com/api/auth/fametc/start?route=sat.home')}">Connect my PathOdds</a>`;
   }
+  const state = payload.snapshot && payload.snapshot.state;
   const route = payload.snapshot && payload.snapshot.action && payload.snapshot.action.route || 'sat.home';
+  if (state && ['ready', 'in-progress'].includes(state.readiness)) {
+    return '<button type="button" class="btn-primary" onclick="embedPathOddsQuest()">Do my SAT quest</button>';
+  }
   return `<button type="button" class="btn-primary" onclick="launchPathOdds('${esc(route)}')">Open my PathOdds</button>`;
 }
 
@@ -379,6 +385,29 @@ async function launchPathOdds(route) {
       message.textContent = 'Could not open PathOdds right now. Please try again.';
       if (!message.parentNode) card.appendChild(message);
     }
+  }
+}
+
+// The initial goal and diagnostic intentionally remain top-level PathOdds
+// flows. Once the diagnostic exists, this uses a one-time linked launch inside
+// FamETC so the exact PathOdds quest and coaching engine is the work surface.
+async function embedPathOddsQuest() {
+  const card = ensurePathOddsCard();
+  if (!card) return;
+  try {
+    card.className = 'fam-pathodds-card is-learning';
+    card.innerHTML = '<div class="fam-pathodds-learner-head"><span class="po-mark">P</span><strong>Today’s PathOdds SAT work</strong><button type="button" class="btn-secondary" onclick="loadPathOddsQuestWidget(true)">Close</button></div><div class="po-meta" style="padding:0 16px 12px">Preparing your personalized quest…</div>';
+    const payload = await pathOddsFetch('/api/pathodds/launch', { method: 'POST', body: JSON.stringify({ route: 'sat.quest' }) });
+    if (!payload || !payload.launchUrl) throw new Error('PathOdds did not return a launch URL.');
+    card.innerHTML = '<div class="fam-pathodds-learner-head"><span class="po-mark">P</span><strong>Today’s PathOdds SAT work</strong><button type="button" class="btn-secondary" onclick="loadPathOddsQuestWidget(true)">Close</button></div>';
+    const frame = document.createElement('iframe');
+    frame.className = 'fam-pathodds-frame';
+    frame.title = 'PathOdds SAT daily quest';
+    frame.src = payload.launchUrl;
+    card.appendChild(frame);
+  } catch (error) {
+    card.className = 'fam-pathodds-card fam-pathodds-unavailable';
+    card.innerHTML = '<div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div><h4>Could not start today’s quest</h4><p>Try again in a moment. Your PathOdds progress has not changed.</p><div class="po-actions"><button type="button" class="btn-secondary" onclick="loadPathOddsQuestWidget(true)">Retry</button></div>';
   }
 }
 
