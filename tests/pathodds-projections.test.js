@@ -2,6 +2,12 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const os = require("os");
+const fs = require("fs");
+const path = require("path");
+
+process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-pathodds-projections-"));
+
 const db = require("../lib/db");
 const projections = require("../lib/pathodds-projections");
 
