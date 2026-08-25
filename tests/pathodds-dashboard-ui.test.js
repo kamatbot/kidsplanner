@@ -17,8 +17,11 @@ test("PathOdds quest is primary SAT Daily 5 behavior and vocabulary stays a warm
   assert.doesNotMatch(answerBody, /markDaily5Done\('sat'\)/);
 });
 
-test("parent dashboard only reads child PathOdds summaries", () => {
+test("parent dashboard can connect its own PathOdds plan while only summarizing child work", () => {
+  assert.match(source, /Connect my PathOdds/);
+  assert.match(source, /Open my PathOdds/);
+  assert.match(source, /pathOddsFetch\('\/api\/pathodds\/today'\)/);
   assert.match(source, /api\/pathodds\/today\?kidId=/);
-  assert.match(source, /each child completes the learning work in their own PathOdds session/);
+  assert.match(source, /each child’s SAT progress visible here/);
   assert.doesNotMatch(source, /launchPathOdds\([^)]*kidId/);
 });

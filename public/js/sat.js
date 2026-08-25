@@ -314,21 +314,30 @@ function parentPathOddsStatus(result) {
   return 'Ready today';
 }
 
+function parentPathOddsAction(result) {
+  const payload = result && result.status === 'fulfilled' ? result.value : null;
+  if (!payload || payload.linked === false) {
+    return `<a class="btn-primary" href="${esc((payload && payload.linkUrl) || 'https://www.pathodds.com/api/auth/fametc/start?route=sat.home')}">Connect my PathOdds</a>`;
+  }
+  const route = payload.snapshot && payload.snapshot.action && payload.snapshot.action.route || 'sat.home';
+  return `<button type="button" class="btn-primary" onclick="launchPathOdds('${esc(route)}')">Open my PathOdds</button>`;
+}
+
 async function renderPathOddsFamily() {
   const card = ensurePathOddsCard();
   if (!card) return;
   const kids = currentFamily && Array.isArray(currentFamily.kids) ? currentFamily.kids : [];
   card.className = 'fam-pathodds-card';
-  card.innerHTML = `<div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div><h4>Daily SAT progress</h4><p>FamETC shows the habit; each child completes the learning work in their own PathOdds session.</p><div class="fam-pathodds-family"><span class="text-muted">Loading…</span></div>`;
-  if (!kids.length) {
-    card.querySelector('.fam-pathodds-family').innerHTML = '<span class="text-muted">Add a kid profile to track their daily PathOdds habit here.</span>';
-    return;
-  }
-  const results = await Promise.allSettled(kids.map((kid) => pathOddsFetch(`/api/pathodds/today?kidId=${encodeURIComponent(kid.id)}`)));
-  card.querySelector('.fam-pathodds-family').innerHTML = kids.map((kid, index) => {
-    const status = parentPathOddsStatus(results[index]);
+  card.innerHTML = `<div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div><h4>PathOdds for your family</h4><p>Connect your own plan, and keep each child’s SAT progress visible here.</p><div class="po-actions"><span class="text-muted">Loading…</span></div><div class="fam-pathodds-family"><span class="text-muted">Loading…</span></div>`;
+  const [ownResult, ...kidResults] = await Promise.allSettled([
+    pathOddsFetch('/api/pathodds/today'),
+    ...kids.map((kid) => pathOddsFetch(`/api/pathodds/today?kidId=${encodeURIComponent(kid.id)}`))
+  ]);
+  card.querySelector('.po-actions').innerHTML = parentPathOddsAction(ownResult);
+  card.querySelector('.fam-pathodds-family').innerHTML = kids.length ? kids.map((kid, index) => {
+    const status = parentPathOddsStatus(kidResults[index]);
     return `<div class="fam-pathodds-kid"><strong>${esc(kid.name || 'Kid')}</strong><span>PathOdds SAT</span><em>${esc(status)}</em></div>`;
-  }).join('');
+  }).join('') : '<span class="text-muted">Add a kid profile to track their daily PathOdds habit here.</span>';
 }
 
 async function loadPathOddsQuestWidget(force) {
