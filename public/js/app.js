@@ -1277,7 +1277,12 @@ function normalizeSchoolEvent(ev) {
 function isImportedTimetableEvent(ev) {
   if (!ev || !ev.kidId) return false;
   if (ev.source === 'timetable-import') return true;
-  return ev.source !== 'school' && ev.category === 'school' && ev.notes === 'Timetable';
+  if (ev.source === 'school' || ev.category !== 'school') return false;
+  if (ev.notes === 'Timetable') return true;
+  const notes = String(ev.notes || '');
+  return notes.startsWith('Import warning — needs review:')
+    && notes.includes('\nRaw values — day:')
+    && notes.includes('; period:');
 }
 
 function isTimetableMode() {
@@ -4886,11 +4891,18 @@ function famTonightPrepDue(menu, prefs, todayIso) {
   return out;
 }
 
+function todayScheduleMeta(ev) {
+  if (ev.location) return ev.location;
+  const notes = String(ev.notes || '');
+  if (!notes.startsWith('Import warning — needs review:')) return notes;
+  return 'Imported item needs review — open to check the details';
+}
+
 function renderTodayScheduleRow(ev) {
   const color = ev.kidId ? (kidColorFor(ev.kidId) || 'var(--c-violet)') : 'var(--c-violet)';
   const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
   const lock = ev.source === 'school' ? ' 🔒' : '';
-  const meta = ev.location || ev.notes || '';
+  const meta = todayScheduleMeta(ev);
   return `<div class="schedule-row" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')">
     <span class="schedule-time">${ev.time ? esc(ev.time) : 'All day'}</span>
     <span class="schedule-bar" style="background:${color}"></span>

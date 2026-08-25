@@ -26,12 +26,20 @@ function extractFunction(name) {
 function scopedEvents({ kidSession, kidId }) {
   const timetable = { id: "ev_timetable", kidId: "kid-a", category: "school", notes: "Timetable", source: "manual" };
   const localTimetable = { id: "local_timetable", kidId: "kid-a", category: "school", notes: "", source: "timetable-import" };
+  const warningTimetable = {
+    id: "warning_timetable", kidId: "kid-a", category: "school", source: "manual",
+    notes: "Import warning — needs review: time is missing or invalid\nRaw values — day: 1; period: ECA1; time: (missing)",
+  };
+  const warningActivity = {
+    id: "warning_activity", kidId: "kid-a", category: "school", source: "manual",
+    notes: "Import warning — needs review: time is missing or invalid\nRaw values — title: Chess; date: 2026-08-25; time: (missing)",
+  };
   const schoolFeed = { id: "school_feed", kidId: "kid-a", category: "school", notes: "Timetable", source: "school" };
   const ownEvent = { id: "ev_own", kidId: "kid-a", category: "sports", notes: "Training", source: "manual" };
   const siblingEvent = { id: "ev_sibling", kidId: "kid-b", category: "arts", notes: "Music", source: "manual" };
   const familyEvent = { id: "ev_family", kidId: null, category: "social", notes: "Dinner", source: "manual" };
   const sandbox = {
-    getEvents: () => [timetable, localTimetable, ownEvent, siblingEvent, familyEvent],
+    getEvents: () => [timetable, localTimetable, warningTimetable, warningActivity, ownEvent, siblingEvent, familyEvent],
     schoolEvents: [schoolFeed],
     normalizeSchoolEvent: (event) => event,
     isKidSession: () => kidSession,
@@ -94,11 +102,25 @@ function switcherMarkup(kidSession) {
 }
 
 test("parents exclude imported timetable rows but retain other kid and family events", () => {
-  assert.deepEqual(scopedEvents({ kidSession: false }), ["ev_own", "ev_sibling", "ev_family", "school_feed"]);
+  assert.deepEqual(scopedEvents({ kidSession: false }), ["warning_activity", "ev_own", "ev_sibling", "ev_family", "school_feed"]);
 });
 
 test("kids retain family events and only their own kid-scoped calendar", () => {
-  assert.deepEqual(scopedEvents({ kidSession: true, kidId: "kid-a" }), ["ev_timetable", "local_timetable", "ev_own", "ev_family", "school_feed"]);
+  assert.deepEqual(scopedEvents({ kidSession: true, kidId: "kid-a" }), ["ev_timetable", "local_timetable", "warning_timetable", "warning_activity", "ev_own", "ev_family", "school_feed"]);
+});
+
+test("Today replaces import diagnostics with a concise review prompt", () => {
+  const sandbox = {};
+  vm.runInNewContext([
+    extractFunction("todayScheduleMeta"),
+    `this.warning = todayScheduleMeta({ notes: "Import warning — needs review: time is missing or invalid\\nRaw values — day: 1; period: ECA1" });`,
+    `this.ordinary = todayScheduleMeta({ notes: "Bring boots" });`,
+    `this.location = todayScheduleMeta({ location: "Sports Hall", notes: "Import warning — needs review: ignored" });`,
+  ].join("\n"), sandbox, { filename: "today-schedule-meta.js" });
+
+  assert.equal(sandbox.warning, "Imported item needs review — open to check the details");
+  assert.equal(sandbox.ordinary, "Bring boots");
+  assert.equal(sandbox.location, "Sports Hall");
 });
 
 test("parent child selection adds that child's timetable without sibling events", () => {
