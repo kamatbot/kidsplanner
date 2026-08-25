@@ -72,9 +72,11 @@ private struct ParentHeader: View {
                 Text(greeting).font(Typography.title).foregroundStyle(Palette.text)
             }
             Spacer(minLength: Space.sm)
-            MoreMenu(onNotes: onMore)
+            MoreMenu(onNotes: onNotes)
         }
     }
+
+    private var onNotes: () -> Void { onMore }
 }
 
 private struct AddEventFAB: View {
@@ -107,6 +109,7 @@ private struct ParentTodayStack: View {
         VStack(alignment: .leading, spacing: Space.lg) {
             ActionCard()
             ScheduleCard()
+            PathOddsFamilySummaryCard()
             if hSize == .compact {
                 VStack(alignment: .leading, spacing: Space.lg) {
                     HomeworkDueCard()
@@ -419,6 +422,7 @@ private struct KidTodayStack: View {
             }
 
             KidHomeworkCard()
+            PathOddsQuestCard()
 
             // ponytail: canvas-1g pairs this with a "Today's habits" card, but
             // there's no habits API/data source yet — full-width Daily 5 alone
