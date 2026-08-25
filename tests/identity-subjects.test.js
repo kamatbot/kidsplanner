@@ -28,3 +28,13 @@ test("identity subject creation is idempotent on an isolated root", () => {
   assert.equal(second.userId, "u_kid");
   assert.equal(Object.keys(root.identitySubjects.byId).length, 1);
 });
+
+test("a disabled identity subject is never silently reactivated by lookup", () => {
+  const root = { users: {}, families: {} };
+  const subject = identities.ensureKidSubject("f_1", "k_1", undefined, { root });
+  subject.status = "disabled";
+  const again = identities.ensureKidSubject("f_1", "k_1", "u_kid", { root });
+  assert.equal(again.id, subject.id);
+  assert.equal(again.status, "disabled");
+  assert.equal(again.userId, "u_kid");
+});
