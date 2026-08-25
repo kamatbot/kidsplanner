@@ -136,16 +136,11 @@ Back up the OIDC private key and pairwise-subject key in the production secret s
 
 ```text
 PATHODDS_INTEGRATION_ENABLED=false              # enable only during rollout step below
-PATHODDS_SERVICE_BASE_URL=https://www.pathodds.com
 PATHODDS_SERVICE_SECRET=<SERVICE_SECRET>
 PATHODDS_WEBHOOK_SECRET=<WEBHOOK_SECRET>
 
-OIDC_ISSUER=https://www.fametc.com
-PATHODDS_OIDC_CLIENT_ID=pathodds
-PATHODDS_OIDC_REDIRECT_URI=https://www.pathodds.com/api/auth/fametc/callback
 OIDC_PAIRWISE_SUBJECT_KEY=<PAIRWISE_SECRET>
 OIDC_SIGNING_PRIVATE_KEY=<ED25519_PKCS8_PRIVATE_KEY>
-OIDC_SIGNING_KEY_ID=fametc-2026-01
 ```
 
 Preserve existing FamETC variables, particularly:

@@ -7,16 +7,14 @@ const oidc = require("../lib/oidc-provider");
 
 test("FamETC signs PathOdds ID tokens with the published Ed25519 key", () => {
   const previousKey = process.env.OIDC_SIGNING_PRIVATE_KEY;
-  const previousKid = process.env.OIDC_SIGNING_KEY_ID;
   const { privateKey } = crypto.generateKeyPairSync("ed25519");
   process.env.OIDC_SIGNING_PRIVATE_KEY = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
-  process.env.OIDC_SIGNING_KEY_ID = "test-key";
   try {
     const token = oidc.signIdToken({ iss: "https://www.fametc.com", sub: "pws_test", aud: "pathodds", exp: 9999999999 });
     const [headerPart, payloadPart, signaturePart] = token.split(".");
     const header = JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8"));
     assert.equal(header.alg, "EdDSA");
-    assert.equal(header.kid, "test-key");
+    assert.equal(header.kid, "fametc-2026-01");
     const jwk = oidc.publicJwk();
     const publicKey = crypto.createPublicKey({ key: jwk, format: "jwk" });
     assert.equal(
@@ -25,7 +23,6 @@ test("FamETC signs PathOdds ID tokens with the published Ed25519 key", () => {
     );
   } finally {
     if (previousKey === undefined) delete process.env.OIDC_SIGNING_PRIVATE_KEY; else process.env.OIDC_SIGNING_PRIVATE_KEY = previousKey;
-    if (previousKid === undefined) delete process.env.OIDC_SIGNING_KEY_ID; else process.env.OIDC_SIGNING_KEY_ID = previousKid;
   }
 });
 
