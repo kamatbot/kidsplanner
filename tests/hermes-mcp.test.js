@@ -95,6 +95,9 @@ test("Hermes MCP advertises modern stateless tools and legacy initialize compati
     "fametc_cases_transition",
     "fametc_cases_add_step",
     "fametc_approvals_request",
+    "fametc_approvals_decide",
+    "fametc_execution_claim",
+    "fametc_execution_run",
   ]);
   for (const tool of list.body.result.tools) {
     assert.ok(tool.inputSchema.required.includes("actorToken"), `${tool.name} must require actorToken`);
