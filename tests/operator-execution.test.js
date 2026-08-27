@@ -38,7 +38,7 @@ function parentActor(user) {
   return { type: "parent", userId: user.id, principalId: user.id };
 }
 
-function createApprovalFixture({ approverUserId } = {}) {
+function createApprovalFixture({ approverUserId, expiresAt = "2026-09-20T12:00:00.000Z" } = {}) {
   const { parent, fam } = setupFamily("Approval");
   const secondParent = makeParent("Second Parent");
   const joined = family.joinFamilyAsParent(fam.inviteCode, secondParent.id);
@@ -71,7 +71,7 @@ function createApprovalFixture({ approverUserId } = {}) {
     approverUserId: approverUserId === undefined ? parent.id : approverUserId,
     actionType: "calendar.create",
     action,
-    expiresAt: "2026-09-20T12:00:00.000Z",
+    expiresAt,
   });
   operator.transitionCase(fam.id, op.id, "waiting_for_approval", { actor: parentActor(parent), roomId: "family" });
 
@@ -237,6 +237,83 @@ test("single-use execution token runs only the stored approved calendar action",
   const matching = events.listEvents(fixture.fam.id, { from: "2026-09-10", to: "2026-09-10" })
     .filter((candidate) => candidate.sourceType === "operator" && candidate.sourceId === decided.execution.id);
   assert.equal(matching.length, 1);
+});
+
+test("an in-flight execution cannot be replayed or reclaimed after its token expires", (t) => {
+  const Database = loadSqliteOrSkip(t);
+  if (!Database) return;
+  const fixture = createApprovalFixture();
+  const execution = createOperatorExecution({ dbFile: operatorStore.DEFAULT_DB_FILE, Database });
+  t.after(() => execution.close());
+
+  const decided = execution.decideApproval(fixture.fam.id, fixture.approval.id, {
+    actor: parentActor(fixture.parent),
+    decision: "approve",
+    actionHash: fixture.approval.actionHash,
+  });
+  const approvingActor = parentActor(fixture.parent);
+  const claimed = execution.claimExecution(fixture.fam.id, fixture.approval.id, {
+    actor: approvingActor,
+    executorType: "hermes",
+  });
+
+  const db = new Database(operatorStore.DEFAULT_DB_FILE);
+  t.after(() => db.close());
+  db.prepare(`
+    UPDATE operator_execution_grants
+    SET token_expires_at = ?
+    WHERE id = ?
+  `).run("2000-01-01T00:00:00.000Z", decided.execution.id);
+  const reclaimed = execution.claimExecution(fixture.fam.id, fixture.approval.id, {
+    actor: approvingActor,
+    executorType: "hermes",
+  });
+  assert.notEqual(reclaimed.executionToken, claimed.executionToken);
+
+  db.prepare(`
+    UPDATE operator_execution_grants
+    SET state = 'running', token_expires_at = ?
+    WHERE id = ?
+  `).run("2000-01-01T00:00:00.000Z", decided.execution.id);
+
+  assert.throws(
+    () => execution.runExecution(
+      fixture.fam.id,
+      reclaimed.executionToken,
+      fixture.approval.actionHash,
+      { actor: approvingActor },
+    ),
+    (error) => error.code === "EXECUTION_NOT_READY",
+  );
+  assert.throws(
+    () => execution.claimExecution(fixture.fam.id, fixture.approval.id, {
+      actor: approvingActor,
+      executorType: "hermes",
+    }),
+    (error) => error.code === "EXECUTION_ALREADY_CLAIMED",
+  );
+  assert.equal(events.getBySource(fixture.fam.id, "operator", decided.execution.id), null);
+});
+
+test("an expired approval is closed atomically without creating execution authority", (t) => {
+  const Database = loadSqliteOrSkip(t);
+  if (!Database) return;
+  const fixture = createApprovalFixture({ expiresAt: "2000-01-01T00:00:00.000Z" });
+  const execution = createOperatorExecution({ dbFile: operatorStore.DEFAULT_DB_FILE, Database });
+  t.after(() => execution.close());
+
+  assert.throws(
+    () => execution.decideApproval(fixture.fam.id, fixture.approval.id, {
+      actor: parentActor(fixture.parent),
+      decision: "approve",
+      actionHash: fixture.approval.actionHash,
+    }),
+    (error) => error.code === "APPROVAL_EXPIRED",
+  );
+  const approval = execution.getApprovalForParent(fixture.fam.id, fixture.parent.id, fixture.approval.id);
+  assert.equal(approval.state, "expired");
+  assert.equal(approval.execution, null);
+  assert.equal(operatorStore.getCase(fixture.fam.id, fixture.caseId).state, "planning");
 });
 
 test("rejecting an approval creates no execution grant and returns the case to planning", (t) => {

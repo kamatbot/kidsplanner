@@ -102,6 +102,28 @@ test("MCP requires explicit parent approval before running the exact stored cale
     category: "social",
     repeat: "none",
   };
+  const unsupported = invoke(auth, "fametc_approvals_request", {
+    actorToken: parentToken,
+    caseId,
+    approverUserId: parent.id,
+    actionType: "email.send",
+    action: { to: "venue@example.com" },
+  });
+  assert.equal(unsupported.isError, true);
+  assert.equal(unsupported.structuredContent.error.code, "EXECUTION_UNSUPPORTED_ACTION");
+  assert.equal(operatorStore.getCase(fam.id, caseId).state, "proposal_ready");
+
+  const malformed = invoke(auth, "fametc_approvals_request", {
+    actorToken: parentToken,
+    caseId,
+    approverUserId: parent.id,
+    actionType: "calendar.create",
+    action: { title: action.title },
+  });
+  assert.equal(malformed.isError, true);
+  assert.equal(malformed.structuredContent.error.code, "EXECUTION_ACTION_INVALID");
+  assert.equal(operatorStore.getCase(fam.id, caseId).state, "proposal_ready");
+
   const requested = invoke(auth, "fametc_approvals_request", {
     actorToken: parentToken,
     caseId,
