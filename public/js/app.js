@@ -3746,9 +3746,10 @@ function updateChatUnreadBadge() {
   });
 }
 
-/* Homework/Goals/Activities: dock shrinks to a 56px avatar rail; clicking it
-   force-expands over the content (doesn't change flow layout). Today/Calendar
-   show it fully docked; Notes/Settings hide it — see applyChatDockState(). */
+/* Calendar/Homework/Goals/Activities: dock shrinks to a 56px avatar rail;
+   clicking it force-expands over the content (doesn't change flow layout).
+   Today shows it fully docked; Notes/Settings hide it — see
+   applyChatDockState(). */
 function handleChatDockClick(event) {
   const dock = document.getElementById('chat-dock');
   if (!dock || !dock.classList.contains('chat-collapsed')) return;
@@ -3770,7 +3771,7 @@ function toggleKidChat() {
   if (open) markChatSeen();
 }
 
-const CHAT_DOCK_MODE = { today: 'open', calendar: 'open', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', notes: 'hidden', settings: 'hidden' };
+const CHAT_DOCK_MODE = { today: 'open', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', notes: 'hidden', settings: 'hidden' };
 function applyChatDockState(tab) {
   const dock = document.getElementById('chat-dock');
   if (!dock) return;
@@ -5686,8 +5687,8 @@ function visibleHomeworkDueItems() {
 /* ============================================================
    NAV TABS (Today / Calendar / Homework / Goals / Activities / Notes / Settings)
    Chat is not a tab — it's the shell-level docked column (see index.html
-   #chat-dock), docked on Today/Calendar, collapsed to a slim rail on
-   Homework/Goals/Activities, and hidden on Notes/Settings — see
+   #chat-dock), docked on Today, collapsed to a slim rail on
+   Calendar/Homework/Goals/Activities, and hidden on Notes/Settings — see
    CHAT_DOCK_MODE/applyChatDockState(). Its poll lifecycle is tied to the
    dock being visible at all (docked or collapsed), so it never polls
    needlessly once hidden.
