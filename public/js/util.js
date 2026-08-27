@@ -47,13 +47,29 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-function linkifyChatText(value) {
-  const text = String(value == null ? '' : value);
+function chatInlineMarkdown(value) {
+  const text = String(value == null ? '' : value).replace(/\u0000/g, '');
   const escape = (part) => String(part)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+  const format = (part) => {
+    let formatted = escape(part);
+    const code = [];
+    formatted = formatted.replace(/`([^`\n]+)`/g, (_, content) => {
+      const token = `\u0000CODE${code.length}\u0000`;
+      code.push(`<code>${content}</code>`);
+      return token;
+    });
+    formatted = formatted
+      .replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+      .replace(/(^|[^_])_([^_\n]+)_(?!_)/g, '$1<em>$2</em>');
+    return formatted.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => code[Number(index)] || '');
+  };
   const urlPattern = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
   let html = '';
   let cursor = 0;
@@ -72,14 +88,51 @@ function linkifyChatText(value) {
       safe = ['http:', 'https:'].includes(new URL(href).protocol);
     } catch (_) {}
 
-    html += escape(text.slice(cursor, match.index));
+    html += format(text.slice(cursor, match.index));
     html += safe
-      ? `<a href="${escape(href)}" target="_blank" rel="noopener noreferrer">${escape(label)}</a>${escape(trailing)}`
-      : escape(match[0]);
+      ? `<a href="${escape(href)}" target="_blank" rel="noopener noreferrer">${escape(label)}</a>${format(trailing)}`
+      : format(match[0]);
     cursor = match.index + match[0].length;
   }
+  return html + format(text.slice(cursor));
+}
 
-  return html + escape(text.slice(cursor));
+function linkifyChatText(value) {
+  const text = String(value == null ? '' : value)
+    .replace(/^\s*\(Response formatting failed,\s*plain text:\)\s*/i, '')
+    .replace(/\r\n?/g, '\n');
+  const lines = text.split('\n');
+  const hasBlocks = lines.length > 1 || lines.some((line) => /^\s*(?:#{1,3}\s+|[-*•]\s+|\d+[.)]\s+)/.test(line));
+  if (!hasBlocks) return chatInlineMarkdown(text);
+
+  let html = '';
+  let list = null;
+  const closeList = () => {
+    if (!list) return;
+    html += `</${list}>`;
+    list = null;
+  };
+  for (const line of lines) {
+    if (!line.trim()) { closeList(); continue; }
+    const heading = /^\s*#{1,3}\s+(.+)$/.exec(line);
+    if (heading) {
+      closeList();
+      html += `<div class="chat-msg-heading">${chatInlineMarkdown(heading[1])}</div>`;
+      continue;
+    }
+    const bullet = /^\s*[-*•]\s+(.+)$/.exec(line);
+    const numbered = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+    const wantedList = bullet ? 'ul' : numbered ? 'ol' : null;
+    if (wantedList) {
+      if (list !== wantedList) { closeList(); list = wantedList; html += `<${list}>`; }
+      html += `<li>${chatInlineMarkdown((bullet || numbered)[1])}</li>`;
+      continue;
+    }
+    closeList();
+    html += `<p>${chatInlineMarkdown(line)}</p>`;
+  }
+  closeList();
+  return html;
 }
 
 /* Storage helpers (fam_ prefix only) */

@@ -367,6 +367,16 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-msg-other .chat-msg-bubble { border-color: var(--sender-color); }
 .chat-msg-text { color: var(--sender-color); white-space: pre-wrap; }
+.chat-msg-text p { margin: 0; }
+.chat-msg-text p + p { margin-top: 8px; }
+.chat-msg-text ul,
+.chat-msg-text ol { margin: 7px 0 2px; padding-inline-start: 20px; }
+.chat-msg-text li + li { margin-top: 4px; }
+.chat-msg-text strong { font-weight: 750; }
+.chat-msg-text em { font-style: italic; }
+.chat-msg-text code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, currentColor 9%, transparent); font: 600 .92em "JetBrains Mono", monospace; }
+.chat-msg-heading { margin: 9px 0 3px; font-size: 1.03em; font-weight: 750; }
+.chat-msg-heading:first-child { margin-top: 0; }
 .chat-msg-text a {
   color: inherit; font-weight: 700; text-decoration: underline;
   text-underline-offset: 2px; overflow-wrap: anywhere;
