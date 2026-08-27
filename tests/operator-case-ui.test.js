@@ -13,6 +13,10 @@ test("Today action queue bundle mounts parent-facing Hermes case cards", () => {
   assert.match(source, /data-op-decision="reject"/);
   assert.match(source, /Evidence \/ confirmation/);
   assert.match(source, /Activity ·/);
+  assert.match(source, /renderActionDetails/);
+  assert.match(source, /aria-live="polite"/);
+  assert.match(source, /role="alert"/);
+  assert.match(source, /Try again/);
   assert.match(source, /actionHash/);
   assert.doesNotMatch(source, /executionToken/);
 });

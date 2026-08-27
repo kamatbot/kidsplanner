@@ -154,6 +154,7 @@
 
   const document = root.document;
   const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+  let loadingCases = false;
 
   function escapeHtml(value) {
     return String(value == null ? "" : value)
@@ -200,6 +201,30 @@
     return parts.join(" · ");
   }
 
+  function actionFieldLabel(key) {
+    const labels = {
+      title: "Title", date: "Date", time: "Start time", endTime: "End time",
+      endDate: "End date", notes: "Notes", category: "Category", kidId: "For",
+      repeat: "Repeats", repeatUntil: "Repeats until", to: "Recipient", amount: "Amount",
+    };
+    return labels[key] || String(key || "Detail").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (letter) => letter.toUpperCase());
+  }
+
+  function actionFieldValue(value) {
+    if (value && typeof value === "object") {
+      try { return JSON.stringify(value); } catch (_) { return "Unable to display"; }
+    }
+    if (typeof value === "boolean") return value ? "Yes" : "No";
+    return String(value);
+  }
+
+  function renderActionDetails(proposal) {
+    if (!proposal || !proposal.action || typeof proposal.action !== "object") return "";
+    const entries = Object.entries(proposal.action).filter(([, value]) => value !== null && value !== undefined && value !== "");
+    if (!entries.length) return "";
+    return `<dl class="hermes-op-action-details">${entries.map(([key, value]) => `<div><dt>${escapeHtml(actionFieldLabel(key))}</dt><dd>${escapeHtml(actionFieldValue(value))}</dd></div>`).join("")}</dl>`;
+  }
+
   function ensureStyles() {
     if (document.getElementById("hermes-operator-style")) return;
     const style = document.createElement("style");
@@ -207,14 +232,17 @@
     style.textContent = `
       #hermes-operator-cases-card{margin-bottom:18px}
       .hermes-op-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
-      .hermes-op-header h2{margin:2px 0 4px;font-size:20px}.hermes-op-header p{margin:0;color:var(--text-2);font-size:13px}
+      .hermes-op-header h2{margin:0 0 4px;font-size:20px}.hermes-op-header p{margin:0;color:var(--text-2);font-size:13px;line-height:1.45}
       .hermes-op-list{display:grid;gap:10px}.hermes-op-case{border:1px solid var(--border);border-radius:14px;padding:14px;background:var(--surface)}
       .hermes-op-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.hermes-op-title{font-weight:700}.hermes-op-stage{font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:999px;white-space:nowrap}
       .hermes-op-goal{margin:6px 0 0;color:var(--text-2);font-size:13px}.hermes-op-proposal{margin-top:12px;padding:11px;border-radius:10px;background:var(--bg);border:1px solid var(--border)}
       .hermes-op-proposal-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-2);margin-bottom:5px}.hermes-op-proposal-text{font-weight:650;font-size:13px}
-      .hermes-op-actions{display:flex;gap:8px;margin-top:10px}.hermes-op-actions button{min-width:82px}.hermes-op-meta{font-size:11px;color:var(--text-2);margin-top:7px;word-break:break-word}
-      .hermes-op-evidence{margin-top:10px;font-size:12px}.hermes-op-evidence strong{display:block;margin-bottom:3px}.hermes-op-activity{margin-top:10px}.hermes-op-activity summary{cursor:pointer;font-size:12px;font-weight:650}.hermes-op-timeline{list-style:none;padding:7px 0 0;margin:0;display:grid;gap:6px}.hermes-op-timeline li{display:flex;gap:8px;font-size:12px;color:var(--text-2)}
-      .hermes-op-dot{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:5px;flex:0 0 auto}.hermes-op-empty{color:var(--text-2);font-size:13px;padding:5px 0}.hermes-op-error{color:var(--danger,#b42318);font-size:12px}
+      .hermes-op-action-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:10px 0 0}.hermes-op-action-details div{min-width:0}.hermes-op-action-details dt{color:var(--text-2);font-size:11px}.hermes-op-action-details dd{margin:2px 0 0;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}
+      .hermes-op-actions{display:flex;gap:8px;margin-top:12px}.hermes-op-actions button{min-width:82px;min-height:44px}.hermes-op-meta{font-size:11px;color:var(--text-2);margin-top:8px;word-break:break-word}
+      .hermes-op-decision-status{min-height:18px;margin-top:6px;font-size:12px;color:var(--text-2)}.hermes-op-evidence{margin-top:10px;font-size:12px}.hermes-op-evidence strong{display:block;margin-bottom:3px}.hermes-op-activity{margin-top:10px}.hermes-op-activity summary{cursor:pointer;display:flex;align-items:center;min-height:44px;font-size:12px;font-weight:650}.hermes-op-timeline{list-style:none;padding:7px 0 0;margin:0;display:grid;gap:6px}.hermes-op-timeline li{display:flex;gap:8px;font-size:12px;color:var(--text-2)}
+      .hermes-op-dot{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:5px;flex:0 0 auto}.hermes-op-empty{color:var(--text-2);font-size:13px;padding:5px 0}.hermes-op-error{color:var(--danger,#b42318);font-size:12px}.hermes-op-retry{margin-top:8px;min-height:44px}
+      .hermes-op-actions button:focus-visible,.hermes-op-header button:focus-visible,.hermes-op-activity summary:focus-visible,.hermes-op-retry:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px}
+      @media(max-width:640px){.hermes-op-header,.hermes-op-row{flex-direction:column}.hermes-op-header button{min-height:44px}.hermes-op-stage{white-space:normal}.hermes-op-action-details{grid-template-columns:1fr}.hermes-op-actions button{flex:1}}
     `;
     document.head.appendChild(style);
   }
@@ -230,7 +258,7 @@
     panel.className = "card parent-only";
     panel.hidden = true;
     panel.setAttribute("aria-labelledby", "hermes-operator-title");
-    panel.innerHTML = `<div class="hermes-op-header"><div><div class="micro-label">Family operator</div><h2 id="hermes-operator-title">Hermes is working on…</h2><p>See what Hermes is doing, review exact actions, and inspect the activity trail.</p></div><button type="button" class="btn-link" id="hermes-operator-refresh">Refresh</button></div><div id="hermes-operator-list" class="hermes-op-list"></div>`;
+    panel.innerHTML = `<div class="hermes-op-header"><div><h2 id="hermes-operator-title">Hermes is working on…</h2><p>See what Hermes is doing, review exact actions, and inspect the activity trail.</p></div><button type="button" class="btn-link" id="hermes-operator-refresh">Refresh</button></div><div id="hermes-operator-list" class="hermes-op-list" aria-live="polite"></div>`;
     anchor.parentNode.insertBefore(panel, anchor);
     panel.querySelector("#hermes-operator-refresh").addEventListener("click", loadCases);
     return panel;
@@ -257,7 +285,7 @@
     const pending = proposal && proposal.approvalId;
     const policy = proposal && proposal.policy;
     const risk = policy && policy.riskLevel ? ` · ${escapeHtml(policy.riskLevel)} risk` : "";
-    const approval = pending ? `<div class="hermes-op-proposal"><div class="hermes-op-proposal-label">Proposed action${risk}</div><div class="hermes-op-proposal-text">${escapeHtml(actionSummary(proposal))}</div><div class="hermes-op-meta">${escapeHtml(proposal.actionType)} · action ${escapeHtml(String(proposal.actionHash || "").slice(0, 12))}…</div><div class="hermes-op-actions"><button type="button" class="btn-primary" data-op-decision="approve" data-approval-id="${escapeHtml(proposal.approvalId)}" data-action-hash="${escapeHtml(proposal.actionHash)}">Approve</button><button type="button" class="btn-secondary" data-op-decision="reject" data-approval-id="${escapeHtml(proposal.approvalId)}" data-action-hash="${escapeHtml(proposal.actionHash)}">Reject</button></div></div>` : "";
+    const approval = pending ? `<div class="hermes-op-proposal"><div class="hermes-op-proposal-label">Proposed action${risk}</div><div class="hermes-op-proposal-text">${escapeHtml(actionSummary(proposal))}</div>${renderActionDetails(proposal)}<div class="hermes-op-meta">${escapeHtml(proposal.actionType)} · action ${escapeHtml(String(proposal.actionHash || "").slice(0, 12))}…</div><div class="hermes-op-actions"><button type="button" class="btn-primary" data-op-decision="approve" data-approval-id="${escapeHtml(proposal.approvalId)}" data-action-hash="${escapeHtml(proposal.actionHash)}">Approve</button><button type="button" class="btn-secondary" data-op-decision="reject" data-approval-id="${escapeHtml(proposal.approvalId)}" data-action-hash="${escapeHtml(proposal.actionHash)}">Reject</button></div><div class="hermes-op-decision-status" role="status" aria-live="polite"></div></div>` : "";
     return `<article class="hermes-op-case" data-case-id="${escapeHtml(card.id)}"><div class="hermes-op-row"><div><div class="hermes-op-title">${escapeHtml(card.title)}</div><p class="hermes-op-goal">${escapeHtml(card.goal)}</p></div><span class="hermes-op-stage">${escapeHtml(card.stageLabel || card.state)}</span></div>${approval}${renderEvidence(card.evidence)}${renderActivity(card.activity)}</article>`;
   }
 
@@ -268,7 +296,11 @@
         const approvalId = button.dataset.approvalId;
         const actionHash = button.dataset.actionHash;
         if (!approvalId || !actionHash || !["approve", "reject"].includes(decision)) return;
-        button.disabled = true;
+        const actions = button.closest(".hermes-op-actions");
+        const decisionButtons = actions ? [...actions.querySelectorAll("button")] : [button];
+        const status = actions && actions.parentNode ? actions.parentNode.querySelector(".hermes-op-decision-status") : null;
+        decisionButtons.forEach((control) => { control.disabled = true; });
+        if (status) status.textContent = decision === "approve" ? "Approving this exact action…" : "Rejecting this action…";
         try {
           const response = await root.fetch(`/api/operator/approvals/${encodeURIComponent(approvalId)}/decision`, {
             method: "POST",
@@ -280,11 +312,12 @@
           if (!response.ok) throw new Error(payload.error || "Operator decision failed.");
           await loadCases();
         } catch (error) {
-          button.disabled = false;
+          decisionButtons.forEach((control) => { control.disabled = false; });
+          if (status) status.textContent = "";
           const article = button.closest(".hermes-op-case");
           if (article) {
             let message = article.querySelector(".hermes-op-error");
-            if (!message) { message = document.createElement("div"); message.className = "hermes-op-error"; article.appendChild(message); }
+            if (!message) { message = document.createElement("div"); message.className = "hermes-op-error"; message.setAttribute("role", "alert"); article.appendChild(message); }
             message.textContent = error && error.message ? error.message : "Operator decision failed.";
           }
         }
@@ -293,9 +326,14 @@
   }
 
   async function loadCases() {
+    if (loadingCases) return;
     const panel = ensurePanel();
     if (!panel) return;
     const list = panel.querySelector("#hermes-operator-list");
+    const refresh = panel.querySelector("#hermes-operator-refresh");
+    loadingCases = true;
+    list.setAttribute("aria-busy", "true");
+    if (refresh) refresh.disabled = true;
     try {
       const response = await root.fetch("/api/operator/cases?limit=12", { credentials: "same-origin", headers: { Accept: "application/json" } });
       if (response.status === 401 || response.status === 403 || response.status === 404) { panel.hidden = true; return; }
@@ -309,7 +347,13 @@
       bindDecisionButtons(panel);
     } catch (error) {
       panel.hidden = false;
-      list.innerHTML = `<div class="hermes-op-empty">Hermes case activity is temporarily unavailable.</div>`;
+      list.innerHTML = `<div class="hermes-op-empty" role="alert">Hermes case activity is temporarily unavailable.<br><button type="button" class="btn-secondary hermes-op-retry">Try again</button></div>`;
+      const retry = list.querySelector(".hermes-op-retry");
+      if (retry) retry.addEventListener("click", loadCases);
+    } finally {
+      loadingCases = false;
+      list.setAttribute("aria-busy", "false");
+      if (refresh) refresh.disabled = false;
     }
   }
 
