@@ -83,10 +83,10 @@ test("Hermes MCP advertises modern stateless tools, canonical context sections a
     "fametc_cases_transition",
     "fametc_cases_add_step",
     "fametc_approvals_request",
-    "fametc_approvals_decide",
     "fametc_execution_claim",
     "fametc_execution_run",
   ]);
+  assert.equal(list.body.result.tools.some((tool) => tool.name === "fametc_approvals_decide"), false);
   for (const tool of list.body.result.tools) {
     assert.ok(tool.inputSchema.required.includes("actorToken"), `${tool.name} must require actorToken`);
   }

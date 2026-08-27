@@ -111,6 +111,7 @@ This closeout adds the missing product surface:
 - `GET /api/operator/activity` — family Operator activity stream;
 - Today-page “Hermes is working on…” cards;
 - exact Approve / Reject controls using the stored `actionHash`;
+- approval decisions restricted to the authenticated FamETC parent surface, not model-callable MCP;
 - stage/status display;
 - execution evidence/confirmation;
 - expandable activity history.

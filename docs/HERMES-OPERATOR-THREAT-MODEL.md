@@ -11,7 +11,7 @@ Authority is deliberately split:
 1. the Hermes bearer authenticates one FamETC family integration;
 2. a short-lived signed actor capability identifies the human who initiated the current family-room turn;
 3. deterministic FamETC policy decides whether that actor may propose an action;
-4. the approval record binds a parent decision to the exact canonical action hash;
+4. only the authenticated FamETC parent surface can record a decision, and the approval record binds it to the exact canonical action hash;
 5. a separate short-lived single-use execution capability authorizes only the already-approved stored action;
 6. external content never participates in the authority chain.
 
@@ -24,7 +24,7 @@ FamETC remains authoritative for family operations. Odds Core may map FamETC `su
 | Prompt injection in email/web page | External content is wrapped as untrusted data; embedded instructions cannot grant actor, approval, scope, or execution authority | `operator-adversarial.test.js` |
 | Malicious attachment instructions | Same untrusted-content envelope; attachment text cannot act as a system/tool instruction | `operator-adversarial.test.js` |
 | Forged actor | Actor tokens are signed with server-only material and family-bound | existing capability tests + adversarial suite |
-| Compromised Hermes bearer | Bearer alone cannot mint actor tokens or approve/execute; rotating the connection invalidates actor tokens | capability tests |
+| Compromised Hermes bearer | Bearer cannot record approval decisions; the model-facing MCP has no approval-decision tool. Rotating the connection invalidates actor tokens | MCP/capability tests |
 | Cross-family id probing | Family scope derives from authenticated bearer/session and every case/approval lookup checks family ownership | Operator/store tests + adversarial suite |
 | Cross-room authority | Family Operator actor tokens are issued only in family rooms and are room-bound | Hermes route/capability tests |
 | Action changed after approval | Canonical `actionHash` is rechecked; execution reloads stored action rather than accepting replacement payload | execution tests + adversarial suite |
