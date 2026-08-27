@@ -3,20 +3,48 @@
 This plugin connects a local Hermes gateway to one FamETC family. The gateway
 makes outbound HTTPS requests only; no inbound connection to the user's Mac is
 required. FamETC remains the authority for room access, family identity,
-Operator cases and approvals.
+Operator cases, approvals and execution grants.
 
 Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
-## What changed in v1.1
+## What changed in v1.2
 
-The bridge now carries **actor authority separately from conversation identity**.
-For every authorized inbound message FamETC issues a short-lived signed
-`actorToken`. The plugin injects that token through Hermes' ephemeral
+The Operator now has a first end-to-end approval/execution path in addition to
+the v1.1 actor-authority foundation:
+
+1. Hermes creates and researches a durable case.
+2. Hermes proposes an exact structured action and calls
+   `fametc_approvals_request`; FamETC stores and hashes that payload.
+3. A parent explicitly approves or rejects the displayed proposal in a new
+   FamETC message (or through the parent approval API).
+4. `fametc_approvals_decide` binds that decision to the exact `actionHash`.
+5. An approved action gets one execution grant. Hermes must separately call
+   `fametc_execution_claim` to obtain a short-lived, single-use execution token.
+6. `fametc_execution_run` accepts the token + approved hash only. It cannot
+   accept a replacement action body; FamETC reloads the approved payload from
+   encrypted SQLite and dispatches an allowlisted server-side executor.
+7. The execution token is consumed and the case moves to verification.
+
+The first enabled execution driver is deliberately narrow: `calendar.create`.
+It writes a FamETC calendar event with an Operator source id, making retries
+idempotent. Browser automation, email sends, bookings, cancellations and
+payments remain disabled until they have their own constrained drivers and
+risk policies.
+
+## Actor authority stays separate from conversation identity
+
+For every authorized inbound **family-room** message FamETC issues a short-lived
+signed `actorToken`. The plugin injects that token through Hermes' ephemeral
 `channel_prompt` path, not into the user's message or raw diagnostic metadata.
 This lets MCP tools know whether a parent or kid initiated a task without
 fragmenting the shared family conversation.
+
+Every Operator MCP tool requires the current message's actor token. Approval,
+claim and execution additionally require a parent token, and claim/execution
+must be performed under the same parent who approved the action. Family
+Operator tokens are never issued in shared Trip rooms.
 
 Rotating or revoking the FamETC Hermes connection invalidates both the bearer
 credential and outstanding actor tokens.
@@ -86,24 +114,41 @@ mcp_servers:
 ```
 
 Restart Hermes (or reload MCP on versions that support it). Hermes prefixes MCP
-tool names with the server name, so the first foundation tools appear as names
-such as `mcp_fametc_operator_fametc_context_get` and
-`mcp_fametc_operator_fametc_cases_create`.
+tool names with the server name, so tools appear as names such as
+`mcp_fametc_operator_fametc_context_get`.
 
-The foundation server exposes:
+The server exposes:
 
-- `fametc_context_get` — minimum purpose-scoped family context; requires the
-  actor token from the current FamETC request.
-- `fametc_cases_create` — creates a durable multi-step case; requires the actor
-  token from the current request.
+- `fametc_context_get` — minimum purpose-scoped family context.
+- `fametc_cases_create` — creates a durable multi-step case.
 - `fametc_cases_get` / `fametc_cases_list` — reads cases visible to the
-  initiating actor; requires the current actor token.
+  initiating actor.
 - `fametc_cases_transition` — advances only through FamETC's allowed state
-  machine; requires the current actor token.
-- `fametc_cases_add_step` — appends auditable, typed work steps; requires the
-  current actor token.
-- `fametc_approvals_request` — records the exact action proposed for a parent;
-  it **does not execute** the action and requires the current actor token.
+  machine.
+- `fametc_cases_add_step` — appends auditable, typed work steps.
+- `fametc_approvals_request` — stores and hashes an exact proposed action and
+  moves the case to `waiting_for_approval`; it never executes.
+- `fametc_approvals_decide` — records a parent's explicit approve/reject
+  decision for that exact hash.
+- `fametc_execution_claim` — issues a short-lived execution capability for an
+  approved action. Only a SHA-256 digest of that capability is persisted.
+- `fametc_execution_run` — consumes the capability and executes the
+  server-stored approved action through an allowlisted driver.
+
+All tools require the signed `actorToken` from the current FamETC family-room
+message.
+
+## Parent approval API
+
+FamETC also exposes session-authenticated endpoints for web/iOS approval cards:
+
+- `GET /api/operator/approvals`
+- `GET /api/operator/approvals/:approvalId`
+- `POST /api/operator/approvals/:approvalId/decision`
+
+The decision body is `{ decision: "approve" | "reject", actionHash: "..." }`.
+The family and parent identity come from the authenticated FamETC session, never
+from request JSON.
 
 ## Security boundary
 
@@ -111,11 +156,14 @@ The family ID is derived from the authenticated bridge bearer and is never
 accepted from an MCP tool argument. Every Operator tool also requires the
 signed, short-lived actor token FamETC attached to the initiating family-room
 message. Tokens are signed with server-only key material; the bridge bearer
-cannot mint them. Family Operator tokens are never issued in shared Trip rooms.
-The token is not a general approval capability: booking, purchasing, sending,
-cancelling, paying and other irreversible operations require separate
-policy/approval machinery in later Operator milestones.
+cannot mint them.
 
-Operator case/approval/audit data is encrypted and stored transactionally in
-SQLite. If SQLite or the encryption key is unavailable, the Operator fails
-closed rather than falling back to plaintext or the JSON datastore.
+Approval does not hand Hermes arbitrary authority. It authorizes exactly one
+stored action hash. The execution token is short-lived, persisted only as a
+hash, bound to that approved action and consumed after use. The run endpoint
+cannot accept an alternative action payload.
+
+Operator case/approval/execution/audit data is encrypted and stored
+transactionally in SQLite. If SQLite or the encryption key is unavailable, the
+Operator fails closed rather than falling back to plaintext or the JSON
+datastore.
