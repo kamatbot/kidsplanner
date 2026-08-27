@@ -31,6 +31,7 @@ test("Canonical Family Context v1 carries Odds-compatible immutable subjects and
   const { parent, fam, kid } = fixture();
   const event = events.addEvent(fam.id, { title: "Soccer", date: "2026-09-01", kidId: kid.id, createdBy: parent.id }).event;
   const action = actions.createAction(fam.id, { title: "Pack cleats", kidId: kid.id, createdBy: parent.id }).action;
+  actions.createAction(fam.id, { title: "Far-future task", dueDate: "2027-01-15", createdBy: parent.id });
   const trip = trips.createTrip(parent.id, fam.id, { name: "Beach", destination: "Krabi", startDate: "2026-09-05", endDate: "2026-09-08" }).trip;
   const hw = homework.addHomework(fam.id, { kidId: kid.id, title: "Math", dueDate: "2026-09-02", notes: "private note" }).homework;
   meals.addMenuEntry(fam.id, parent.id, { date: "2026-09-03", slot: "dinner", title: "Tacos", note: "secret meal note" });
@@ -52,6 +53,8 @@ test("Canonical Family Context v1 carries Odds-compatible immutable subjects and
   assert.equal(output.sections.calendar.items[0].id, event.id);
   assert.equal(output.sections.homework.items[0].id, hw.id);
   assert.equal(output.sections.actions.items[0].id, action.id);
+  assert.equal(output.sections.actions.items.some((item) => item.title === "Far-future task"), false);
+  assert.deepEqual(output.sections.actions.range, { from: "2026-08-30", to: "2026-09-10" });
   assert.equal(output.sections.meals.items[0].title, "Tacos");
   assert.equal(output.sections.trips.items[0].id, trip.id);
   assert.equal(output.sections.calendar.sensitivity, "family-operations-summary");
