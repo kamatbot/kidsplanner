@@ -229,7 +229,7 @@ function ensurePathOddsStyles() {
     .fam-pathodds-card{border:1px solid color-mix(in srgb,var(--border,#ddd) 76%,#6c63ff 24%);background:linear-gradient(135deg,color-mix(in srgb,var(--card,#fff) 96%,#6c63ff 4%),var(--card,#fff));padding:16px;border-radius:16px;margin-bottom:12px}
     .fam-pathodds-card .po-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}.fam-pathodds-card .po-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:#17151f;color:#fff;font-size:13px;font-weight:800}.fam-pathodds-card .po-label{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}.fam-pathodds-card .po-spacer{flex:1}.fam-pathodds-card .po-streak{font-size:12px;font-weight:700;color:var(--text-2,#666)}
     .fam-pathodds-card h4{font-size:17px;margin:0 0 5px}.fam-pathodds-card p{margin:0;color:var(--text-2,#666);font-size:13px;line-height:1.45}.fam-pathodds-card .po-progress{height:7px;background:var(--surface-2,#ecebe8);border-radius:99px;overflow:hidden;margin:12px 0 6px}.fam-pathodds-card .po-progress>span{display:block;height:100%;background:currentColor;border-radius:inherit}.fam-pathodds-card .po-meta{font-size:11px;color:var(--text-2,#777);margin:0 0 12px}.fam-pathodds-card .po-actions{display:flex;gap:8px;align-items:center;margin-top:12px}.fam-pathodds-card .po-actions button,.fam-pathodds-card .po-actions a{flex:0 0 auto}.fam-pathodds-card.is-complete{border-color:color-mix(in srgb,#2f9d68 45%,var(--border,#ddd))}
-    .fam-pathodds-family{display:grid;gap:8px;margin-top:10px}.fam-pathodds-kid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px;border-radius:12px;background:var(--surface-2,#f5f4f2)}.fam-pathodds-kid strong{font-size:13px}.fam-pathodds-kid span{font-size:12px;color:var(--text-2,#666)}.fam-pathodds-kid em{font-style:normal;font-size:12px;font-weight:750;grid-row:1/3;grid-column:2}.fam-pathodds-unavailable{opacity:.78}
+    .fam-pathodds-unavailable{opacity:.78}
     .fam-pathodds-card.is-learning{padding:0;overflow:hidden}.fam-pathodds-learner-head{display:flex;align-items:center;gap:8px;padding:14px 16px 10px}.fam-pathodds-learner-head strong{font-size:14px}.fam-pathodds-learner-head button{margin-left:auto}.fam-pathodds-frame{display:block;width:100%;height:min(760px,calc(100vh - 120px));min-height:560px;border:0;background:var(--card,#fff)}
     @media (max-width:600px){.fam-pathodds-frame{height:calc(100vh - 86px);min-height:520px}.fam-pathodds-card.is-learning{margin-inline:-12px;border-radius:0}}
   `;
@@ -303,49 +303,6 @@ function renderPathOddsSelf(payload) {
   }
 }
 
-function parentPathOddsStatus(result) {
-  if (!result || result.status === 'rejected') return 'Status unavailable';
-  const payload = result.value;
-  if (!payload || payload.linked === false) return 'Not connected';
-  const state = payload.snapshot && payload.snapshot.state;
-  if (!state) return 'Connected';
-  if (state.readiness === 'completed') return 'Complete';
-  if (state.readiness === 'in-progress') return `${state.answered || 0}/${state.total || 11} complete`;
-  if (state.readiness === 'setup-required') return 'Setup needed';
-  if (state.readiness === 'diagnostic-required') return 'Diagnostic needed';
-  return 'Ready today';
-}
-
-function parentPathOddsAction(result) {
-  const payload = result && result.status === 'fulfilled' ? result.value : null;
-  if (!payload || payload.linked === false) {
-    return `<a class="btn-primary" href="${esc((payload && payload.linkUrl) || 'https://www.pathodds.com/api/auth/fametc/start?route=sat.home')}">Connect my PathOdds</a>`;
-  }
-  const state = payload.snapshot && payload.snapshot.state;
-  const route = payload.snapshot && payload.snapshot.action && payload.snapshot.action.route || 'sat.home';
-  if (state && ['ready', 'in-progress'].includes(state.readiness)) {
-    return '<button type="button" class="btn-primary" onclick="embedPathOddsQuest()">Do my SAT quest</button>';
-  }
-  return `<button type="button" class="btn-primary" onclick="launchPathOdds('${esc(route)}')">Open my PathOdds</button>`;
-}
-
-async function renderPathOddsFamily() {
-  const card = ensurePathOddsCard();
-  if (!card) return;
-  const kids = currentFamily && Array.isArray(currentFamily.kids) ? currentFamily.kids : [];
-  card.className = 'fam-pathodds-card';
-  card.innerHTML = `<div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div><h4>PathOdds for your family</h4><p>Connect your own plan, and keep each child’s SAT progress visible here.</p><div class="po-actions"><span class="text-muted">Loading…</span></div><div class="fam-pathodds-family"><span class="text-muted">Loading…</span></div>`;
-  const [ownResult, ...kidResults] = await Promise.allSettled([
-    pathOddsFetch('/api/pathodds/today'),
-    ...kids.map((kid) => pathOddsFetch(`/api/pathodds/today?kidId=${encodeURIComponent(kid.id)}`))
-  ]);
-  card.querySelector('.po-actions').innerHTML = parentPathOddsAction(ownResult);
-  card.querySelector('.fam-pathodds-family').innerHTML = kids.length ? kids.map((kid, index) => {
-    const status = parentPathOddsStatus(kidResults[index]);
-    return `<div class="fam-pathodds-kid"><strong>${esc(kid.name || 'Kid')}</strong><span>PathOdds SAT</span><em>${esc(status)}</em></div>`;
-  }).join('') : '<span class="text-muted">Add a kid profile to track their daily PathOdds habit here.</span>';
-}
-
 async function loadPathOddsQuestWidget(force) {
   const card = ensurePathOddsCard();
   if (!card || !sessionUser) return;
@@ -353,16 +310,12 @@ async function loadPathOddsQuestWidget(force) {
   if (!force && Date.now() - pathOddsLastLoadedAt < 30_000) return;
   pathOddsLoading = true;
   try {
-    if (sessionUser.role === 'kid') {
-      const payload = await pathOddsFetch('/api/pathodds/today');
-      renderPathOddsSelf(payload);
-    } else {
-      await renderPathOddsFamily();
-    }
+    const payload = await pathOddsFetch('/api/pathodds/today');
+    renderPathOddsSelf(payload);
     pathOddsLastLoadedAt = Date.now();
   } catch (error) {
     card.className = 'fam-pathodds-card fam-pathodds-unavailable';
-    card.innerHTML = `<div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div><h4>Status temporarily unavailable</h4><p>Your family dashboard still works. Retry the PathOdds status when you’re ready.</p><div class="po-actions"><button type="button" class="btn-secondary" onclick="loadPathOddsQuestWidget(true)">Retry</button></div>`;
+    card.innerHTML = `<div class="po-head"><span class="po-mark">P</span><span class="po-label">PathOdds SAT</span></div><h4>Status temporarily unavailable</h4><p>Your dashboard still works. Retry your PathOdds status when you’re ready.</p><div class="po-actions"><button type="button" class="btn-secondary" onclick="loadPathOddsQuestWidget(true)">Retry</button></div>`;
   } finally {
     pathOddsLoading = false;
   }

@@ -4284,12 +4284,6 @@ function skipTodaySetup() {
   renderTodaySetupCard();
 }
 
-function resumeTodaySetup() {
-  if (isKidSession() || !currentFamily || !window.famTodaySetupGuide) return;
-  window.famTodaySetupGuide.setSkipped(currentFamily.id, false);
-  renderTodaySetupCard();
-}
-
 function renderTodaySetupCard() {
   const card = document.getElementById('today-setup-card');
   const content = document.getElementById('today-setup-content');
@@ -4302,31 +4296,19 @@ function renderTodaySetupCard() {
 
   const guide = window.famTodaySetupGuide;
   const state = guide.derive(currentFamily, schoolFeedsInfo, todayActionItems, todayActionQueueState);
-  const skipped = !state.complete && guide.isSkipped(currentFamily.id);
+  const skipped = guide.isSkipped(currentFamily.id);
+  if (state.complete || skipped) {
+    card.hidden = true;
+    card.classList.remove('today-setup-complete', 'today-setup-skipped');
+    content.innerHTML = '';
+    return;
+  }
+
   card.hidden = false;
-  card.classList.toggle('today-setup-complete', state.complete);
-  card.classList.toggle('today-setup-skipped', skipped);
+  card.classList.remove('today-setup-complete', 'today-setup-skipped');
 
   const skipBtn = document.getElementById('today-setup-skip-btn');
-  if (skipBtn) skipBtn.hidden = state.complete || skipped;
-
-  if (state.complete) {
-    content.innerHTML = `
-      <div class="today-setup-success" role="status" aria-live="polite">
-        <span class="today-setup-success-mark" aria-hidden="true">✓</span>
-        <div><strong>You're ready to save family time.</strong><p>Kids, co-parent, school calendar, and shared actions are connected.</p></div>
-      </div>`;
-    return;
-  }
-
-  if (skipped) {
-    content.innerHTML = `
-      <div class="today-setup-resume" role="status">
-        <div><strong>Setup is paused.</strong><p>Resume whenever you want to finish connecting your family.</p></div>
-        <button type="button" class="btn-secondary today-setup-resume-btn" onclick="resumeTodaySetup()">Finish setup</button>
-      </div>`;
-    return;
-  }
+  if (skipBtn) skipBtn.hidden = false;
 
   content.innerHTML = `<ol class="today-setup-steps">${state.steps.map((step) => {
     const status = step.complete
