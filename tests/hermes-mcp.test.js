@@ -30,11 +30,7 @@ function familyFixture(label = "MCP") {
 
 function invokeMcp(auth, body, headers = {}) {
   const normalized = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
-  const req = {
-    body,
-    headers: normalized,
-    get(name) { return normalized[String(name).toLowerCase()]; },
-  };
+  const req = { body, headers: normalized, get(name) { return normalized[String(name).toLowerCase()]; } };
   const res = {
     statusCode: 200,
     body: null,
@@ -48,10 +44,7 @@ function invokeMcp(auth, body, headers = {}) {
 }
 
 function modernHeaders(method, name) {
-  const headers = {
-    "MCP-Protocol-Version": hermesMcp.MODERN_VERSION,
-    "Mcp-Method": method,
-  };
+  const headers = { "MCP-Protocol-Version": hermesMcp.MODERN_VERSION, "Mcp-Method": method };
   if (name) headers["Mcp-Name"] = name;
   return headers;
 }
@@ -67,14 +60,9 @@ function actorToken(fixture, overrides = {}) {
   });
 }
 
-test("Hermes MCP advertises modern stateless tools and legacy initialize compatibility", () => {
+test("Hermes MCP advertises modern stateless tools, canonical context sections and legacy initialize compatibility", () => {
   const fixture = familyFixture("Discover");
-  const discover = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "server/discover",
-    params: {},
-  });
+  const discover = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "server/discover", params: {} });
   assert.equal(discover.statusCode, 200);
   assert.deepEqual(discover.body.result.supportedVersions, ["2026-07-28"]);
   assert.ok(discover.body.result.capabilities.tools);
@@ -95,12 +83,17 @@ test("Hermes MCP advertises modern stateless tools and legacy initialize compati
     "fametc_cases_transition",
     "fametc_cases_add_step",
     "fametc_approvals_request",
-    "fametc_approvals_decide",
     "fametc_execution_claim",
     "fametc_execution_run",
   ]);
+  assert.equal(list.body.result.tools.some((tool) => tool.name === "fametc_approvals_decide"), false);
   for (const tool of list.body.result.tools) {
     assert.ok(tool.inputSchema.required.includes("actorToken"), `${tool.name} must require actorToken`);
+  }
+  const contextTool = list.body.result.tools.find((tool) => tool.name === "fametc_context_get");
+  const contextSections = contextTool.inputSchema.properties.sections.items.enum;
+  for (const section of ["identities", "preferences", "calendar", "homework", "actions", "meals", "trips", "room", "members"]) {
+    assert.ok(contextSections.includes(section), `context schema should advertise ${section}`);
   }
   assert.equal(list.body.result.ttlMs, 60000);
   assert.equal(list.body.result.cacheScope, "private");
@@ -119,9 +112,7 @@ test("Hermes MCP advertises modern stateless tools and legacy initialize compati
 test("modern MCP rejects routing header/body mismatches", () => {
   const fixture = familyFixture("Headers");
   const response = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "tools/list",
+    jsonrpc: "2.0", id: 1, method: "tools/list",
     params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
   }, modernHeaders("tools/call"));
   assert.equal(response.statusCode, 400);
@@ -131,11 +122,7 @@ test("modern MCP rejects routing header/body mismatches", () => {
 test("actor capabilities preserve the initiating human and die when Hermes connection rotates", () => {
   const fixture = familyFixture("Capability");
   const token = actorToken(fixture);
-  const verified = actorCapabilities.verify({
-    family: fixture.auth.family,
-    connection: fixture.auth.connection,
-    token,
-  });
+  const verified = actorCapabilities.verify({ family: fixture.auth.family, connection: fixture.auth.connection, token });
   assert.equal(verified.actor.type, "parent");
   assert.equal(verified.actor.userId, fixture.parent.id);
   assert.equal(verified.roomId, "family");
@@ -153,20 +140,14 @@ test("a Hermes bearer holder cannot mint actor capabilities", () => {
   const valid = actorToken(fixture);
   const [, encoded] = valid.split(".");
   const bearerHash = crypto.createHash("sha256").update(fixture.token).digest();
-  const forgedSignature = crypto.createHmac("sha256", bearerHash)
-    .update(`opact1.${encoded}`)
-    .digest("base64url");
+  const forgedSignature = crypto.createHmac("sha256", bearerHash).update(`opact1.${encoded}`).digest("base64url");
   assert.throws(
-    () => actorCapabilities.verify({
-      family: fixture.auth.family,
-      connection: fixture.auth.connection,
-      token: `opact1.${encoded}.${forgedSignature}`,
-    }),
+    () => actorCapabilities.verify({ family: fixture.auth.family, connection: fixture.auth.connection, token: `opact1.${encoded}.${forgedSignature}` }),
     (error) => error.code === "ACTOR_CAPABILITY_INVALID",
   );
 });
 
-test("context tool requires a signed actor token and never accepts a family id from arguments", () => {
+test("context tool requires a signed actor token, returns Canonical Family Context v1, and never accepts family scope from arguments", () => {
   const fixture = familyFixture("ContextTool");
   const { kid } = family.addKid(fixture.fam.id, fixture.parent.id, {
     name: "Taylor",
@@ -191,27 +172,26 @@ test("context tool requires a signed actor token and never accepts a family id f
   }, modernHeaders("tools/call", name));
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.result.isError, false);
-  assert.equal(response.body.result.structuredContent.family.id, fixture.fam.id);
-  assert.deepEqual(response.body.result.structuredContent.members.kids, [{ type: "kid", kidId: kid.id, name: "Taylor" }]);
-  assert.equal(JSON.stringify(response.body.result.structuredContent).includes("tree nuts"), false);
+  const context = response.body.result.structuredContent;
+  assert.equal(context.schemaVersion, "fametc.family-context.v1");
+  assert.equal(context.household.localFamilyId, fixture.fam.id);
+  assert.equal(context.identityInterop.oddsCoreCanonicalPersonIdExposed, false);
+  const kidIdentity = context.sections.identities.members.find((member) => member.role === "kid");
+  assert.equal(kidIdentity.kidId, kid.id);
+  assert.equal(kidIdentity.displayName, "Taylor");
+  const serialized = JSON.stringify(context);
+  assert.equal(serialized.includes("tree nuts"), false);
+  assert.equal(serialized.includes(fixture.parent.id), false);
 
   const missing = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 2,
-    method: "tools/call",
-    params: { name, arguments: {} },
+    jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: {} },
   });
   assert.equal(missing.body.result.isError, true);
   assert.match(missing.body.result.content[0].text, /actorToken is required/);
 });
 
 test("MCP creates a family-scoped durable case from the actor capability", (t) => {
-  try {
-    require("better-sqlite3");
-  } catch (error) {
-    t.skip("better-sqlite3 is optional on this host");
-    return;
-  }
+  try { require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 is optional on this host"); return; }
   const fixture = familyFixture("CaseTool");
   const createName = "fametc_cases_create";
   const created = invokeMcp(fixture.auth, {
@@ -234,30 +214,25 @@ test("MCP creates a family-scoped durable case from the actor capability", (t) =
   assert.equal(caseData.familyId, fixture.fam.id);
   assert.equal(caseData.actorId, fixture.parent.id);
   assert.equal(caseData.state, "draft");
+  assert.equal(caseData.context.schemaVersion, "fametc.family-context.v1");
 
   const transitionName = "fametc_cases_transition";
   const impossible = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 2,
-    method: "tools/call",
+    jsonrpc: "2.0", id: 2, method: "tools/call",
     params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "executing" } },
   });
   assert.equal(impossible.body.result.isError, true);
   assert.match(impossible.body.result.content[0].text, /OPERATOR_INVALID_TRANSITION/);
 
   const planning = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 3,
-    method: "tools/call",
+    jsonrpc: "2.0", id: 3, method: "tools/call",
     params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "planning" } },
   });
   assert.equal(planning.body.result.isError, false);
   assert.equal(planning.body.result.structuredContent.state, "planning");
 
   const bearerOnly = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 4,
-    method: "tools/call",
+    jsonrpc: "2.0", id: 4, method: "tools/call",
     params: { name: transitionName, arguments: { caseId: caseData.id, state: "researching" } },
   });
   assert.equal(bearerOnly.body.result.isError, true);

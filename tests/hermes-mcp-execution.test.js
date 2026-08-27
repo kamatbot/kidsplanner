@@ -18,6 +18,7 @@ const events = require("../lib/events");
 const hermes = require("../lib/hermes");
 const actorCapabilities = require("../lib/operator-capabilities");
 const operatorStore = require("../lib/operator-store");
+const operatorExecution = require("../lib/operator-execution");
 const hermesMcp = require("../lib/hermes-mcp");
 
 function invoke(auth, name, args, id = 1) {
@@ -141,29 +142,28 @@ test("MCP requires explicit parent approval before running the exact stored cale
     kidId: kid.id,
     userId: parent.id,
   }, "m_kid_approve");
-  const kidDecision = invoke(auth, "fametc_approvals_decide", {
-    actorToken: kidToken,
-    approvalId: approval.id,
-    decision: "approve",
-    actionHash: approval.actionHash,
-  });
-  assert.equal(kidDecision.isError, true);
-  assert.equal(kidDecision.structuredContent.error.code, "APPROVAL_PARENT_REQUIRED");
+  assert.throws(
+    () => operatorExecution.decideApproval(fam.id, approval.id, {
+      actor: actorCapabilities.verify({ family: auth.family, connection: auth.connection, token: kidToken }).actor,
+      decision: "approve",
+      actionHash: approval.actionHash,
+    }),
+    (error) => error.code === "APPROVAL_PARENT_REQUIRED",
+  );
 
-  // A fresh parent message supplies the authority used for decision + execution.
+  // The authenticated parent surface records the decision. Hermes has no MCP
+  // approval-decision tool, so the integration cannot approve its own proposal.
   const approvalTurnToken = issueActor(auth, {
     type: "parent",
     userId: parent.id,
     principalId: parent.id,
   }, "m_parent_approve");
-  const decided = invoke(auth, "fametc_approvals_decide", {
-    actorToken: approvalTurnToken,
-    approvalId: approval.id,
+  const decided = operatorExecution.decideApproval(fam.id, approval.id, {
+    actor: actorCapabilities.verify({ family: auth.family, connection: auth.connection, token: approvalTurnToken }).actor,
     decision: "approve",
     actionHash: approval.actionHash,
   });
-  assert.equal(decided.isError, false);
-  assert.equal(decided.structuredContent.approval.state, "approved");
+  assert.equal(decided.approval.state, "approved");
   assert.equal(operatorStore.getCase(fam.id, caseId).state, "executing");
 
   const claimed = invoke(auth, "fametc_execution_claim", {

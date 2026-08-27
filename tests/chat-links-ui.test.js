@@ -34,9 +34,19 @@ test("web chat linkifier escapes message HTML and keeps punctuation outside link
   assert.equal(linkify('javascript:alert(1)'), 'javascript:alert(1)');
 });
 
+test("web chat renders safe polished Markdown and hides Hermes fallback noise", () => {
+  const rendered = linkify('(Response formatting failed, plain text:)\n\n**Family calendar**\n\n- Monday at 4\n- Tuesday at 5');
+  assert.doesNotMatch(rendered, /Response formatting failed|\*\*/);
+  assert.match(rendered, /<strong>Family calendar<\/strong>/);
+  assert.match(rendered, /<ul><li>Monday at 4<\/li><li>Tuesday at 5<\/li><\/ul>/);
+  assert.equal(linkify('***Important***: <img src=x onerror=alert(1)>'), '<strong><em>Important</em></strong>: &lt;img src=x onerror=alert(1)&gt;');
+});
+
 test("family and Trip chat use the shared linkifier with accessible link styling", () => {
   assert.match(appSource, /class="chat-msg-text">\$\{linkifyChatText\(m\.text\)\}/);
   assert.match(tripsSource, /class="chat-msg-text">\$\{linkifyChatText\(m\.text\)\}/);
   assert.match(stylesSource, /\.chat-msg-text a\s*\{[^}]*text-decoration:\s*underline/s);
   assert.match(stylesSource, /\.chat-msg-text a:focus-visible/);
+  assert.match(stylesSource, /\.chat-msg-text strong/);
+  assert.match(stylesSource, /\.chat-msg-text (?:ul|ol)/);
 });

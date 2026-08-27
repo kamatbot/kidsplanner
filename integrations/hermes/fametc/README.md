@@ -17,9 +17,10 @@ the v1.1 actor-authority foundation:
 1. Hermes creates and researches a durable case.
 2. Hermes proposes an exact structured action and calls
    `fametc_approvals_request`; FamETC stores and hashes that payload.
-3. A parent explicitly approves or rejects the displayed proposal in a new
-   FamETC message (or through the parent approval API).
-4. `fametc_approvals_decide` binds that decision to the exact `actionHash`.
+3. A parent explicitly approves or rejects the displayed proposal through
+   FamETC's authenticated parent case-card UI.
+4. FamETC binds that decision to the exact `actionHash`; Hermes has no tool that
+   can record approval for its own proposal.
 5. An approved action gets one execution grant. Hermes must separately call
    `fametc_execution_claim` to obtain a short-lived, single-use execution token.
 6. `fametc_execution_run` accepts the token + approved hash only. It cannot
@@ -41,8 +42,8 @@ signed `actorToken`. The plugin injects that token through Hermes' ephemeral
 This lets MCP tools know whether a parent or kid initiated a task without
 fragmenting the shared family conversation.
 
-Every Operator MCP tool requires the current message's actor token. Approval,
-claim and execution additionally require a parent token, and claim/execution
+Every Operator MCP tool requires the current message's actor token. Claim and
+execution additionally require a parent token, and both
 must be performed under the same parent who approved the action. Family
 Operator tokens are never issued in shared Trip rooms.
 
@@ -128,8 +129,6 @@ The server exposes:
 - `fametc_cases_add_step` — appends auditable, typed work steps.
 - `fametc_approvals_request` — stores and hashes an exact proposed action and
   moves the case to `waiting_for_approval`; it never executes.
-- `fametc_approvals_decide` — records a parent's explicit approve/reject
-  decision for that exact hash.
 - `fametc_execution_claim` — issues a short-lived execution capability for an
   approved action. Only a SHA-256 digest of that capability is persisted.
 - `fametc_execution_run` — consumes the capability and executes the

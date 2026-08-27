@@ -52,7 +52,7 @@ test("actorFromMessage preserves kid identity separately from the authenticated 
   });
 });
 
-test("purpose-scoped context returns identities without leaking unrelated family fields", () => {
+test("purpose-scoped context uses immutable subjects without leaking unrelated family fields", () => {
   const { adult, fam } = setupFamily("Context");
   const kidResult = family.addKid(fam.id, adult.id, {
     name: "Jamie",
@@ -68,14 +68,19 @@ test("purpose-scoped context returns identities without leaking unrelated family
     roomId: "family",
     sections: ["members", "room"],
   });
-  assert.equal(context.schemaVersion, 1);
-  assert.equal(context.family.id, fam.id);
-  assert.equal(context.actor.userId, adult.id);
+  assert.equal(context.schemaVersion, "fametc.family-context.v1");
+  assert.equal(context.household.localFamilyId, fam.id);
+  assert.match(context.actor.subject, /^subj_/);
   assert.equal(context.purpose, "trip-research");
-  assert.deepEqual(context.members.kids, [{ type: "kid", kidId: kidResult.kid.id, name: "Jamie" }]);
-  assert.equal(JSON.stringify(context).includes("peanuts"), false);
-  assert.equal(JSON.stringify(context).includes('"grade":"7"'), false);
-  assert.equal(JSON.stringify(context).includes(fam.inviteCode), false);
+  assert.deepEqual(context.disclosure.grantedSections, ["identities", "room"]);
+  const kidIdentity = context.sections.identities.members.find((member) => member.role === "kid");
+  assert.equal(kidIdentity.kidId, kidResult.kid.id);
+  assert.equal(kidIdentity.displayName, "Jamie");
+  const serialized = JSON.stringify(context);
+  assert.equal(serialized.includes("peanuts"), false);
+  assert.equal(serialized.includes(fam.inviteCode), false);
+  assert.equal(serialized.includes(adult.id), false);
+  assert.equal(context.authority.writesAllowedByContext, false);
 });
 
 test("actor validation denies outsiders and preserves kid-scoped authority on shared devices", () => {
@@ -115,6 +120,7 @@ test("case state machine blocks unsafe jumps before execution", (t) => {
     purpose: "tour-booking",
   });
   assert.equal(created.state, "draft");
+  assert.equal(created.context.schemaVersion, "fametc.family-context.v1");
 
   assert.throws(
     () => operator.transitionCase(fam.id, created.id, "executing", {
