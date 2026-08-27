@@ -1,5 +1,5 @@
 """FamETC Hermes platform plugin entry point."""
 
-from .adapter import register
+from .operator_adapter import register
 
 __all__ = ["register"]

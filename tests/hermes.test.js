@@ -16,6 +16,7 @@ const family = require("../lib/family");
 const trips = require("../lib/trips");
 const chat = require("../lib/chat");
 const hermes = require("../lib/hermes");
+const actorCapabilities = require("../lib/operator-capabilities");
 const hermesRoutes = require("../lib/routes/hermes");
 const chatRoutes = require("../lib/routes/chat");
 const tripsRoutes = require("../lib/routes/trips");
@@ -278,6 +279,20 @@ test("Hermes rooms are family-scoped and agent replies preserve the Hermes sende
   assert.equal(roomList.body.rooms.some((room) => room.roomId === `trip:${unrelatedTrip.id}`), false);
   assert.equal(roomList.body.rooms.some((room) => room.roomId === `trip:${kidOnlyTrip.id}`), false);
 
+  const tripSeed = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], {
+    headers, params: { roomId: `trip:${associatedTrip.id}` },
+  });
+  const tripMention = chat.sendMessage(`trip:${associatedTrip.id}`, {
+    senderType: "member", senderId: parent.id, text: "@Hermes check the family cases",
+  }).message;
+  const tripInbound = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], {
+    headers,
+    params: { roomId: `trip:${associatedTrip.id}` },
+    query: { afterId: tripSeed.body.cursor || hermes.EMPTY_CURSOR },
+  });
+  assert.deepEqual(tripInbound.body.messages.map((message) => message.id), [tripMention.id]);
+  assert.equal(Object.prototype.hasOwnProperty.call(tripInbound.body.messages[0], "actorToken"), false);
+
   const familySeed = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], {
     headers, params: { roomId: "family" },
   });
@@ -366,6 +381,13 @@ test("Hermes inbound polling seeds history, filters to mentions, and cannot loop
   });
   assert.deepEqual(afterInitial.body.messages.map((message) => message.id), [mention.id]);
   assert.equal(afterInitial.body.messages[0].senderType, "parent");
+  const verifiedActor = actorCapabilities.verify({
+    family: hermes.familyForToken(connected.body.token).family,
+    connection: hermes.familyForToken(connected.body.token).connection,
+    token: afterInitial.body.messages[0].actorToken,
+  });
+  assert.equal(verifiedActor.actor.userId, parent.id);
+  assert.equal(verifiedActor.roomId, "family");
   assert.equal(afterInitial.body.cursor, agent.id);
 
   const afterMention = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], {

@@ -1,10 +1,10 @@
 name: fametc-platform
 label: FamETC
 kind: platform
-version: 1.0.0
+version: 1.1.0
 description: >
-  Family-scoped FamETC REST long-poll adapter for Hermes Agent. One bearer
-  connection covers the family room and every authorized trip room.
+  Family-scoped FamETC REST long-poll adapter for Hermes Agent with signed
+  per-message actor authority for the FamETC Family Operator MCP server.
 author: FamETC
 requires_env:
   - name: FAMETC_HERMES_API_URL
