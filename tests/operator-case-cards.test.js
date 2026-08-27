@@ -17,6 +17,7 @@ const family = require("../lib/family");
 const chat = require("../lib/chat");
 const hermes = require("../lib/hermes");
 const operator = require("../lib/operator");
+const operatorStore = require("../lib/operator-store");
 const operatorCards = require("../lib/operator-cards");
 const operatorExecution = require("../lib/operator-execution");
 const hermesRoutes = require("../lib/routes/hermes");
@@ -80,6 +81,20 @@ function invoke(route, { user = null, body = {}, params = {}, query = {} } = {})
 test("case card exposes stage, exact proposal and expandable activity without case context", (t) => {
   try { require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 is optional on this host"); return; }
   const f = fixture();
+  const executionToken = "oprun1.must-not-reach-parent-projection";
+  operator.addStep(f.fam.id, f.current.id, {
+    actor: f.actor,
+    roomId: "family",
+    kind: "research",
+    output: { executionToken, parentUserId: f.parent.id },
+  });
+  operatorStore.recordAudit({
+    familyId: f.fam.id,
+    caseId: f.current.id,
+    actorId: f.parent.id,
+    eventType: "case.private_detail",
+    payload: { renamedSecret: executionToken, rawParent: f.parent.id },
+  });
   const card = operatorCards.caseCard(f.fam.id, f.current.id, f.parent.id);
   assert.equal(card.stageLabel, "Needs approval");
   assert.equal(card.proposedAction.approvalId, f.approval.id);
@@ -88,7 +103,10 @@ test("case card exposes stage, exact proposal and expandable activity without ca
   assert.ok(card.activity.some((event) => event.eventType === "case.created"));
   assert.ok(card.activity.some((event) => event.eventType === "approval.requested"));
   assert.equal(Object.prototype.hasOwnProperty.call(card, "context"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(card, "steps"), false);
+  assert.ok(card.activity.every((event) => !Object.prototype.hasOwnProperty.call(event, "payload")));
   assert.equal(JSON.stringify(card).includes(f.parent.id), false);
+  assert.equal(JSON.stringify(card).includes(executionToken), false);
 });
 
 test("completed execution appears as evidence on the same case card", (t) => {
