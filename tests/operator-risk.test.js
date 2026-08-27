@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const risk = require("../lib/operator-risk");
+const execution = require("../lib/operator-execution");
 
 test("risk registry is deterministic for every closeout action", () => {
   const expected = {
@@ -42,4 +43,13 @@ test("payment requires dual-parent flow and is not executable by the single-pare
   const policy = risk.requireProposalAllowed("payment.create", "parent");
   assert.equal(policy.dualParent, true);
   assert.throws(() => risk.requireExecutable("payment.create"), (error) => error.code === "OPERATOR_DUAL_PARENT_REQUIRED");
+});
+
+test("every enabled execution driver is explicitly executable in the risk registry", () => {
+  for (const actionType of execution.supportedActionTypes()) {
+    const policy = risk.requireExecutable(actionType);
+    assert.equal(policy.executable, true);
+    assert.notEqual(policy.approvalPolicy, "prohibited");
+    assert.equal(policy.dualParent, false);
+  }
 });
