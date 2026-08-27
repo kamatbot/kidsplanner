@@ -530,7 +530,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .today-setup-step-action:focus-visible, .today-setup-header-actions button:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 
 .today-grid {
-  flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.2fr);
+  flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px; min-height: 0;
 }
 .today-actions-card { margin-bottom: 16px; }
