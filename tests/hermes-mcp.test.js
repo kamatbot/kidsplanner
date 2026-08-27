@@ -60,7 +60,7 @@ function actorToken(fixture, overrides = {}) {
   return actorCapabilities.issue({
     family: fixture.auth.family,
     connection: fixture.auth.connection,
-    actor: { type: "parent", userId: fixture.parent.id, principalId: fixture.parent.id },
+    actor: overrides.actor || { type: "parent", userId: fixture.parent.id, principalId: fixture.parent.id },
     messageId: overrides.messageId || "m_test",
     roomId: overrides.roomId || "family",
     ttlMs: overrides.ttlMs,
@@ -96,6 +96,9 @@ test("Hermes MCP advertises modern stateless tools and legacy initialize compati
     "fametc_cases_add_step",
     "fametc_approvals_request",
   ]);
+  for (const tool of list.body.result.tools) {
+    assert.ok(tool.inputSchema.required.includes("actorToken"), `${tool.name} must require actorToken`);
+  }
   assert.equal(list.body.result.ttlMs, 60000);
   assert.equal(list.body.result.cacheScope, "private");
   assert.equal(list.body.result._meta["io.modelcontextprotocol/serverInfo"].name, "fametc-family-operator");
@@ -138,6 +141,24 @@ test("actor capabilities preserve the initiating human and die when Hermes conne
   const rotatedAuth = hermes.familyForToken(rotated.token);
   assert.throws(
     () => actorCapabilities.verify({ family: rotatedAuth.family, connection: rotatedAuth.connection, token }),
+    (error) => error.code === "ACTOR_CAPABILITY_INVALID",
+  );
+});
+
+test("a Hermes bearer holder cannot mint actor capabilities", () => {
+  const fixture = familyFixture("CapabilityForgery");
+  const valid = actorToken(fixture);
+  const [, encoded] = valid.split(".");
+  const bearerHash = crypto.createHash("sha256").update(fixture.token).digest();
+  const forgedSignature = crypto.createHmac("sha256", bearerHash)
+    .update(`opact1.${encoded}`)
+    .digest("base64url");
+  assert.throws(
+    () => actorCapabilities.verify({
+      family: fixture.auth.family,
+      connection: fixture.auth.connection,
+      token: `opact1.${encoded}.${forgedSignature}`,
+    }),
     (error) => error.code === "ACTOR_CAPABILITY_INVALID",
   );
 });
@@ -216,7 +237,7 @@ test("MCP creates a family-scoped durable case from the actor capability", (t) =
     jsonrpc: "2.0",
     id: 2,
     method: "tools/call",
-    params: { name: transitionName, arguments: { caseId: caseData.id, state: "executing" } },
+    params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "executing" } },
   });
   assert.equal(impossible.body.result.isError, true);
   assert.match(impossible.body.result.content[0].text, /OPERATOR_INVALID_TRANSITION/);
@@ -225,8 +246,17 @@ test("MCP creates a family-scoped durable case from the actor capability", (t) =
     jsonrpc: "2.0",
     id: 3,
     method: "tools/call",
-    params: { name: transitionName, arguments: { caseId: caseData.id, state: "planning" } },
+    params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "planning" } },
   });
   assert.equal(planning.body.result.isError, false);
   assert.equal(planning.body.result.structuredContent.state, "planning");
+
+  const bearerOnly = invokeMcp(fixture.auth, {
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: transitionName, arguments: { caseId: caseData.id, state: "researching" } },
+  });
+  assert.equal(bearerOnly.body.result.isError, true);
+  assert.match(bearerOnly.body.result.content[0].text, /actorToken is required/);
 });

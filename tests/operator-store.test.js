@@ -49,6 +49,28 @@ test("Operator store fails closed when transactional SQLite is unavailable", () 
   );
 });
 
+test("Operator store fails closed when payload encryption is unavailable", () => {
+  const savedKey = process.env.DATA_ENCRYPTION_KEY;
+  delete process.env.DATA_ENCRYPTION_KEY;
+  datacrypto._resetKeyCache();
+  try {
+    const store = createOperatorStore({ dbFile: tempDb().file, Database: function UnusedDatabase() {} });
+    assert.deepEqual(store.status(), {
+      available: false,
+      backend: "sqlite",
+      fallback: false,
+      errorCode: "OPERATOR_STORAGE_UNAVAILABLE",
+    });
+    assert.throws(
+      () => store.createCase({ familyId: "f_1", title: "x", goal: "y" }),
+      (error) => error instanceof OperatorStorageUnavailableError,
+    );
+  } finally {
+    process.env.DATA_ENCRYPTION_KEY = savedKey;
+    datacrypto._resetKeyCache();
+  }
+});
+
 test("Operator cases are durable, family scoped, encrypted and audited", (t) => {
   const Database = loadSqliteOrSkip(t);
   if (!Database) return;
@@ -106,6 +128,14 @@ test("Operator steps, state transitions and approvals remain tied to the owning 
   });
   assert.equal(step.position, 0);
   assert.equal(step.state, "pending");
+  const retriedStep = store.addStep("f_one", op.id, {
+    kind: "research",
+    input: { query: "available tour times" },
+    idempotencyKey: "research:tour-times",
+    actorId: "hermes",
+  });
+  assert.equal(retriedStep.id, step.id);
+  assert.equal(store.listSteps("f_one", op.id).length, 1);
   assert.equal(store.addStep("f_two", op.id, { kind: "should-not-work" }), null);
   assert.deepEqual(store.listSteps("f_two", op.id), []);
 

@@ -96,22 +96,26 @@ The foundation server exposes:
   actor token from the current FamETC request.
 - `fametc_cases_create` — creates a durable multi-step case; requires the actor
   token from the current request.
-- `fametc_cases_get` / `fametc_cases_list` — reads family-owned cases.
+- `fametc_cases_get` / `fametc_cases_list` — reads cases visible to the
+  initiating actor; requires the current actor token.
 - `fametc_cases_transition` — advances only through FamETC's allowed state
-  machine.
-- `fametc_cases_add_step` — appends auditable, typed work steps.
+  machine; requires the current actor token.
+- `fametc_cases_add_step` — appends auditable, typed work steps; requires the
+  current actor token.
 - `fametc_approvals_request` — records the exact action proposed for a parent;
-  it **does not execute** the action.
+  it **does not execute** the action and requires the current actor token.
 
 ## Security boundary
 
 The family ID is derived from the authenticated bridge bearer and is never
-accepted from an MCP tool argument. Human identity comes only from the signed,
-short-lived actor token FamETC attached to the initiating message. The token is
-not a general approval capability: booking, purchasing, sending, cancelling,
-paying and other irreversible operations require separate policy/approval
-machinery in later Operator milestones.
+accepted from an MCP tool argument. Every Operator tool also requires the
+signed, short-lived actor token FamETC attached to the initiating family-room
+message. Tokens are signed with server-only key material; the bridge bearer
+cannot mint them. Family Operator tokens are never issued in shared Trip rooms.
+The token is not a general approval capability: booking, purchasing, sending,
+cancelling, paying and other irreversible operations require separate
+policy/approval machinery in later Operator milestones.
 
-Operator case/approval/audit data is stored transactionally in SQLite. If
-SQLite is unavailable, the Operator fails closed rather than falling back to
-the JSON datastore.
+Operator case/approval/audit data is encrypted and stored transactionally in
+SQLite. If SQLite or the encryption key is unavailable, the Operator fails
+closed rather than falling back to plaintext or the JSON datastore.

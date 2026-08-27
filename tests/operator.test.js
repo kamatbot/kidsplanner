@@ -132,3 +132,40 @@ test("case state machine blocks unsafe jumps before execution", (t) => {
   });
   assert.equal(researching.state, "researching");
 });
+
+test("kid case access is limited to the initiating kid while parents retain family oversight", (t) => {
+  try {
+    require("better-sqlite3");
+  } catch (error) {
+    t.skip("better-sqlite3 is optional on this host");
+    return;
+  }
+  const { adult, fam } = setupFamily("CaseAuthority");
+  const firstKid = family.addKid(fam.id, adult.id, { name: "First" }).kid;
+  const sibling = family.addKid(fam.id, adult.id, { name: "Sibling" }).kid;
+  const firstActor = { type: "kid", kidId: firstKid.id, principalId: firstKid.id, userId: adult.id };
+  const siblingActor = { type: "kid", kidId: sibling.id, principalId: sibling.id, userId: adult.id };
+  const parentActor = { type: "parent", userId: adult.id, principalId: adult.id };
+  const created = operator.createCase(fam.id, {
+    actor: firstActor,
+    roomId: "family",
+    title: "First kid task",
+    goal: "Keep this task scoped to its initiating kid.",
+  });
+  for (let index = 0; index < 55; index += 1) {
+    operator.createCase(fam.id, {
+      actor: siblingActor,
+      roomId: "family",
+      title: `Sibling task ${index}`,
+      goal: "Exercise visibility-before-limit ordering.",
+    });
+  }
+
+  assert.equal(operator.getCase(fam.id, created.id, { actor: siblingActor, roomId: "family" }), null);
+  assert.equal(operator.listCases(fam.id, { actor: siblingActor, roomId: "family" }).length, 50);
+  assert.equal(operator.transitionCase(fam.id, created.id, "planning", {
+    actor: siblingActor, roomId: "family",
+  }), null);
+  assert.equal(operator.getCase(fam.id, created.id, { actor: parentActor, roomId: "family" }).id, created.id);
+  assert.deepEqual(operator.listCases(fam.id, { actor: firstActor, roomId: "family" }).map((item) => item.id), [created.id]);
+});

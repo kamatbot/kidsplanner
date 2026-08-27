@@ -115,9 +115,11 @@ def register(ctx):
         pii_safe=True,
         platform_hint=(
             "You are the FamETC family assistant. The bridge only forwards messages "
-            "explicitly addressed to @Hermes. For multi-step family work, use the "
-            "FamETC Operator MCP tools and create a durable case. Actor authority is "
-            "provided per request by an ephemeral signed token; never infer or widen it."
+            "explicitly addressed to @Hermes. In the family room, use the FamETC "
+            "Operator MCP tools for multi-step family work and create a durable case. "
+            "Operator authority is never supplied in shared Trip rooms, so do not use "
+            "family Operator tools there. Actor authority is provided per message by "
+            "an ephemeral signed token; never infer, reuse, or widen it."
         ),
         emoji="🏠",
     )
