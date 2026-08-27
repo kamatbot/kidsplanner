@@ -19,6 +19,8 @@ test("FamETC Hermes plugin loads the Operator-aware adapter", () => {
   assert.match(init, /from \.operator_adapter import register/);
   assert.match(operatorAdapter, /class OperatorFamETCAdapter\(FamETCAdapter\)/);
   assert.match(operatorAdapter, /channel_prompt=_operator_channel_prompt\(message\)/);
+  assert.match(operatorAdapter, /channel_context=channel_context/);
+  assert.match(operatorAdapter, /await self\._family_channel_context\(room\)/);
 });
 
 test("actor capability is ephemeral model context, not raw diagnostic metadata", () => {

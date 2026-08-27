@@ -17,6 +17,11 @@ const trips = require("../lib/trips");
 const chat = require("../lib/chat");
 const hermes = require("../lib/hermes");
 const actorCapabilities = require("../lib/operator-capabilities");
+const events = require("../lib/events");
+const schoolFeeds = require("../lib/school-feeds");
+const homework = require("../lib/homework");
+const actions = require("../lib/actions");
+const meals = require("../lib/meals");
 const hermesRoutes = require("../lib/routes/hermes");
 const chatRoutes = require("../lib/routes/chat");
 const tripsRoutes = require("../lib/routes/trips");
@@ -52,6 +57,11 @@ function buildHermesHarness(notifyCalls = []) {
     family,
     chat,
     store,
+    events,
+    schoolFeeds,
+    homework,
+    actions,
+    meals,
     notifications: {
       notifyChatMessage: async (...args) => notifyCalls.push({ kind: "family", args }),
       notifyTripChatMessage: async (...args) => notifyCalls.push({ kind: "trip", args }),
@@ -125,7 +135,8 @@ function invoke(route, { user = null, familyId, body, params, query, headers, ho
     const res = {
       statusCode: 200,
       body: null,
-      set() { return this; },
+      headers: {},
+      set(name, value) { this.headers[String(name).toLowerCase()] = value; return this; },
       status(code) { this.statusCode = code; return this; },
       json(body_) {
         if (settled) return this;
@@ -351,6 +362,66 @@ test("Hermes rooms are family-scoped and agent replies preserve the Hermes sende
   const tripMessages = await invoke(tripRoute, { user: parent, params: { tripId: associatedTrip.id } });
   const visibleTripReply = tripMessages.body.messages.find((message) => message.id === tripReply.body.message.id);
   assert.equal(visibleTripReply.senderName, "Hermes");
+});
+
+test("Hermes family context is read-only, minimized, date-bounded, and isolated by token and room", async () => {
+  const { parent, fam } = makeFamily("Context");
+  const { parent: otherParent, fam: otherFam } = makeFamily("OtherContext");
+  const kid = family.addKid(fam.id, parent.id, { name: "Ria", grade: "7" }).kid;
+  const otherKid = family.addKid(otherFam.id, otherParent.id, { name: "Other Kid", grade: "8" }).kid;
+  const routes = buildHermesHarness();
+  const connected = await invoke(routes["POST /api/hermes/connect"], { user: parent, familyId: fam.id });
+  const headers = bearer(connected.body.token);
+  const range = { from: "2026-09-01", to: "2026-09-30" };
+
+  events.addEvent(fam.id, { title: "Ria football", date: "2026-09-08", time: "16:00", notes: "private booking code", kidId: kid.id });
+  events.addEvent(fam.id, { title: "Outside range", date: "2027-01-01" });
+  events.addEvent(otherFam.id, { title: "Other family event", date: "2026-09-09", kidId: otherKid.id });
+  homework.addHomework(fam.id, { kidId: kid.id, title: "Math worksheet", subject: "Math", dueDate: "2026-09-12", notes: "private teacher note" });
+  homework.addHomework(otherFam.id, { kidId: otherKid.id, title: "Other homework", dueDate: "2026-09-12" });
+  actions.createAction(fam.id, {
+    title: "Return library books", dueDate: "2026-09-10", notes: "private action note",
+    assigneeType: "parent", assigneeId: parent.id, createdBy: parent.id,
+  });
+  meals.addMenuEntry(fam.id, parent.id, { date: "2026-09-11", slot: "dinner", title: "Green curry", note: "secret recipe note" });
+  createTrip(parent.id, fam.id, "Family holiday");
+
+  const response = await invoke(routes["GET /api/hermes/rooms/:roomId/context"], {
+    headers, params: { roomId: "family" }, query: range,
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.deepEqual(response.body.access, {
+    scope: "connected-family", mode: "read-only", preauthorized: true, writesAllowed: false,
+  });
+  assert.equal(response.body.family.id, fam.id);
+  assert.deepEqual(response.body.family.kids, [{ id: kid.id, name: "Ria", grade: "7" }]);
+  assert.deepEqual(response.body.calendar.map((item) => item.title), ["Ria football"]);
+  assert.deepEqual(response.body.homework.map((item) => item.title), ["Math worksheet"]);
+  assert.deepEqual(response.body.actions.map((item) => item.title), ["Return library books"]);
+  assert.deepEqual(response.body.meals.menu.map((item) => item.title), ["Green curry"]);
+  const serialized = JSON.stringify(response.body);
+  for (const absent of [
+    "Other family event", "Other homework", "Outside range", "private booking code",
+    "private teacher note", "private action note", "secret recipe note", "@example.com",
+    "inviteCode", "hermesConnection", "pantry", "allergies", parent.id,
+  ]) assert.equal(serialized.includes(absent), false, absent);
+
+  const trip = createTrip(parent.id, fam.id, "Context room boundary");
+  const tripResponse = await invoke(routes["GET /api/hermes/rooms/:roomId/context"], {
+    headers, params: { roomId: `trip:${trip.id}` }, query: range,
+  });
+  assert.equal(tripResponse.statusCode, 403);
+  assert.equal(tripResponse.body.error, "Family context is only available in the family room.");
+
+  const tooWide = await invoke(routes["GET /api/hermes/rooms/:roomId/context"], {
+    headers, params: { roomId: "family" }, query: { from: "2026-01-01", to: "2026-12-31" },
+  });
+  assert.equal(tooWide.statusCode, 400);
+  const invalidToken = await invoke(routes["GET /api/hermes/rooms/:roomId/context"], {
+    headers: bearer("hermes_invalid"), params: { roomId: "family" }, query: range,
+  });
+  assert.equal(invalidToken.statusCode, 401);
 });
 
 test("Hermes inbound polling seeds history, filters to mentions, and cannot loop on agent messages", async () => {
