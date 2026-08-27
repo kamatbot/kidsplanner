@@ -17,13 +17,17 @@ test("PathOdds quest is primary SAT Daily 5 behavior and vocabulary stays a warm
   assert.doesNotMatch(answerBody, /markDaily5Done\('sat'\)/);
 });
 
-test("post-diagnostic learners complete their own PathOdds quest in FamETC while parents only summarize child work", () => {
-  assert.match(source, /Connect my PathOdds/);
+test("Today shows only the signed-in person's PathOdds quest", () => {
+  assert.match(source, /Connect PathOdds/);
   assert.match(source, /embedPathOddsQuest/);
   assert.match(source, /fam-pathodds-frame/);
   assert.match(source, /route: 'sat\.quest'/);
   assert.match(source, /pathOddsFetch\('\/api\/pathodds\/today'\)/);
-  assert.match(source, /api\/pathodds\/today\?kidId=/);
-  assert.match(source, /each child’s SAT progress visible here/);
+  assert.match(source, /const payload = await pathOddsFetch\('\/api\/pathodds\/today'\);\s+renderPathOddsSelf\(payload\);/);
+  assert.doesNotMatch(source, /api\/pathodds\/today\?kidId=/);
+  assert.doesNotMatch(source, /renderPathOddsFamily|parentPathOddsStatus|parentPathOddsAction/);
+  assert.doesNotMatch(source, /fam-pathodds-family|fam-pathodds-kid/);
+  assert.doesNotMatch(source, /PathOdds for your family|each child’s SAT progress/);
+  assert.match(source, /Your dashboard still works/);
   assert.doesNotMatch(source, /launchPathOdds\([^)]*kidId/);
 });

@@ -206,7 +206,7 @@
                 <p id="today-setup-intro">A few small connections now will save time later. You can come back whenever you're ready.</p>
               </div>
               <div class="today-setup-header-actions">
-                <button type="button" class="btn-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Skip for now</button>
+                <button type="button" class="btn-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Dismiss</button>
               </div>
             </div>
             <div id="today-setup-content"></div>
@@ -308,6 +308,17 @@
                 <a href="#" class="btn-link" onclick="switchNavTab('homework');return false" style="font-size:12px">All →</a>
               </div>
               <div id="today-homework-list"></div>
+            </section>
+
+            <!-- School Stats (house points / attendance / canteen) — parent-only,
+                 populated by the Chrome extension's Moodle home-dashboard scrape.
+                 Hidden entirely until there's data (see renderSchoolStatsWidget). -->
+            <section class="widget card widget-school-stats today-compact-card" id="widget-school-stats" style="display:none">
+              <div class="widget-header">
+                <span class="widget-icon">🏫</span>
+                <span class="widget-label">School</span>
+              </div>
+              <div id="school-stats-rows"></div>
             </section>
 
             <section class="card">
@@ -442,16 +453,6 @@
                 </div>
               </section>
 
-              <!-- School Stats (house points / attendance / canteen) — parent-only,
-                   populated by the Chrome extension's Moodle home-dashboard scrape.
-                   Hidden entirely until there's data (see renderSchoolStatsWidget). -->
-              <section class="widget card widget-school-stats today-compact-card" id="widget-school-stats" style="display:none">
-                <div class="widget-header">
-                  <span class="widget-icon">🏫</span>
-                  <span class="widget-label">School</span>
-                </div>
-                <div id="school-stats-rows"></div>
-              </section>
             </div>
           </div>
         </div>

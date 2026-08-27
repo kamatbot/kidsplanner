@@ -526,15 +526,11 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .today-setup-step-status { display: inline-flex; align-items: center; gap: 4px; min-width: 68px; color: var(--text-2); font-size: 11px; font-weight: 700; }
 .today-setup-step-status.complete { color: var(--c-green); }
 .today-setup-step-status.pending { color: var(--text-2); }
-.today-setup-step-action, .today-setup-resume-btn { min-height: 40px; white-space: nowrap; }
-.today-setup-success, .today-setup-resume { display: flex; align-items: center; gap: 11px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
-.today-setup-success-mark { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; color: var(--c-green); border: 2px solid var(--c-green); font-weight: 800; flex: none; }
-.today-setup-success p, .today-setup-resume p { color: var(--text-2); font-size: 12.5px; line-height: 1.4; margin-top: 2px; }
-.today-setup-resume { justify-content: space-between; }
-.today-setup-step-action:focus-visible, .today-setup-header-actions button:focus-visible, .today-setup-resume-btn:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+.today-setup-step-action { min-height: 40px; white-space: nowrap; }
+.today-setup-step-action:focus-visible, .today-setup-header-actions button:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 
 .today-grid {
-  flex: 1; display: grid; grid-template-columns: 1.45fr 1fr;
+  flex: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.2fr);
   gap: 16px; min-height: 0;
 }
 .today-actions-card { margin-bottom: 16px; }
@@ -633,7 +629,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 #today-action-form textarea:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
 .today-schedule-card { display: flex; flex-direction: column; }
 .today-card-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
-.today-left-col, .today-right-col { display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; }
+.today-left-col, .today-right-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; min-height: 0; overflow-y: auto; }
 .today-left-col > .card, .today-right-col > .card { flex: none; }
 
 .schedule-row {
@@ -1156,7 +1152,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .sidebar-bottom { border-top: none; flex-direction: row; padding: 0; margin-left: auto; }
   .main-content-wrap { flex-direction: column; overflow: visible; }
   .main-content { padding: 16px; overflow-y: visible; }
-  .today-grid { grid-template-columns: 1fr; }
+  .today-grid { grid-template-columns: minmax(0, 1fr); }
   .today-left-col, .today-right-col { overflow: visible; }
   /* Chat becomes a slide-over on narrow screens too, same mechanism as kid
      view (see the .kid-view .chat-dock rule above) — width-triggered instead
@@ -1210,9 +1206,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   .today-setup-header-actions .btn-link { min-height: 44px; }
   .today-setup-step { align-items: flex-start; flex-direction: column; gap: 9px; }
   .today-setup-step-meta { width: 100%; justify-content: space-between; }
-  .today-setup-step-action, .today-setup-resume-btn { min-height: 44px; }
-  .today-setup-resume { align-items: flex-start; flex-direction: column; }
-  .today-setup-resume-btn { width: 100%; }
+  .today-setup-step-action { min-height: 44px; }
   .today-action-form-grid { grid-template-columns: 1fr; }
   .today-action-notes-group { grid-column: auto; }
   .today-action-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
