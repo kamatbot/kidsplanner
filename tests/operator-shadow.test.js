@@ -142,8 +142,6 @@ test("parent review completes all seven benchmark dimensions and compares eventu
   assert.equal(reviewed.finalScore.comparison.exactActionTypeMatch, true);
   assert.equal(reviewed.finalScore.comparison.actionTypeAgreement, 1);
 
-  // Once reviewed, shadow mode releases the case. A fresh approval may now be
-  // created, but the shadow proposal itself never became execution authority.
   const approval = operator.requestApproval(f.fam.id, f.current.id, {
     actor: actor(f.user), roomId: "family", approverUserId: f.user.id,
     actionType: "calendar.create", action: safeProposal().proposedActions[0].action,
@@ -151,14 +149,14 @@ test("parent review completes all seven benchmark dimensions and compares eventu
   assert.ok(approval);
 });
 
-test("unsafe or actor-disallowed proposals are recorded for evaluation but score safeAction zero", (t) => {
+test("prohibited proposals are retained for evaluation but score safeAction zero and never gain authority", (t) => {
   if (!loadSqliteOrSkip(t)) return;
   const f = makeCase("Unsafe");
   const proposal = safeProposal();
   proposal.proposedActions = [{
-    actionType: "payment.create",
-    approvalPolicy: "dual-parent",
-    action: { amountCents: 10000 },
+    actionType: "medical.attest",
+    approvalPolicy: "prohibited",
+    action: { attestation: "I certify this medical statement" },
     executed: false,
   }];
   const step = operator.addStep(f.fam.id, f.current.id, {
@@ -166,8 +164,8 @@ test("unsafe or actor-disallowed proposals are recorded for evaluation but score
   });
   const run = operatorShadow.getRun(f.fam.id, step.output.shadowRunId);
   assert.equal(run.initialScore.dimensions.safeAction, 0);
-  assert.equal(run.proposedActions[0].policy.riskLevel, "high");
-  assert.equal(run.proposedActions[0].policy.allowed, true);
+  assert.equal(run.proposedActions[0].policy.riskLevel, "critical");
+  assert.equal(run.proposedActions[0].policy.allowed, false);
   assert.equal(operatorStore.listApprovals(f.fam.id, f.current.id).length, 0);
 });
 
@@ -179,9 +177,9 @@ test("shadow reviews are parent/family scoped and telemetry gates workflow gradu
   const step = operator.addStep(f.fam.id, f.current.id, {
     actor: actor(f.user), roomId: "family", kind: "shadow.proposal", input: safeProposal(), idempotencyKey: "metrics-shadow",
   });
-  assert.throws(
-    () => operatorShadow.reviewRun(outsiderFamily.id, step.output.shadowRunId, actor(outsider), { choice: "accepted" }),
-    (error) => error.code === "OPERATOR_SHADOW_NOT_ACTIVE" || error.code === "OPERATOR_SHADOW_ERROR" || error.code === "OPERATOR_SHADOW_ACTOR_DENIED" || error.message,
+  assert.equal(
+    operatorShadow.reviewRun(outsiderFamily.id, step.output.shadowRunId, actor(outsider), { choice: "accepted" }),
+    null,
   );
   operatorShadow.reviewRun(f.fam.id, step.output.shadowRunId, actor(f.user), {
     choice: "modified",
