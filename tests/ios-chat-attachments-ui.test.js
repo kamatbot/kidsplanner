@@ -10,6 +10,7 @@ const chatView = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatV
 const attachmentSupport = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatAttachmentSupport.swift"), "utf8");
 const notificationHandler = fs.readFileSync(path.join(root, "ios/FamETC/NotificationHandler.swift"), "utf8");
 const routeSource = fs.readFileSync(path.join(root, "lib/routes/chat.js"), "utf8");
+const chatSource = fs.readFileSync(path.join(root, "lib/chat.js"), "utf8");
 
 test("native chat exposes photo/video and file attachment affordances", () => {
   assert.match(chatView, /ChatAttachmentMenu\s*\{/);
@@ -17,7 +18,7 @@ test("native chat exposes photo/video and file attachment affordances", () => {
   assert.match(attachmentSupport, /\.any\(of:\s*\[\.images,\s*\.videos\]\)/);
   assert.match(attachmentSupport, /UIDocumentPickerViewController\(forOpeningContentTypes:\s*\[\.item\]/);
   assert.match(attachmentSupport, /upload\(for:\s*request,\s*fromFile:\s*bodyURL\)/);
-  assert.match(attachmentSupport, /ChatAttachmentBubble\(media:/);
+  assert.match(chatView, /ChatAttachmentBubble\(media:/);
   assert.match(attachmentSupport, /QLPreviewController/);
 });
 
@@ -36,9 +37,9 @@ test("notification tap starts chat fetch before navigation completes", () => {
   assert.match(chatView, /consumeNotificationChatPrefetch\(roomId:\s*roomId\)/);
 });
 
-test("attachment bytes stay behind authenticated chat routes", () => {
+test("attachment bytes stay behind authenticated and scoped chat routes", () => {
   assert.match(routeSource, /app\.post\("\/api\/chat\/attachments",\s*requireAuth/);
   assert.match(routeSource, /app\.get\("\/api\/chat\/attachments\/:id",\s*requireAuth/);
   assert.match(routeSource, /canReadAttachment\(req,\s*meta\)/);
-  assert.match(routeSource, /validateMediaForScope/);
+  assert.match(chatSource, /chatAttachments\.validateMediaForScope\(scopeKey,\s*media\)/);
 });
