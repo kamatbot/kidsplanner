@@ -159,3 +159,19 @@ test("quota and launch allowlist fail closed, and dashboard reports the safety b
     silentExternalMessagingEnabled: false,
   });
 });
+
+test("a concurrent replay cannot release the winning execution's quota reservation", (t) => {
+  let Database;
+  try { Database = require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 is optional on this host"); return; }
+  const fixture = makeFamily("ConcurrentQuota");
+  operatorBeta.setFamilyConfig(fixture.fam.id, { enabled: true, autonomyCeiling: "approved-low-risk", hourlyQuota: 2, dailyQuota: 3 });
+  const pending = approvedCalendar(fixture, "concurrent");
+  const claim = operatorExecution.claimExecution(fixture.fam.id, pending.approval.id, { actor: fixture.actor, executorType: "hermes" });
+  const reservation = operatorBeta.reserveExecutionToken(fixture.fam.id, claim.executionToken, pending.approval.actionHash);
+
+  const db = new Database(require("../lib/operator-store").DEFAULT_DB_FILE);
+  db.prepare("UPDATE operator_execution_grants SET state = 'running' WHERE id = ?").run(reservation.grantId);
+  assert.equal(operatorBeta.releaseReservation(reservation.grantId, "EXECUTION_NOT_READY"), false);
+  assert.equal(db.prepare("SELECT state FROM operator_beta_usage WHERE grant_id = ?").get(reservation.grantId).state, "reserved");
+  db.close();
+});

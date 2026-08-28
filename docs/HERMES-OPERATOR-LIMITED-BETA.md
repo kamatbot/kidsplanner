@@ -4,7 +4,7 @@ M5 is the operational safety layer that allows a very small set of trusted FamET
 
 ## Default posture
 
-Production is deny-by-default. `OPERATOR_BETA_ENFORCE` may override the behavior explicitly, but when it is unset production requires a family enrollment before live execution can be claimed.
+Production is unconditionally deny-by-default: a family enrollment is required before live execution can be claimed. `OPERATOR_BETA_ENFORCE=1` may force the same enforcement in development, but no environment setting can disable it in production.
 
 A beta family has two autonomy ceilings:
 
@@ -101,7 +101,7 @@ Parents may inspect their status and give feedback. They cannot self-enroll, cha
 
 ## Admin operations
 
-These use the existing `requireAdmin` / analytics-token boundary:
+These use a dedicated, header-only Operator administration credential. Set `OPERATOR_ADMIN_TOKEN` and send it only in the `x-operator-admin-token` header. The analytics token and query-string credentials are not accepted for these high-impact operations.
 
 - `GET /api/admin/operator-beta/dashboard`
 - `POST /api/admin/operator-beta/global`

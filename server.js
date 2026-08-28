@@ -526,6 +526,7 @@ function requireAdmin(req, res, next) {
   res.set("Cache-Control", "no-store");
   return res.status(401).json({ error: "Analytics is locked — set ANALYTICS_TOKEN to enable the dashboard." });
 }
+const requireOperatorAdmin = require("./lib/operator-admin-auth").createOperatorAdminGuard({ isProduction: IS_PROD });
 app.get("/api/admin/analytics", requireAdmin, (req, res) => {
   res.set("Cache-Control", "no-store");
   res.json(analytics.summary(req.query.days));
@@ -554,7 +555,7 @@ function friendlyDate(ymd) {
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
   schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
-  requireAuth, requireParent, requireFamily, requireAdmin,
+  requireAuth, requireParent, requireFamily, requireAdmin, requireOperatorAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter, buzzLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
   rpForRequest, toB64url, fromB64url, upload, crypto,

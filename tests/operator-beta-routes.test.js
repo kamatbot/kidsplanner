@@ -53,7 +53,7 @@ function buildHarness() {
       req.family = fams[0];
       return next();
     },
-    requireAdmin: (req, res, next) => (req.admin === true ? next() : res.status(401).json({ error: "Admin required" })),
+    requireOperatorAdmin: (req, res, next) => (req.admin === true ? next() : res.status(401).json({ error: "Admin required" })),
   });
   return routes;
 }

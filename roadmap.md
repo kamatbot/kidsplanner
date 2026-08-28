@@ -78,7 +78,7 @@ The live execution path is now wrapped in a separate limited-family beta control
 - production Hermes execution routes through `operator-live-execution`, which applies beta checks around the exact-action execution engine;
 - atomic family quota reservation before a driver runs, with bounded rolling hourly/daily limits and retry-storm accounting;
 - emergency environment kill switch plus persisted global and per-family kill switches;
-- admin-only family enrollment, autonomy, quota, allowlist and kill-switch controls using the existing `requireAdmin` boundary;
+- admin-only family enrollment, autonomy, quota, allowlist and kill-switch controls using a dedicated header-only Operator administration credential;
 - encrypted beta evidence for blocked, completed, failed and released executions while the canonical Operator audit remains independent;
 - explicit parent feedback after completed/failed/blocked/shadow-reviewed cases, surfaced directly on Operator case cards;
 - admin safety dashboard with family usage, seven-day block counts, feedback coverage and M4 shadow graduation status;
