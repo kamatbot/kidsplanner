@@ -293,36 +293,24 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
     }
 
-    // MARK: Composer (attachments + GIF + Buzz + wide input + circular send)
+    // MARK: Composer (+ menu + wide input + circular send)
 
     private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canBuzz: Bool { canSend && !isSendingBuzz }
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: Space.sm) {
-            ChatAttachmentMenu { picked in
-                try await store.sendAttachment(picked, roomId: roomId)
-            }
-
-            Button { composerFocused = false; showGifPicker = true } label: {
-                Text("GIF")
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(Palette.accent)
-                    .frame(width: 42, height: 42)
-                    .background(Palette.accentSoft, in: Circle())
-            }
-            .accessibilityLabel("Add a GIF")
-
-            Button(action: requestBuzz) {
-                Image(systemName: "wave.3.right.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(canBuzz ? Palette.accent : Palette.textSecond)
-                    .frame(width: 44, height: 44)
-                    .background((canBuzz ? Palette.accentSoft : Palette.textSecond.opacity(0.12)), in: Circle())
-            }
-            .disabled(!canBuzz)
-            .accessibilityLabel("Send Buzz")
-            .accessibilityHint("Sends one Time Sensitive alert to everyone else in this chat after confirmation")
+            ChatComposerAddMenu(
+                canBuzz: canBuzz,
+                onGif: {
+                    composerFocused = false
+                    showGifPicker = true
+                },
+                onBuzz: requestBuzz,
+                onSend: { picked in
+                    try await store.sendCompressedAttachment(picked, roomId: roomId)
+                }
+            )
 
             TextField(isFamilyRoom ? "Message the family…" : "Message the trip…", text: $draft, axis: .vertical)
                 .font(.system(size: 17))
@@ -337,7 +325,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                 Image(systemName: "paperplane.fill")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Palette.onAccent)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 44, height: 44)
                     .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
             }
             .disabled(!canSend)
