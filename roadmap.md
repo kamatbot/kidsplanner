@@ -2,7 +2,7 @@
 
 ## Foundation status
 
-Weeks 1–6 are considered complete when the Foundation Closeout PR lands. The closeout unifies the context contract, makes action risk deterministic, adds a formal threat model and adversarial regression suite, establishes the first Operator benchmark, and exposes parent-facing case/activity primitives.
+Weeks 1–6 are complete. The Foundation Closeout unified the context contract, made action risk deterministic, added a formal threat model and adversarial regression suite, established the first Operator benchmark, and exposed parent-facing case/activity primitives.
 
 The Operator foundation remains aligned with Odds Core identity work in `kamatbot/odds` branch `feature/oddscore-m2-identity-foundation`:
 
@@ -14,78 +14,90 @@ The Operator foundation remains aligned with Odds Core identity work in `kamatbo
 
 ## Weeks 7–12
 
-### M1 — Family Memory
+### M1 — Family Memory — ✅ implemented
 
-Build durable family memory as a FamETC-owned layer, not Hermes model memory.
+- durable FamETC-owned facts/preferences with provenance, confidence, sensitivity and expiry;
+- parent approve/edit/delete UI at `/operator-memory.html`;
+- person/household scope using immutable `subj_*` subjects;
+- MCP read active / propose pending only; Hermes cannot govern memory.
 
-- facts and preferences with provenance, confidence, sensitivity, and expiry;
-- parent-visible edit/delete controls;
-- person/household scope using FamETC immutable identity subjects;
-- explicit source references and derived-vs-asserted distinction;
-- MCP read/write tools where Hermes may propose a memory but FamETC policy decides what persists;
-- consent-aware import of future Odds Core cross-product projections without copying specialist-product authority.
+### M2 — Attachments — ✅ implemented
 
-### M2 — Attachments
+- encrypted case artifacts for PDF, PNG, JPG, TXT, CSV, JSON and EML up to 8 MiB;
+- encrypted metadata/storage references, SHA-256 content hashes and file-magic checks;
+- malware hook and bounded extraction;
+- all extracted text is `untrusted-external` with zero approval/execution authority;
+- parent upload/review/delete surface and read-only purpose-scoped MCP extraction;
+- deletion removes blob and derived extraction.
 
-Make files first-class Operator case artifacts.
+### M3 — Low-risk first-party workflows — ✅ implemented / CI #45 green
 
-- photos, PDFs, screenshots, receipts, forms, itineraries, and documents;
-- encrypted metadata and storage references;
-- bounded extraction with provenance and content hashes;
-- MIME/size limits and malware/content safety hooks;
-- every extracted value marked as untrusted external content;
-- purpose-scoped MCP retrieval instead of dumping whole documents into model context;
-- delete/revoke semantics that remove derived Operator data as well as source artifacts.
-
-### M3 — Low-risk first-party workflows
-
-Expand the allowlisted executor only for FamETC-native reversible operations first.
+The exact approval/execution engine now supports only reversible FamETC-native writes:
 
 - `calendar.create` / `calendar.update`;
 - `action.create` / `action.update`;
-- trip itinerary add/update/import;
-- reminders and family follow-up actions;
-- document → calendar/action/trip proposals;
-- deterministic risk registry enforcement and exact-action approvals;
-- idempotent writes with evidence returned to the case timeline.
+- `trip.itinerary.update` for add/update;
+- deterministic risk registry is rechecked at validation, execution claim and execution run;
+- exact-action approvals and single-use execution capabilities remain mandatory;
+- writes are family/target validated and return concrete evidence to the case timeline;
+- create operations are idempotent or duplicate-aware.
 
-Initial product workflows:
+Initial supported product patterns:
 
-1. turn a school message/screenshot into calendar + actions;
-2. research trip activities and prepare itinerary updates;
-3. convert confirmations into calendar/trip data;
-4. household appointment research with a parent-approved calendar action;
-5. gift-card/voucher/membership reminders and expiry actions.
+1. school message/document → calendar + action proposals;
+2. trip research → itinerary add/update proposal;
+3. confirmation → calendar/trip update;
+4. appointment research → parent-approved calendar write;
+5. voucher/membership expiry → family action/reminder.
 
-### M4 — Shadow mode
+### M4 — Shadow mode — ✅ implemented / CI #53 green
 
-Run the complete Operator decision process without external execution.
+Shadow mode now runs the decision path without permitting the proposal to become execution authority.
 
-- Hermes creates the plan, context package, proposed actions, and expected result;
-- FamETC records what it *would* do and blocks the final write;
-- compare proposed behavior with the parent's eventual choice;
-- score every run with the Operator benchmark dimensions;
-- collect false-positive, unnecessary-question, context-miss, and unsafe-action telemetry;
-- use shadow-mode evidence to decide when a workflow may graduate to live execution.
+- Hermes records a `shadow.proposal` through the existing case-step MCP tool, including plan, context sections, clarifying-question count, exact proposed actions and expected result;
+- FamETC persists encrypted shadow runs with action hashes, deterministic risk-policy evaluation and audit evidence;
+- an active shadow run hard-blocks transitions to approval/execution and blocks `operator.requestApproval()`;
+- unsafe/prohibited proposals can be retained as evaluation evidence but never become approval or execution authority;
+- initial scoring immediately covers unnecessary questions, approval correctness, proposal completeness and action safety;
+- authenticated parents record accepted/modified/rejected outcomes, context misses, hallucinations and their eventual action choices;
+- completed runs are scored on the same seven dimensions as the Operator benchmark;
+- optional canonical benchmark observations can be attached to benchmark-linked shadow runs;
+- per-workflow telemetry covers average score, acceptance, unsafe proposals, context misses, hallucinations and unnecessary questions;
+- graduation is evidence-gated: at least 10 reviewed runs, average score >=90, zero unsafe proposals/hallucinations, <=10% context misses and 100% approval-policy correctness;
+- parent-only family-scoped shadow review/metrics APIs expose the evidence without raw actor/reviewer ids.
 
-### M5 — Limited-family beta
+See `docs/HERMES-OPERATOR-SHADOW-MODE.md`.
 
-Release to a very small trusted cohort with strict operational controls.
+### M5 — Limited-family beta — ✅ implemented / CI #64 green
 
-- per-family feature flag and autonomy ceiling;
-- low-risk first-party actions only at launch;
-- execution quotas and rate limits;
-- emergency global/family kill switch;
-- enhanced audit retention and evidence capture;
-- explicit feedback on every completed/blocked case;
-- benchmark and safety dashboards;
-- no payments, medical/legal attestations, unrestricted browser execution, or silent external messaging.
+The live execution path is now wrapped in a separate limited-family beta control plane. Production is deny-by-default unless a family is explicitly enrolled.
+
+- per-family beta enrollment with `shadow-only` and `approved-low-risk` autonomy ceilings;
+- only the five reversible low-risk FamETC-native M3 action types can be enabled for beta execution;
+- exact parent approval and the existing short-lived single-use execution capability remain mandatory — M5 adds no approval exemption;
+- production Hermes execution routes through `operator-live-execution`, which applies beta checks around the exact-action execution engine;
+- atomic family quota reservation before a driver runs, with bounded rolling hourly/daily limits and retry-storm accounting;
+- emergency environment kill switch plus persisted global and per-family kill switches;
+- admin-only family enrollment, autonomy, quota, allowlist and kill-switch controls using a dedicated header-only Operator administration credential;
+- encrypted beta evidence for blocked, completed, failed and released executions while the canonical Operator audit remains independent;
+- explicit parent feedback after completed/failed/blocked/shadow-reviewed cases, surfaced directly on Operator case cards;
+- admin safety dashboard with family usage, seven-day block counts, feedback coverage and M4 shadow graduation status;
+- beta evidence retention/pruning is configurable without deleting the canonical Operator audit trail;
+- payments, medical/legal attestations, unrestricted browser execution and silent external messaging remain hard-disabled.
+
+Operational controls and rollout instructions are documented in `docs/HERMES-OPERATOR-LIMITED-BETA.md`.
+
+## Weeks 7–12 implementation status
+
+The M1–M5 product and safety scaffolding is implemented. A real limited-family rollout is intentionally a separate operational step: families should first accumulate shadow-mode evidence, be reviewed against the M4 graduation metrics, and then be explicitly enrolled through the M5 admin control plane.
 
 ## Exit criteria for Weeks 7–12
 
 - zero unauthorized or cross-family writes in adversarial regression tests;
 - zero prohibited-action executions;
-- 100% executed actions linked to an exact approval or an explicitly approved low-risk policy exemption introduced later;
-- every case has provenance-aware context and a readable activity timeline;
-- shadow-mode benchmark demonstrates acceptable plan/context/approval accuracy before each workflow is enabled live;
-- family beta can be disabled without breaking normal FamETC, Odds Core, or specialist-product operation.
+- 100% executed actions linked to an exact parent approval;
+- every case has provenance-aware context and a readable activity/evidence timeline;
+- shadow-mode benchmark/graduation metrics are available before workflow rollout decisions;
+- beta execution is deny-by-default in production and can be disabled globally or per-family without breaking normal FamETC, Odds Core, or specialist-product operation;
+- beta launch allowlist is locked by regression test to low-risk reversible FamETC-native actions only;
+- completed/blocked beta cases request explicit parent feedback for ongoing safety evaluation.

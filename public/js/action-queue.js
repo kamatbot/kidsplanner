@@ -185,6 +185,8 @@
       "execution.failed": "Execution failed",
       "execution.token_expired": "Execution token expired",
       "policy.action_evaluated": "Action policy checked",
+      "beta.execution_blocked": "Beta safety control blocked execution",
+      "beta.feedback_submitted": "Parent feedback recorded",
     };
     return labels[eventType] || String(eventType || "Activity").replace(/[._]/g, " ");
   }
@@ -238,8 +240,9 @@
       .hermes-op-goal{margin:6px 0 0;color:var(--text-2);font-size:13px}.hermes-op-proposal{margin-top:12px;padding:11px;border-radius:10px;background:var(--bg);border:1px solid var(--border)}
       .hermes-op-proposal-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-2);margin-bottom:5px}.hermes-op-proposal-text{font-weight:650;font-size:13px}
       .hermes-op-action-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin:10px 0 0}.hermes-op-action-details div{min-width:0}.hermes-op-action-details dt{color:var(--text-2);font-size:11px}.hermes-op-action-details dd{margin:2px 0 0;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}
-      .hermes-op-actions{display:flex;gap:8px;margin-top:12px}.hermes-op-actions button{min-width:82px;min-height:44px}.hermes-op-meta{font-size:11px;color:var(--text-2);margin-top:8px;word-break:break-word}
+      .hermes-op-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.hermes-op-actions button{min-width:82px;min-height:44px}.hermes-op-meta{font-size:11px;color:var(--text-2);margin-top:8px;word-break:break-word}
       .hermes-op-decision-status{min-height:18px;margin-top:6px;font-size:12px;color:var(--text-2)}.hermes-op-evidence{margin-top:10px;font-size:12px}.hermes-op-evidence strong{display:block;margin-bottom:3px}.hermes-op-activity{margin-top:10px}.hermes-op-activity summary{cursor:pointer;display:flex;align-items:center;min-height:44px;font-size:12px;font-weight:650}.hermes-op-timeline{list-style:none;padding:7px 0 0;margin:0;display:grid;gap:6px}.hermes-op-timeline li{display:flex;gap:8px;font-size:12px;color:var(--text-2)}
+      .hermes-op-feedback{margin-top:12px;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--bg)}.hermes-op-feedback strong{font-size:13px}.hermes-op-feedback p{margin:4px 0 0;color:var(--text-2);font-size:12px}.hermes-op-feedback-done{margin-top:10px;color:var(--text-2);font-size:12px}
       .hermes-op-dot{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:5px;flex:0 0 auto}.hermes-op-empty{color:var(--text-2);font-size:13px;padding:5px 0}.hermes-op-error{color:var(--danger,#b42318);font-size:12px}.hermes-op-retry{margin-top:8px;min-height:44px}
       .hermes-op-actions button:focus-visible,.hermes-op-header button:focus-visible,.hermes-op-activity summary:focus-visible,.hermes-op-retry:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px}
       @media(max-width:640px){.hermes-op-header,.hermes-op-row{flex-direction:column}.hermes-op-header button{min-height:44px}.hermes-op-stage{white-space:normal}.hermes-op-action-details{grid-template-columns:1fr}.hermes-op-actions button{flex:1}}
@@ -275,9 +278,24 @@
     if (!items.length) return "";
     return `<div class="hermes-op-evidence"><strong>Evidence / confirmation</strong>${items.map((item) => {
       const result = item.result || {};
-      const detail = result.eventId || result.confirmationNumber || result.reference || item.state || "Recorded";
-      return `<div>${escapeHtml(item.actionType)} · ${escapeHtml(detail)}</div>`;
+      const error = item.error || {};
+      const detail = result.eventId || result.actionId || result.itineraryItemId || result.confirmationNumber || result.reference || error.message || item.state || "Recorded";
+      return `<div>${escapeHtml(item.actionType || item.kind || "Operator")} · ${escapeHtml(detail)}</div>`;
     }).join("")}</div>`;
+  }
+
+  function renderFeedback(feedback) {
+    if (!feedback || !feedback.required) return "";
+    if (feedback.submitted) {
+      const saved = feedback.feedback || {};
+      return `<div class="hermes-op-feedback-done">Feedback recorded${saved.outcome ? ` · ${escapeHtml(saved.outcome.replace(/-/g, " "))}` : ""}.</div>`;
+    }
+    const blocked = feedback.reason === "blocked";
+    const intro = blocked ? "Was it right for FamETC to block this action?" : "Was this Hermes result useful?";
+    const buttons = blocked
+      ? `<button type="button" class="btn-secondary" data-op-feedback="block-correct">Yes, block was right</button><button type="button" class="btn-secondary" data-op-feedback="block-incorrect">No, it should have run</button>`
+      : `<button type="button" class="btn-secondary" data-op-feedback="helpful">Helpful</button><button type="button" class="btn-secondary" data-op-feedback="not-helpful">Not helpful</button>`;
+    return `<div class="hermes-op-feedback"><strong>Quick feedback</strong><p>${escapeHtml(intro)}</p><div class="hermes-op-actions">${buttons}</div><div class="hermes-op-decision-status" role="status" aria-live="polite"></div></div>`;
   }
 
   function renderCase(card) {
@@ -286,7 +304,7 @@
     const policy = proposal && proposal.policy;
     const risk = policy && policy.riskLevel ? ` · ${escapeHtml(policy.riskLevel)} risk` : "";
     const approval = pending ? `<div class="hermes-op-proposal"><div class="hermes-op-proposal-label">Proposed action${risk}</div><div class="hermes-op-proposal-text">${escapeHtml(actionSummary(proposal))}</div>${renderActionDetails(proposal)}<div class="hermes-op-meta">${escapeHtml(proposal.actionType)} · action ${escapeHtml(String(proposal.actionHash || "").slice(0, 12))}…</div><div class="hermes-op-actions"><button type="button" class="btn-primary" data-op-decision="approve" data-approval-id="${escapeHtml(proposal.approvalId)}" data-action-hash="${escapeHtml(proposal.actionHash)}">Approve</button><button type="button" class="btn-secondary" data-op-decision="reject" data-approval-id="${escapeHtml(proposal.approvalId)}" data-action-hash="${escapeHtml(proposal.actionHash)}">Reject</button></div><div class="hermes-op-decision-status" role="status" aria-live="polite"></div></div>` : "";
-    return `<article class="hermes-op-case" data-case-id="${escapeHtml(card.id)}"><div class="hermes-op-row"><div><div class="hermes-op-title">${escapeHtml(card.title)}</div><p class="hermes-op-goal">${escapeHtml(card.goal)}</p></div><span class="hermes-op-stage">${escapeHtml(card.stageLabel || card.state)}</span></div>${approval}${renderEvidence(card.evidence)}${renderActivity(card.activity)}</article>`;
+    return `<article class="hermes-op-case" data-case-id="${escapeHtml(card.id)}"><div class="hermes-op-row"><div><div class="hermes-op-title">${escapeHtml(card.title)}</div><p class="hermes-op-goal">${escapeHtml(card.goal)}</p></div><span class="hermes-op-stage">${escapeHtml(card.stageLabel || card.state)}</span></div>${approval}${renderEvidence(card.evidence)}${renderFeedback(card.feedback)}${renderActivity(card.activity)}</article>`;
   }
 
   function bindDecisionButtons(panel) {
@@ -325,6 +343,37 @@
     });
   }
 
+  function bindFeedbackButtons(panel) {
+    panel.querySelectorAll("[data-op-feedback]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const outcome = button.dataset.opFeedback;
+        const article = button.closest(".hermes-op-case");
+        const caseId = article && article.dataset.caseId;
+        if (!caseId || !["helpful", "not-helpful", "block-correct", "block-incorrect"].includes(outcome)) return;
+        const actions = button.closest(".hermes-op-actions");
+        const buttons = actions ? [...actions.querySelectorAll("button")] : [button];
+        const status = actions && actions.parentNode ? actions.parentNode.querySelector(".hermes-op-decision-status") : null;
+        buttons.forEach((control) => { control.disabled = true; });
+        if (status) status.textContent = "Saving feedback…";
+        try {
+          const rating = outcome === "helpful" || outcome === "block-correct" ? 5 : 2;
+          const response = await root.fetch(`/api/operator/cases/${encodeURIComponent(caseId)}/feedback`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ outcome, rating }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || "Could not save Operator feedback.");
+          await loadCases();
+        } catch (error) {
+          buttons.forEach((control) => { control.disabled = false; });
+          if (status) status.textContent = error && error.message ? error.message : "Could not save feedback.";
+        }
+      });
+    });
+  }
+
   async function loadCases() {
     if (loadingCases) return;
     const panel = ensurePanel();
@@ -340,11 +389,12 @@
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not load Hermes cases.");
       const cases = Array.isArray(payload.cases) ? payload.cases : [];
-      const visible = cases.filter((card) => card && (!TERMINAL.has(card.state) || card.state === "failed" || card.evidence && card.evidence.length));
+      const visible = cases.filter((card) => card && (!TERMINAL.has(card.state) || card.state === "failed" || card.evidence && card.evidence.length || card.feedback && card.feedback.required));
       if (!visible.length) { panel.hidden = true; list.innerHTML = ""; return; }
       panel.hidden = false;
       list.innerHTML = visible.map(renderCase).join("");
       bindDecisionButtons(panel);
+      bindFeedbackButtons(panel);
     } catch (error) {
       panel.hidden = false;
       list.innerHTML = `<div class="hermes-op-empty" role="alert">Hermes case activity is temporarily unavailable.<br><button type="button" class="btn-secondary hermes-op-retry">Try again</button></div>`;

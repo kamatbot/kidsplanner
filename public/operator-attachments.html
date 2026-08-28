@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f1efec">
+  <title>Case Attachments — Fam ETC</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <main class="main-content" style="max-width:960px;margin:0 auto;padding:32px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px">
+      <div>
+        <div class="micro-label">Hermes Family Operator</div>
+        <h1 style="margin:4px 0 6px">Case attachments</h1>
+        <p class="text-muted" style="margin:0">Attach confirmations, forms, screenshots or documents to a specific Hermes case. Files stay encrypted in Fam ETC.</p>
+      </div>
+      <a class="btn-secondary" href="/">Back to Fam ETC</a>
+    </div>
+
+    <section class="card" style="margin-bottom:20px">
+      <div class="micro-label">Case</div>
+      <div class="form-group" style="margin-top:8px">
+        <label for="operator-case-id">Case ID</label>
+        <input id="operator-case-id" placeholder="case_..." autocomplete="off">
+      </div>
+    </section>
+
+    <section class="card" style="margin-bottom:20px">
+      <div class="today-card-header"><div><div class="micro-label">Upload</div><h2 style="margin:4px 0">Add a file</h2></div></div>
+      <form id="operator-attachment-form">
+        <div class="form-group">
+          <label for="operator-attachment-file">File</label>
+          <input id="operator-attachment-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.csv,.json,.eml" required>
+          <p class="text-muted" style="margin-top:6px">Up to 8 MB. PDF, JPG, PNG, TXT, CSV, JSON and EML.</p>
+        </div>
+        <div class="modal-actions" style="justify-content:flex-end"><button class="btn-primary" type="submit">Attach to case</button></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="today-card-header">
+        <div><div class="micro-label">Artifacts</div><h2 style="margin:4px 0">Attached files</h2></div>
+        <button class="btn-secondary" id="operator-attachment-refresh" type="button">Refresh</button>
+      </div>
+      <div id="operator-attachment-list" aria-live="polite"></div>
+    </section>
+    <div id="operator-attachment-status" class="text-muted" role="status" aria-live="polite" style="margin-top:16px"></div>
+  </main>
+  <script src="/js/operator-attachments.js"></script>
+</body>
+</html>

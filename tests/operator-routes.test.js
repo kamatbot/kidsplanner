@@ -152,7 +152,13 @@ test("parent approval API lists only approvals visible to that parent", async (t
   const ownerList = await invoke(listRoute, { user: fixture.owner, query: { state: "pending" } });
   assert.equal(ownerList.statusCode, 200);
   assert.ok(ownerList.body.approvals.some((item) => item.id === fixture.approval.id));
-  assert.deepEqual(ownerList.body.supportedActionTypes, ["calendar.create"]);
+  assert.deepEqual(ownerList.body.supportedActionTypes, [
+    "calendar.create",
+    "calendar.update",
+    "action.create",
+    "action.update",
+    "trip.itinerary.update",
+  ]);
 
   const coParentList = await invoke(listRoute, { user: fixture.coParent, query: { state: "pending" } });
   assert.equal(coParentList.statusCode, 200);
