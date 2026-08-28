@@ -25,17 +25,18 @@ Durable Family Memory is FamETC-owned rather than Hermes model memory.
 - MCP tools where Hermes may read active memory and propose a pending memory, but cannot activate/edit/delete it;
 - provenance model can carry future Odds Core cross-product projections without changing specialist-product authority.
 
-### M2 — Attachments
+### M2 — Attachments — ✅ implemented
 
-Make files first-class Operator case artifacts.
+Case files are encrypted FamETC artifacts rather than raw model context.
 
-- photos, PDFs, screenshots, receipts, forms, itineraries, and documents;
-- encrypted metadata and storage references;
-- bounded extraction with provenance and content hashes;
-- MIME/size limits and malware/content safety hooks;
-- every extracted value marked as untrusted external content;
-- purpose-scoped MCP retrieval instead of dumping whole documents into model context;
-- delete/revoke semantics that remove derived Operator data as well as source artifacts.
+- PDF, PNG, JPG, TXT, CSV, JSON and EML artifacts up to 8 MiB;
+- encrypted raw file storage plus encrypted metadata/storage references;
+- SHA-256 content hashes and evidence-friendly metadata;
+- file-magic validation, bounded extraction and an injectable malware scan hook;
+- every text extraction wrapped as `untrusted-external` with zero approval/execution authority;
+- purpose-scoped read-only MCP tools; Hermes never receives raw file bytes;
+- parent upload/review/delete surface at `/operator-attachments.html?caseId=...`;
+- delete removes the encrypted blob and derived extraction while retaining only the audit identity/hash.
 
 ### M3 — Low-risk first-party workflows
 

@@ -31,14 +31,7 @@ function familyFixture(label = "MCP") {
 function invokeMcp(auth, body, headers = {}) {
   const normalized = Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
   const req = { body, headers: normalized, get(name) { return normalized[String(name).toLowerCase()]; } };
-  const res = {
-    statusCode: 200,
-    body: null,
-    set() { return this; },
-    status(code) { this.statusCode = code; return this; },
-    json(payload) { this.body = payload; return this; },
-    end() { return this; },
-  };
+  const res = { statusCode: 200, body: null, set() { return this; }, status(code) { this.statusCode = code; return this; }, json(payload) { this.body = payload; return this; }, end() { return this; } };
   hermesMcp.handle(req, res, auth);
   return res;
 }
@@ -50,17 +43,10 @@ function modernHeaders(method, name) {
 }
 
 function actorToken(fixture, overrides = {}) {
-  return actorCapabilities.issue({
-    family: fixture.auth.family,
-    connection: fixture.auth.connection,
-    actor: overrides.actor || { type: "parent", userId: fixture.parent.id, principalId: fixture.parent.id },
-    messageId: overrides.messageId || "m_test",
-    roomId: overrides.roomId || "family",
-    ttlMs: overrides.ttlMs,
-  });
+  return actorCapabilities.issue({ family: fixture.auth.family, connection: fixture.auth.connection, actor: overrides.actor || { type: "parent", userId: fixture.parent.id, principalId: fixture.parent.id }, messageId: overrides.messageId || "m_test", roomId: overrides.roomId || "family", ttlMs: overrides.ttlMs });
 }
 
-test("Hermes MCP advertises modern stateless tools, Family Memory, canonical context sections and legacy initialize compatibility", () => {
+test("Hermes MCP advertises modern stateless tools, Family Memory, case attachments, canonical context sections and legacy initialize compatibility", () => {
   const fixture = familyFixture("Discover");
   const discover = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "server/discover", params: {} });
   assert.equal(discover.statusCode, 200);
@@ -68,17 +54,14 @@ test("Hermes MCP advertises modern stateless tools, Family Memory, canonical con
   assert.ok(discover.body.result.capabilities.tools);
   assert.equal(discover.body.result.cacheScope, "private");
 
-  const list = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 2,
-    method: "tools/list",
-    params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
-  }, modernHeaders("tools/list"));
+  const list = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } } }, modernHeaders("tools/list"));
   assert.equal(list.statusCode, 200);
   assert.deepEqual(list.body.result.tools.map((tool) => tool.name), [
     "fametc_context_get",
     "fametc_memory_list",
     "fametc_memory_propose",
+    "fametc_attachments_list",
+    "fametc_attachments_get_text",
     "fametc_cases_create",
     "fametc_cases_get",
     "fametc_cases_list",
@@ -89,34 +72,22 @@ test("Hermes MCP advertises modern stateless tools, Family Memory, canonical con
     "fametc_execution_run",
   ]);
   assert.equal(list.body.result.tools.some((tool) => tool.name === "fametc_approvals_decide"), false);
-  for (const tool of list.body.result.tools) {
-    assert.ok(tool.inputSchema.required.includes("actorToken"), `${tool.name} must require actorToken`);
-  }
+  for (const tool of list.body.result.tools) assert.ok(tool.inputSchema.required.includes("actorToken"), `${tool.name} must require actorToken`);
   const contextTool = list.body.result.tools.find((tool) => tool.name === "fametc_context_get");
   const contextSections = contextTool.inputSchema.properties.sections.items.enum;
-  for (const section of ["identities", "preferences", "calendar", "homework", "actions", "meals", "trips", "room", "members"]) {
-    assert.ok(contextSections.includes(section), `context schema should advertise ${section}`);
-  }
+  for (const section of ["identities", "preferences", "calendar", "homework", "actions", "meals", "trips", "room", "members"]) assert.ok(contextSections.includes(section), `context schema should advertise ${section}`);
   assert.equal(list.body.result.ttlMs, 60000);
   assert.equal(list.body.result.cacheScope, "private");
   assert.equal(list.body.result._meta["io.modelcontextprotocol/serverInfo"].name, "fametc-family-operator");
 
-  const legacy = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 3,
-    method: "initialize",
-    params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "hermes", version: "test" } },
-  });
+  const legacy = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 3, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "hermes", version: "test" } } });
   assert.equal(legacy.body.result.protocolVersion, "2025-11-25");
   assert.equal(legacy.body.result.serverInfo.name, "fametc-family-operator");
 });
 
 test("modern MCP rejects routing header/body mismatches", () => {
   const fixture = familyFixture("Headers");
-  const response = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0", id: 1, method: "tools/list",
-    params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
-  }, modernHeaders("tools/call"));
+  const response = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } } }, modernHeaders("tools/call"));
   assert.equal(response.statusCode, 400);
   assert.equal(response.body.error.code, -32020);
 });
@@ -128,13 +99,9 @@ test("actor capabilities preserve the initiating human and die when Hermes conne
   assert.equal(verified.actor.type, "parent");
   assert.equal(verified.actor.userId, fixture.parent.id);
   assert.equal(verified.roomId, "family");
-
   const rotated = hermes.connectFamily(fixture.fam.id);
   const rotatedAuth = hermes.familyForToken(rotated.token);
-  assert.throws(
-    () => actorCapabilities.verify({ family: rotatedAuth.family, connection: rotatedAuth.connection, token }),
-    (error) => error.code === "ACTOR_CAPABILITY_INVALID",
-  );
+  assert.throws(() => actorCapabilities.verify({ family: rotatedAuth.family, connection: rotatedAuth.connection, token }), (error) => error.code === "ACTOR_CAPABILITY_INVALID");
 });
 
 test("a Hermes bearer holder cannot mint actor capabilities", () => {
@@ -143,34 +110,16 @@ test("a Hermes bearer holder cannot mint actor capabilities", () => {
   const [, encoded] = valid.split(".");
   const bearerHash = crypto.createHash("sha256").update(fixture.token).digest();
   const forgedSignature = crypto.createHmac("sha256", bearerHash).update(`opact1.${encoded}`).digest("base64url");
-  assert.throws(
-    () => actorCapabilities.verify({ family: fixture.auth.family, connection: fixture.auth.connection, token: `opact1.${encoded}.${forgedSignature}` }),
-    (error) => error.code === "ACTOR_CAPABILITY_INVALID",
-  );
+  assert.throws(() => actorCapabilities.verify({ family: fixture.auth.family, connection: fixture.auth.connection, token: `opact1.${encoded}.${forgedSignature}` }), (error) => error.code === "ACTOR_CAPABILITY_INVALID");
 });
 
 test("context tool requires a signed actor token, returns Canonical Family Context v1, and never accepts family scope from arguments", () => {
   const fixture = familyFixture("ContextTool");
-  const { kid } = family.addKid(fixture.fam.id, fixture.parent.id, {
-    name: "Taylor",
-    grade: "8",
-    allergies: ["tree nuts"],
-  });
+  const { kid } = family.addKid(fixture.fam.id, fixture.parent.id, { name: "Taylor", grade: "8", allergies: ["tree nuts"] });
   const name = "fametc_context_get";
   const response = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "tools/call",
-    params: {
-      name,
-      arguments: {
-        actorToken: actorToken(fixture),
-        purpose: "trip-planning",
-        sections: ["members", "room"],
-        familyId: "f_attacker_supplied",
-      },
-      _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
-    },
+    jsonrpc: "2.0", id: 1, method: "tools/call",
+    params: { name, arguments: { actorToken: actorToken(fixture), purpose: "trip-planning", sections: ["members", "room"], familyId: "f_attacker_supplied" }, _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
   }, modernHeaders("tools/call", name));
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.result.isError, false);
@@ -184,10 +133,7 @@ test("context tool requires a signed actor token, returns Canonical Family Conte
   const serialized = JSON.stringify(context);
   assert.equal(serialized.includes("tree nuts"), false);
   assert.equal(serialized.includes(fixture.parent.id), false);
-
-  const missing = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: {} },
-  });
+  const missing = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: {} } });
   assert.equal(missing.body.result.isError, true);
   assert.match(missing.body.result.content[0].text, /actorToken is required/);
 });
@@ -196,47 +142,21 @@ test("MCP creates a family-scoped durable case from the actor capability", (t) =
   try { require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 is optional on this host"); return; }
   const fixture = familyFixture("CaseTool");
   const createName = "fametc_cases_create";
-  const created = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "tools/call",
-    params: {
-      name: createName,
-      arguments: {
-        actorToken: actorToken(fixture),
-        title: "Arrange the family tour",
-        goal: "Research options and prepare a booking for parent approval.",
-        purpose: "tour-booking",
-        riskLevel: "medium",
-      },
-    },
-  });
+  const created = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: createName, arguments: { actorToken: actorToken(fixture), title: "Arrange the family tour", goal: "Research options and prepare a booking for parent approval.", purpose: "tour-booking", riskLevel: "medium" } } });
   assert.equal(created.body.result.isError, false);
   const caseData = created.body.result.structuredContent;
   assert.equal(caseData.familyId, fixture.fam.id);
   assert.equal(caseData.actorId, fixture.parent.id);
   assert.equal(caseData.state, "draft");
   assert.equal(caseData.context.schemaVersion, "fametc.family-context.v1");
-
   const transitionName = "fametc_cases_transition";
-  const impossible = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0", id: 2, method: "tools/call",
-    params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "executing" } },
-  });
+  const impossible = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "executing" } } });
   assert.equal(impossible.body.result.isError, true);
   assert.match(impossible.body.result.content[0].text, /OPERATOR_INVALID_TRANSITION/);
-
-  const planning = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0", id: 3, method: "tools/call",
-    params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "planning" } },
-  });
+  const planning = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "planning" } } });
   assert.equal(planning.body.result.isError, false);
   assert.equal(planning.body.result.structuredContent.state, "planning");
-
-  const bearerOnly = invokeMcp(fixture.auth, {
-    jsonrpc: "2.0", id: 4, method: "tools/call",
-    params: { name: transitionName, arguments: { caseId: caseData.id, state: "researching" } },
-  });
+  const bearerOnly = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: transitionName, arguments: { caseId: caseData.id, state: "researching" } } });
   assert.equal(bearerOnly.body.result.isError, true);
   assert.match(bearerOnly.body.result.content[0].text, /actorToken is required/);
 });
