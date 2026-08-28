@@ -2,7 +2,9 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review]
+    # Draft updates skip the job below. Once ready, every new head is checked;
+    # concurrency cancellation prevents superseded heads from consuming runners.
+    types: [opened, reopened, ready_for_review, synchronize]
   push:
     branches:
       - main
