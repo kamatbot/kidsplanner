@@ -254,6 +254,104 @@ function callChatRoute(handler, { query, familyId } = {}) {
   });
 }
 
+function callChatAttachmentRoute(handler, { user, attachmentId, range } = {}) {
+  return new Promise((resolve) => {
+    const headers = {};
+    const res = {
+      statusCode: 200,
+      set(name, value) { headers[String(name).toLowerCase()] = String(value); return this; },
+      status(code) { this.statusCode = code; return this; },
+      json(body) { resolve({ statusCode: this.statusCode, headers, body }); },
+      send(body) { resolve({ statusCode: this.statusCode, headers, body }); },
+      end() { resolve({ statusCode: this.statusCode, headers, body: null }); },
+    };
+    handler({
+      body: {}, query: {}, params: { id: attachmentId }, user,
+      headers: range ? { range } : {},
+    }, res);
+  });
+}
+
+test("GET chat attachment: verified photos render inline while regular files remain downloads", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  const photoBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x70, 0x68, 0x6f, 0x74, 0x6f]);
+  const photo = chatAttachments.save({
+    scopeKey: fam.id, uploaderUserId: p1.id, originalName: "family photo.jpg",
+    mimeType: "image/jpeg", buffer: photoBytes,
+  });
+  const photoRes = await callChatAttachmentRoute(routes["GET /api/chat/attachments/:id"], {
+    user: p1, attachmentId: photo.id,
+  });
+  assert.equal(photoRes.statusCode, 200);
+  assert.equal(photoRes.headers["content-type"], "image/jpeg");
+  assert.match(photoRes.headers["content-disposition"], /^inline;/);
+  assert.equal(photoRes.headers["cache-control"], "private, no-store");
+  assert.deepEqual(photoRes.body, photoBytes);
+
+  const fileBytes = Buffer.from("private family notes");
+  const file = chatAttachments.save({
+    scopeKey: fam.id, uploaderUserId: p1.id, originalName: "notes.txt",
+    mimeType: "text/plain", buffer: fileBytes,
+  });
+  const fileRes = await callChatAttachmentRoute(routes["GET /api/chat/attachments/:id"], {
+    user: p1, attachmentId: file.id,
+  });
+  assert.equal(fileRes.headers["content-type"], "application/octet-stream");
+  assert.match(fileRes.headers["content-disposition"], /^attachment;/);
+  assert.deepEqual(fileRes.body, fileBytes);
+});
+
+test("GET chat attachment: verified videos support bounded single byte ranges", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  const videoBytes = Buffer.concat([Buffer.alloc(4), Buffer.from("ftypisom"), Buffer.from("0123456789")]);
+  const video = chatAttachments.save({
+    scopeKey: fam.id, uploaderUserId: p1.id, originalName: "clip.mp4",
+    mimeType: "video/mp4", buffer: videoBytes,
+  });
+  const ranged = await callChatAttachmentRoute(routes["GET /api/chat/attachments/:id"], {
+    user: p1, attachmentId: video.id, range: "bytes=4-11",
+  });
+  assert.equal(ranged.statusCode, 206);
+  assert.equal(ranged.headers["content-type"], "video/mp4");
+  assert.match(ranged.headers["content-disposition"], /^inline;/);
+  assert.equal(ranged.headers["accept-ranges"], "bytes");
+  assert.equal(ranged.headers["content-range"], `bytes 4-11/${videoBytes.length}`);
+  assert.equal(ranged.headers["content-length"], "8");
+  assert.deepEqual(ranged.body, videoBytes.subarray(4, 12));
+
+  const suffix = await callChatAttachmentRoute(routes["GET /api/chat/attachments/:id"], {
+    user: p1, attachmentId: video.id, range: "bytes=-5",
+  });
+  assert.equal(suffix.statusCode, 206);
+  assert.equal(suffix.headers["content-range"], `bytes ${videoBytes.length - 5}-${videoBytes.length - 1}/${videoBytes.length}`);
+  assert.deepEqual(suffix.body, videoBytes.subarray(-5));
+
+  const invalid = await callChatAttachmentRoute(routes["GET /api/chat/attachments/:id"], {
+    user: p1, attachmentId: video.id, range: `bytes=${videoBytes.length}-`,
+  });
+  assert.equal(invalid.statusCode, 416);
+  assert.equal(invalid.headers["content-range"], `bytes */${videoBytes.length}`);
+  assert.equal(invalid.body, null);
+});
+
+test("GET chat attachment: unauthorized users still receive no attachment metadata or bytes", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  const outsider = store.createUser("attachment-outsider@example.com", "Attachment Outsider");
+  const photo = chatAttachments.save({
+    scopeKey: fam.id, uploaderUserId: p1.id, originalName: "private.jpg",
+    mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+  });
+  const denied = await callChatAttachmentRoute(routes["GET /api/chat/attachments/:id"], {
+    user: outsider, attachmentId: photo.id,
+  });
+  assert.equal(denied.statusCode, 404);
+  assert.deepEqual(denied.body, { error: "Attachment not found." });
+  assert.equal(denied.headers["content-type"], undefined);
+});
+
 test("GET /api/chat/messages: no afterId/wait — unchanged immediate response (back-compat)", async () => {
   const routes = buildChatRouteHarness();
   const { p1, fam } = makeFamily();

@@ -2421,6 +2421,7 @@ function renderTripChatMessages() {
       ${!own ? `<div class="chat-msg-avatar-row">${avatarHtml(face.initial, face.color, 16, false)}<span class="chat-msg-sender">${esc(senderName)}</span></div>` : ''}
       <div class="chat-msg-bubble">
         ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
+        ${renderChatMedia(m.media)}
         ${renderTripItineraryReviewAction(m)}
         ${typeof window !== 'undefined' && typeof window.renderTripHermesTravelResearchAction === 'function' ? window.renderTripHermesTravelResearchAction(m) : ''}
       </div>

@@ -135,6 +135,103 @@ function linkifyChatText(value) {
   return html;
 }
 
+/* Shared chat media renderer. Attachment bytes stay behind the authenticated
+   same-origin route; this helper only renders server-issued canonical
+   descriptors and never trusts a model/client-provided destination. */
+function chatMediaEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function chatMediaFilename(media, fallback) {
+  const name = String(media && media.filename != null ? media.filename : '')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .trim()
+    .slice(0, 180);
+  return name || fallback;
+}
+
+function chatMediaAttachmentUrl(media) {
+  const id = String(media && media.attachmentId || '');
+  const url = String(media && media.url || '');
+  if (!/^a_[0-9a-f]{36}$/.test(id)) return '';
+  const expected = `/api/chat/attachments/${id}`;
+  return url === expected ? url : '';
+}
+
+function chatMediaSize(size) {
+  const bytes = Number(size);
+  if (!Number.isFinite(bytes) || bytes < 0) return 'Size unavailable';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function chatMediaOpenLink(url, filename, label) {
+  return `<a href="${chatMediaEscape(url)}" target="_blank" rel="noopener noreferrer" class="chat-msg-attachment-open">${chatMediaEscape(label || `Open ${filename}`)}</a>`;
+}
+
+function chatMediaMaybeScroll(mediaElement) {
+  const closestMessages = mediaElement && typeof mediaElement.closest === 'function'
+    ? mediaElement.closest('.chat-messages')
+    : null;
+  const el = closestMessages || document.getElementById('chat-messages') || document.getElementById('trip-chat-messages');
+  if (!el) return;
+  const mediaHeight = (mediaElement && mediaElement.offsetHeight) || 0;
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < mediaHeight + 120) el.scrollTop = el.scrollHeight;
+}
+
+function renderChatMedia(media) {
+  if (!media) return '';
+
+  // GIFs predate authenticated attachments and retain their existing behavior.
+  if (media.type === 'gif' && media.previewUrl) {
+    const preview = chatMediaEscape(media.previewUrl);
+    const full = chatMediaEscape(media.url || media.previewUrl);
+    return `<a href="${full}" target="_blank" rel="noopener noreferrer" class="chat-msg-gif-link">
+      <img src="${preview}" alt="GIF" class="chat-msg-gif" loading="lazy" onload="chatMediaMaybeScroll(this)">
+    </a>`;
+  }
+
+  if (media.type !== 'attachment') return '';
+  const url = chatMediaAttachmentUrl(media);
+  if (!url) return '';
+  const filename = chatMediaFilename(media, media.kind === 'photo' ? 'Photo' : media.kind === 'video' ? 'Video' : 'File');
+  const safeUrl = chatMediaEscape(url);
+  const safeName = chatMediaEscape(filename);
+  const size = chatMediaEscape(chatMediaSize(media.size));
+  const open = chatMediaOpenLink(url, filename, `Open ${filename}`);
+
+  if (media.kind === 'photo') {
+    return `<figure class="chat-msg-attachment chat-msg-attachment-photo">
+      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="chat-msg-attachment-media-link">
+        <img src="${safeUrl}" alt="Photo: ${safeName}" class="chat-msg-attachment-media" loading="lazy" decoding="async" onload="chatMediaMaybeScroll(this)">
+      </a>
+      <figcaption><span class="chat-msg-attachment-name">${safeName}</span><span class="chat-msg-attachment-size">${size}</span>${open}</figcaption>
+    </figure>`;
+  }
+
+  if (media.kind === 'video') {
+    const mimeType = String(media.mimeType || '').toLowerCase();
+    const allowedMime = ['video/mp4', 'video/quicktime', 'video/mpeg'].includes(mimeType);
+    const source = allowedMime ? `<source src="${safeUrl}" type="${chatMediaEscape(mimeType)}">` : '';
+    return `<figure class="chat-msg-attachment chat-msg-attachment-video">
+      ${allowedMime ? `<video class="chat-msg-attachment-media" controls playsinline preload="metadata" onloadedmetadata="chatMediaMaybeScroll(this)">${source}</video>` : ''}
+      <figcaption><span class="chat-msg-attachment-name">${safeName}</span><span class="chat-msg-attachment-size">${size}</span>${open}</figcaption>
+    </figure>`;
+  }
+
+  return `<div class="chat-msg-attachment chat-msg-attachment-file">
+    <div class="chat-msg-attachment-file-meta"><span class="chat-msg-attachment-name">${safeName}</span><span class="chat-msg-attachment-size">${size}</span></div>
+    ${open}
+  </div>`;
+}
+
 /* Storage helpers (fam_ prefix only) */
 function load(key)        { try { return JSON.parse(localStorage.getItem(key)) || null; } catch { return null; } }
 function save(key, val)   { localStorage.setItem(key, JSON.stringify(val)); }

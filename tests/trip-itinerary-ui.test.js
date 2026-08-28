@@ -158,6 +158,7 @@ test("Trip chat keeps full escaped Hermes text and adds exactly one review actio
     avatarHtml: () => "",
     isOwnerRole: () => false,
     linkifyChatText: sandbox.esc,
+    renderChatMedia: () => "",
     renderTripChatUpdate: () => "",
   });
   vm.runInNewContext([

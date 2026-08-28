@@ -53,7 +53,10 @@ test("attachment bytes stay behind authenticated and scoped chat routes", () => 
   assert.match(chatSource, /chatAttachments\.validateMediaForScope\(scopeKey,\s*media,\s*uploaderUserId\)/);
   assert.match(chatSource, /chatAttachments\.claimForMessage\(/);
   assert.match(routeSource, /Cache-Control",\s*"private, no-store"/);
-  assert.match(routeSource, /Content-Type",\s*"application\/octet-stream"/);
+  assert.match(routeSource, /const verifiedKind = chatAttachments\.kindForMime\(meta\.mimeType\)/);
+  assert.match(routeSource, /Content-Type",\s*inlineMedia \? meta\.mimeType : "application\/octet-stream"/);
+  assert.match(routeSource, /Content-Disposition",\s*`\$\{inlineMedia \? "inline" : "attachment"\}/);
+  assert.match(routeSource, /Accept-Ranges",\s*"bytes"/);
   assert.match(routeSource, /MAX_CONCURRENT_ATTACHMENT_UPLOADS/);
   assert.match(attachmentSource, /dataFile\("chat-attachments"\)/);
   assert.match(attachmentSupport, /static func attachmentURL\(_ path: String\) -> URL\?/);
