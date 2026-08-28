@@ -8,9 +8,12 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const chatView = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatView.swift"), "utf8");
 const attachmentSupport = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatAttachmentSupport.swift"), "utf8");
+const modelsSource = fs.readFileSync(path.join(root, "ios/FamETC/Networking/Models.swift"), "utf8");
+const projectSource = fs.readFileSync(path.join(root, "ios/project.yml"), "utf8");
 const notificationHandler = fs.readFileSync(path.join(root, "ios/FamETC/NotificationHandler.swift"), "utf8");
 const routeSource = fs.readFileSync(path.join(root, "lib/routes/chat.js"), "utf8");
 const chatSource = fs.readFileSync(path.join(root, "lib/chat.js"), "utf8");
+const attachmentSource = fs.readFileSync(path.join(root, "lib/chat-attachments.js"), "utf8");
 
 test("native chat exposes photo/video and file attachment affordances", () => {
   assert.match(chatView, /ChatAttachmentMenu\s*\{/);
@@ -20,6 +23,11 @@ test("native chat exposes photo/video and file attachment affordances", () => {
   assert.match(attachmentSupport, /upload\(for:\s*request,\s*fromFile:\s*bodyURL\)/);
   assert.match(chatView, /ChatAttachmentBubble\(media:/);
   assert.match(attachmentSupport, /QLPreviewController/);
+  assert.match(projectSource, /sources:\s*\n\s*- path: FamETC/);
+  assert.match(modelsSource, /var attachmentId: String\?/);
+  assert.match(modelsSource, /var mimeType: String\?/);
+  assert.match(attachmentSupport, /frame\(width: 44, height: 44\)/);
+  assert.match(attachmentSupport, /CGImageSourceCreateThumbnailAtIndex/);
 });
 
 test("message long press exposes the standard iOS share action", () => {
@@ -41,5 +49,12 @@ test("attachment bytes stay behind authenticated and scoped chat routes", () => 
   assert.match(routeSource, /app\.post\("\/api\/chat\/attachments",\s*requireAuth/);
   assert.match(routeSource, /app\.get\("\/api\/chat\/attachments\/:id",\s*requireAuth/);
   assert.match(routeSource, /canReadAttachment\(req,\s*meta\)/);
-  assert.match(chatSource, /chatAttachments\.validateMediaForScope\(scopeKey,\s*media\)/);
+  assert.match(chatSource, /chatAttachments\.validateMediaForScope\(scopeKey,\s*media,\s*uploaderUserId\)/);
+  assert.match(chatSource, /chatAttachments\.claimForMessage\(/);
+  assert.match(routeSource, /Cache-Control",\s*"private, no-store"/);
+  assert.match(routeSource, /Content-Type",\s*"application\/octet-stream"/);
+  assert.match(routeSource, /MAX_CONCURRENT_ATTACHMENT_UPLOADS/);
+  assert.match(attachmentSource, /dataFile\("chat-attachments"\)/);
+  assert.match(attachmentSupport, /static func attachmentURL\(_ path: String\) -> URL\?/);
+  assert.match(attachmentSupport, /let prefix = "\/api\/chat\/attachments\/"/);
 });

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import PhotosUI
 import QuickLook
 import SwiftUI
@@ -29,11 +30,16 @@ struct ChatPickedAttachment {
 extension ChatMedia {
     var isChatAttachment: Bool { type == "attachment" }
 
-    // The server keeps these aliases populated for older iOS ChatMedia decoders:
-    // previewUrl = original filename, width = byte size, height = kind code.
-    var attachmentFilename: String { previewUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? previewUrl! : "Attachment" }
-    var attachmentByteSize: Int { max(0, width ?? 0) }
+    // Fallbacks decode the short-lived pre-release alias contract without
+    // making new server messages overload GIF dimensions or preview URLs.
+    var attachmentFilename: String {
+        if let filename, !filename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return filename }
+        if let previewUrl, !previewUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return previewUrl }
+        return "Attachment"
+    }
+    var attachmentByteSize: Int { max(0, size ?? width ?? 0) }
     var attachmentKind: String {
+        if let kind, ["photo", "video", "file"].contains(kind) { return kind }
         switch height {
         case 1: return "photo"
         case 2: return "video"
@@ -45,6 +51,7 @@ extension ChatMedia {
 // MARK: - Authenticated attachment HTTP
 
 private enum ChatAttachmentHTTP {
+    static let maxBytes = 25 * 1024 * 1024
     static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = .shared
@@ -58,9 +65,17 @@ private enum ChatAttachmentHTTP {
     }()
 
     static func absoluteURL(_ path: String) -> URL? {
-        if let url = URL(string: path), url.scheme != nil { return url }
-        let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        guard path.hasPrefix("/"), !path.hasPrefix("//") else { return nil }
+        let trimmed = String(path.dropFirst())
         return URL(string: trimmed, relativeTo: Config.baseURL)?.absoluteURL
+    }
+
+    static func attachmentURL(_ path: String) -> URL? {
+        let prefix = "/api/chat/attachments/"
+        guard path.hasPrefix(prefix) else { return nil }
+        let id = String(path.dropFirst(prefix.count))
+        guard id.count == 38, id.hasPrefix("a_"), id.dropFirst(2).allSatisfy({ $0.isHexDigit }) else { return nil }
+        return absoluteURL(path)
     }
 
     static func error(from response: URLResponse, data: Data) -> APIError? {
@@ -89,7 +104,11 @@ private enum ChatAttachmentHTTP {
         try write("Content-Disposition: form-data; name=\"roomId\"\r\n\r\n")
         try write("\(roomId)\r\n")
         try write("--\(boundary)\r\n")
-        let escapedName = fileURL.lastPathComponent.replacingOccurrences(of: "\"", with: "'")
+        let escapedName = fileURL.lastPathComponent
+            .replacingOccurrences(of: "\r", with: "-")
+            .replacingOccurrences(of: "\n", with: "-")
+            .replacingOccurrences(of: "\"", with: "'")
+            .replacingOccurrences(of: "\\", with: "-")
         try write("Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedName)\"\r\n")
         try write("Content-Type: \(mimeType)\r\n\r\n")
 
@@ -108,6 +127,11 @@ private enum ChatAttachmentHTTP {
 extension APIClient {
     func uploadChatAttachment(_ picked: ChatPickedAttachment, roomId: String) async throws -> ChatAttachmentDescriptor {
         guard let endpoint = ChatAttachmentHTTP.absoluteURL("/api/chat/attachments") else { throw APIError.badURL }
+        let fileSize = try picked.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard fileSize > 0 else { throw APIError.http(400, "That attachment is empty.") }
+        guard fileSize <= ChatAttachmentHTTP.maxBytes else {
+            throw APIError.http(413, "Please choose a file under 25 MB.")
+        }
         let boundary = "FamETC-\(UUID().uuidString)"
         let bodyURL: URL
         do {
@@ -139,7 +163,7 @@ extension APIClient {
     }
 
     func downloadChatAttachment(path: String, suggestedFilename: String) async throws -> URL {
-        guard let url = ChatAttachmentHTTP.absoluteURL(path) else { throw APIError.badURL }
+        guard let url = ChatAttachmentHTTP.attachmentURL(path) else { throw APIError.badURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         do {
@@ -252,7 +276,7 @@ struct ChatAttachmentMenu: View {
                         .foregroundStyle(Palette.accent)
                 }
             }
-            .frame(width: 42, height: 42)
+            .frame(width: 44, height: 44)
             .background(Palette.accentSoft, in: Circle())
         }
         .disabled(isSending)
@@ -509,11 +533,26 @@ struct ChatAttachmentBubble: View {
         do {
             let local = try await ChatAttachmentLocalCache.shared.localURL(path: path, filename: filename)
             guard !Task.isCancelled else { return }
-            image = UIImage(contentsOfFile: local.path)
+            image = await Task.detached(priority: .utility) {
+                Self.downsampledImage(at: local, maxPixelSize: 520)
+            }.value
         } catch {
             // Keep the compact file-style fallback rather than surfacing an
             // alert just because a thumbnail could not pre-load.
         }
+    }
+
+    private static func downsampledImage(at url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions) else { return nil }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ] as CFDictionary
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     private func open() {

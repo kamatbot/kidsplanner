@@ -139,6 +139,12 @@ test("trip Buzz scopes recipients and destination, while ordinary family chat st
 
   apnsRequests.length = 0;
   webRequests.length = 0;
+  await notifications.notifyTripChatMessage(trip, "trip-sender", "Dad", "Ordinary trip message", "m_trip_ordinary_1");
+  assert.ok(apnsRequests.every((request) => request.payload.messageId === "m_trip_ordinary_1"));
+  assert.ok(webRequests.every((request) => request.payload.data.messageId === "m_trip_ordinary_1"));
+
+  apnsRequests.length = 0;
+  webRequests.length = 0;
   await notifications.notifyChatMessage({
     familyParentIds: ["trip-recipient"],
     familyKidUserIds: [],
@@ -146,7 +152,10 @@ test("trip Buzz scopes recipients and destination, while ordinary family chat st
     senderName: "Dad",
     familyId: "ordinary-family",
     text: "Ordinary message",
+    messageId: "m_ordinary_1",
   });
   assert.ok(apnsRequests.every((request) => request.kind === "ios"));
   assert.ok(apnsRequests.every((request) => request.deviceToken !== "watch-trip-recipient"));
+  assert.ok(apnsRequests.every((request) => request.payload.messageId === "m_ordinary_1"));
+  assert.ok(webRequests.every((request) => request.payload.data.messageId === "m_ordinary_1"));
 });
