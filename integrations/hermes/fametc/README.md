@@ -9,7 +9,23 @@ Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
-## What changed in v1.2
+## What changed in v1.3
+
+Trip rooms now provide bounded ambient Trip context only when a traveler
+explicitly invokes `@Hermes`. That turn includes recent human crew conversation,
+trip dates/destination and existing plans without granting Family Operator
+authority. For flight, hotel and activity research, Hermes is instructed to use
+its host browser/web tools in read-only mode and return a typed travel-results
+block. FamETC validates that block and renders public HTTPS options that a human
+can open or explicitly save as an itinerary idea.
+
+The host Hermes installation must expose its browser/web search and page-open
+tools to the agent. After installing the plugin, verify those tools are present
+in Hermes, then smoke-test an `@Hermes` Trip request. If browsing is unavailable
+or a site cannot be read, Hermes must say so rather than inventing dynamic
+prices, availability, ratings or schedules.
+
+## Family Operator approval foundation
 
 The Operator now has a first end-to-end approval/execution path in addition to
 the v1.1 actor-authority foundation:
@@ -28,11 +44,11 @@ the v1.1 actor-authority foundation:
    encrypted SQLite and dispatches an allowlisted server-side executor.
 7. The execution token is consumed and the case moves to verification.
 
-The first enabled execution driver is deliberately narrow: `calendar.create`.
-It writes a FamETC calendar event with an Operator source id, making retries
-idempotent. Browser automation, email sends, bookings, cancellations and
-payments remain disabled until they have their own constrained drivers and
-risk policies.
+Live Operator execution remains limited to reversible FamETC-native calendar,
+action and itinerary updates behind exact parent approval and limited-family
+beta controls. Browser writes, email sends, bookings, cancellations and
+payments remain disabled until they have separate constrained drivers and risk
+policies. Trip web research does not widen that execution allowlist.
 
 ## Actor authority stays separate from conversation identity
 

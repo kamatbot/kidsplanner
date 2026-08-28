@@ -44,6 +44,7 @@ test("travel result sanitizer keeps a bounded actionable research card", () => {
   assert.equal(card.results[0].kind, "flight");
   assert.equal(card.results[0].itinerary.category, "transit");
   assert.match(card.results[0].url, /^https:/);
+  assert.equal(card.results[0].sourceHost, "www.thaiairways.com");
 });
 
 test("travel result sanitizer rejects non-HTTPS links and strips invalid rows", () => {
@@ -59,11 +60,14 @@ test("travel result sanitizer rejects non-HTTPS links and strips invalid rows", 
   assert.equal(card.results.some((item) => item.title === "Injected"), false);
   assert.equal(travel.httpsUrl("http://example.com"), null);
   assert.equal(travel.httpsUrl("https://user:pass@example.com"), null);
+  assert.equal(travel.httpsUrl("https://localhost/admin"), null);
+  assert.equal(travel.httpsUrl("https://127.0.0.1/admin"), null);
 });
 
-test("travel result sanitizer fails closed on unknown schema and caps results", () => {
+test("travel result sanitizer fails closed on unknown schema/time and caps each result kind", () => {
   assert.equal(travel.sanitizeTravelCard(validCard({ type: "other" })), null);
   assert.equal(travel.sanitizeTravelCard(validCard({ schemaVersion: 2 })), null);
+  assert.equal(travel.sanitizeTravelCard(validCard({ searchedAt: "not-a-time" })), null);
   const rows = Array.from({ length: 12 }, (_, index) => ({
     kind: "activity",
     title: `Option ${index}`,
@@ -71,5 +75,21 @@ test("travel result sanitizer fails closed on unknown schema and caps results", 
     sourceName: "Example",
   }));
   const card = travel.sanitizeTravelCard(validCard({ kind: "activity", results: rows }));
-  assert.equal(card.results.length, travel.MAX_RESULTS);
+  assert.equal(card.results.length, travel.MAX_PER_KIND);
+});
+
+test("mixed research supports three flights, three hotels and three activities", () => {
+  const rows = ["flight", "hotel", "activity"].flatMap((kind) => Array.from({ length: 3 }, (_, index) => ({
+    kind,
+    title: `${kind} ${index + 1}`,
+    url: `https://example.com/${kind}/${index}`,
+    sourceName: "Example",
+  })));
+  const card = travel.sanitizeTravelCard(validCard({ kind: "mixed", results: rows }));
+  assert.equal(card.results.length, 9);
+  assert.deepEqual(Object.fromEntries(["flight", "hotel", "activity"].map((kind) => [kind, card.results.filter((item) => item.kind === kind).length])), {
+    flight: 3,
+    hotel: 3,
+    activity: 3,
+  });
 });

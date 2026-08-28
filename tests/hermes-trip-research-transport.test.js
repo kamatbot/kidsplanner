@@ -78,4 +78,25 @@ test("multiple machine blocks fail closed instead of choosing arbitrary authorit
   const payload = JSON.stringify(validCard());
   const parsed = hermes.extractTravelResults(`One\n\`\`\`fametc_travel\n${payload}\n\`\`\`\nTwo\n\`\`\`fametc_travel\n${payload}\n\`\`\``);
   assert.equal(parsed.card, null);
+  assert.equal(parsed.text.includes("fametc_travel"), false);
+  assert.equal(parsed.text.includes(payload), false);
+});
+
+test("an invalid machine-only reply becomes safe prose instead of leaking JSON", () => {
+  const parsed = hermes.extractTravelResults("```fametc_travel\n{bad json}\n```");
+  assert.equal(parsed.card, null);
+  assert.match(parsed.text, /couldn't format those travel options safely/i);
+  assert.equal(parsed.text.includes("fametc_travel"), false);
+});
+
+test("a valid travel card wins over itinerary inference in the visible summary", () => {
+  const f = tripFixture();
+  const summary = [
+    "Here is the proposed route:",
+    "| Day | Time | Activity | Category |",
+    "| --- | --- | --- | --- |",
+    "| Day 1 | 9 am | Colosseum | sight |",
+  ].join("\n");
+  const reply = hermes.sendAgentMessage(f.scope, `${summary}\n\n\`\`\`fametc_travel\n${JSON.stringify(validCard())}\n\`\`\``).message;
+  assert.equal(reply.card.type, travel.CARD_TYPE);
 });

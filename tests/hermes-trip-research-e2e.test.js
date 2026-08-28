@@ -87,8 +87,10 @@ test("narrow Trip research flow preserves ambient context, explicit invocation, 
 
 test("Trip browser-research prompt is present and Trip rooms remain authority-free", () => {
   const source = fs.readFileSync(path.join(__dirname, "../integrations/hermes/fametc/operator_adapter.py"), "utf8");
+  const base = fs.readFileSync(path.join(__dirname, "../integrations/hermes/fametc/adapter.py"), "utf8");
   assert.match(source, /browser\/web tools available on the host Mac/);
   assert.match(source, /do not book, purchase, submit forms, send messages/);
   assert.match(source, /Family Operator authority is never supplied in shared Trip rooms/);
   assert.match(source, /fametc_travel/);
+  assert.match(base, /_MAX_MESSAGE_LENGTH = 32768/);
 });
