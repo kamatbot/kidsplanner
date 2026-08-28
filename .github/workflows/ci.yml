@@ -2,18 +2,32 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, reopened, ready_for_review]
   push:
     branches:
       - main
-      - feature/pathodds-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fametc-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   node-tests:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: npm install --no-audit --no-fund
-      - run: npm test
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run tests
+        run: npm test
