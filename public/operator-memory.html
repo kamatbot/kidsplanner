@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f1efec">
+  <title>Family Memory — Fam ETC</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <main class="main-content" style="max-width:960px;margin:0 auto;padding:32px 20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px">
+      <div>
+        <div class="micro-label">Hermes Family Operator</div>
+        <h1 style="margin:4px 0 6px">Family Memory</h1>
+        <p class="text-muted" style="margin:0">Facts and preferences Hermes can use later. Nothing proposed by Hermes becomes memory until a parent approves it.</p>
+      </div>
+      <a class="btn-secondary" href="/">Back to Fam ETC</a>
+    </div>
+
+    <section class="card" style="margin-bottom:20px">
+      <div class="today-card-header">
+        <div><div class="micro-label">Needs review</div><h2 style="margin:4px 0">Hermes proposals</h2></div>
+        <button type="button" class="btn-secondary" id="memory-refresh">Refresh</button>
+      </div>
+      <div id="memory-pending" aria-live="polite"></div>
+    </section>
+
+    <section class="card" style="margin-bottom:20px">
+      <div class="today-card-header"><div><div class="micro-label">Active</div><h2 style="margin:4px 0">Remembered by Fam ETC</h2></div></div>
+      <div id="memory-active" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <div class="micro-label">Add directly</div>
+      <h2 style="margin:4px 0 12px">Add a household preference</h2>
+      <form id="memory-add-form">
+        <div class="form-row">
+          <div class="form-group"><label for="memory-key">Name</label><input id="memory-key" maxlength="120" placeholder="e.g. airport-arrival-buffer" required></div>
+          <div class="form-group"><label for="memory-value">Value</label><input id="memory-value" maxlength="500" placeholder="e.g. 2 hours" required></div>
+        </div>
+        <div class="modal-actions" style="justify-content:flex-end"><button class="btn-primary" type="submit">Add to Family Memory</button></div>
+      </form>
+    </section>
+    <div id="memory-status" class="text-muted" role="status" aria-live="polite" style="margin-top:16px"></div>
+  </main>
+  <script src="/js/operator-memory.js"></script>
+</body>
+</html>

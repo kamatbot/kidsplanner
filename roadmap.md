@@ -2,7 +2,7 @@
 
 ## Foundation status
 
-Weeks 1–6 are considered complete when the Foundation Closeout PR lands. The closeout unifies the context contract, makes action risk deterministic, adds a formal threat model and adversarial regression suite, establishes the first Operator benchmark, and exposes parent-facing case/activity primitives.
+Weeks 1–6 are complete. The Foundation Closeout unified the context contract, made action risk deterministic, added a formal threat model and adversarial regression suite, established the first Operator benchmark, and exposed parent-facing case/activity primitives.
 
 The Operator foundation remains aligned with Odds Core identity work in `kamatbot/odds` branch `feature/oddscore-m2-identity-foundation`:
 
@@ -14,16 +14,16 @@ The Operator foundation remains aligned with Odds Core identity work in `kamatbo
 
 ## Weeks 7–12
 
-### M1 — Family Memory
+### M1 — Family Memory — ✅ implemented
 
-Build durable family memory as a FamETC-owned layer, not Hermes model memory.
+Durable Family Memory is FamETC-owned rather than Hermes model memory.
 
 - facts and preferences with provenance, confidence, sensitivity, and expiry;
-- parent-visible edit/delete controls;
-- person/household scope using FamETC immutable identity subjects;
-- explicit source references and derived-vs-asserted distinction;
-- MCP read/write tools where Hermes may propose a memory but FamETC policy decides what persists;
-- consent-aware import of future Odds Core cross-product projections without copying specialist-product authority.
+- parent-visible approve/edit/delete controls at `/operator-memory.html`;
+- person/household scope using FamETC immutable `subj_*` identity subjects;
+- explicit source references and asserted/derived/projection distinction;
+- MCP tools where Hermes may read active memory and propose a pending memory, but cannot activate/edit/delete it;
+- provenance model can carry future Odds Core cross-product projections without changing specialist-product authority.
 
 ### M2 — Attachments
 

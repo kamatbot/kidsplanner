@@ -60,7 +60,7 @@ function actorToken(fixture, overrides = {}) {
   });
 }
 
-test("Hermes MCP advertises modern stateless tools, canonical context sections and legacy initialize compatibility", () => {
+test("Hermes MCP advertises modern stateless tools, Family Memory, canonical context sections and legacy initialize compatibility", () => {
   const fixture = familyFixture("Discover");
   const discover = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "server/discover", params: {} });
   assert.equal(discover.statusCode, 200);
@@ -77,6 +77,8 @@ test("Hermes MCP advertises modern stateless tools, canonical context sections a
   assert.equal(list.statusCode, 200);
   assert.deepEqual(list.body.result.tools.map((tool) => tool.name), [
     "fametc_context_get",
+    "fametc_memory_list",
+    "fametc_memory_propose",
     "fametc_cases_create",
     "fametc_cases_get",
     "fametc_cases_list",
