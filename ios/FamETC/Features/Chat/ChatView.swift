@@ -78,6 +78,10 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // The onChange covers the iPad docked column, where a room switch
         // changes `roomId` on an already-appeared screen (no onAppear refires).
         .onAppear { store.activeRoomId = roomId }
+        // If this screen came from a push tap, NotificationHandler already
+        // started the fetch before navigation. Consume that in-flight result
+        // immediately instead of waiting for the chat loop's first request.
+        .task(id: roomId) { await store.consumeNotificationChatPrefetch(roomId: roomId) }
         .onChange(of: roomId) { _, newValue in store.activeRoomId = newValue }
         .onDisappear { if store.activeRoomId == roomId { store.activeRoomId = nil } }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
@@ -289,13 +293,17 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
     }
 
-    // MARK: Composer (GIF + Buzz + wide input + circular send)
+    // MARK: Composer (attachments + GIF + Buzz + wide input + circular send)
 
     private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var canBuzz: Bool { canSend && !isSendingBuzz }
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: Space.sm) {
+            ChatAttachmentMenu { picked in
+                try await store.sendAttachment(picked, roomId: roomId)
+            }
+
             Button { composerFocused = false; showGifPicker = true } label: {
                 Text("GIF")
                     .font(.system(size: 12, weight: .heavy))
@@ -1832,6 +1840,14 @@ struct ChatMessageRow: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("BUZZ message from \(senderName): \(message.text)")
             .accessibilityHint("Time Sensitive alert")
+            .contextMenu { shareMessageAction }
+        } else if let media = message.media, media.isChatAttachment {
+            ChatAttachmentBubble(media: media)
+                .contextMenu {
+                    if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        shareMessageAction
+                    }
+                }
         } else if let media = message.media, media.type == "gif",
                   let url = URL(string: media.url ?? media.previewUrl ?? "") {
             AnimatedGIFView(url: url)
@@ -1839,6 +1855,9 @@ struct ChatMessageRow: View {
                 .background(Palette.panel)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .contextMenu {
+                    if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        shareMessageAction
+                    }
                     // A GIF with accompanying text is still an eligible
                     // family message; media-only messages have no text and
                     // therefore receive no conversion action.
@@ -1869,6 +1888,7 @@ struct ChatMessageRow: View {
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))
                 .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.55), lineWidth: 1))
                 .contextMenu {
+                    shareMessageAction
                     if canImportMealPlan {
                         Button {
                             onImportMealPlan(message)
@@ -1903,6 +1923,15 @@ struct ChatMessageRow: View {
                         Label("Pin to Notes", systemImage: "pin")
                     }
                 }
+        }
+    }
+
+    @ViewBuilder
+    private var shareMessageAction: some View {
+        if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ShareLink(item: message.text) {
+                Label("Share Message", systemImage: "square.and.arrow.up")
+            }
         }
     }
 }

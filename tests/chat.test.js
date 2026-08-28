@@ -17,6 +17,7 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const trips = require("../lib/trips");
 const chat = require("../lib/chat");
+const chatAttachments = require("../lib/chat-attachments");
 const chatRoutes = require("../lib/routes/chat");
 
 function makeFamily() {
@@ -110,6 +111,39 @@ test("sendMessage: clamps oversized width/height to the 800 cap", () => {
   assert.ok(!result.error);
   assert.equal(result.message.media.width, 800);
   assert.equal(result.message.media.height, 800);
+});
+
+test("sendMessage: claims an uploaded attachment once and deletion removes its bytes", () => {
+  const { p1, fam } = makeFamily();
+  const uploaded = chatAttachments.save({
+    scopeKey: fam.id,
+    uploaderUserId: p1.id,
+    originalName: "family-note.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("private family note"),
+  });
+  const media = { type: "attachment", attachmentId: uploaded.id };
+  const sent = chat.sendMessage(fam.id, {
+    senderType: "parent",
+    senderId: p1.id,
+    postedByUserId: p1.id,
+    media,
+  });
+  assert.ok(!sent.error, sent.error);
+  assert.equal(sent.message.media.attachmentId, uploaded.id);
+  assert.equal(chatAttachments.readMeta(uploaded.id).claimedMessageId, sent.message.id);
+
+  const replay = chat.sendMessage(fam.id, {
+    senderType: "parent",
+    senderId: p1.id,
+    postedByUserId: p1.id,
+    media,
+  });
+  assert.ok(replay.error, "the same uploaded bytes must not be attached to a second message");
+
+  const deleted = chat.deleteMessage(fam.id, p1.id, sent.message.id);
+  assert.ok(!deleted.error, deleted.error);
+  assert.equal(chatAttachments.read(uploaded.id), null);
 });
 
 test("listMessages: since filter only returns newer messages", async () => {

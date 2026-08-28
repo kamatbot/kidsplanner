@@ -47,14 +47,20 @@ struct ChatCard: Codable {
     var title: String?
 }
 
-/// A GIF attached to a chat message (Giphy). Mirrors the server's `media` shape
-/// so a GIF sent from the web renders in the native app too.
+/// Media attached to a chat message. GIF fields remain optional for the Giphy
+/// contract; private attachment fields are additive and decode safely on older
+/// cached messages.
 struct ChatMedia: Codable {
-    let type: String       // "gif"
+    let type: String       // "gif" | "attachment"
     var url: String?
     var previewUrl: String?
     var width: Int?
     var height: Int?
+    var attachmentId: String?
+    var filename: String?
+    var mimeType: String?
+    var size: Int?
+    var kind: String?
 }
 
 struct ChatMessage: Codable, Identifiable {

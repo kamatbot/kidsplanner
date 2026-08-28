@@ -32,7 +32,7 @@ extension Notification.Name {
 ///   // chat_message / chat_buzz
 ///   { aps: { alert: { title: senderName, body: text }, sound: "default",
 ///            "thread-id": "chat-<familyId>" },
-///     famType: "chat_message" | "chat_buzz", familyId }
+///     famType: "chat_message" | "chat_buzz", familyId, messageId? }
 ///
 ///   // homework_reminder
 ///   { aps: { alert: { title: "<kidName>: Homework due soon", body: title },
@@ -68,6 +68,13 @@ final class NotificationHandler {
         pendingRouteLock.lock()
         pendingChatRoomId = roomId
         pendingRouteLock.unlock()
+
+        // Start the network request NOW, while RootView/ChatScreen are still
+        // switching tabs. ChatScreen consumes this task on appearance, so a
+        // notification tap does not spend its first visible frame waiting for
+        // the normal chat polling loop to wake up.
+        Task { await ChatNotificationPrefetcher.shared.start(roomId: roomId) }
+
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: notification, object: nil, userInfo: userInfo)
         }
@@ -82,9 +89,11 @@ final class NotificationHandler {
         switch famType {
         case "chat_message", "chat_buzz":
             guard let familyId = userInfo["familyId"] as? String else { return }
+            var routeInfo: [AnyHashable: Any] = ["familyId": familyId]
+            if let messageId = userInfo["messageId"] as? String { routeInfo["messageId"] = messageId }
             routeToChat(roomId: familyRoomId,
                         notification: .famDeepLinkToChat,
-                        userInfo: ["familyId": familyId])
+                        userInfo: routeInfo)
         case "homework_reminder":
             guard let homeworkId = userInfo["homeworkId"] as? String else { return }
             NotificationCenter.default.post(name: .famDeepLinkToHomework, object: nil, userInfo: ["homeworkId": homeworkId])
@@ -93,9 +102,11 @@ final class NotificationHandler {
             NotificationCenter.default.post(name: .famDeepLinkToKidApproval, object: nil, userInfo: ["familyId": familyId])
         case "trip_chat_message", "trip_chat_buzz", "trip_update":
             guard let tripId = userInfo["tripId"] as? String else { return }
+            var routeInfo: [AnyHashable: Any] = ["tripId": tripId]
+            if let messageId = userInfo["messageId"] as? String { routeInfo["messageId"] = messageId }
             routeToChat(roomId: "trip:\(tripId)",
                         notification: .famDeepLinkToTripChat,
-                        userInfo: ["tripId": tripId])
+                        userInfo: routeInfo)
         default:
             break
         }

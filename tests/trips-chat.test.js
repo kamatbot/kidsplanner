@@ -221,6 +221,8 @@ test("POST trip chat message: a member can post; response carries roomId + sende
   assert.equal(res.body.message.senderType, "member");
   assert.equal(typeof res.body.message.senderName, "string");
   assert.equal(notifyCalls.length, 1); // push fan-out triggered
+  assert.equal(notifyCalls[0][3], "ahoy");
+  assert.equal(notifyCalls[0][4], res.body.message.id);
 });
 
 test("GET trip chat messages: kid-read access is rejected (chat is members-only)", async () => {
