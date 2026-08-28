@@ -2422,6 +2422,7 @@ function renderTripChatMessages() {
       <div class="chat-msg-bubble">
         ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
         ${renderTripItineraryReviewAction(m)}
+        ${typeof window !== 'undefined' && typeof window.renderTripHermesTravelResearchAction === 'function' ? window.renderTripHermesTravelResearchAction(m) : ''}
       </div>
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>

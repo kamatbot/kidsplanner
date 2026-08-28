@@ -32,7 +32,11 @@ _API_URL_ENV = "FAMETC_HERMES_API_URL"
 _TOKEN_ENV = "FAMETC_HERMES_TOKEN"
 _POLL_ENV = "FAMETC_HERMES_POLL_SECONDS"
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-_MAX_MESSAGE_LENGTH = 4000
+# Hermes travel replies contain a concise visible summary plus a bounded JSON
+# block that FamETC removes before storing the chat message. Keep enough room
+# for three options in each supported travel category without truncating the
+# closing fence; ordinary visible chat text is still capped server-side.
+_MAX_MESSAGE_LENGTH = 32768
 _MAX_BACKOFF_SECONDS = 60.0
 _EMPTY_CURSOR = "__hermes_empty__"
 
