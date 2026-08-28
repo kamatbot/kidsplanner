@@ -100,7 +100,13 @@ test("approval/execution layer fails closed when SQLite is unavailable", () => {
     available: false,
     backend: "sqlite",
     fallback: false,
-    supportedActionTypes: ["calendar.create"],
+    supportedActionTypes: [
+      "calendar.create",
+      "calendar.update",
+      "action.create",
+      "action.update",
+      "trip.itinerary.update",
+    ],
     errorCode: "OPERATOR_EXECUTION_UNAVAILABLE",
   });
   assert.throws(
@@ -185,7 +191,6 @@ test("single-use execution token runs only the stored approved calendar action",
   assert.equal(claimed.actionHash, fixture.approval.actionHash);
   assert.equal(claimed.grant.state, "claimed");
 
-  // The raw capability must never be written to the SQLite main DB or WAL.
   const disk = [operatorStore.DEFAULT_DB_FILE, operatorStore.DEFAULT_DB_FILE + "-wal"]
     .filter(fs.existsSync)
     .map((file) => fs.readFileSync(file).toString("latin1"))

@@ -50,7 +50,7 @@ test("M3 exposes only reversible FamETC-native write drivers", (t) => {
   ]);
   assert.throws(
     () => service.validateAction(f.fam.id, "email.send", { to: "x@example.com" }),
-    (error) => error.code === "OPERATOR_EXECUTION_UNSUPPORTED_ACTION",
+    (error) => error.code === "EXECUTION_UNSUPPORTED_ACTION",
   );
 });
 
@@ -132,7 +132,7 @@ test("execution rechecks the deterministic risk registry at runtime", (t) => {
   t.after(() => service.close());
   assert.throws(
     () => service.validateAction(f.fam.id, "subscription.cancel", { subscriptionId: "s_1" }),
-    (error) => error.code === "OPERATOR_EXECUTION_UNSUPPORTED_ACTION",
+    (error) => error.code === "EXECUTION_UNSUPPORTED_ACTION",
   );
   assert.throws(
     () => service.validateAction(f.fam.id, "payment.create", { cents: 100 }),
