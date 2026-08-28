@@ -8,6 +8,7 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const chatView = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatView.swift"), "utf8");
 const attachmentSupport = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatAttachmentSupport.swift"), "utf8");
+const compressionSource = fs.readFileSync(path.join(root, "ios/FamETC/Features/Chat/ChatMediaCompression.swift"), "utf8");
 const modelsSource = fs.readFileSync(path.join(root, "ios/FamETC/Networking/Models.swift"), "utf8");
 const projectSource = fs.readFileSync(path.join(root, "ios/project.yml"), "utf8");
 const notificationHandler = fs.readFileSync(path.join(root, "ios/FamETC/NotificationHandler.swift"), "utf8");
@@ -16,17 +17,17 @@ const chatSource = fs.readFileSync(path.join(root, "lib/chat.js"), "utf8");
 const attachmentSource = fs.readFileSync(path.join(root, "lib/chat-attachments.js"), "utf8");
 
 test("native chat exposes photo/video and file attachment affordances", () => {
-  assert.match(chatView, /ChatAttachmentMenu\s*\{/);
-  assert.match(attachmentSupport, /PHPickerConfiguration/);
-  assert.match(attachmentSupport, /\.any\(of:\s*\[\.images,\s*\.videos\]\)/);
-  assert.match(attachmentSupport, /UIDocumentPickerViewController\(forOpeningContentTypes:\s*\[\.item\]/);
+  assert.match(chatView, /ChatComposerAddMenu\s*\(/);
+  assert.match(compressionSource, /CompactChatPhotoVideoPicker/);
+  assert.match(compressionSource, /\.any\(of:\s*\[\.images,\s*\.videos\]\)/);
+  assert.match(compressionSource, /UIDocumentPickerViewController\(forOpeningContentTypes:\s*\[\.item\]/);
   assert.match(attachmentSupport, /upload\(for:\s*request,\s*fromFile:\s*bodyURL\)/);
   assert.match(chatView, /ChatAttachmentBubble\(media:/);
   assert.match(attachmentSupport, /QLPreviewController/);
   assert.match(projectSource, /sources:\s*\n\s*- path: FamETC/);
   assert.match(modelsSource, /var attachmentId: String\?/);
   assert.match(modelsSource, /var mimeType: String\?/);
-  assert.match(attachmentSupport, /frame\(width: 44, height: 44\)/);
+  assert.match(compressionSource, /frame\(width: 44, height: 44\)/);
   assert.match(attachmentSupport, /CGImageSourceCreateThumbnailAtIndex/);
 });
 
