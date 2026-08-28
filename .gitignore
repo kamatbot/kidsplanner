@@ -17,6 +17,7 @@ node_modules/
 *.p8
 AuthKey_*.p8
 data/*.json
+data/chat-attachments/
 npm-debug.log*
 .dev-data/
 
