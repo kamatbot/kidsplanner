@@ -50,7 +50,7 @@ Initial supported product patterns:
 4. appointment research → parent-approved calendar write;
 5. voucher/membership expiry → family action/reminder.
 
-### M4 — Shadow mode — ✅ implemented / CI #52 green
+### M4 — Shadow mode — ✅ implemented / CI #53 green
 
 Shadow mode now runs the decision path without permitting the proposal to become execution authority.
 
@@ -68,24 +68,36 @@ Shadow mode now runs the decision path without permitting the proposal to become
 
 See `docs/HERMES-OPERATOR-SHADOW-MODE.md`.
 
-### M5 — Limited-family beta
+### M5 — Limited-family beta — ✅ implemented / CI #64 green
 
-Release to a very small trusted cohort with strict operational controls.
+The live execution path is now wrapped in a separate limited-family beta control plane. Production is deny-by-default unless a family is explicitly enrolled.
 
-- per-family feature flag and autonomy ceiling;
-- low-risk first-party actions only at launch;
-- execution quotas and rate limits;
-- emergency global/family kill switch;
-- enhanced audit retention and evidence capture;
-- explicit feedback on every completed/blocked case;
-- benchmark and safety dashboards;
-- no payments, medical/legal attestations, unrestricted browser execution, or silent external messaging.
+- per-family beta enrollment with `shadow-only` and `approved-low-risk` autonomy ceilings;
+- only the five reversible low-risk FamETC-native M3 action types can be enabled for beta execution;
+- exact parent approval and the existing short-lived single-use execution capability remain mandatory — M5 adds no approval exemption;
+- production Hermes execution routes through `operator-live-execution`, which applies beta checks around the exact-action execution engine;
+- atomic family quota reservation before a driver runs, with bounded rolling hourly/daily limits and retry-storm accounting;
+- emergency environment kill switch plus persisted global and per-family kill switches;
+- admin-only family enrollment, autonomy, quota, allowlist and kill-switch controls using the existing `requireAdmin` boundary;
+- encrypted beta evidence for blocked, completed, failed and released executions while the canonical Operator audit remains independent;
+- explicit parent feedback after completed/failed/blocked/shadow-reviewed cases, surfaced directly on Operator case cards;
+- admin safety dashboard with family usage, seven-day block counts, feedback coverage and M4 shadow graduation status;
+- beta evidence retention/pruning is configurable without deleting the canonical Operator audit trail;
+- payments, medical/legal attestations, unrestricted browser execution and silent external messaging remain hard-disabled.
+
+Operational controls and rollout instructions are documented in `docs/HERMES-OPERATOR-LIMITED-BETA.md`.
+
+## Weeks 7–12 implementation status
+
+The M1–M5 product and safety scaffolding is implemented. A real limited-family rollout is intentionally a separate operational step: families should first accumulate shadow-mode evidence, be reviewed against the M4 graduation metrics, and then be explicitly enrolled through the M5 admin control plane.
 
 ## Exit criteria for Weeks 7–12
 
 - zero unauthorized or cross-family writes in adversarial regression tests;
 - zero prohibited-action executions;
-- 100% executed actions linked to an exact approval or an explicitly approved low-risk policy exemption introduced later;
-- every case has provenance-aware context and a readable activity timeline;
-- shadow-mode benchmark demonstrates acceptable plan/context/approval accuracy before each workflow is enabled live;
-- family beta can be disabled without breaking normal FamETC, Odds Core, or specialist-product operation.
+- 100% executed actions linked to an exact parent approval;
+- every case has provenance-aware context and a readable activity/evidence timeline;
+- shadow-mode benchmark/graduation metrics are available before workflow rollout decisions;
+- beta execution is deny-by-default in production and can be disabled globally or per-family without breaking normal FamETC, Odds Core, or specialist-product operation;
+- beta launch allowlist is locked by regression test to low-risk reversible FamETC-native actions only;
+- completed/blocked beta cases request explicit parent feedback for ongoing safety evaluation.
