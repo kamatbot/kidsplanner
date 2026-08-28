@@ -16,47 +16,39 @@ The Operator foundation remains aligned with Odds Core identity work in `kamatbo
 
 ### M1 — Family Memory — ✅ implemented
 
-Durable Family Memory is FamETC-owned rather than Hermes model memory.
-
-- facts and preferences with provenance, confidence, sensitivity, and expiry;
-- parent-visible approve/edit/delete controls at `/operator-memory.html`;
-- person/household scope using FamETC immutable `subj_*` identity subjects;
-- explicit source references and asserted/derived/projection distinction;
-- MCP tools where Hermes may read active memory and propose a pending memory, but cannot activate/edit/delete it;
-- provenance model can carry future Odds Core cross-product projections without changing specialist-product authority.
+- durable FamETC-owned facts/preferences with provenance, confidence, sensitivity and expiry;
+- parent approve/edit/delete UI at `/operator-memory.html`;
+- person/household scope using immutable `subj_*` subjects;
+- MCP read active / propose pending only; Hermes cannot govern memory.
 
 ### M2 — Attachments — ✅ implemented
 
-Case files are encrypted FamETC artifacts rather than raw model context.
+- encrypted case artifacts for PDF, PNG, JPG, TXT, CSV, JSON and EML up to 8 MiB;
+- encrypted metadata/storage references, SHA-256 content hashes and file-magic checks;
+- malware hook and bounded extraction;
+- all extracted text is `untrusted-external` with zero approval/execution authority;
+- parent upload/review/delete surface and read-only purpose-scoped MCP extraction;
+- deletion removes blob and derived extraction.
 
-- PDF, PNG, JPG, TXT, CSV, JSON and EML artifacts up to 8 MiB;
-- encrypted raw file storage plus encrypted metadata/storage references;
-- SHA-256 content hashes and evidence-friendly metadata;
-- file-magic validation, bounded extraction and an injectable malware scan hook;
-- every text extraction wrapped as `untrusted-external` with zero approval/execution authority;
-- purpose-scoped read-only MCP tools; Hermes never receives raw file bytes;
-- parent upload/review/delete surface at `/operator-attachments.html?caseId=...`;
-- delete removes the encrypted blob and derived extraction while retaining only the audit identity/hash.
+### M3 — Low-risk first-party workflows — ✅ implemented
 
-### M3 — Low-risk first-party workflows
-
-Expand the allowlisted executor only for FamETC-native reversible operations first.
+The exact approval/execution engine now supports only reversible FamETC-native writes:
 
 - `calendar.create` / `calendar.update`;
 - `action.create` / `action.update`;
-- trip itinerary add/update/import;
-- reminders and family follow-up actions;
-- document → calendar/action/trip proposals;
-- deterministic risk registry enforcement and exact-action approvals;
-- idempotent writes with evidence returned to the case timeline.
+- `trip.itinerary.update` for add/update;
+- deterministic risk registry is rechecked at validation, execution claim and execution run;
+- exact-action approvals and single-use execution capabilities remain mandatory;
+- writes are family/target validated and return concrete evidence to the case timeline;
+- create operations are idempotent or duplicate-aware.
 
-Initial product workflows:
+Initial supported product patterns:
 
-1. turn a school message/screenshot into calendar + actions;
-2. research trip activities and prepare itinerary updates;
-3. convert confirmations into calendar/trip data;
-4. household appointment research with a parent-approved calendar action;
-5. gift-card/voucher/membership reminders and expiry actions.
+1. school message/document → calendar + action proposals;
+2. trip research → itinerary add/update proposal;
+3. confirmation → calendar/trip update;
+4. appointment research → parent-approved calendar write;
+5. voucher/membership expiry → family action/reminder.
 
 ### M4 — Shadow mode
 
