@@ -307,7 +307,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                     showGifPicker = true
                 },
                 onBuzz: requestBuzz,
-                onSendAttachment: { picked in
+                onSend: { picked in
                     try await store.sendCompressedAttachment(picked, roomId: roomId)
                 }
             )
@@ -325,7 +325,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                 Image(systemName: "paperplane.fill")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Palette.onAccent)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 44, height: 44)
                     .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
             }
             .disabled(!canSend)
@@ -1188,7 +1188,7 @@ private struct TripItineraryReviewSheet: View {
                     Button(isSaving ? "Adding…" : "Add to Itinerary") { importItinerary() }
                         .fontWeight(.bold)
                         .disabled(!canConfirm)
-                        .accessibilityHint("Adds only activities that are not already on this Trip")
+                        .accessibilityHint("Adds only activities that are not already on the Trip itinerary")
                 }
             }
         }

@@ -241,7 +241,10 @@ actor ChatNotificationPrefetcher {
 
 // MARK: - Picker menu
 
-struct ChatAttachmentMenu: View {
+struct ChatComposerAddMenu: View {
+    let canBuzz: Bool
+    let onGif: () -> Void
+    let onBuzz: () -> Void
     let onSend: (ChatPickedAttachment) async throws -> Void
 
     @State private var pickerKind: PickerKind?
@@ -256,6 +259,21 @@ struct ChatAttachmentMenu: View {
 
     var body: some View {
         Menu {
+            Button {
+                onGif()
+            } label: {
+                Label("GIF", systemImage: "photo.stack")
+            }
+
+            Button {
+                onBuzz()
+            } label: {
+                Label("Buzz", systemImage: "wave.3.right.circle.fill")
+            }
+            .disabled(!canBuzz)
+
+            Divider()
+
             Button {
                 pickerKind = .photoVideo
             } label: {
@@ -280,7 +298,8 @@ struct ChatAttachmentMenu: View {
             .background(Palette.accentSoft, in: Circle())
         }
         .disabled(isSending)
-        .accessibilityLabel(isSending ? "Sending attachment" : "Add photo, video, or file")
+        .accessibilityLabel(isSending ? "Preparing attachment" : "More chat actions")
+        .accessibilityHint("GIF, Buzz, photo, video, or file")
         .sheet(item: $pickerKind) { kind in
             switch kind {
             case .photoVideo:
