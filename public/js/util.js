@@ -204,17 +204,15 @@ function renderChatMedia(media) {
   const filename = chatMediaFilename(media, media.kind === 'photo' ? 'Photo' : media.kind === 'video' ? 'Video' : 'File');
   const safeUrl = chatMediaEscape(url);
   const safeName = chatMediaEscape(filename);
-  const size = chatMediaEscape(chatMediaSize(media.size));
-  const open = chatMediaOpenLink(url, filename, `Open ${filename}`);
 
   if (media.kind === 'photo') {
-    return `<figure class="chat-msg-attachment chat-msg-attachment-photo">
-      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="chat-msg-attachment-media-link">
-        <img src="${safeUrl}" alt="Photo: ${safeName}" class="chat-msg-attachment-media" loading="lazy" decoding="async" onload="chatMediaMaybeScroll(this)">
-      </a>
-      <figcaption><span class="chat-msg-attachment-name">${safeName}</span><span class="chat-msg-attachment-size">${size}</span>${open}</figcaption>
-    </figure>`;
+    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="chat-msg-attachment chat-msg-attachment-photo chat-msg-attachment-media-link">
+      <img src="${safeUrl}" alt="Photo: ${safeName}" class="chat-msg-attachment-media" loading="lazy" decoding="async" onload="chatMediaMaybeScroll(this)">
+    </a>`;
   }
+
+  const size = chatMediaEscape(chatMediaSize(media.size));
+  const open = chatMediaOpenLink(url, filename, `Open ${filename}`);
 
   if (media.kind === 'video') {
     const mimeType = String(media.mimeType || '').toLowerCase();

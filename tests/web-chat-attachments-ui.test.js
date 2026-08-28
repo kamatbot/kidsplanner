@@ -21,7 +21,7 @@ function renderer() {
 const attachmentId = `a_${"a".repeat(36)}`;
 const attachmentUrl = `/api/chat/attachments/${attachmentId}`;
 
-test("shared chat renderer renders authenticated photos with accessible metadata", () => {
+test("shared chat renderer shows authenticated photos without visible metadata", () => {
   const html = renderer()({
     type: "attachment", attachmentId, url: attachmentUrl,
     filename: "holiday <final>.jpg", mimeType: "image/jpeg", size: 15360, kind: "photo",
@@ -30,7 +30,7 @@ test("shared chat renderer renders authenticated photos with accessible metadata
   assert.match(html, /loading="lazy"/);
   assert.match(html, /decoding="async"/);
   assert.match(html, /alt="Photo: holiday &lt;final&gt;.jpg"/);
-  assert.match(html, /Open holiday &lt;final&gt;.jpg/);
+  assert.doesNotMatch(html, /<figcaption|chat-msg-attachment-size|Open holiday/);
   assert.doesNotMatch(html, /<script|javascript:/i);
 });
 
