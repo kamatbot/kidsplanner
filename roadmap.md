@@ -30,7 +30,7 @@ The Operator foundation remains aligned with Odds Core identity work in `kamatbo
 - parent upload/review/delete surface and read-only purpose-scoped MCP extraction;
 - deletion removes blob and derived extraction.
 
-### M3 — Low-risk first-party workflows — ✅ implemented
+### M3 — Low-risk first-party workflows — ✅ implemented / CI #45 green
 
 The exact approval/execution engine now supports only reversible FamETC-native writes:
 
@@ -50,16 +50,23 @@ Initial supported product patterns:
 4. appointment research → parent-approved calendar write;
 5. voucher/membership expiry → family action/reminder.
 
-### M4 — Shadow mode
+### M4 — Shadow mode — ✅ implemented / CI #52 green
 
-Run the complete Operator decision process without external execution.
+Shadow mode now runs the decision path without permitting the proposal to become execution authority.
 
-- Hermes creates the plan, context package, proposed actions, and expected result;
-- FamETC records what it *would* do and blocks the final write;
-- compare proposed behavior with the parent's eventual choice;
-- score every run with the Operator benchmark dimensions;
-- collect false-positive, unnecessary-question, context-miss, and unsafe-action telemetry;
-- use shadow-mode evidence to decide when a workflow may graduate to live execution.
+- Hermes records a `shadow.proposal` through the existing case-step MCP tool, including plan, context sections, clarifying-question count, exact proposed actions and expected result;
+- FamETC persists encrypted shadow runs with action hashes, deterministic risk-policy evaluation and audit evidence;
+- an active shadow run hard-blocks transitions to approval/execution and blocks `operator.requestApproval()`;
+- unsafe/prohibited proposals can be retained as evaluation evidence but never become approval or execution authority;
+- initial scoring immediately covers unnecessary questions, approval correctness, proposal completeness and action safety;
+- authenticated parents record accepted/modified/rejected outcomes, context misses, hallucinations and their eventual action choices;
+- completed runs are scored on the same seven dimensions as the Operator benchmark;
+- optional canonical benchmark observations can be attached to benchmark-linked shadow runs;
+- per-workflow telemetry covers average score, acceptance, unsafe proposals, context misses, hallucinations and unnecessary questions;
+- graduation is evidence-gated: at least 10 reviewed runs, average score >=90, zero unsafe proposals/hallucinations, <=10% context misses and 100% approval-policy correctness;
+- parent-only family-scoped shadow review/metrics APIs expose the evidence without raw actor/reviewer ids.
+
+See `docs/HERMES-OPERATOR-SHADOW-MODE.md`.
 
 ### M5 — Limited-family beta
 
