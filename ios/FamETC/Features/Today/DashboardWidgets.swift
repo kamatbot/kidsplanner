@@ -577,58 +577,62 @@ private struct DailyPuzzleView: View {
     }
 
     private func crosswordView(_ crossword: CrosswordPuzzle) -> some View {
-        GeometryReader { geometry in
-            let spacing: CGFloat = 1
-            let cellSize = max(18, min(34, (geometry.size.width - CGFloat(crossword.cols - 1) * spacing) / CGFloat(crossword.cols)))
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellSize), spacing: spacing), count: crossword.cols), spacing: spacing) {
-                ForEach(0..<(crossword.rows * crossword.cols), id: \.self) { index in
-                    let row = index / crossword.cols
-                    let col = index % crossword.cols
-                    let letter = solutionLetter(crossword.solution, row: row, col: col)
-                    if letter == "." {
-                        Color.clear.frame(width: cellSize, height: cellSize)
-                    } else {
-                        ZStack(alignment: .topLeading) {
-                            CrosswordCellField(
-                                text: answers[crosswordCellKey(row: row, col: col)] ?? "",
-                                isFocused: focusedCrosswordCell == crosswordCellKey(row: row, col: col),
-                                fontSize: max(12, cellSize * 0.55),
-                                onFocus: {
-                                    activateCrosswordEntry(containingRow: row, col: col, in: crossword)
-                                    focusedCrosswordCell = crosswordCellKey(row: row, col: col)
-                                },
-                                onInput: { value in
-                                    letterBinding(row: row, col: col, crossword: crossword).wrappedValue = value
-                                },
-                                onDeleteBackward: {
-                                    deleteCrosswordLetter(row: row, col: col, crossword: crossword)
-                                }
-                            )
-                                .frame(width: cellSize, height: cellSize)
-                                .background(Palette.panel)
-                                .overlay(Rectangle().strokeBorder(Palette.border, lineWidth: 1))
-                                .accessibilityLabel("Crossword row \(row + 1), column \(col + 1)")
-                            if let number = crossword.entries.first(where: { $0.row == row && $0.col == col })?.number {
-                                Text("\(number)")
-                                    .font(.system(size: max(7, cellSize * 0.25), weight: .bold))
-                                    .foregroundStyle(Palette.textSecond)
-                                    .padding(2)
-                                    .accessibilityHidden(true)
+        let columns = max(1, crossword.cols)
+        let rows = max(1, crossword.rows)
+        let spacing: CGFloat = 1
+        let maximumGridWidth = CGFloat(columns) * 34 + CGFloat(columns - 1) * spacing
+
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 1, maximum: 34), spacing: spacing), count: columns),
+            spacing: spacing
+        ) {
+            ForEach(0..<(rows * columns), id: \.self) { index in
+                let row = index / columns
+                let col = index % columns
+                let letter = solutionLetter(crossword.solution, row: row, col: col)
+                if letter == "." {
+                    Color.clear
+                        .aspectRatio(1, contentMode: .fit)
+                } else {
+                    ZStack(alignment: .topLeading) {
+                        CrosswordCellField(
+                            text: answers[crosswordCellKey(row: row, col: col)] ?? "",
+                            isFocused: focusedCrosswordCell == crosswordCellKey(row: row, col: col),
+                            // Keep the incumbent readable type on larger devices;
+                            // CrosswordCellField's adjustsFontSizeToFitWidth scales
+                            // the single-letter field down for narrow columns.
+                            fontSize: 18,
+                            onFocus: {
+                                activateCrosswordEntry(containingRow: row, col: col, in: crossword)
+                                focusedCrosswordCell = crosswordCellKey(row: row, col: col)
+                            },
+                            onInput: { value in
+                                letterBinding(row: row, col: col, crossword: crossword).wrappedValue = value
+                            },
+                            onDeleteBackward: {
+                                deleteCrosswordLetter(row: row, col: col, crossword: crossword)
                             }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Palette.panel)
+                        .overlay(Rectangle().strokeBorder(Palette.border, lineWidth: 1))
+                        .accessibilityLabel("Crossword row \(row + 1), column \(col + 1)")
+                        if let number = crossword.entries.first(where: { $0.row == row && $0.col == col })?.number {
+                            Text("\(number)")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Palette.textSecond)
+                                .padding(2)
+                                .accessibilityHidden(true)
                         }
                     }
+                    .aspectRatio(1, contentMode: .fit)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(height: crosswordHeight(crossword))
+        .frame(maxWidth: maximumGridWidth, alignment: .center)
+        .aspectRatio(CGFloat(columns) / CGFloat(rows), contentMode: .fit)
+        .frame(maxWidth: .infinity, alignment: .center)
         .accessibilityLabel("Crossword grid with \(crossword.entries.count) words")
-    }
-
-    private func crosswordHeight(_ crossword: CrosswordPuzzle) -> CGFloat {
-        // The outer content width is not known here; 34 is the maximum cell
-        // size and smaller phones simply leave harmless extra vertical room.
-        CGFloat(crossword.rows) * 35
     }
 
     private func crosswordClues(_ crossword: CrosswordPuzzle) -> some View {

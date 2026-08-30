@@ -69,6 +69,64 @@ test("a buildable same-week news fixture supplies three masked, attributed entri
   assert.equal(saturday.crossword.entries.some((entry) => entry.answer === "OUTSIDE"), false);
 });
 
+test("the current weekend crossword stays compact and identifies SAT word clues", () => {
+  const newsItems = [
+    { id: "cyclops", headline: "The Cyclops may be an ancient myth, but one-eyed creatures are real", answer: "CYCLOPS", publishedAt: "2026-08-24T12:00:00Z" },
+    { id: "cosmic", headline: "This cosmic oddity blurs the line between planet and moon", answer: "COSMIC", publishedAt: "2026-08-25T12:00:00Z" },
+    { id: "meet", headline: "Meet the world’s biggest waves — and the mysteries behind them", answer: "MEET", publishedAt: "2026-08-26T12:00:00Z" },
+  ];
+  const startedAt = Date.now();
+  const first = puzzles.getDailyPuzzle("2026-08-30", newsItems);
+  const second = puzzles.getDailyPuzzle("2026-08-30", newsItems);
+  const crossword = first.crossword;
+
+  assert.ok(Date.now() - startedAt < 2000);
+  assert.deepEqual(second, first);
+  assert.equal(crossword.entries.length, 10);
+  assert.ok(Math.max(crossword.rows, crossword.cols) <= 14);
+  assert.deepEqual(new Set(crossword.entries.map((entry) => entry.answer)), new Set([
+    "TRANSIENT", "CYCLOPS", "ELOQUENT", "COSMIC", "PLACID",
+    "CREDIBLE", "MEET", "WARY", "ENIGMATIC", "PERSEVERE",
+  ]));
+  const occupied = new Set();
+  crossword.solution.forEach((row, rowIndex) => [...row].forEach((cell, colIndex) => {
+    if (cell !== ".") occupied.add(`${rowIndex},${colIndex}`);
+  }));
+  const seen = new Set();
+  const pending = [occupied.values().next().value];
+  while (pending.length) {
+    const cell = pending.pop();
+    if (seen.has(cell)) continue;
+    seen.add(cell);
+    const [row, col] = cell.split(",").map(Number);
+    for (const neighbor of [`${row - 1},${col}`, `${row + 1},${col}`, `${row},${col - 1}`, `${row},${col + 1}`]) {
+      if (occupied.has(neighbor) && !seen.has(neighbor)) pending.push(neighbor);
+    }
+  }
+  assert.equal(seen.size, occupied.size);
+  const coverage = new Map();
+  for (const entry of crossword.entries) {
+    const dr = entry.direction === "down" ? 1 : 0;
+    const dc = entry.direction === "across" ? 1 : 0;
+    const answer = [...entry.answer].map((_, index) => {
+      const row = entry.row + dr * index;
+      const col = entry.col + dc * index;
+      const cell = `${row},${col}`;
+      coverage.set(cell, (coverage.get(cell) || 0) + 1);
+      return crossword.solution[row][col];
+    }).join("");
+    assert.equal(answer, entry.answer);
+  }
+  assert.ok([...coverage.values()].filter((count) => count > 1).length >= crossword.entries.length + 1);
+
+  for (const [answer] of puzzles.weeklySatWords(new Date("2026-08-30T00:00:00Z"))) {
+    const entry = crossword.entries.find((candidate) => candidate.answer === answer);
+    assert.ok(entry);
+    assert.match(entry.clue, /This week's SAT word \(\d+ letters\):/);
+    assert.equal(entry.clue.includes(answer), false);
+  }
+});
+
 test("invalid or unbuildable news candidates never displace the weekly SAT fallback", () => {
   const result = puzzles.getDailyPuzzle("2026-08-15", [
     { id: "bad", headline: "Qzxwv", answer: "QZXWV", publishedAt: "2026-08-12T12:00:00Z" },
