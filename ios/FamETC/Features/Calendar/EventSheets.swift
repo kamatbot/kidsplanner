@@ -35,6 +35,10 @@ struct AddEventSheet: View {
 
     private var isEditing: Bool { editing != nil }
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty && !saving }
+    private var protectsDraftFromInteractiveDismissal: Bool {
+        saving || !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     /// Rows offered in the "For" picker, beyond "Whole family": a parent may
     /// target any kid; a kid session may only target themself (the server
@@ -111,6 +115,7 @@ struct AddEventSheet: View {
                 }
             }
         }
+        .interactiveDismissDisabled(protectsDraftFromInteractiveDismissal)
         .onAppear {
             if let editing {
                 title = editing.title

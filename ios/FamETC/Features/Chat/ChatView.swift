@@ -1584,6 +1584,11 @@ private struct ChatAddEventSheet: View {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !saving
     }
 
+    private var protectsDraftFromInteractiveDismissal: Bool {
+        saving || !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1625,6 +1630,7 @@ private struct ChatAddEventSheet: View {
                 }
             }
         }
+        .interactiveDismissDisabled(protectsDraftFromInteractiveDismissal)
         .onAppear {
             title = initialTitle
             if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
