@@ -489,8 +489,6 @@ private struct CrosswordCellField: UIViewRepresentable {
         field.onDeleteBackward = onDeleteBackward
         if isFocused, !field.isFirstResponder {
             DispatchQueue.main.async { field.becomeFirstResponder() }
-        } else if !isFocused, field.isFirstResponder {
-            field.resignFirstResponder()
         }
     }
 
