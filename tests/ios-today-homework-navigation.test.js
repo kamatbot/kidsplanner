@@ -29,6 +29,7 @@ test("iPhone and iPad Today tabs route to the native Homework tab", () => {
 
 test("Today passes the homework route through both role stacks and cards", () => {
   assert.match(today, /let onOpenHomework: \(\) -> Void/);
+  assert.match(today, /init\(onOpenHomework: @escaping \(\) -> Void = \{\}\)/);
   assert.match(today, /ParentTodayStack\(onOpenHomework: onOpenHomework\)/);
   assert.match(today, /KidTodayStack\(onOpenHomework: onOpenHomework\)/);
 

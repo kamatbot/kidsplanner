@@ -8,7 +8,11 @@ struct TodayScreen: View {
     @Environment(AppStore.self) private var store
     @State private var showAddEvent = false
     @State private var showNotes = false
-    let onOpenHomework: () -> Void = {}
+    let onOpenHomework: () -> Void
+
+    init(onOpenHomework: @escaping () -> Void = {}) {
+        self.onOpenHomework = onOpenHomework
+    }
 
     private var bottomClearance: CGFloat {
         UIDevice.current.userInterfaceIdiom == .phone ? Layout.tabBarClearance : Space.xl
