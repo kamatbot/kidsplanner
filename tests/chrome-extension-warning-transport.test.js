@@ -41,7 +41,10 @@ test("extension reports ECA, auto-sync, and live-sync failures with bounded acti
   assert.match(popup, /2-week timetable detected; unusual rows will be marked for review/);
 });
 
-test("extension patch version is 0.3.2", () => {
+test("extension completion-sync version is 0.4.0", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "chrome-extension", "manifest.json"), "utf8"));
-  assert.equal(manifest.version, "0.3.2");
+  assert.equal(manifest.version, "0.4.0");
+  assert.deepEqual(manifest.permissions, ["scripting", "storage"]);
+  assert.equal(manifest.permissions.includes("activeTab"), false);
+  assert.equal(manifest.permissions.includes("tabs"), false);
 });

@@ -111,12 +111,12 @@ test("login: returns reason 'unreachable' when the portal cannot be reached", as
 test("parseHomeworkHtml: extracts subject/title/dueDate/setDate/completed from synthetic markup", () => {
   const now = new Date("2026-07-03T00:00:00Z");
   const html = `
-    <div class="accordion-item applyhwclass tickon">
+    <div class="accordion-item applyhwclass tickon" data-id="3808216">
       <span class="subject">Mathematics</span>
       <span class="title">Algebra worksheet</span>
       <div class="date" title="This task was completed on Thu 18 June \n It was set Mon 8 June">Thu 18 June</div>
     </div>
-    <div class="accordion-item applyhwclass">
+    <div class="accordion-item applyhwclass" data-id='0003808217'>
       <span class="subject">English</span>
       <span class="title">Essay draft</span>
       <div class="date" title="It was set Tue 30 June">Fri 10 July</div>
@@ -124,8 +124,30 @@ test("parseHomeworkHtml: extracts subject/title/dueDate/setDate/completed from s
   `;
   const items = moodleClient.parseHomeworkHtml(html, now);
   assert.equal(items.length, 2);
-  assert.deepEqual(items[0], { subject: "Mathematics", title: "Algebra worksheet", dueDate: "2026-06-18", setDate: "2026-06-08", completed: true });
-  assert.deepEqual(items[1], { subject: "English", title: "Essay draft", dueDate: "2026-07-10", setDate: "2026-06-30", completed: false });
+  assert.deepEqual(items[0], { subject: "Mathematics", title: "Algebra worksheet", dueDate: "2026-06-18", setDate: "2026-06-08", completed: true, moodleTaskId: "3808216" });
+  assert.deepEqual(items[1], { subject: "English", title: "Essay draft", dueDate: "2026-07-10", setDate: "2026-06-30", completed: false, moodleTaskId: "0003808217" });
+});
+
+test("parseHomeworkHtml: preserves candidates when Moodle task identity is missing or invalid", () => {
+  const html = `
+    <div class="accordion-item applyhwclass">
+      <span class="subject">Science</span>
+      <span class="title">Missing identity</span>
+      <div class="date" title="It was set Mon 8 June">Thu 18 June</div>
+    </div>
+    <div class="accordion-item applyhwclass" data-id="homework-3808216">
+      <span class="subject">English</span>
+      <span class="title" data-id="3808216">Invalid identity</span>
+      <div class="date" title="It was set Mon 8 June">Thu 18 June</div>
+    </div>
+  `;
+
+  const items = moodleClient.parseHomeworkHtml(html, new Date("2026-07-03T00:00:00Z"));
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, "Missing identity");
+  assert.equal(items[0].moodleTaskId, null);
+  assert.equal(items[1].title, "Invalid identity");
+  assert.equal(items[1].moodleTaskId, null);
 });
 
 test("parseHomeworkHtml: infers academic year — Aug-Dec dates use the earlier year, Jan-Jul use the later year", () => {

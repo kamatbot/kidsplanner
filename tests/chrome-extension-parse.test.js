@@ -104,7 +104,7 @@ const parse = sandbox.window.famParse;
 
 test("parses production-shaped Moodle homework and builds the current URL", () => {
   const html = `
-    <div class="accordion-item applyhwclass">
+    <div class="accordion-item applyhwclass" data-id="3808216">
       <div class="accordion-header"><span class="subject">Music</span></div>
       <div class="accordion-body">
         <span class="title">Learn the chorus for assembly</span>
@@ -119,6 +119,7 @@ test("parses production-shaped Moodle homework and builds the current URL", () =
   assert.equal(items[0].title, "Learn the chorus for assembly");
   assert.equal(items[0].dueDate, "Saturday");
   assert.equal(items[0].completed, false);
+  assert.equal(items[0].moodleTaskId, "3808216");
   assert.equal(
     parse.moodleHomeworkUrl("student id/42?term=1&campus=primary"),
     "https://bangkok.learn.nae.school/mod/homework/view.php?h=2&userid=student%20id%2F42%3Fterm%3D1%26campus%3Dprimary&showcompleted=0&limit=0",
@@ -127,7 +128,7 @@ test("parses production-shaped Moodle homework and builds the current URL", () =
 
 test("keeps completed-task detection and userid encoding intact", () => {
   const items = parse.parseHomeworkHtml(`
-    <div class="accordion-item applyhwclass tickon">
+    <div class="accordion-item applyhwclass tickon" data-id="0003808216">
       <span class="subject">Music</span>
       <span class="title">Completed scale practice</span>
       <div class="date" title="This task was completed on Friday\nIt was set Thursday">Friday</div>
@@ -136,6 +137,7 @@ test("keeps completed-task detection and userid encoding intact", () => {
 
   assert.equal(items.length, 1);
   assert.equal(items[0].completed, true);
+  assert.equal(items[0].moodleTaskId, "0003808216");
   assert.equal(
     parse.moodleHomeworkUrl("id with / slash"),
     "https://bangkok.learn.nae.school/mod/homework/view.php?h=2&userid=id%20with%20%2F%20slash&showcompleted=0&limit=0",
@@ -157,15 +159,33 @@ test("preserves a malformed homework candidate and reports bounded parser warnin
   assert.match(items[0].rawText, /Fri 4 Sept/);
   assert.ok(items[0].warnings.some((warning) => /missing a title/i.test(warning)));
   assert.ok(items[0].warnings.some((warning) => /missing a due date/i.test(warning)));
+  assert.equal(items[0].moodleTaskId, null);
+  assert.ok(items[0].warnings.some((warning) => /Moodle task id \(data-id\)/i.test(warning)));
   assert.ok(items.parserWarnings.length >= 2);
 
   const exactDate = parse.parseHomeworkHtml(`
-    <div class="accordion-item applyhwclass">
+    <div class="accordion-item applyhwclass" data-id="123">
       <span class="title">Read chapter</span>
       <div class="date">Fri 4 Sept</div>
     </div>
   `);
   assert.equal(exactDate[0].dueDate, "Fri 4 Sept");
+});
+
+test("preserves a homework candidate with an invalid Moodle task identity and warns", () => {
+  const items = parse.parseHomeworkHtml(`
+    <div class="accordion-item applyhwclass" data-id="homework-3808216">
+      <span class="subject">Science</span>
+      <span class="title" data-id="3808216">Lab report</span>
+      <div class="date" title="It was set Thursday">Friday</div>
+    </div>
+  `);
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, "Lab report");
+  assert.equal(items[0].moodleTaskId, null);
+  assert.ok(items[0].warnings.some((warning) => /valid numeric Moodle task id/i.test(warning)));
+  assert.ok(items.parserWarnings.some((warning) => /valid numeric Moodle task id/i.test(warning)));
 });
 
 function loadParserWithDocument(document) {

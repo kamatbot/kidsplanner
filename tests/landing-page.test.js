@@ -120,8 +120,9 @@ test("landing public copy makes no permanence or obsolete product promise", () =
 test("landing page describes the honest Moodle and privacy flow", () => {
   assert.match(landing, /From Settings, a parent can connect Moodle and import/);
   assert.match(landing, /Chrome extension while signed into Moodle/);
-  assert.match(landing, /parent-only and read-only/);
-  assert.match(landing, /never posts as you/);
+  assert.match(landing, /Parent-controlled/);
+  assert.match(landing, /mark that exact task complete/);
+  assert.doesNotMatch(landing, /never posts as you/);
   assert.match(landing, /href="\/privacy"/);
   assert.match(landing, /See how Moodle sync works/);
   assert.doesNotMatch(landing, /keeps itself current|checks again through the day|on their own/i);

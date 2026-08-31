@@ -1,8 +1,9 @@
 # Fam ETC School Import (Chrome extension)
 
 Auto-syncs a child's homework, timetable, and confirmed activity signups from the school Moodle portal
-(`bangkok.learn.nae.school`) into Fam ETC — without ever handling a
-username or password.
+(`bangkok.learn.nae.school`) into Fam ETC. When a family marks an exactly
+matched imported task complete, it also verifies and marks that task complete
+in Moodle — without ever handling a username or password.
 
 ## How it works
 
@@ -11,12 +12,15 @@ The extension runs entirely in **your already-logged-in browser sessions**
 
 - **`content.js`** — a content script that runs automatically on every
   `bangkok.learn.nae.school` page. It detects whether you're logged into
-  Moodle, checks in with the background worker, and either auto-syncs, shows
-  a small callout, or does nothing (e.g. on the login page).
+  Moodle, asks the background worker to deliver pending completions, and then
+  either auto-imports, shows a small callout, or does nothing (e.g. on the
+  login page).
 - **`background.js`** — an MV3 service worker that bridges the Moodle page
-  and an open, logged-in `fametc.com` tab. It's the only place that talks to
-  the Fam ETC tab, via `chrome.scripting.executeScript` with `world: "MAIN"`
-  (see "Why executeScript world:MAIN" below).
+  and Fam ETC. It retrieves the parent's completion queue and uses short-lived,
+  inactive Moodle tabs to set and verify exact task completions through the
+  already-signed-in session. It also bridges an open, logged-in `fametc.com`
+  tab for school imports via `chrome.scripting.executeScript` with
+  `world: "MAIN"` (see "Why executeScript world:MAIN" below).
 - **`popup.js`** — the toolbar popup, kept as a manual fallback trigger you
   can use anytime, independent of the auto-sync throttle.
 
@@ -56,6 +60,24 @@ never drift apart.
    import via the popup is **never throttled** — use it anytime for an
    immediate sync.
 
+## Homework completion sync
+
+1. A kid or parent marks an exactly identified, Moodle-imported homework item
+   done in Fam ETC. Fam ETC saves that completion immediately and keeps a
+   durable pending request; Moodle does not need to be open yet.
+2. On the next authenticated Moodle page load, the extension checks the
+   parent-only Fam ETC queue before the normal ten-minute import throttle.
+3. For each request, it checks Moodle's completed list for the exact numeric
+   task id. If needed, it sends Moodle's explicit “completed” state (`val=1`)
+   using the fresh page session, then fetches the completed list again.
+4. Fam ETC acknowledges the request only after that exact id is verified as
+   complete. Login, network, missing-task, or ambiguous-page failures remain
+   pending and retry on a later Moodle visit. Fam ETC undo never marks a
+   Moodle task incomplete.
+
+Moodle cookies and session keys remain in the browser page and are never
+stored in Fam ETC's completion queue.
+
 ## Manual fallback (popup)
 
 Click the extension icon any time to trigger an import by hand:
@@ -75,16 +97,20 @@ Click the extension icon any time to trigger an import by hand:
 
 ## Why `executeScript` with `world: "MAIN"`
 
-The extension has no access to the `fametc.com` session cookie in a
-cross-context `fetch` — only same-origin script running *inside* the page
-can rely on that cookie automatically. So the "write" step (calling
-`window.famImportSchoolData(...)` or reading
-`window.famGetSchoolMappings()`) runs via
+The extension first uses its permitted Fam ETC request context for the small
+completion queue. If that context cannot use the signed-in session, it falls
+back to a same-origin request inside an already-open canonical Fam ETC tab.
+The school-import bridge (calling `window.famImportSchoolData(...)` or reading
+`window.famGetSchoolMappings()`) also runs via
 `chrome.scripting.executeScript({ world: "MAIN", ... })` injected into the
 open Fam ETC tab — exactly like a same-origin script running in the page
 itself would. The default "isolated" world shares the DOM but *not* the
 page's `window` globals, so those functions (defined by the page's
 `public/js/app.js`) are only reachable from `MAIN`.
+
+Completion delivery uses the same MAIN-world mechanism in a temporary Moodle
+tab so the fresh Moodle session key is never copied into extension storage or
+sent to Fam ETC. The tab is closed after each verified attempt.
 
 ## Install
 
@@ -121,9 +147,10 @@ of them synced from a single Moodle login, no per-kid manual steps needed.
 - **2-week (Wk1/Wk2) timetables**: normal first-week rows import as usual;
   unusual or second-week rows are kept as editable review items instead of
   being silently discarded.
-- **A `fametc.com` tab must be open and logged in** for auto-sync or manual
-  import to write anything — the callout banner exists specifically to
-  prompt you to open one.
+- **A `fametc.com` tab must be open and logged in** for auto-import or manual
+  import. Completion delivery can use the existing Fam ETC session directly;
+  an open canonical Fam ETC tab is its fallback when that direct request is
+  unavailable.
 - **Homework due dates without a year** (e.g. "Thu 18 June") are inferred
   from the current academic year (Aug–Jul) by the Fam ETC bridge — double
   check imported due dates around the calendar-year boundary (Dec/Jan).

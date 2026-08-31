@@ -61,6 +61,8 @@ function parseHomeworkHtml(html) {
     const dateEl = node.querySelector(".date");
     const rowWarnings = [];
 
+    const taskIdAttr = node.getAttribute("data-id");
+    const moodleTaskId = typeof taskIdAttr === "string" && /^\d+$/.test(taskIdAttr) ? taskIdAttr : null;
     const completed = node.classList.contains("tickon");
     const subject = boundedParserText(subjectEl && subjectEl.textContent);
     const title = boundedParserText(titleEl && titleEl.textContent);
@@ -70,6 +72,7 @@ function parseHomeworkHtml(html) {
     if (!subjectEl || !subject) rowWarnings.push(`Homework row ${index + 1} is missing a subject.`);
     if (!titleEl || !title) rowWarnings.push(`Homework row ${index + 1} is missing a title.`);
     if (!dateEl || !visibleDate) rowWarnings.push(`Homework row ${index + 1} is missing a due date.`);
+    if (!moodleTaskId) rowWarnings.push(`Homework row ${index + 1} is missing a valid numeric Moodle task id (data-id); completion sync is unavailable.`);
 
     // titleAttr looks like: "This task was completed on <D>\nIt was set <D>"
     // or just "It was set <D>" for incomplete tasks.
@@ -86,6 +89,7 @@ function parseHomeworkHtml(html) {
       dueDate: visibleDate, // e.g. "Thu 18 June" — normalized app-side
       setDate,
       completed,
+      moodleTaskId,
     };
     if (rowWarnings.length) {
       item.rawText = boundedParserText(node.textContent);

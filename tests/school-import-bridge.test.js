@@ -30,7 +30,7 @@ const importFunction = extractFunction(appSource, "famImportSchoolData");
 const dateFunction = extractFunction(appSource, "normalizeSchoolImportDate");
 
 function createHarness({ homework = [], events = [], failHomework = false, failCalendar = false, failDelete = false } = {}) {
-  const calls = { homework: [], calendar: [], deleted: [], toasts: [] };
+  const calls = { homework: [], homeworkUpdates: [], calendar: [], deleted: [], toasts: [] };
   let homeworkState = homework.map((item) => ({ ...item }));
   const initialEvents = events.map((event) => ({ ...event }));
   const fixedNow = new Date(2026, 7, 22, 12);
@@ -55,6 +55,14 @@ function createHarness({ homework = [], events = [], failHomework = false, failC
     if (failHomework) throw new Error("homework endpoint unavailable");
     homeworkState = homeworkState.concat([{ ...payload }]);
     return { homework: payload };
+  };
+  context.window.auth.updateHomework = async (id, patch) => {
+    calls.homeworkUpdates.push({ id, patch });
+    if (failHomework) throw new Error("homework endpoint unavailable");
+    const index = homeworkState.findIndex((item) => item.id === id);
+    if (index < 0) throw new Error("homework item not found");
+    homeworkState[index] = { ...homeworkState[index], ...patch };
+    return { homework: homeworkState[index] };
   };
   context.window.auth.addCalendarEvent = async (payload) => {
     calls.calendar.push(payload);
@@ -163,6 +171,144 @@ test("production Moodle date 'Fri 4 Sept' imports the homework without a warning
   assert.equal(result.importWarnings.length, 0);
   assert.equal(harness.calls.homework[0].dueDate, "2026-09-04");
   assert.equal(harness.calls.homework[0].title, "Complete the states of matter self study booklet");
+});
+
+test("exact Moodle task identity is forwarded and keeps same-title tasks distinct", async () => {
+  const harness = createHarness();
+  const payload = {
+    kidId: "kid-1",
+    moodleUserId: "14177",
+    homework: [
+      { title: "Weekly reflection", dueDate: "2026-09-04", moodleTaskId: "3808216" },
+      { title: "Weekly reflection", dueDate: "2026-09-04", moodleTaskId: "3808217" },
+    ],
+  };
+
+  const first = await harness.importSchoolData(payload);
+  const second = await harness.importSchoolData(payload);
+
+  assert.equal(first.homeworkAdded, 2);
+  assert.equal(second.homeworkAdded, 0);
+  assert.equal(second.homeworkSkipped, 2);
+  assert.equal(harness.calls.homework.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.calls.homework.map((item) => item.moodleIdentity))), [
+    {
+      origin: "https://bangkok.learn.nae.school",
+      homeworkViewId: "2",
+      userId: "14177",
+      taskId: "3808216",
+    },
+    {
+      origin: "https://bangkok.learn.nae.school",
+      homeworkViewId: "2",
+      userId: "14177",
+      taskId: "3808217",
+    },
+  ]);
+});
+
+test("exact Moodle identity safely backfills one legacy homework item", async () => {
+  const harness = createHarness({
+    homework: [{
+      id: "hw_legacy",
+      kidId: "kid-1",
+      title: "Algebra worksheet",
+      dueDate: "2026-09-04",
+      source: "school-portal",
+      status: "done",
+    }],
+  });
+  const payload = {
+    kidId: "kid-1",
+    moodleUserId: "14177",
+    homework: [{ title: "Algebra worksheet", dueDate: "2026-09-04", moodleTaskId: "3808216" }],
+  };
+
+  const first = await harness.importSchoolData(payload);
+  const second = await harness.importSchoolData(payload);
+
+  assert.equal(first.homeworkAdded, 0);
+  assert.equal(first.homeworkSkipped, 1);
+  assert.equal(second.homeworkAdded, 0);
+  assert.equal(second.homeworkSkipped, 1);
+  assert.equal(harness.calls.homework.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.calls.homeworkUpdates)), [{
+    id: "hw_legacy",
+    patch: {
+      moodleIdentity: {
+        origin: "https://bangkok.learn.nae.school",
+        homeworkViewId: "2",
+        userId: "14177",
+        taskId: "3808216",
+      },
+    },
+  }]);
+});
+
+test("ambiguous legacy homework is not adopted by an exact Moodle task", async () => {
+  const legacy = (id) => ({
+    id,
+    kidId: "kid-1",
+    title: "Same title",
+    dueDate: "2026-09-04",
+    source: "school-portal",
+  });
+  const harness = createHarness({ homework: [legacy("hw_one"), legacy("hw_two")] });
+
+  const result = await harness.importSchoolData({
+    kidId: "kid-1",
+    moodleUserId: "14177",
+    homework: [{ title: "Same title", dueDate: "2026-09-04", moodleTaskId: "3808216" }],
+  });
+
+  assert.equal(result.homeworkAdded, 1);
+  assert.equal(harness.calls.homeworkUpdates.length, 0);
+  assert.equal(harness.calls.homework[0].moodleIdentity.taskId, "3808216");
+});
+
+test("invalid Moodle identity retains legacy import and dedup behavior", async () => {
+  const harness = createHarness();
+  const payload = {
+    kidId: "kid-1",
+    moodleUserId: "not-numeric",
+    homework: [{ title: "Essay", dueDate: "2026-09-04", moodleTaskId: "task-3808216" }],
+  };
+
+  const first = await harness.importSchoolData(payload);
+  const second = await harness.importSchoolData(payload);
+
+  assert.equal(first.homeworkAdded, 1);
+  assert.equal(second.homeworkAdded, 0);
+  assert.equal(second.homeworkSkipped, 1);
+  assert.equal(harness.calls.homework[0].moodleIdentity, undefined);
+});
+
+test("a transient identity-less parse does not duplicate an exact imported task", async () => {
+  const harness = createHarness({
+    homework: [{
+      id: "hw_exact",
+      kidId: "kid-1",
+      title: "Existing exact task",
+      dueDate: "2026-09-04",
+      source: "school-portal",
+      moodleIdentity: {
+        origin: "https://bangkok.learn.nae.school",
+        homeworkViewId: "2",
+        userId: "14177",
+        taskId: "3808216",
+      },
+    }],
+  });
+
+  const result = await harness.importSchoolData({
+    kidId: "kid-1",
+    moodleUserId: "14177",
+    homework: [{ title: "Existing exact task", dueDate: "2026-09-04", moodleTaskId: null }],
+  });
+
+  assert.equal(result.homeworkAdded, 0);
+  assert.equal(result.homeworkSkipped, 1);
+  assert.equal(harness.calls.homework.length, 0);
 });
 
 test("malformed homework re-imports are idempotent while distinct raw evidence remains importable", async () => {

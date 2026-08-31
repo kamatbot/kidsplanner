@@ -60,7 +60,7 @@ function schoolRoute() {
   });
   const pass = (req, res, next) => next();
   schoolRoutes(app, {
-    schoolAccount: {},
+    schoolAccount: { getMoodleUserId: () => null },
     moodleClient: {},
     family,
     homework,

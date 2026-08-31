@@ -1,4 +1,5 @@
 "use strict";
+if (window.location.hash !== "#fametc-completion-sync") {
 /* ============================================================
    Fam ETC School Import — content.js
    Runs on every bangkok.learn.nae.school page (document_idle). Detects a
@@ -125,6 +126,31 @@ function showWarningCallout(summary, warnings) {
   `, { autoHideMs: 20000 });
   el.querySelector("[data-fam-warning-summary]").textContent = summary;
   el.querySelector("[data-fam-warning-message]").textContent = warnings[0] || "Import warning";
+}
+
+function showCompletionResult(result) {
+  if (!result || (!result.verified && !result.pending)) return;
+  const isRetry = result.pending > 0;
+  const el = showBanner(`
+    <div data-fam-completion-title style="font-weight:700;margin-bottom:6px"></div>
+    <div data-fam-completion-message style="margin-bottom:10px"></div>
+    <button data-fam-close style="background:#eee;color:#333;border:none;border-radius:6px;padding:7px 10px;cursor:pointer">Dismiss</button>
+  `, { autoHideMs: isRetry ? 20000 : 15000 });
+  el.querySelector("[data-fam-completion-title]").textContent = isRetry ? "Fam ETC ⚠️" : "Fam ETC ✅";
+  let message = result.verified
+    ? `Marked ${result.verified} Moodle homework task${result.verified === 1 ? "" : "s"} complete.`
+    : "Moodle homework completion could not be confirmed.";
+  if (isRetry) message += " Unconfirmed changes will retry next time Moodle opens.";
+  el.querySelector("[data-fam-completion-message]").textContent = message;
+}
+
+async function syncMoodleCompletions() {
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "SYNC_MOODLE_COMPLETIONS" });
+    showCompletionResult(result);
+  } catch (e) {
+    // A later authenticated Moodle page load will retry the durable queue.
+  }
 }
 
 /* ---------- throttle (chrome.storage.local — persists across page loads) ---------- */
@@ -335,6 +361,10 @@ async function runAutoSync(mappings) {
 async function main() {
   if (!isLoggedIn()) return; // on the login page (or can't tell) — do nothing
 
+  // Completion delivery has its own durable retry queue and is intentionally
+  // started before, and independently of, the ten-minute import throttle.
+  syncMoodleCompletions();
+
   watchEcaSignupChanges();
 
   let check;
@@ -369,3 +399,4 @@ async function main() {
 }
 
 main();
+}

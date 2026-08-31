@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Fam ETC School Import",
-  "version": "0.3.2",
-  "description": "Auto-syncs Moodle homework, timetable, and signed-up activities into Fam ETC using your logged-in session.",
+  "version": "0.4.0",
+  "description": "Syncs Moodle school data into Fam ETC and verified homework completions back to Moodle using your logged-in session.",
   "action": {
     "default_popup": "popup.html",
     "default_title": "Fam ETC School Import"
@@ -17,7 +17,7 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["scripting", "tabs", "activeTab", "storage"],
+  "permissions": ["scripting", "storage"],
   "host_permissions": [
     "https://bangkok.learn.nae.school/*",
     "https://www.fametc.com/*",

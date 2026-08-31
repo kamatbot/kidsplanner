@@ -6006,8 +6006,8 @@ function startReminderLoop() {
    Payload shape:
      {
        kidId: string,               // Fam ETC kid id (currentFamily.kids[].id)
-       moodleUserId: string|number, // informational only, not required
-       homework: [{ subject, title, dueDate (YYYY-MM-DD or parseable), completed }],
+       moodleUserId: string|number, // exact child id; required only for completion sync
+       homework: [{ subject, title, dueDate (YYYY-MM-DD or parseable), completed, moodleTaskId }],
        timetable: [{ day: 0-4 (Mon-Fri) or 'Mon'.., period, time: 'HH:MM', subject }],
        activitySnapshots: [{
          ecaId: string,
@@ -6086,6 +6086,28 @@ const SCHOOL_IMPORT_WARNING_TEXT = 'Import warning — needs review';
 const SCHOOL_IMPORT_MAX_WARNINGS = 100;
 const SCHOOL_IMPORT_KID_ID_RE = /^[^:]{1,120}$/;
 const SCHOOL_IMPORT_NUMERIC_ID_RE = /^\d{1,20}$/;
+const SCHOOL_IMPORT_MOODLE_TASK_ID_RE = /^\d{1,200}$/;
+const SCHOOL_IMPORT_MOODLE_ORIGIN = 'https://bangkok.learn.nae.school';
+
+function schoolImportMoodleIdentity(moodleUserId, moodleTaskId) {
+  const userId = String(moodleUserId || '').trim();
+  const taskId = String(moodleTaskId || '').trim();
+  if (!SCHOOL_IMPORT_NUMERIC_ID_RE.test(userId) || !SCHOOL_IMPORT_MOODLE_TASK_ID_RE.test(taskId)) return null;
+  return {
+    origin: SCHOOL_IMPORT_MOODLE_ORIGIN,
+    homeworkViewId: '2',
+    userId,
+    taskId,
+  };
+}
+
+function schoolImportMoodleIdentityKey(identity) {
+  if (!identity || identity.origin !== SCHOOL_IMPORT_MOODLE_ORIGIN || identity.homeworkViewId !== '2') return '';
+  const userId = String(identity.userId || '');
+  const taskId = String(identity.taskId || '');
+  if (!SCHOOL_IMPORT_NUMERIC_ID_RE.test(userId) || !SCHOOL_IMPORT_MOODLE_TASK_ID_RE.test(taskId)) return '';
+  return `${userId}:${taskId}`;
+}
 
 function schoolImportTodayIso(now) {
   const date = now || new Date();
@@ -6281,6 +6303,7 @@ async function famImportSchoolData(payload) {
       return result;
     }
     const kidId = kid.id;
+    const mappedMoodleUserId = String((payload && payload.moodleUserId) || '').trim();
 
     /* ---------- Homework ---------- */
     const hwList = (payload && Array.isArray(payload.homework)) ? payload.homework : [];
@@ -6293,12 +6316,22 @@ async function famImportSchoolData(payload) {
         schoolImportWarning(result, 'homework-read', 'Homework import',
           `Could not read existing homework: ${schoolImportErrorMessage(e, 'API read failed.')}`, false);
       }
-      const existingKeys = new Set();
+      const existingIdentityKeys = new Set();
+      const existingHomeworkKeys = new Set();
+      const legacyByKey = new Map();
       for (const h of (existing || [])) {
         const baseKey = schoolImportHomeworkKey(h.title, h.dueDate);
-        existingKeys.add(baseKey);
         const notes = String(h.notes || '');
-        if (notes.startsWith(SCHOOL_IMPORT_WARNING_TEXT)) existingKeys.add(`${baseKey}|${notes}`);
+        const homeworkKey = notes.startsWith(SCHOOL_IMPORT_WARNING_TEXT) ? `${baseKey}|${notes}` : baseKey;
+        existingHomeworkKeys.add(homeworkKey);
+        const identityKey = schoolImportMoodleIdentityKey(h.moodleIdentity);
+        if (identityKey) {
+          existingIdentityKeys.add(identityKey);
+          continue;
+        }
+        const matches = legacyByKey.get(homeworkKey) || [];
+        matches.push(h);
+        legacyByKey.set(homeworkKey, matches);
       }
       const seenThisRun = new Set();
 
@@ -6329,12 +6362,32 @@ async function famImportSchoolData(payload) {
         const key = malformed
           ? `${schoolImportHomeworkKey(title, dueDate)}|${notes}`
           : schoolImportHomeworkKey(title, dueDate);
-        if (existingKeys.has(key) || seenThisRun.has(key)) {
+        const moodleIdentity = schoolImportMoodleIdentity(mappedMoodleUserId, hw.moodleTaskId);
+        const identityKey = schoolImportMoodleIdentityKey(moodleIdentity);
+        const runKey = identityKey ? `moodle:${identityKey}` : `legacy:${key}`;
+        if ((identityKey && existingIdentityKeys.has(identityKey))
+            || (!identityKey && existingHomeworkKeys.has(key))
+            || seenThisRun.has(runKey)) {
           result.homeworkSkipped++;
           intentionalSkip('homeworkIntentionalSkipped');
           continue;
         }
-        seenThisRun.add(key);
+        seenThisRun.add(runKey);
+
+        const legacyMatches = identityKey ? (legacyByKey.get(key) || []) : [];
+        if (identityKey && legacyMatches.length === 1) {
+          try {
+            await window.auth.updateHomework(legacyMatches[0].id, { moodleIdentity });
+            existingIdentityKeys.add(identityKey);
+            legacyByKey.delete(key);
+            result.homeworkSkipped++;
+            intentionalSkip('homeworkIntentionalSkipped');
+          } catch (e) {
+            schoolImportWarning(result, 'homework', title,
+              `Could not link Moodle completion sync: ${schoolImportErrorMessage(e, 'API write failed.')}`, false);
+          }
+          continue;
+        }
 
         try {
           await window.auth.addHomework({
@@ -6344,9 +6397,12 @@ async function famImportSchoolData(payload) {
             dueDate,
             source: 'school-portal',
             notes,
+            moodleIdentity: moodleIdentity || undefined,
           });
           result.homeworkAdded++;
-          existingKeys.add(key);
+          if (identityKey) existingIdentityKeys.add(identityKey);
+          else legacyByKey.set(key, [{ title, dueDate, notes }]);
+          existingHomeworkKeys.add(key);
           if (malformed) {
             schoolImportWarning(result, 'homework', title, warningMessage, true);
           }
