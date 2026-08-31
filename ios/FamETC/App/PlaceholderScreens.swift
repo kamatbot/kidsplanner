@@ -504,6 +504,7 @@ private struct HomeworkCompactRow: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(item.title)
                 .accessibilityValue([HomeworkCopy.status(item.status), dueState.detail, checklistSummary, kidName]
                     .compactMap { $0 }.joined(separator: ", "))
