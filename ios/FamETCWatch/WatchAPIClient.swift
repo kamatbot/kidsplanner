@@ -74,17 +74,20 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     private let credentials: WatchCredentialStore
     private let clientKey: String
     private let decoder: JSONDecoder
+    private let requestExecutor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?
 
     init(baseURL: URL = WatchConfiguration.baseURL,
          session: URLSession? = nil,
          credentials: WatchCredentialStore = KeychainWatchCredentialStore(),
          clientKey: String = WatchConfiguration.clientKey,
-         decoder: JSONDecoder = JSONDecoder()) {
+         decoder: JSONDecoder = JSONDecoder(),
+         requestExecutor: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil) {
         self.baseURL = baseURL
         self.session = session ?? Self.makeSession()
         self.credentials = credentials
         self.clientKey = clientKey
         self.decoder = decoder
+        self.requestExecutor = requestExecutor
     }
 
     func fetchActions() async throws -> [WatchAction] {
@@ -251,7 +254,11 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            if let requestExecutor {
+                (data, response) = try await requestExecutor(request)
+            } else {
+                (data, response) = try await session.data(for: request)
+            }
         } catch let error as URLError where error.code == .timedOut {
             throw WatchAPIError.timedOut
         } catch is CancellationError {

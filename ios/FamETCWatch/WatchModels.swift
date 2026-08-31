@@ -290,6 +290,33 @@ struct WatchMutation: Codable, Equatable, Identifiable {
         self.index = index
         self.createdAt = createdAt
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(WatchMutationKind.self, forKey: .kind)
+        resourceID = try container.decode(String.self, forKey: .resourceID)
+        stringValue = try container.decodeIfPresent(String.self, forKey: .stringValue)
+        boolValue = try container.decodeIfPresent(Bool.self, forKey: .boolValue)
+        // The index is absent from schema-1 mutation records.
+        index = try container.decodeIfPresent(Int.self, forKey: .index)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(resourceID, forKey: .resourceID)
+        try container.encodeIfPresent(stringValue, forKey: .stringValue)
+        try container.encodeIfPresent(boolValue, forKey: .boolValue)
+        try container.encodeIfPresent(index, forKey: .index)
+        try container.encode(createdAt, forKey: .createdAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, resourceID, stringValue, boolValue, index, createdAt
+    }
 }
 
 /// A local focus block is intentionally a small timestamped record. It is

@@ -8,6 +8,16 @@ private final class APIClientTestCredentials: WatchCredentialStore {
     }
 }
 
+private actor RequestRecorder {
+    private var value: URLRequest?
+
+    func record(_ request: URLRequest) {
+        value = request
+    }
+
+    func request() -> URLRequest? { value }
+}
+
 private final class StubWatchURLProtocol: URLProtocol {
     static var requests: [URLRequest] = []
     static var responseData = Data("{\"actions\":[]}".utf8)
@@ -98,5 +108,37 @@ final class WatchAPIClientTests: XCTestCase {
 
         let request = try XCTUnwrap(StubWatchURLProtocol.requests.first)
         XCTAssertEqual(request.url?.path, "/api/meals/shopping")
+    }
+
+    func testChecklistStepUsesExactEndpointAndBooleanBody() async throws {
+        let responseData = Data("{\"homework\":{\"id\":\"h1\",\"title\":\"Essay\",\"dueDate\":\"2026-08-10\",\"status\":\"todo\",\"checklist\":[{\"text\":\"Outline\",\"done\":true}]}}".utf8)
+        let recorder = RequestRecorder()
+        let client = URLSessionWatchAPIClient(
+            baseURL: URL(string: "https://example.test")!,
+            credentials: APIClientTestCredentials(),
+            requestExecutor: { request in
+                await recorder.record(request)
+                let response = HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (responseData, response)
+            }
+        )
+
+        let item = try await client.updateHomeworkChecklistStep("h1", index: 3, done: true)
+
+        XCTAssertEqual(item.id, "h1")
+        let recordedRequest = await recorder.request()
+        let request = try XCTUnwrap(recordedRequest)
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.path, "/api/homework/h1/checklist/3")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let body = try XCTUnwrap(request.httpBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["done"] as? Bool, true)
+        XCTAssertEqual(json.count, 1)
     }
 }
