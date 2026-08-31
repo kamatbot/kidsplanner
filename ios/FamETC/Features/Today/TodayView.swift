@@ -109,6 +109,7 @@ private struct ParentTodayStack: View {
         VStack(alignment: .leading, spacing: Space.lg) {
             if hSize == .compact {
                 StudyStartCard()
+                ActionCard()
                 ScheduleCard()
                 HomeworkDueCard()
             } else {
@@ -116,13 +117,13 @@ private struct ParentTodayStack: View {
                     StudyStartCard()
                         .frame(maxWidth: .infinity, alignment: .top)
                     VStack(alignment: .leading, spacing: Space.lg) {
+                        ActionCard()
                         ScheduleCard()
                         HomeworkDueCard()
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
-            ActionCard()
             PathOddsFamilySummaryCard()
             DailyFiveCard()
         }
@@ -212,11 +213,23 @@ private struct StudyStartCard: View {
                         .font(Typography.cardTitle)
                         .foregroundStyle(Palette.text)
                     Spacer(minLength: Space.sm)
+                    if let item, store.homeworkMutationIDs.contains(item.id) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(Palette.accent)
+                            .accessibilityLabel("Updating homework")
+                    }
                     if store.isParent, let childName {
                         Text(childName)
                             .font(Typography.caption.weight(.semibold))
                             .foregroundStyle(Palette.textSecond)
                             .lineLimit(1)
+                    }
+                }
+
+                if store.homeworkError != nil {
+                    HomeworkSyncNotice(hasCachedHomework: !store.homework.isEmpty) {
+                        Task { await store.loadCalendarAndHomework(force: true) }
                     }
                 }
 
@@ -300,6 +313,8 @@ private struct StudyStartCard: View {
 
     @ViewBuilder
     private func actionButtons(for item: HomeworkItem) -> some View {
+        let isMutating = store.homeworkMutationIDs.contains(item.id)
+
         if item.status == "todo" {
             Button {
                 Haptics.impact(.light)
@@ -312,6 +327,7 @@ private struct StudyStartCard: View {
                     .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
             }
             .buttonStyle(PressableStyle())
+            .disabled(isMutating)
             .accessibilityHint("Marks this assignment as in progress")
         }
 
@@ -331,8 +347,38 @@ private struct StudyStartCard: View {
                     )
             }
             .buttonStyle(PressableStyle())
+            .disabled(isMutating)
             .accessibilityHint("Marks only the next checklist step complete")
         }
+    }
+}
+
+private struct HomeworkSyncNotice: View {
+    let hasCachedHomework: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: Space.sm) {
+            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Palette.red)
+                .accessibilityHidden(true)
+            Text(hasCachedHomework
+                 ? "Homework couldn't refresh. Showing saved items."
+                 : "Homework couldn't refresh.")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Space.xs)
+            Button("Retry", action: retry)
+                .font(Typography.caption.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(.plain)
+        }
+        .padding(.leading, Space.sm)
+        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -547,6 +593,7 @@ private struct KidTodayStack: View {
         VStack(alignment: .leading, spacing: Space.lg) {
             if hSize == .compact {
                 StudyStartCard()
+                ActionCard()
                 if let nextUp { KidNextUpCallout(item: nextUp) }
                 KidDayCard(items: todayItems)
             } else {
@@ -554,6 +601,7 @@ private struct KidTodayStack: View {
                     StudyStartCard()
                         .frame(maxWidth: .infinity, alignment: .top)
                     VStack(alignment: .leading, spacing: Space.lg) {
+                        ActionCard()
                         if let nextUp { KidNextUpCallout(item: nextUp) }
                         KidDayCard(items: todayItems)
                     }
@@ -562,7 +610,6 @@ private struct KidTodayStack: View {
             }
 
             KidHomeworkCard()
-            ActionCard()
             PathOddsQuestCard()
             DailyFiveCard(isKid: true)
         }

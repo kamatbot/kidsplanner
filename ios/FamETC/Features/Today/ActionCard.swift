@@ -127,7 +127,7 @@ private struct ActionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
             completionControl
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
 
             rowContent
 
@@ -171,7 +171,7 @@ private struct ActionRow: View {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Palette.textSecond)
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
