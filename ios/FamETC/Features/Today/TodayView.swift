@@ -8,6 +8,7 @@ struct TodayScreen: View {
     @Environment(AppStore.self) private var store
     @State private var showAddEvent = false
     @State private var showNotes = false
+    let onOpenHomework: () -> Void = {}
 
     private var bottomClearance: CGFloat {
         UIDevice.current.userInterfaceIdiom == .phone ? Layout.tabBarClearance : Space.xl
@@ -30,10 +31,10 @@ struct TodayScreen: View {
                 VStack(alignment: .leading, spacing: Space.lg) {
                     if store.isParent {
                         ParentHeader(greeting: greeting, dateLabel: dateLabel, onMore: { showNotes = true })
-                        ParentTodayStack()
+                        ParentTodayStack(onOpenHomework: onOpenHomework)
                     } else {
                         KidHeader(dateLabel: dateLabel, onMore: { showNotes = true })
-                        KidTodayStack()
+                        KidTodayStack(onOpenHomework: onOpenHomework)
                     }
                 }
                 .padding(Space.lg)
@@ -105,18 +106,19 @@ private struct AddEventFAB: View {
 private struct ParentTodayStack: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let onOpenHomework: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
                 ActionCard()
                 ScheduleCard()
-                HomeworkDueCard()
+                HomeworkDueCard(onOpenHomework: onOpenHomework)
             } else {
                 VStack(alignment: .leading, spacing: Space.lg) {
                     ActionCard()
                     ScheduleCard()
-                    HomeworkDueCard()
+                    HomeworkDueCard(onOpenHomework: onOpenHomework)
                 }
             }
             PathOddsFamilySummaryCard()
@@ -444,6 +446,7 @@ private struct ScheduleRow: View {
 
 private struct HomeworkDueCard: View {
     @Environment(AppStore.self) private var store
+    let onOpenHomework: () -> Void
 
     private var items: [HomeworkItem] { Agenda.homeworkDueSoon(store.homework, days: 7) }
 
@@ -457,6 +460,7 @@ private struct HomeworkDueCard: View {
                         Text("\(items.count)").font(Typography.mono(11)).foregroundStyle(Palette.textSecond)
                     }
                 }
+                HomeworkOpenButton(action: onOpenHomework)
                 if items.isEmpty {
                     Text("No homework is due this week.")
                         .font(Typography.body).foregroundStyle(Palette.textSecond)
@@ -570,6 +574,7 @@ private struct KidTodayStack: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let onOpenHomework: () -> Void
 
     private var todayItems: [AgendaItem] {
         Agenda.items(on: Agenda.todayKey(), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework)
@@ -597,7 +602,7 @@ private struct KidTodayStack: View {
                 }
             }
 
-            KidHomeworkCard()
+            KidHomeworkCard(onOpenHomework: onOpenHomework)
             PathOddsQuestCard()
             DailyFiveCard(isKid: true)
         }
@@ -676,6 +681,7 @@ private struct KidDayCard: View {
 /// The kid's own homework: overdue/today/upcoming plus done items due today.
 private struct KidHomeworkCard: View {
     @Environment(AppStore.self) private var store
+    let onOpenHomework: () -> Void
 
     private var items: [HomeworkItem] {
         let today = Agenda.todayKey(); let limit = Agenda.dayKey(offset: 7)
@@ -696,6 +702,7 @@ private struct KidHomeworkCard: View {
                     Spacer()
                     Text("\(leftCount) left").font(Typography.mono(12)).foregroundStyle(Palette.textSecond)
                 }
+                HomeworkOpenButton(action: onOpenHomework)
                 if items.isEmpty {
                     Text("No homework is due this week.")
                         .font(Typography.body).foregroundStyle(Palette.textSecond)
@@ -706,6 +713,30 @@ private struct KidHomeworkCard: View {
                 }
             }
         }
+    }
+}
+
+/// Shared Today control for opening the full native Homework tab. It stays
+/// outside the student rows so completion remains a separate, student-owned
+/// action and never creates nested buttons.
+private struct HomeworkOpenButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.selection()
+            action()
+        } label: {
+            Label("Open homework", systemImage: "chevron.right")
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open homework")
+        .accessibilityHint("Open the full Homework screen")
     }
 }
 

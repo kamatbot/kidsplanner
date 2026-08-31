@@ -174,7 +174,9 @@ struct RootView: View {
 
     private var iPhoneLayout: some View {
         TabView(selection: $selection) {
-            TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
+            TodayScreen(onOpenHomework: { selection = .homework })
+                .toolbar(.hidden, for: .tabBar)
+                .tag(Tab.today)
             CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
             HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
             ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
@@ -206,7 +208,9 @@ struct RootView: View {
                 .frame(width: 90)
             Divider()
             TabView(selection: $selection) {
-                TodayScreen().toolbar(.hidden, for: .tabBar).tag(Tab.today)
+                TodayScreen(onOpenHomework: { selection = .homework })
+                    .toolbar(.hidden, for: .tabBar)
+                    .tag(Tab.today)
                 CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
                 HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
                 ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
