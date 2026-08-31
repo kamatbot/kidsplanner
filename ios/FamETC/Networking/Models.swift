@@ -333,6 +333,7 @@ struct BrainTeaserQ: Codable, Identifiable {
     var q: String
     var options: [String]
     var answerIndex: Int
+    var exp: String? = nil
     var resurfaced: Bool? = nil
 
     var id: String { qid }

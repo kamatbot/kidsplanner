@@ -20,8 +20,8 @@ struct BrainTeaserView: View {
     @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
 
     var body: some View {
-        // The enclosing WordWidget/QuizWidget provides the DashCard chrome + the
-        // homework-gating overlay, so this view renders just its content.
+        // The enclosing WordWidget/QuizWidget provides the DashCard chrome, so
+        // this view renders just its content.
         content
             .task {
                 await load()
@@ -113,12 +113,22 @@ struct BrainTeaserView: View {
             }
 
             if let picked {
-                HStack(spacing: Space.xs) {
-                    Image(systemName: picked == q.answerIndex ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(picked == q.answerIndex ? Palette.green : Palette.red)
-                    Text(picked == q.answerIndex ? "Correct!" : "Not quite — the right answer is highlighted above.")
-                        .font(Typography.caption.weight(.semibold))
-                        .foregroundStyle(Palette.textSecond)
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    HStack(spacing: Space.xs) {
+                        Image(systemName: picked == q.answerIndex ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(picked == q.answerIndex ? Palette.green : Palette.red)
+                        Text(picked == q.answerIndex ? "Correct!" : "Not quite — the right answer is highlighted above.")
+                            .font(Typography.caption.weight(.semibold))
+                            .foregroundStyle(Palette.textSecond)
+                    }
+
+                    if let explanation = q.exp?.trimmingCharacters(in: .whitespacesAndNewlines), !explanation.isEmpty {
+                        Text(explanation)
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel("Why: \(explanation)")
+                    }
                 }
                 .fixedSize(horizontal: false, vertical: true)
 

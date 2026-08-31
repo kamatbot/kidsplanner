@@ -11,7 +11,11 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const db = require("../lib/db");
 const brainteaser = require("../lib/brainteaser");
-const { QUESTIONS } = require("../lib/brainteaser-questions");
+const {
+  QUESTIONS,
+  LEGACY_QUESTIONS,
+  ACTIVE_QUESTIONS,
+} = require("../lib/brainteaser-questions");
 
 function makeFamilyWithKid(label) {
   const parent = store.createUser(`${label}@example.com`, `Parent ${label}`);
@@ -31,15 +35,59 @@ const WEEKDAY_DATES = {
   Sun: new Date("2026-06-21T12:00:00"),
 };
 
-test("question bank: at least 15 questions, each with a unique stable qid", () => {
-  assert.ok(QUESTIONS.length >= 15);
+test("question bank: legacy mappings stay intact and active bank has 36+ stable qids", () => {
+  assert.equal(LEGACY_QUESTIONS.length, 30);
+  assert.ok(ACTIVE_QUESTIONS.length >= 36);
+  assert.equal(QUESTIONS.length, LEGACY_QUESTIONS.length + ACTIVE_QUESTIONS.length);
   const qids = new Set(QUESTIONS.map((q) => q.qid));
   assert.equal(qids.size, QUESTIONS.length);
-  for (const q of QUESTIONS) {
+  for (const q of LEGACY_QUESTIONS) {
     assert.match(q.qid, /^bt\d+$/);
     assert.equal(q.options.length, 4);
     assert.ok(q.answerIndex >= 0 && q.answerIndex < 4);
   }
+  for (const q of ACTIVE_QUESTIONS) {
+    assert.match(q.qid, /^bt\d+$/);
+    assert.ok(Number(q.qid.slice(2)) > 30);
+    assert.equal(q.options.length, 4);
+    assert.equal(new Set(q.options).size, 4);
+    assert.ok(q.answerIndex >= 0 && q.answerIndex < 4);
+    assert.ok(q.q && q.q.length > 20);
+    assert.ok(q.exp && q.exp.length > 30);
+    assert.notEqual(q.q, "TODO");
+  }
+});
+
+test("getToday: newly generated sets use only active challenge questions", () => {
+  const { kid } = makeFamilyWithKid("A0");
+  const activeIds = new Set(ACTIVE_QUESTIONS.map((q) => q.qid));
+  const today = brainteaser.getToday(kid.id, WEEKDAY_DATES.Fri);
+  assert.ok(today.questions.every((q) => activeIds.has(q.qid)));
+  assert.equal(db.load().brainteaser[kid.id].servedBankVersion, brainteaser.SERVED_BANK_VERSION);
+});
+
+test("getToday: an old same-day elementary snapshot migrates once and preserves answered history", () => {
+  const { kid } = makeFamilyWithKid("A1");
+  const legacy = LEGACY_QUESTIONS[0];
+  const state = db.load().brainteaser[kid.id] = {
+    answered: {
+      [legacy.qid]: { qid: legacy.qid, correct: false, attempts: 1, wrong: true, lastSeen: "2026-06-15T10:00:00.000Z" },
+    },
+    servedDate: "2026-06-15",
+    servedIds: [legacy.qid],
+    seenIds: [legacy.qid],
+    served: [{ ...legacy, resurfaced: false }],
+  };
+
+  const first = brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon);
+  const snapshot = JSON.parse(JSON.stringify(first.questions));
+  assert.ok(first.questions.every((q) => q.qid !== legacy.qid));
+  assert.ok(first.questions.every((q) => ACTIVE_QUESTIONS.some((active) => active.qid === q.qid)));
+  assert.equal(state.answered[legacy.qid].wrong, true);
+  assert.equal(state.servedBankVersion, brainteaser.SERVED_BANK_VERSION);
+
+  const second = brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon);
+  assert.deepEqual(second.questions, snapshot);
 });
 
 // ---------- weekday count ----------
@@ -115,7 +163,7 @@ test("getToday: exhausted history avoids the immediately previous set before rot
   const state = db.load().brainteaser[kid.id] = {
     answered: {},
     servedDate: "2026-06-18",
-    servedIds: QUESTIONS.slice(0, 5).map((q) => q.qid),
+    servedIds: ACTIVE_QUESTIONS.slice(0, 5).map((q) => q.qid),
     seenIds: QUESTIONS.map((q) => q.qid),
     served: [],
   };
@@ -140,6 +188,17 @@ test("answer: marking a question wrong flags it for resurfacing on a later day",
   const resurfacedQ = tue.questions.find((q) => q.qid === qid);
   assert.ok(resurfacedQ, "expected the previously-wrong question to resurface");
   assert.equal(resurfacedQ.resurfaced, true);
+});
+
+test("getToday: legacy wrong answers remain valid history but never resurface", () => {
+  const { kid } = makeFamilyWithKid("E0");
+  const legacy = LEGACY_QUESTIONS[0];
+  assert.ok(!brainteaser.answer(kid.id, { qid: legacy.qid, correct: false }).error);
+
+  const today = brainteaser.getToday(kid.id, WEEKDAY_DATES.Fri);
+  assert.ok(today.questions.every((q) => ACTIVE_QUESTIONS.some((active) => active.qid === q.qid)));
+  assert.ok(today.questions.every((q) => q.qid !== legacy.qid));
+  assert.equal(db.load().brainteaser[kid.id].answered[legacy.qid].wrong, true);
 });
 
 test("answer: a correct answer clears the wrong flag so it stops resurfacing", () => {
