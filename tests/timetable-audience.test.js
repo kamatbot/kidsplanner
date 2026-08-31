@@ -180,7 +180,7 @@ test("Timetable controls are semantic, keyboard-visible, and safe to wrap", () =
 });
 
 test("calendar reminders share the audience scope and parent homework remains family-wide", () => {
-  assert.match(source, /getHomework\(isKidSession\(\) \? \{ kidId: sessionUser\.kidId \} : \{\}\)/);
+  assert.match(source, /window\.auth\.getHomework\(isKidSession\(\) \? \{ kidId: sessionUser\.kidId \} : \{\}\)/);
   assert.match(source, /function scheduleReminders\(\)[\s\S]*?const events = allEvents\(\);/);
   assert.match(source, /function renderTodaySchedule\(todayIso\)[\s\S]*?const events = allEvents\(\)/);
   assert.match(source, /function renderHomeworkHub\(\)[\s\S]*?if \(activeKidId\) items = items\.filter/);
