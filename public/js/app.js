@@ -270,32 +270,6 @@ const NEWS_EMPTY_STATE = 'No recent stories right now.';
 let newsRequestToken = 0;
 let currentDailyPuzzle = null;
 
-/* ---------- gating: homework due today > 3 disables enrichment cards ---------- */
-function homeworkDueTodayCount() {
-  const today = isoDate(new Date());
-  return homeworkItems.filter((h) => h.dueDate === today && h.status !== 'done').length;
-}
-
-function applyEnrichmentGating() {
-  const dueCount = homeworkDueTodayCount();
-  const locked = dueCount > 3;
-  const lockIds = ['lock-quote', 'lock-sat', 'lock-news', 'lock-quiz', 'lock-puzzle'];
-  const cardIds = ['widget-quote', 'widget-word', 'widget-news', 'widget-quiz', 'widget-puzzle'];
-  lockIds.forEach((id, i) => {
-    const overlay = document.getElementById(id);
-    const card = document.getElementById(cardIds[i]);
-    if (!overlay || !card) return;
-    if (locked) {
-      overlay.hidden = false;
-      overlay.textContent = `Finish your homework first 📚 — ${dueCount} due today`;
-      card.classList.add('fam-locked');
-    } else {
-      overlay.hidden = true;
-      card.classList.remove('fam-locked');
-    }
-  });
-}
-
 /* ---------- Quote widget: flip + reflection ---------- */
 function flipQuoteCard(showBack) {
   const inner = document.getElementById('quote-flip-inner');
@@ -1183,7 +1157,7 @@ function showDashboard() {
 
   // Homework (Phase 3): load once up front so calendar "due" chips render on
   // first paint; the Homework tab reloads on its own each time it's opened.
-  loadHomework().then(() => { renderCalendar(); applyEnrichmentGating(); updateHomeworkBadge(); renderTodayScreen(); });
+  loadHomework().then(() => { renderCalendar(); updateHomeworkBadge(); renderTodayScreen(); });
 
   // Goals (Phase W3): load once up front so Today's habits card renders real
   // check-ins on first paint; the Goals tab reloads on its own when opened.
@@ -2308,7 +2282,6 @@ function renderWidgets() {
   loadBrainTeaser();
   loadDailyPuzzle(now);
 
-  applyEnrichmentGating();
   applyDaily5Done();
   return loadRecentNews(requestToken, now);
 }
@@ -2333,7 +2306,6 @@ async function loadDailyPuzzle(now) {
     if (icon) icon.textContent = result.type === 'sudoku' ? '🔢' : '🧩';
     if (instructions) instructions.textContent = result.instructions || '';
     renderDailyPuzzle(result);
-    applyEnrichmentGating();
   } catch (e) {
     card.hidden = true;
   }
@@ -5704,7 +5676,7 @@ function switchNavTab(tab) {
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
   if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
-  if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); applyEnrichmentGating(); updateHomeworkBadge(); }); }
+  if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
   if (tab === 'notes') { loadNotes(); }
@@ -6439,7 +6411,6 @@ async function famImportSchoolData(payload) {
         renderHomeworkHub();
         renderCalendar();
         renderTodayScreen();
-        applyEnrichmentGating();
         updateHomeworkBadge();
       } catch (e) {
         schoolImportWarning(result, 'homework-refresh', 'Homework import',

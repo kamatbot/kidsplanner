@@ -41,48 +41,6 @@ struct DashCard<Content: View>: View {
     }
 }
 
-// MARK: - Enrichment gating
-
-/// Wraps an enrichment widget so that when homework is piling up, the widget
-/// shows a locked overlay ("Finish your homework first") instead of its normal
-/// interactive content, and disables interaction underneath.
-private struct EnrichmentGateModifier: ViewModifier {
-    let locked: Bool
-    let dueCount: Int
-
-    func body(content: Content) -> some View {
-        content
-            .allowsHitTesting(!locked)
-            .overlay {
-                if locked {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                        VStack(spacing: 4) {
-                            Text("🔒 Finish your homework first")
-                                .font(Typography.body.weight(.bold))
-                                .foregroundStyle(Palette.text)
-                                .multilineTextAlignment(.center)
-                            Text("\(dueCount) due today")
-                                .font(Typography.caption)
-                                .foregroundStyle(Palette.textSecond)
-                        }
-                        .padding(Space.md)
-                    }
-                    .transition(.opacity)
-                }
-            }
-    }
-}
-
-extension View {
-    /// Apply the enrichment lock overlay to a widget when `store.enrichmentLocked`.
-    /// Internal (not file-private) — also used by TodayView's Daily 5 / News cards.
-    func enrichmentGated(locked: Bool, dueCount: Int) -> some View {
-        modifier(EnrichmentGateModifier(locked: locked, dueCount: dueCount))
-    }
-}
-
 // MARK: - Daily content widgets (ported from the web widgets grid)
 
 struct QuoteWidget: View {
@@ -159,27 +117,22 @@ struct QuoteWidget: View {
             Haptics.selection()
             withAnimation(.easeInOut(duration: 0.3)) { flipped = true }
         }
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 
 struct WordWidget: View {
-    @Environment(AppStore.self) private var store
     var body: some View {
         DashCard("📖", "SAT Word of the Day", tint: Palette.teal) {
             SATActivityView()
         }
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 
 struct QuizWidget: View {
-    @Environment(AppStore.self) private var store
     var body: some View {
         DashCard("🧠", "Daily Brain Teaser", tint: Palette.violet) {
             BrainTeaserView()
         }
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 }
 
@@ -308,7 +261,6 @@ struct DailyFiveCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
         .task { await loadDailyExtras() }
         .sheet(item: $activeSheet) { sheet in
             NavigationStack {
@@ -436,7 +388,6 @@ struct NewsWidget: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .enrichmentGated(locked: store.enrichmentLocked, dueCount: store.homeworkDueTodayCount)
     }
 
     private func freshness(_ publishedAt: String) -> String {

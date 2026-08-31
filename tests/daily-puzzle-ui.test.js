@@ -25,7 +25,7 @@ test("daily-puzzle auth wrapper sends the encoded local date", async () => {
   assert.equal(calls[0].options.method, "GET");
 });
 
-test("dashboard includes one hidden, gated puzzle surface with accessible status and actions", () => {
+test("dashboard includes one hidden, always-accessible puzzle surface with status and actions", () => {
   assert.equal((htmlSource.match(/id="widget-puzzle"/g) || []).length, 1);
   assert.match(htmlSource, /id="puzzle-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(htmlSource, /onclick="clearDailyPuzzle\(\)"/);
@@ -41,7 +41,7 @@ test("dashboard includes one hidden, gated puzzle surface with accessible status
   assert.match(appSource, /event\.inputType === 'insertFromPaste'/);
   assert.match(appSource, /class="crossword-clue"/);
   assert.match(appSource, /aria-pressed/);
-  assert.match(appSource, /'lock-puzzle'/);
+  assert.doesNotMatch(appSource, /'lock-puzzle'|applyEnrichmentGating/);
 });
 
 test("crossword typing follows the selected clue, supports paste, and backs up", () => {

@@ -94,22 +94,6 @@ final class AppStore {
         return events
     }
 
-    // MARK: Enrichment gating (Notes / Today widgets)
-
-    /// "yyyy-MM-dd" for today, local time. Reuses `Agenda.todayKey()` (the
-    /// existing day-key helper in Features/Shared/Agenda.swift) so every
-    /// surface agrees on what day it is.
-    var todayYMD: String { Agenda.todayKey() }
-
-    /// Homework due today that isn't finished yet — drives the enrichment lock.
-    var homeworkDueTodayCount: Int {
-        homework.filter { $0.dueDate == todayYMD && $0.status != "done" }.count
-    }
-
-    /// When a kid has more than 3 homework items due today, the enrichment
-    /// widgets (quote/mood/news/SAT/brain teaser) lock until they catch up.
-    var enrichmentLocked: Bool { homeworkDueTodayCount > 3 }
-
     // MARK: Chat identity helpers
 
     /// True if the signed-in user posted this message. `postedByUserId` is set for
