@@ -110,9 +110,10 @@ test("parent import can persist exact Moodle identity while kid import cannot cl
   assert.equal(kidResult.body.homework.moodleIdentity, undefined);
 });
 
-test("status completion returns the durable queue result and duplicate done does not requeue", async () => {
-  const { parent, fam, kid } = makeFamily("complete");
+test("student completion returns the durable queue result and duplicate done does not requeue", async () => {
+  const { fam, kid } = makeFamily("complete");
   const routes = registerHomeworkRoutes();
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
   const item = homework.addHomework(fam.id, {
     kidId: kid.id,
     title: "Complete me",
@@ -122,13 +123,13 @@ test("status completion returns the durable queue result and duplicate done does
   }).homework;
 
   const first = await callFinal(routes, "PATCH", "/api/homework/:id", {
-    user: parent,
+    user: kidUser,
     fam,
     params: { id: item.id },
     body: { status: "done" },
   });
   const second = await callFinal(routes, "PATCH", "/api/homework/:id", {
-    user: parent,
+    user: kidUser,
     fam,
     params: { id: item.id },
     body: { status: "done" },
@@ -158,7 +159,7 @@ test("a parent can backfill identity separately while kid, Watch, and mixed patc
     params: { id: item.id },
     body: { moodleIdentity: identity("3808230"), status: "done" },
   });
-  assert.equal(mixed.statusCode, 400);
+  assert.equal(mixed.statusCode, 403);
   assert.equal(item.moodleIdentity, undefined);
 
   const kidUser = { data: { profile: { role: "kid" }, kid: { kidId: kid.id } } };

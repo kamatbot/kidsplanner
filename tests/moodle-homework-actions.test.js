@@ -84,8 +84,8 @@ function homeworkRoute() {
     chat: { sendMessage() {} },
     requireAuth: pass,
     requireFamily: pass,
-    userRole: () => "parent",
-    kidIdForUser: () => null,
+    userRole: (user) => user && user.data && user.data.profile && user.data.profile.role || "parent",
+    kidIdForUser: (req) => req.user && req.user.data && req.user.data.kid && req.user.data.kid.kidId,
     friendlyDate: (date) => date,
   });
   return lastHandler(routes, "PATCH", "/api/homework/:id");
@@ -207,8 +207,9 @@ test("school import confirm creates one canonical homework action across repeate
   assert.equal(action.kidId, kid.id);
 });
 
-test("completing canonical Moodle homework completes its linked Today action", async () => {
-  const { fam, parent, kid } = makeFamily("complete");
+test("student completing canonical Moodle homework completes its linked Today action", async () => {
+  const { fam, kid } = makeFamily("complete");
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
   const item = homework.addHomework(fam.id, {
     kidId: kid.id,
     title: "Read chapter",
@@ -219,7 +220,7 @@ test("completing canonical Moodle homework completes its linked Today action", a
   const update = homeworkRoute();
 
   const result = await call(update, {
-    user: parent,
+    user: kidUser,
     fam,
     params: { id: item.id },
     body: { status: "done" },
