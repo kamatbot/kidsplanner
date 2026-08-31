@@ -459,8 +459,7 @@ async function loadRecentNews(requestToken, now) {
       renderNewsUnavailable();
       return;
     }
-    const studentItems = items.filter((item) => item.source === 'NASA STEM' || item.source === 'NASA Kids');
-    renderNewsItem(dailyPick(studentItems.length ? studentItems : items, currentTime), currentTime);
+    renderNewsItem(dailyPick(items, currentTime), currentTime);
   } catch (e) {
     if (requestToken === newsRequestToken) renderNewsUnavailable();
   }

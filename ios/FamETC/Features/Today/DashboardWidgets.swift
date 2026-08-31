@@ -300,9 +300,7 @@ struct DailyFiveCard: View {
         async let newsRequest = try? APIClient.shared.recentNews()
         puzzle = await puzzleRequest
         if let items = await newsRequest?.items, !items.isEmpty {
-            let studentItems = items.filter { $0.source == "NASA STEM" || $0.source == "NASA Kids" }
-            let candidates = studentItems.isEmpty ? items : studentItems
-            news = candidates[Daily.index(candidates.count)]
+            news = items[Daily.index(items.count)]
         } else {
             news = nil
         }

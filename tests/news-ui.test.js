@@ -9,6 +9,7 @@ const vm = require("vm");
 const publicRoot = path.join(__dirname, "..");
 const authSource = fs.readFileSync(path.join(publicRoot, "public/js/auth.js"), "utf8");
 const appSource = fs.readFileSync(path.join(publicRoot, "public/js/app.js"), "utf8");
+const iosDashboardSource = fs.readFileSync(path.join(publicRoot, "ios/FamETC/Features/Today/DashboardWidgets.swift"), "utf8");
 
 function extractFunction(source, name) {
   const start = source.indexOf(`async function ${name}(`) >= 0
@@ -134,7 +135,7 @@ function item(now, ageHours, overrides = {}) {
     summary: "A current summary.",
     url: "https://example.com/story-1",
     publishedAt: new Date(now.getTime() - ageHours * 60 * 60 * 1000).toISOString(),
-    source: "NASA",
+    source: "UN News",
     question: "What should scientists investigate next, and why?",
   }, overrides);
 }
@@ -186,7 +187,7 @@ test("client accepts only fresh HTTPS stories and renders the source/freshness c
   assert.equal(helpers.isRecentNewsItem(item(now, 15 * 24), now), false);
   assert.equal(helpers.isRecentNewsItem(item(now, 2, { url: "http://example.com/story" }), now), false);
   assert.equal(helpers.newsFreshnessLabel(fresh.publishedAt, now), "13 days ago");
-  assert.match(helpers.elements["news-badge"].textContent, /NASA · 13 days ago/);
+  assert.match(helpers.elements["news-badge"].textContent, /UN News · 13 days ago/);
   assert.equal(helpers.elements["news-headline"].textContent, "Fresh discovery");
   assert.equal(helpers.elements["news-summary"].textContent, "A current summary.");
   assert.equal(helpers.elements["news-headline"].href, fresh.url);
@@ -197,22 +198,22 @@ test("client accepts only fresh HTTPS stories and renders the source/freshness c
   assert.equal(helpers.elements["news-reflect-prompt"].textContent, fresh.question);
 });
 
-test("client prioritizes fresh student-readable stories over the general fallback", async () => {
+test("client selects deterministically from the already-diversified API list", async () => {
   const now = new Date("2026-08-10T12:00:00.000Z");
-  const stem = item(now, 24, {
+  const second = item(now, 24, {
     id: "stem",
     headline: "How a telescope helps us see space",
-    source: "NASA STEM",
+    source: "Science News Explores",
   });
   const helpers = newsHelpers({ auth: {
-    getRecentNews: async () => ({ items: [item(now, 1), stem], maxAgeDays: 14 }),
+    getRecentNews: async () => ({ items: [item(now, 1), second], maxAgeDays: 14 }),
   } });
 
   helpers.setToken(1);
   await helpers.loadRecentNews(1, now);
 
-  assert.equal(helpers.currentNews(), stem);
-  assert.match(helpers.elements["news-badge"].textContent, /NASA STEM/);
+  assert.equal(helpers.currentNews().source, "UN News");
+  assert.match(helpers.elements["news-badge"].textContent, /UN News/);
 });
 
 test("empty and error states remove stale story state and disable reflection actions", async () => {
@@ -292,4 +293,7 @@ test("the dashboard no longer contains a static news rotation", () => {
   assert.doesNotMatch(appSource, /\bNEWS_ITEMS\b/);
   assert.match(appSource, /window\.auth\.getRecentNews\(\)/);
   assert.match(appSource, /const requestToken = \+\+newsRequestToken/);
+  assert.doesNotMatch(appSource, /NASA STEM|NASA Kids/);
+  assert.doesNotMatch(iosDashboardSource, /NASA STEM|NASA Kids/);
+  assert.match(iosDashboardSource, /news = items\[Daily\.index\(items\.count\)\]/);
 });
