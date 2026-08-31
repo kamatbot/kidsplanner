@@ -160,12 +160,15 @@ test("watch request allowlist excludes sessions, creation, deletion, and trip su
   assert.equal(watchAuth.allowedRequest("GET", "/api/family/actions"), true);
   assert.equal(watchAuth.allowedRequest("PATCH", "/api/family/actions/a_1"), true);
   assert.equal(watchAuth.allowedRequest("PATCH", "/api/homework/h_1"), true);
+  assert.equal(watchAuth.allowedRequest("PATCH", "/api/homework/h_1/checklist/0"), true);
   assert.equal(watchAuth.allowedRequest("PATCH", "/api/meals/shopping/s_1"), true);
   assert.equal(watchAuth.allowedRequest("POST", "/api/watch/push/register"), true);
   assert.equal(watchAuth.allowedRequest("POST", "/api/watch/push/unregister"), true);
   for (const [method, pathName] of [
     ["GET", "/api/me"],
     ["POST", "/api/family/actions"],
+    ["PATCH", "/api/homework/h_1/checklist/-1"],
+    ["PATCH", "/api/homework/h_1/checklist/0/text"],
     ["DELETE", "/api/meals/shopping/s_1"],
     ["GET", "/api/trips"],
     ["GET", "/api/chat/messages"],
