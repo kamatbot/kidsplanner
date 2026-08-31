@@ -10,6 +10,7 @@ struct HomeworkScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedKidID: String?
     @State private var selectedHomeworkID: String?
+    @State private var compactHomeworkSelection: HomeworkSheetSelection?
     /// A per-assignment draft survives model refreshes and temporary filter changes.
     @State private var checklistDrafts: [String: String] = [:]
 
@@ -34,10 +35,12 @@ struct HomeworkScreen: View {
         visibleHomework.sorted { lhs, rhs in
             if lhs.isDone != rhs.isDone { return !lhs.isDone }
             if lhs.dueDate != rhs.dueDate { return lhs.dueDate < rhs.dueDate }
-            if (lhs.dueTime ?? "") != (rhs.dueTime ?? "") {
-                return (lhs.dueTime ?? "") < (rhs.dueTime ?? "")
+            if (lhs.dueTime ?? "23:59") != (rhs.dueTime ?? "23:59") {
+                return (lhs.dueTime ?? "23:59") < (rhs.dueTime ?? "23:59")
             }
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+            if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
+            return lhs.id < rhs.id
         }
     }
 
@@ -56,6 +59,12 @@ struct HomeworkScreen: View {
         .onChange(of: store.kids.map(\.id)) { _, kidIDs in
             guard let selectedKidID, !kidIDs.contains(selectedKidID) else { return }
             self.selectedKidID = nil
+        }
+        .sheet(item: $compactHomeworkSelection) { selection in
+            HomeworkCompactDetailSheet(
+                selection: selection,
+                draftStep: draftBinding(for: selection.id)
+            )
         }
     }
 
@@ -83,10 +92,11 @@ struct HomeworkScreen: View {
                     HomeworkKidFilter(kids: store.kids, selectedKidID: $selectedKidID)
                 }
                 listHeading
+                homeworkLoadNotice
                 if orderedHomework.isEmpty {
-                    if store.isRefreshing {
+                    if store.isLoadingHomework && store.homework.isEmpty {
                         HomeworkLoadingState()
-                    } else {
+                    } else if store.homeworkError == nil || !store.homework.isEmpty {
                         HomeworkEmptyState(
                             isParent: store.isParent,
                             selectedKidName: selectedKidName,
@@ -99,6 +109,14 @@ struct HomeworkScreen: View {
                             HomeworkCompactRow(
                                 item: item,
                                 kidName: kidName(for: item),
+                                isMutating: store.homeworkMutationIDs.contains(item.id),
+                                onOpen: {
+                                    Haptics.selection()
+                                    compactHomeworkSelection = HomeworkSheetSelection(
+                                        id: item.id,
+                                        kidName: kidName(for: item)
+                                    )
+                                },
                                 onToggle: { setCompletion(for: item) }
                             )
                         }
@@ -125,34 +143,40 @@ struct HomeworkScreen: View {
             .padding(Space.lg)
             Divider()
             ScrollView {
-                if orderedHomework.isEmpty {
-                    if store.isRefreshing {
-                        HomeworkLoadingState().padding(Space.lg)
-                    } else {
-                        HomeworkEmptyState(
-                            isParent: store.isParent,
-                            selectedKidName: selectedKidName,
-                            hasAnyHomework: !store.homework.isEmpty,
-                            usesCard: false
-                        )
-                        .padding(Space.lg)
-                    }
-                } else {
-                    LazyVStack(spacing: 1) {
-                        ForEach(orderedHomework) { item in
-                            HomeworkQueueRow(
-                                item: item,
-                                kidName: kidName(for: item),
-                                isSelected: selectedHomeworkID == item.id,
-                                onSelect: {
-                                    Haptics.selection()
-                                    selectedHomeworkID = item.id
-                                },
-                                onToggle: { setCompletion(for: item) }
+                VStack(spacing: 0) {
+                    homeworkLoadNotice
+                        .padding(.horizontal, Space.lg)
+                        .padding(.top, Space.md)
+                    if orderedHomework.isEmpty {
+                        if store.isLoadingHomework && store.homework.isEmpty {
+                            HomeworkLoadingState().padding(Space.lg)
+                        } else if store.homeworkError == nil || !store.homework.isEmpty {
+                            HomeworkEmptyState(
+                                isParent: store.isParent,
+                                selectedKidName: selectedKidName,
+                                hasAnyHomework: !store.homework.isEmpty,
+                                usesCard: false
                             )
+                            .padding(Space.lg)
                         }
+                    } else {
+                        LazyVStack(spacing: 1) {
+                            ForEach(orderedHomework) { item in
+                                HomeworkQueueRow(
+                                    item: item,
+                                    kidName: kidName(for: item),
+                                    isSelected: selectedHomeworkID == item.id,
+                                    isMutating: store.homeworkMutationIDs.contains(item.id),
+                                    onSelect: {
+                                        Haptics.selection()
+                                        selectedHomeworkID = item.id
+                                    },
+                                    onToggle: { setCompletion(for: item) }
+                                )
+                            }
+                        }
+                        .padding(.vertical, Space.sm)
                     }
-                    .padding(.vertical, Space.sm)
                 }
             }
             .scrollIndicators(.hidden)
@@ -170,7 +194,7 @@ struct HomeworkScreen: View {
                 draftStep: draftBinding(for: item.id)
             )
             .id(item.id)
-        } else if store.isRefreshing {
+        } else if store.isLoadingHomework && store.homework.isEmpty {
             HomeworkLoadingState().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             HomeworkDetailEmptyState().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -215,6 +239,20 @@ struct HomeworkScreen: View {
         }
     }
 
+    @ViewBuilder
+    private var homeworkLoadNotice: some View {
+        if let error = store.homeworkError {
+            HomeworkLoadNotice(
+                error: error,
+                hasCachedHomework: !store.homework.isEmpty,
+                isRetrying: store.isLoadingHomework,
+                onRetry: { Task { await store.loadCalendarAndHomework(force: true) } }
+            )
+        } else if store.isLoadingHomework && !store.homework.isEmpty {
+            HomeworkUpdatingNotice()
+        }
+    }
+
     private func queueWidth(for width: CGFloat) -> CGFloat {
         min(390, max(330, width * 0.34))
     }
@@ -240,6 +278,47 @@ struct HomeworkScreen: View {
     private func setCompletion(for item: HomeworkItem) {
         Haptics.selection()
         Task { await store.setHomeworkStatus(item, status: item.isDone ? "todo" : "done") }
+    }
+}
+
+private struct HomeworkSheetSelection: Identifiable {
+    let id: String
+    let kidName: String?
+}
+
+private struct HomeworkCompactDetailSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let selection: HomeworkSheetSelection
+    @Binding var draftStep: String
+
+    private var item: HomeworkItem? {
+        store.homework.first { $0.id == selection.id }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let item {
+                    HomeworkAssignmentDetail(
+                        item: item,
+                        kidName: selection.kidName,
+                        draftStep: $draftStep
+                    )
+                } else {
+                    HomeworkDetailEmptyState()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationTitle("Assignment")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
     }
 }
 
@@ -295,18 +374,19 @@ private struct HomeworkQueueRow: View {
     let item: HomeworkItem
     let kidName: String?
     let isSelected: Bool
+    let isMutating: Bool
     let onSelect: () -> Void
     let onToggle: () -> Void
 
     private var dueState: HomeworkDueState { HomeworkDueState(item: item, todayKey: Agenda.todayKey()) }
     private var checklistSummary: String {
         guard !item.checklistItems.isEmpty else { return "No steps planned" }
-        return "\(item.checklistItems.filter(\.done).count) of \(item.checklistItems.count) steps complete"
+        return "\(item.completedChecklistCount) of \(item.checklistItems.count) steps complete"
     }
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
-            HomeworkCompletionButton(item: item, action: onToggle)
+            HomeworkCompletionButton(item: item, isMutating: isMutating, action: onToggle)
             Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
@@ -359,49 +439,64 @@ private struct HomeworkQueueRow: View {
 private struct HomeworkCompactRow: View {
     let item: HomeworkItem
     let kidName: String?
+    let isMutating: Bool
+    let onOpen: () -> Void
     let onToggle: () -> Void
 
     private var dueState: HomeworkDueState { HomeworkDueState(item: item, todayKey: Agenda.todayKey()) }
+    private var checklistSummary: String {
+        guard !item.checklistItems.isEmpty else { return "No steps planned" }
+        return "\(item.completedChecklistCount) of \(item.checklistItems.count) steps complete"
+    }
 
     var body: some View {
         Card(padding: Space.lg) {
             HStack(alignment: .top, spacing: Space.md) {
-                HomeworkCompletionButton(item: item, action: onToggle)
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    Text(item.title)
-                        .font(Typography.cardTitle)
-                        .foregroundStyle(item.isDone ? Palette.textSecond : Palette.text)
-                        .strikethrough(item.isDone, color: Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let subject = HomeworkCopy.nonEmpty(item.subject) {
-                        Text(subject).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    }
-                    Label(dueState.detail, systemImage: dueState.systemImage)
-                        .font(Typography.caption.weight(.semibold))
-                        .foregroundStyle(item.isDone ? Palette.textSecond : dueState.color)
-                    HStack(spacing: Space.sm) {
-                        HomeworkStatusLabel(status: item.status)
-                        if let kidName {
-                            Label(kidName, systemImage: "person.fill")
-                                .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                        }
-                    }
-                    if item.checklistItems.isEmpty {
-                        Text("Plan this assignment by adding one small step on iPad.")
-                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    } else {
-                        Text("\(item.checklistItems.filter(\.done).count) of \(item.checklistItems.count) steps complete")
-                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                        if let nextStep = item.firstIncompleteChecklistItem {
-                            Text("Next step: \(nextStep.text)")
-                                .font(Typography.body.weight(.semibold))
-                                .foregroundStyle(Palette.text)
+                HomeworkCompletionButton(item: item, isMutating: isMutating, action: onToggle)
+                Button(action: onOpen) {
+                    HStack(alignment: .top, spacing: Space.sm) {
+                        VStack(alignment: .leading, spacing: Space.sm) {
+                            Text(item.title)
+                                .font(Typography.cardTitle)
+                                .foregroundStyle(item.isDone ? Palette.textSecond : Palette.text)
+                                .strikethrough(item.isDone, color: Palette.textSecond)
                                 .fixedSize(horizontal: false, vertical: true)
+                            if let subject = HomeworkCopy.nonEmpty(item.subject) {
+                                Text(subject).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            }
+                            Label(dueState.detail, systemImage: dueState.systemImage)
+                                .font(Typography.caption.weight(.semibold))
+                                .foregroundStyle(item.isDone ? Palette.textSecond : dueState.color)
+                            HStack(spacing: Space.sm) {
+                                HomeworkStatusLabel(status: item.status)
+                                if let kidName {
+                                    Label(kidName, systemImage: "person.fill")
+                                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                                }
+                            }
+                            Text(checklistSummary)
+                                .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            if let nextStep = item.firstIncompleteChecklistItem {
+                                Text("Next step: \(nextStep.text)")
+                                    .font(Typography.body.weight(.semibold))
+                                    .foregroundStyle(Palette.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Palette.textSecond)
+                            .frame(minHeight: 44)
+                            .accessibilityHidden(true)
                     }
+                    .contentShape(Rectangle())
                 }
-                .layoutPriority(1)
-                Spacer(minLength: 0)
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .accessibilityValue([HomeworkCopy.status(item.status), dueState.detail, checklistSummary, kidName]
+                    .compactMap { $0 }.joined(separator: ", "))
+                .accessibilityHint("Opens assignment details and planning controls")
             }
         }
         .opacity(item.isDone ? 0.78 : 1)
@@ -410,19 +505,31 @@ private struct HomeworkCompactRow: View {
 
 private struct HomeworkCompletionButton: View {
     let item: HomeworkItem
+    let isMutating: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 27, weight: .semibold))
-                .foregroundStyle(item.isDone ? Palette.accent : Palette.textSecond)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            Group {
+                if isMutating {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Palette.accent)
+                } else {
+                    Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 27, weight: .semibold))
+                        .foregroundStyle(item.isDone ? Palette.accent : Palette.textSecond)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(item.isDone ? "Mark \(item.title) incomplete" : "Mark \(item.title) complete")
-        .accessibilityValue(item.isDone ? "Completed" : "Not completed")
+        .disabled(isMutating)
+        .accessibilityLabel(isMutating
+                            ? "Updating \(item.title)"
+                            : (item.isDone ? "Mark \(item.title) incomplete" : "Mark \(item.title) complete"))
+        .accessibilityValue(isMutating ? "Saving" : (item.isDone ? "Completed" : "Not completed"))
         .accessibilityHint("Updates the assignment status without opening it")
     }
 }
@@ -434,7 +541,7 @@ private struct HomeworkAssignmentDetail: View {
     @Binding var draftStep: String
 
     private var dueState: HomeworkDueState { HomeworkDueState(item: item, todayKey: Agenda.todayKey()) }
-    private var completedStepCount: Int { item.checklistItems.filter(\.done).count }
+    private var isMutating: Bool { store.homeworkMutationIDs.contains(item.id) }
 
     var body: some View {
         ScrollView {
@@ -460,9 +567,31 @@ private struct HomeworkAssignmentDetail: View {
             if let subject = HomeworkCopy.nonEmpty(item.subject) {
                 Text(subject).font(Typography.body).foregroundStyle(Palette.textSecond)
             }
+            if let notes = HomeworkCopy.nonEmpty(item.notes) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    MicroLabel(text: "Instructions")
+                    Text(notes)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Instructions")
+                .accessibilityValue(notes)
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Space.md) { contextLabels }
                 VStack(alignment: .leading, spacing: Space.sm) { contextLabels }
+            }
+            if isMutating {
+                HStack(spacing: Space.sm) {
+                    ProgressView().controlSize(.small).tint(Palette.accent)
+                    Text("Saving changes…")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Saving assignment changes")
             }
         }
     }
@@ -514,7 +643,7 @@ private struct HomeworkAssignmentDetail: View {
                 }
                 Spacer(minLength: Space.sm)
                 if !item.checklistItems.isEmpty {
-                    ProgressView(value: Double(completedStepCount), total: Double(item.checklistItems.count))
+                    ProgressView(value: Double(item.completedChecklistCount), total: Double(item.checklistItems.count))
                         .frame(maxWidth: 160)
                         .tint(Palette.accent)
                         .accessibilityLabel("Checklist progress")
@@ -547,6 +676,7 @@ private struct HomeworkAssignmentDetail: View {
                 VStack(alignment: .leading, spacing: Space.sm) { stepTextField; addStepButton }
             }
         }
+        .disabled(isMutating)
     }
 
     private var stepTextField: some View {
@@ -589,6 +719,7 @@ private struct HomeworkAssignmentDetail: View {
                 VStack(alignment: .leading, spacing: Space.md) { statusActions }
             }
         }
+        .disabled(isMutating)
     }
 
     @ViewBuilder private var statusActions: some View {
@@ -613,7 +744,7 @@ private struct HomeworkAssignmentDetail: View {
 
     private var checklistProgress: String {
         guard !item.checklistItems.isEmpty else { return "No steps yet" }
-        return "\(completedStepCount) of \(item.checklistItems.count) steps complete"
+        return "\(item.completedChecklistCount) of \(item.checklistItems.count) steps complete"
     }
     private var normalizedDraft: String {
         String(draftStep.prefix(200)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -623,8 +754,10 @@ private struct HomeworkAssignmentDetail: View {
         let text = normalizedDraft
         guard !text.isEmpty else { return }
         let updated = item.checklistItems + [HomeworkChecklistItem(text: text, done: false)]
-        Task { await store.replaceHomeworkChecklist(item, checklist: updated) }
-        draftStep = ""
+        Task {
+            let didSave = await store.replaceHomeworkChecklist(item, checklist: updated)
+            if didSave && normalizedDraft == text { draftStep = "" }
+        }
     }
 
     private func toggleStep(at index: Int, done: Bool) {
@@ -730,6 +863,65 @@ private struct HomeworkStatusLabel: View {
         case "in_progress": return Palette.accent
         default: return Palette.textSecond
         }
+    }
+}
+
+private struct HomeworkLoadNotice: View {
+    let error: String
+    let hasCachedHomework: Bool
+    let isRetrying: Bool
+    let onRetry: () -> Void
+
+    private var detail: String {
+        let trimmed = error.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Please try loading the assignments again." : trimmed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Label("Homework update failed", systemImage: "exclamationmark.triangle.fill")
+                .font(Typography.label.weight(.semibold))
+                .foregroundStyle(Palette.red)
+            Text(hasCachedHomework
+                 ? "Showing the assignments already on this device. \(detail)"
+                 : "Homework couldn't be loaded. \(detail)")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onRetry) {
+                HStack(spacing: Space.xs) {
+                    if isRetrying { ProgressView().controlSize(.small).tint(Palette.accent) }
+                    Text(isRetrying ? "Retrying…" : "Retry")
+                }
+                .font(Typography.caption.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .frame(minHeight: 32)
+            }
+            .buttonStyle(.plain)
+            .disabled(isRetrying)
+        }
+        .padding(Space.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.red.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                .strokeBorder(Palette.red.opacity(0.25), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct HomeworkUpdatingNotice: View {
+    var body: some View {
+        HStack(spacing: Space.sm) {
+            ProgressView().controlSize(.small).tint(Palette.accent)
+            Text("Updating homework…")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+        }
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Updating homework")
     }
 }
 
