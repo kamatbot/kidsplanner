@@ -369,4 +369,31 @@ final class WatchStoreTests: XCTestCase {
         XCTAssertTrue(store.snapshot.homework[0].checklist[0].done)
         XCTAssertNotNil(store.focusSession)
     }
+
+    func testSelectedStepDoneEndsFocusAfterDurableQueueing() async {
+        let homework = WatchHomework(
+            id: "h1",
+            title: "Science project",
+            dueDate: "2026-08-10",
+            status: "todo",
+            checklist: [WatchChecklistItem(text: "Choose a topic")]
+        )
+        let persistence = TestPersistence()
+        let api = TestAPI()
+        api.homework = [homework]
+        let store = WatchStore(
+            api: api,
+            credentials: TestCredentials(value: nil),
+            persistence: persistence,
+            initialState: WatchPersistedState(snapshot: WatchSnapshot(homework: [homework]))
+        )
+
+        await store.startFocus(on: homework, checklistIndex: 0)
+        await store.markSelectedStepDone()
+
+        XCTAssertNil(store.focusSession)
+        XCTAssertTrue(store.snapshot.homework[0].checklist[0].done)
+        XCTAssertEqual(store.pendingMutationCount, 2)
+        XCTAssertEqual(persistence.state?.outbox.last?.kind, .homeworkChecklistStep)
+    }
 }

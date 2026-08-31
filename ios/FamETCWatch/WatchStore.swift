@@ -254,12 +254,7 @@ final class WatchStore: ObservableObject {
     /// outbox instead of a toggle, making timeout/replay safe.
     func markHomeworkStepDone(_ homework: WatchHomework, index: Int) async {
         guard homework.checklist.indices.contains(index), !homework.checklist[index].done else { return }
-        await enqueue(WatchMutation(
-            kind: .homeworkChecklistStep,
-            resourceID: homework.id,
-            boolValue: true,
-            index: index
-        ))
+        await enqueueHomeworkStepDone(homework, index: index)
     }
 
     func markSelectedStepDone() async {
@@ -268,7 +263,13 @@ final class WatchStore: ObservableObject {
               let homework = snapshot.homework.first(where: { $0.id == focusSession.homeworkID }) else {
             return
         }
-        await markHomeworkStepDone(homework, index: index)
+        guard homework.checklist.indices.contains(index), !homework.checklist[index].done else { return }
+        // `enqueue` persists the optimistic step and outbox before invoking
+        // this callback. Ending focus here makes the root advance immediately,
+        // including when the request must wait for a later offline retry.
+        await enqueueHomeworkStepDone(homework, index: index) { [weak self] in
+            self?.endFocus()
+        }
     }
 
     /// Acknowledgement is a durable one-shot gate for the completion haptic.
@@ -311,19 +312,32 @@ final class WatchStore: ObservableObject {
         outbox.contains { $0.resourceID == id && $0.kind == kind }
     }
 
-    private func enqueue(_ mutation: WatchMutation) async {
+    private func enqueue(_ mutation: WatchMutation,
+                         afterPersist: (() -> Void)? = nil) async {
         apply(mutation, to: &snapshot)
         outbox.append(mutation)
         pendingMutationCount = outbox.count
         // This write is intentionally before credential lookup and before the
         // first call into URLSession.
         persist()
+        afterPersist?()
 
         guard credentialIsAvailable() else {
             connection = .disconnected
             return
         }
         _ = await drainOutbox()
+    }
+
+    private func enqueueHomeworkStepDone(_ homework: WatchHomework,
+                                         index: Int,
+                                         afterPersist: (() -> Void)? = nil) async {
+        await enqueue(WatchMutation(
+            kind: .homeworkChecklistStep,
+            resourceID: homework.id,
+            boolValue: true,
+            index: index
+        ), afterPersist: afterPersist)
     }
 
     @discardableResult

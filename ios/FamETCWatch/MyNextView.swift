@@ -219,6 +219,10 @@ private struct HomeworkDetailView: View {
         store.focusSession?.homeworkID == currentItem.id
     }
 
+    private var anotherFocusIsActive: Bool {
+        store.focusSession != nil && !isFocused
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -273,6 +277,14 @@ private struct HomeworkDetailView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.tint)
                         .accessibilityAddTraits(.isHeader)
+                } else if anotherFocusIsActive {
+                    Text("Finish your current focus before starting another.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("Another focus is in progress")
+                        .accessibilityHint("End the current focus before starting this assignment.")
                 } else {
                     Button("Start 20 min") {
                         Task {
