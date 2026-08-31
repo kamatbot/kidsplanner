@@ -109,20 +109,14 @@ private struct ParentTodayStack: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
-                StudyStartCard()
                 ActionCard()
                 ScheduleCard()
                 HomeworkDueCard()
             } else {
-                HStack(alignment: .top, spacing: Space.lg) {
-                    StudyStartCard()
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    VStack(alignment: .leading, spacing: Space.lg) {
-                        ActionCard()
-                        ScheduleCard()
-                        HomeworkDueCard()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    ActionCard()
+                    ScheduleCard()
+                    HomeworkDueCard()
                 }
             }
             PathOddsFamilySummaryCard()
@@ -483,10 +477,9 @@ private struct HomeworkDueCard: View {
     }
 }
 
-/// A due-soon homework row with a tappable done checkbox — same toggle as
-/// AgendaRow, restyled to the design's outline box + mono due label.
+/// A due-soon homework row for parents. Progress is student-owned, so Today
+/// keeps the due item visible without offering a status mutation.
 private struct HomeworkDueRow: View {
-    @Environment(AppStore.self) private var store
     let item: HomeworkItem
 
     private static let shortWeekday: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE"; return f }()
@@ -500,29 +493,22 @@ private struct HomeworkDueRow: View {
     }
 
     var body: some View {
-        Button {
-            Haptics.selection()
-            Task { await store.toggleHomeworkDone(item) }
-        } label: {
-            HStack(spacing: Space.sm + 2) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(due.text == "overdue" ? Palette.red : Palette.border, lineWidth: 1.5)
-                    .frame(width: 18, height: 18)
-                Text(item.title)
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(Palette.text)
-                    .lineLimit(1)
-                Spacer(minLength: Space.sm)
-                Text(due.text)
-                    .font(Typography.mono(11))
-                    .foregroundStyle(due.color)
-            }
-            .frame(minHeight: 44)
+        HStack(spacing: Space.sm + 2) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(due.text == "overdue" ? Palette.red : Palette.border, lineWidth: 1.5)
+                .frame(width: 18, height: 18)
+            Text(item.title)
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.text)
+                .lineLimit(1)
+            Spacer(minLength: Space.sm)
+            Text(due.text)
+                .font(Typography.mono(11))
+                .foregroundStyle(due.color)
         }
-        .buttonStyle(.plain)
+        .frame(minHeight: 44)
         .accessibilityLabel(item.title)
         .accessibilityValue("Due \(due.text)")
-        .accessibilityHint("Marks the assignment complete")
     }
 }
 

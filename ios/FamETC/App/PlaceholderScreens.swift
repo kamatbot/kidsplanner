@@ -114,6 +114,7 @@ struct HomeworkScreen: View {
                             HomeworkCompactRow(
                                 item: item,
                                 kidName: kidName(for: item),
+                                canMutate: !store.isParent,
                                 isMutating: store.homeworkMutationIDs.contains(item.id),
                                 onOpen: {
                                     Haptics.selection()
@@ -122,7 +123,7 @@ struct HomeworkScreen: View {
                                         kidName: kidName(for: item)
                                     )
                                 },
-                                onToggle: { setCompletion(for: item) }
+                                onToggle: store.isParent ? nil : { setCompletion(for: item) }
                             )
                         }
                     }
@@ -170,13 +171,14 @@ struct HomeworkScreen: View {
                                 HomeworkQueueRow(
                                     item: item,
                                     kidName: kidName(for: item),
+                                    canMutate: !store.isParent,
                                     isSelected: selectedHomeworkID == item.id,
                                     isMutating: store.homeworkMutationIDs.contains(item.id),
                                     onSelect: {
                                         Haptics.selection()
                                         selectedHomeworkID = item.id
                                     },
-                                    onToggle: { setCompletion(for: item) }
+                                    onToggle: store.isParent ? nil : { setCompletion(for: item) }
                                 )
                             }
                         }
@@ -212,7 +214,7 @@ struct HomeworkScreen: View {
                 MicroLabel(text: store.isParent ? "Family homework" : "Your homework")
                 Text("Homework").font(Typography.largeTitle).foregroundStyle(Palette.text)
                 Text(store.isParent
-                     ? "See what is due, choose an assignment, and plan the next step."
+                     ? "See what is due and monitor progress."
                      : "Start with the smallest useful step, then keep moving.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
@@ -383,10 +385,11 @@ private struct HomeworkFilterChip: View {
 private struct HomeworkQueueRow: View {
     let item: HomeworkItem
     let kidName: String?
+    let canMutate: Bool
     let isSelected: Bool
     let isMutating: Bool
     let onSelect: () -> Void
-    let onToggle: () -> Void
+    let onToggle: (() -> Void)?
 
     private var dueState: HomeworkDueState { HomeworkDueState(item: item, todayKey: Agenda.todayKey()) }
     private var checklistSummary: String {
@@ -396,7 +399,9 @@ private struct HomeworkQueueRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
-            HomeworkCompletionButton(item: item, isMutating: isMutating, action: onToggle)
+            if canMutate, let onToggle {
+                HomeworkCompletionButton(item: item, isMutating: isMutating, action: onToggle)
+            }
             Button(action: onSelect) {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
@@ -449,9 +454,10 @@ private struct HomeworkQueueRow: View {
 private struct HomeworkCompactRow: View {
     let item: HomeworkItem
     let kidName: String?
+    let canMutate: Bool
     let isMutating: Bool
     let onOpen: () -> Void
-    let onToggle: () -> Void
+    let onToggle: (() -> Void)?
 
     private var dueState: HomeworkDueState { HomeworkDueState(item: item, todayKey: Agenda.todayKey()) }
     private var checklistSummary: String {
@@ -462,7 +468,9 @@ private struct HomeworkCompactRow: View {
     var body: some View {
         Card(padding: Space.lg) {
             HStack(alignment: .top, spacing: Space.md) {
-                HomeworkCompletionButton(item: item, isMutating: isMutating, action: onToggle)
+                if canMutate, let onToggle {
+                    HomeworkCompletionButton(item: item, isMutating: isMutating, action: onToggle)
+                }
                 Button(action: onOpen) {
                     HStack(alignment: .top, spacing: Space.sm) {
                         VStack(alignment: .leading, spacing: Space.sm) {
@@ -509,7 +517,7 @@ private struct HomeworkCompactRow: View {
                 .accessibilityLabel(item.title)
                 .accessibilityValue([HomeworkCopy.status(item.status), dueState.detail, checklistSummary, kidName]
                     .compactMap { $0 }.joined(separator: ", "))
-                .accessibilityHint("Opens assignment details and planning controls")
+                .accessibilityHint(canMutate ? "Opens assignment details and planning controls" : "Opens read-only assignment details")
             }
         }
         .opacity(item.isDone ? 0.78 : 1)
@@ -562,7 +570,9 @@ private struct HomeworkAssignmentDetail: View {
                 context
                 nextStep
                 checklist
-                assignmentActions
+                if !store.isParent {
+                    assignmentActions
+                }
             }
             .padding(Space.xxl)
             .frame(maxWidth: 820, alignment: .leading)
@@ -633,11 +643,14 @@ private struct HomeworkAssignmentDetail: View {
                 Text(step.text).font(Typography.title).foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
             } else if item.checklistItems.isEmpty {
-                Text("Break it down").font(Typography.title).foregroundStyle(Palette.text)
-                Text("Enter the smallest action you can do in roughly 10–20 minutes.")
-                    .font(Typography.body).foregroundStyle(Palette.textSecond)
+                Text(store.isParent ? "No next step planned yet." : "Break it down")
+                    .font(Typography.title).foregroundStyle(Palette.text)
+                if !store.isParent {
+                    Text("Enter the smallest action you can do in roughly 10–20 minutes.")
+                        .font(Typography.body).foregroundStyle(Palette.textSecond)
+                }
             } else {
-                Text("Review your work, then finish the assignment.")
+                Text(store.isParent ? "All planned steps are complete." : "Review your work, then finish the assignment.")
                     .font(Typography.cardTitle).foregroundStyle(Palette.text)
             }
         }
@@ -651,7 +664,7 @@ private struct HomeworkAssignmentDetail: View {
         VStack(alignment: .leading, spacing: Space.md) {
             HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
                 VStack(alignment: .leading, spacing: Space.xs) {
-                    MicroLabel(text: "Plan this assignment")
+                    MicroLabel(text: store.isParent ? "Assignment steps" : "Plan this assignment")
                     Text(checklistProgress).font(Typography.caption).foregroundStyle(Palette.textSecond)
                 }
                 Spacer(minLength: Space.sm)
@@ -664,7 +677,9 @@ private struct HomeworkAssignmentDetail: View {
                 }
             }
             if item.checklistItems.isEmpty {
-                Text("Add one clear action. You can add more after that.")
+                Text(store.isParent
+                     ? "No steps planned yet. Your student can add the next action."
+                     : "Add one clear action. You can add more after that.")
                     .font(Typography.body).foregroundStyle(Palette.textSecond)
             } else {
                 VStack(spacing: 0) {
@@ -672,6 +687,7 @@ private struct HomeworkAssignmentDetail: View {
                         HomeworkChecklistRow(
                             step: step,
                             isNextStep: index == item.firstIncompleteChecklistIndex,
+                            canMutate: !store.isParent,
                             onToggle: { toggleStep(at: index, done: !step.done) },
                             onDelete: { deleteStep(at: index) }
                         )
@@ -684,9 +700,11 @@ private struct HomeworkAssignmentDetail: View {
                         .strokeBorder(Palette.border, lineWidth: 1)
                 }
             }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.sm) { stepTextField; addStepButton }
-                VStack(alignment: .leading, spacing: Space.sm) { stepTextField; addStepButton }
+            if !store.isParent {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.sm) { stepTextField; addStepButton }
+                    VStack(alignment: .leading, spacing: Space.sm) { stepTextField; addStepButton }
+                }
             }
         }
         .disabled(isMutating)
@@ -790,23 +808,33 @@ private struct HomeworkAssignmentDetail: View {
 private struct HomeworkChecklistRow: View {
     let step: HomeworkChecklistItem
     let isNextStep: Bool
+    let canMutate: Bool
     let onToggle: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
-            Button(action: onToggle) {
+            if canMutate {
+                Button(action: onToggle) {
+                    Image(systemName: step.done ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 23, weight: .semibold))
+                        .foregroundStyle(step.done ? Palette.accent : Palette.textSecond)
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(step.done ? "Mark step incomplete" : "Mark step done")
+                .accessibilityValue(step.text)
+                .accessibilityHint("Updates only this checklist step")
+            } else {
                 Image(systemName: step.done ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 23, weight: .semibold))
                     .foregroundStyle(step.done ? Palette.accent : Palette.textSecond)
                     .frame(width: 44, height: 44).contentShape(Rectangle())
+                    .accessibilityLabel(step.done ? "Completed step" : "Incomplete step")
+                    .accessibilityValue(step.text)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(step.done ? "Mark step incomplete" : "Mark step done")
-            .accessibilityValue(step.text)
-            .accessibilityHint("Updates only this checklist step")
             VStack(alignment: .leading, spacing: Space.xs) {
-                if isNextStep { MicroLabel(text: "Start here") }
+                if canMutate, isNextStep { MicroLabel(text: "Start here") }
                 Text(step.text)
                     .font(Typography.body.weight(isNextStep ? .semibold : .regular))
                     .foregroundStyle(step.done ? Palette.textSecond : Palette.text)
@@ -815,15 +843,17 @@ private struct HomeworkChecklistRow: View {
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .padding(.vertical, Space.xs)
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Palette.red)
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            if canMutate {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Palette.red)
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete step: \(step.text)")
+                .accessibilityHint("Removes this step from the assignment plan")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Delete step: \(step.text)")
-            .accessibilityHint("Removes this step from the assignment plan")
         }
         .padding(.horizontal, Space.sm)
         .padding(.vertical, Space.xs)
