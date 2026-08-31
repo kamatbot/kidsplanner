@@ -67,9 +67,9 @@ test("school import refreshes every homework-backed surface after processing hom
     "renderHomeworkHub();",
     "renderCalendar();",
     "renderTodayScreen();",
-    "applyEnrichmentGating();",
     "updateHomeworkBadge();",
   ]) {
     assert.match(bridge, new RegExp(call.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.doesNotMatch(bridge, /applyEnrichmentGating/);
 });
