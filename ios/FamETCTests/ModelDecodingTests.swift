@@ -674,6 +674,52 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(buckets.flatMap(\.assignments).map(\.id), ["shared", "arya"])
     }
 
+    func testCalendarDisplayDataKidSessionWithoutScopeFailsClosed() {
+        let visible = CalendarDisplayData.resolve(
+            audience: .parents,
+            isParent: false,
+            events: [
+                CalendarEvent(
+                    uid: "school-event",
+                    title: "School event",
+                    start: "2026-09-01",
+                    end: nil,
+                    allDay: true,
+                    location: nil,
+                    feedLabel: "School",
+                    kidId: nil,
+                    isDeadline: false,
+                    type: "event"
+                )
+            ],
+            familyEvents: [
+                FamilyEvent(
+                    id: "family-event",
+                    title: "Family event",
+                    date: "2026-09-01",
+                    time: nil,
+                    endTime: nil,
+                    endDate: nil,
+                    notes: nil,
+                    category: nil,
+                    kidId: nil,
+                    repeatRule: nil,
+                    repeatUntil: nil,
+                    seriesId: nil,
+                    recurring: nil,
+                    occurrenceDate: nil,
+                    canEdit: nil
+                )
+            ],
+            homework: [homeworkItem(id: "homework", dueDate: "2026-09-01")],
+            kidScope: nil
+        )
+
+        XCTAssertTrue(visible.events.isEmpty)
+        XCTAssertTrue(visible.familyEvents.isEmpty)
+        XCTAssertTrue(visible.homework.isEmpty)
+    }
+
     func testHomeworkWorkloadTotalsKnownEffortAndUsesExactHeavyDayThresholds() {
         let mixed = HomeworkWorkloadBucket(
             dayKey: "2026-09-01",
@@ -685,6 +731,7 @@ final class ModelDecodingTests: XCTestCase {
         )
         XCTAssertEqual(mixed.knownEffortMinutes, 35)
         XCTAssertEqual(mixed.knownEffortCount, 1)
+        XCTAssertFalse(mixed.hasCompleteEffortCoverage)
         XCTAssertTrue(mixed.isHeavy, "two assignments is a heavy day even with partial estimates")
 
         let eightyNineMinutes = HomeworkWorkloadBucket(
@@ -699,7 +746,82 @@ final class ModelDecodingTests: XCTestCase {
             date: Date(timeIntervalSince1970: 0),
             assignments: [homeworkItem(id: "90-minutes", dueDate: "2026-09-03", effortMin: 90)]
         )
+        XCTAssertTrue(ninetyMinutes.hasCompleteEffortCoverage)
         XCTAssertTrue(ninetyMinutes.isHeavy)
+    }
+
+    func testHomeworkWorkloadRanksByAssignmentCountWhenAnyCandidateLacksCoverage() {
+        let partialEstimate = HomeworkWorkloadBucket(
+            dayKey: "2026-09-01",
+            date: Date(timeIntervalSince1970: 0),
+            assignments: [
+                homeworkItem(id: "known-long", dueDate: "2026-09-01", effortMin: 180),
+                homeworkItem(id: "unknown", dueDate: "2026-09-01"),
+            ]
+        )
+        let largerUnknownWorkload = HomeworkWorkloadBucket(
+            dayKey: "2026-09-02",
+            date: Date(timeIntervalSince1970: 86_400),
+            assignments: [
+                homeworkItem(id: "unknown-1", dueDate: "2026-09-02"),
+                homeworkItem(id: "unknown-2", dueDate: "2026-09-02"),
+                homeworkItem(id: "unknown-3", dueDate: "2026-09-02"),
+            ]
+        )
+
+        let ranking = HomeworkWorkload.heaviest(in: [partialEstimate, largerUnknownWorkload])
+
+        XCTAssertEqual(ranking?.bucket.dayKey, "2026-09-02")
+        XCTAssertEqual(ranking?.basis, .assignmentCount)
+    }
+
+    func testHomeworkWorkloadRanksByEffortOnlyWithCompleteCandidateCoverage() {
+        let moreAssignments = HomeworkWorkloadBucket(
+            dayKey: "2026-09-02",
+            date: Date(timeIntervalSince1970: 86_400),
+            assignments: [
+                homeworkItem(id: "short-1", dueDate: "2026-09-02", effortMin: 20),
+                homeworkItem(id: "short-2", dueDate: "2026-09-02", effortMin: 20),
+                homeworkItem(id: "short-3", dueDate: "2026-09-02", effortMin: 20),
+            ]
+        )
+        let moreKnownEffort = HomeworkWorkloadBucket(
+            dayKey: "2026-09-03",
+            date: Date(timeIntervalSince1970: 172_800),
+            assignments: [
+                homeworkItem(id: "long-1", dueDate: "2026-09-03", effortMin: 70),
+                homeworkItem(id: "long-2", dueDate: "2026-09-03", effortMin: 70),
+            ]
+        )
+
+        let ranking = HomeworkWorkload.heaviest(in: [moreAssignments, moreKnownEffort])
+
+        XCTAssertEqual(ranking?.bucket.dayKey, "2026-09-03")
+        XCTAssertEqual(ranking?.basis, .completeEffortEstimates)
+    }
+
+    func testHomeworkWorkloadUsesEarliestDayAsDeterministicCountTieBreak() {
+        let later = HomeworkWorkloadBucket(
+            dayKey: "2026-09-03",
+            date: Date(timeIntervalSince1970: 172_800),
+            assignments: [
+                homeworkItem(id: "later-known", dueDate: "2026-09-03", effortMin: 120),
+                homeworkItem(id: "later-unknown", dueDate: "2026-09-03"),
+            ]
+        )
+        let earlier = HomeworkWorkloadBucket(
+            dayKey: "2026-09-02",
+            date: Date(timeIntervalSince1970: 86_400),
+            assignments: [
+                homeworkItem(id: "earlier-1", dueDate: "2026-09-02"),
+                homeworkItem(id: "earlier-2", dueDate: "2026-09-02"),
+            ]
+        )
+
+        let ranking = HomeworkWorkload.heaviest(in: [later, earlier])
+
+        XCTAssertEqual(ranking?.bucket.dayKey, "2026-09-02")
+        XCTAssertEqual(ranking?.basis, .assignmentCount)
     }
 
     private func homeworkItem(

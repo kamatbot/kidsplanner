@@ -46,6 +46,13 @@ struct CalendarScreen: View {
                 if canToggleMode && !isLandscape {
                     modeBar
                 }
+                if store.homeworkError != nil {
+                    HomeworkSyncErrorNotice(isRetrying: store.isLoadingHomework) {
+                        Task { await store.loadCalendarAndHomework(force: true) }
+                    }
+                    .padding(.horizontal, hSize == .regular ? Space.lg : Space.md)
+                    .padding(.top, Space.sm)
+                }
                 if hSize == .regular {
                     HomeworkWorkloadPanel(homework: displayData.homework)
                         .padding(.horizontal, Space.lg)
@@ -147,7 +154,7 @@ struct CalendarDisplayData {
     ) -> CalendarDisplayData {
         if !isParent {
             guard let kidScope else {
-                return CalendarDisplayData(events: [], familyEvents: [], homework: homework)
+                return CalendarDisplayData(events: [], familyEvents: [], homework: [])
             }
             return CalendarDisplayData(
                 events: events.filter { $0.kidId == kidScope },
@@ -191,7 +198,18 @@ struct HomeworkWorkloadBucket: Identifiable {
         assignments.compactMap(\.effortMin).reduce(0) { $0 + max(0, $1) }
     }
     var knownEffortCount: Int { assignments.compactMap(\.effortMin).count }
+    var hasCompleteEffortCoverage: Bool { knownEffortCount == assignments.count }
     var isHeavy: Bool { assignments.count >= 2 || knownEffortMinutes >= 90 }
+}
+
+struct HomeworkWorkloadRanking {
+    enum Basis: Equatable {
+        case completeEffortEstimates
+        case assignmentCount
+    }
+
+    let bucket: HomeworkWorkloadBucket
+    let basis: Basis
 }
 
 /// Pure workload bucketing: only open assignments inside the next seven local
@@ -221,16 +239,61 @@ enum HomeworkWorkload {
         }
     }
 
-    static func heaviest(in buckets: [HomeworkWorkloadBucket]) -> HomeworkWorkloadBucket? {
-        buckets.filter(\.isHeavy).max { lhs, rhs in
-            if lhs.knownEffortMinutes != rhs.knownEffortMinutes {
+    static func heaviest(in buckets: [HomeworkWorkloadBucket]) -> HomeworkWorkloadRanking? {
+        let candidates = buckets.filter(\.isHeavy)
+        guard !candidates.isEmpty else { return nil }
+
+        let basis: HomeworkWorkloadRanking.Basis = candidates.allSatisfy(\.hasCompleteEffortCoverage)
+            ? .completeEffortEstimates
+            : .assignmentCount
+        let bucket = candidates.max { lhs, rhs in
+            switch basis {
+            case .completeEffortEstimates where lhs.knownEffortMinutes != rhs.knownEffortMinutes:
                 return lhs.knownEffortMinutes < rhs.knownEffortMinutes
-            }
-            if lhs.assignments.count != rhs.assignments.count {
+            case .assignmentCount where lhs.assignments.count != rhs.assignments.count:
                 return lhs.assignments.count < rhs.assignments.count
+            default:
+                return lhs.dayKey > rhs.dayKey
             }
-            return lhs.dayKey > rhs.dayKey
         }
+        return bucket.map { HomeworkWorkloadRanking(bucket: $0, basis: basis) }
+    }
+}
+
+private struct HomeworkSyncErrorNotice: View {
+    let isRetrying: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: Space.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Palette.warn)
+                .accessibilityHidden(true)
+            Text("Homework couldn’t refresh. Existing items remain visible.")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Space.sm)
+            if isRetrying {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Palette.accent)
+                    .accessibilityLabel("Retrying homework sync")
+            }
+            Button("Retry", action: retry)
+                .font(Typography.caption.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                .buttonStyle(.plain)
+                .disabled(isRetrying)
+        }
+        .padding(.horizontal, Space.md)
+        .padding(.vertical, Space.sm)
+        .background(Palette.warn.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Palette.warn.opacity(0.25), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -276,14 +339,22 @@ private struct HomeworkWorkloadPanel: View {
 
     private var summary: String {
         guard !buckets.isEmpty else { return "No open homework is due in the next 7 days." }
-        guard let heaviest = HomeworkWorkload.heaviest(in: buckets) else {
+        guard let ranking = HomeworkWorkload.heaviest(in: buckets) else {
             return "\(assignmentCount) open assignment\(assignmentCount == 1 ? " is" : "s are") due, with no heavy days."
         }
+        let heaviest = ranking.bucket
+        if ranking.basis == .assignmentCount {
+            if heaviest.dayKey == Agenda.todayKey() {
+                return "Today has the most assignments due — choose one to begin now."
+            }
+            let weekday = heaviest.date.formatted(.dateTime.weekday(.wide))
+            return "\(weekday) has the most assignments due — start before then."
+        }
         if heaviest.dayKey == Agenda.todayKey() {
-            return "Today is your heaviest day — choose one assignment to begin now."
+            return "Today has the heaviest workload based on known estimates — choose one assignment to begin now."
         }
         let weekday = heaviest.date.formatted(.dateTime.weekday(.wide))
-        return "\(weekday) is your heaviest day — start before then."
+        return "\(weekday) has the heaviest workload based on known estimates — start before then."
     }
 
     private func workloadButton(_ bucket: HomeworkWorkloadBucket) -> some View {
