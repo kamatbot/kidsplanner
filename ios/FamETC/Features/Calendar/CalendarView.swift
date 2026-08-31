@@ -283,6 +283,7 @@ private struct HomeworkSyncErrorNotice: View {
             Button("Retry", action: retry)
                 .font(Typography.caption.weight(.semibold))
                 .foregroundStyle(Palette.accent)
+                .frame(minWidth: 44, minHeight: 44)
                 .buttonStyle(.plain)
                 .disabled(isRetrying)
         }

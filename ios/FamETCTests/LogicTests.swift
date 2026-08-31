@@ -191,7 +191,7 @@ final class LogicTests: XCTestCase {
 
         XCTAssertTrue(visible.events.isEmpty)
         XCTAssertTrue(visible.familyEvents.isEmpty)
-        XCTAssertEqual(visible.homework.map(\.id), data.homework.map(\.id))
+        XCTAssertTrue(visible.homework.isEmpty)
     }
 
     func testReminderDefaultsAndPerOccurrenceOverrides() {

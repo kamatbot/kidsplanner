@@ -895,7 +895,7 @@ private struct HomeworkLoadNotice: View {
                 }
                 .font(Typography.caption.weight(.semibold))
                 .foregroundStyle(Palette.accent)
-                .frame(minHeight: 32)
+                .frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.plain)
             .disabled(isRetrying)
