@@ -109,7 +109,6 @@ private struct ParentTodayStack: View {
         VStack(alignment: .leading, spacing: Space.lg) {
             if hSize == .compact {
                 StudyStartCard()
-                ActionCard()
                 ScheduleCard()
                 HomeworkDueCard()
             } else {
@@ -123,6 +122,7 @@ private struct ParentTodayStack: View {
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
+            ActionCard()
             PathOddsFamilySummaryCard()
             DailyFiveCard()
         }
