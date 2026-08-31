@@ -34,6 +34,11 @@ final class AppStore {
     var isLoadingActions = false
     var actionError: String?
     var completingActionIDs: Set<String> = []
+    /// Per-assignment write lock. Homework mutations are intentionally
+    /// serialized so a late response cannot replace a newer checklist/status.
+    var homeworkMutationIDs: Set<String> = []
+    var isLoadingHomework = false
+    var homeworkError: String?
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
     /// Parent composite Meals state, or the family shopping projection for a
     /// kid session. Kids never receive pantry/menu/prefs/household state.
@@ -135,6 +140,10 @@ final class AppStore {
     private var chatLoopTask: Task<Void, Never>?      // near-live loop for the on-screen room
     private var familyPollTask: Task<Void, Never>?    // always-on 8s background poll, family room only
     private var chatAppBackgrounded = false
+    /// Invalidates homework reads that began before a local write. Without this,
+    /// an older GET can arrive after a successful PATCH and erase the new state.
+    private var homeworkMutationRevision = 0
+    private var homeworkLoadGeneration = 0
 
     init(actionService: FamilyActionService = APIClient.shared) {
         self.actionService = actionService
@@ -217,6 +226,11 @@ final class AppStore {
         isLoadingActions = false
         actionError = nil
         completingActionIDs = []
+        homeworkMutationIDs = []
+        isLoadingHomework = false
+        homeworkError = nil
+        homeworkMutationRevision &+= 1
+        homeworkLoadGeneration &+= 1
         messagesByRoom = [:]
         lastSeenChatIdByRoom = [:]
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
@@ -742,13 +756,45 @@ final class AppStore {
 
     // MARK: Calendar + Homework (Today / Calendar tabs)
 
-    /// Load school-feed events + homework. Best-effort: a failure in one leaves
-    /// the other (and the rest of the app) intact.
+    /// Load school-feed events + homework. A homework failure preserves the
+    /// current rows and exposes an explicit error instead of looking like a
+    /// trustworthy empty workload. Reads older than a local mutation are
+    /// ignored so they cannot roll successful edits back.
     func loadCalendarAndHomework(force: Bool = false) async {
-        guard family != nil else { events = []; familyEvents = []; homework = []; return }
+        guard family != nil else {
+            events = []
+            familyEvents = []
+            homework = []
+            homeworkMutationIDs = []
+            isLoadingHomework = false
+            homeworkError = nil
+            homeworkMutationRevision &+= 1
+            homeworkLoadGeneration &+= 1
+            return
+        }
+
+        homeworkLoadGeneration &+= 1
+        let loadGeneration = homeworkLoadGeneration
+        let mutationRevisionAtStart = homeworkMutationRevision
+        isLoadingHomework = true
+        homeworkError = nil
+
         if let ev = try? await api.calendarEvents(force: force) { events = ev }
         if let fe = try? await api.familyEvents() { familyEvents = fe }
-        if let hw = try? await api.homework() { homework = hw }
+        do {
+            let freshHomework = try await api.homework()
+            if loadGeneration == homeworkLoadGeneration,
+               mutationRevisionAtStart == homeworkMutationRevision,
+               homeworkMutationIDs.isEmpty {
+                homework = freshHomework
+            }
+        } catch {
+            if loadGeneration == homeworkLoadGeneration {
+                homeworkError = error.localizedDescription
+                if case APIError.unauthenticated = error { handle(error) }
+            }
+        }
+        if loadGeneration == homeworkLoadGeneration { isLoadingHomework = false }
         Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
     }
 
@@ -826,43 +872,56 @@ final class AppStore {
     func rescheduleHomework(_ id: String, to dayKey: String) async {
         guard let idx = homework.firstIndex(where: { $0.id == id }) else { return }
         let previous = homework[idx].dueDate
-        guard previous != dayKey else { return }
+        guard previous != dayKey, beginHomeworkMutation(id) else { return }
+        defer { finishHomeworkMutation(id) }
         homework[idx].dueDate = dayKey
         do {
             let updated = try await api.setHomeworkDueDate(id, dueDate: dayKey)
             if let i = homework.firstIndex(where: { $0.id == id }) { homework[i] = updated }
+            homeworkError = nil
         } catch {
             if let i = homework.firstIndex(where: { $0.id == id }) { homework[i].dueDate = previous }
+            homeworkError = error.localizedDescription
             handle(error)
         }
     }
 
     /// Sets an explicit homework lifecycle state optimistically, then reconciles
-    /// with the authoritative server item. A failed request restores every field
-    /// from the prior item rather than leaving a partially-updated row behind.
-    func setHomeworkStatus(_ item: HomeworkItem, status: String) async {
-        guard let idx = homework.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = homework[idx]
-        guard previous.status != status else { return }
+    /// with the authoritative server item. A failed request restores only the
+    /// field this operation owned.
+    @discardableResult
+    func setHomeworkStatus(_ item: HomeworkItem, status: String) async -> Bool {
+        guard let idx = homework.firstIndex(where: { $0.id == item.id }) else { return false }
+        let previousStatus = homework[idx].status
+        guard previousStatus != status, beginHomeworkMutation(item.id) else { return false }
+        defer { finishHomeworkMutation(item.id) }
         homework[idx].status = status
         do {
             let updated = try await api.setHomeworkStatus(item.id, status: status)
             if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i] = updated }
+            homeworkError = nil
+            return true
         } catch {
-            if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i] = previous }
+            if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i].status = previousStatus }
+            homeworkError = error.localizedDescription
             handle(error)
+            return false
         }
     }
 
     /// Sets one exact checklist state optimistically. Index validation uses the
     /// current server-backed item so a stale row cannot address a different step.
-    func setHomeworkChecklistStep(_ item: HomeworkItem, index: Int, done: Bool) async {
-        guard let itemIndex = homework.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = homework[itemIndex]
-        guard previous.checklistItems.indices.contains(index),
-              previous.checklistItems[index].done != done else { return }
+    @discardableResult
+    func setHomeworkChecklistStep(_ item: HomeworkItem, index: Int, done: Bool) async -> Bool {
+        guard let itemIndex = homework.firstIndex(where: { $0.id == item.id }) else { return false }
+        let previousChecklist = homework[itemIndex].checklist
+        let currentChecklist = homework[itemIndex].checklistItems
+        guard currentChecklist.indices.contains(index),
+              currentChecklist[index].done != done,
+              beginHomeworkMutation(item.id) else { return false }
+        defer { finishHomeworkMutation(item.id) }
 
-        var checklist = previous.checklistItems
+        var checklist = currentChecklist
         checklist[index].done = done
         homework[itemIndex].checklist = checklist
         do {
@@ -870,35 +929,59 @@ final class AppStore {
             if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
                 homework[currentIndex] = updated
             }
+            homeworkError = nil
+            return true
         } catch {
             if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
-                homework[currentIndex] = previous
+                homework[currentIndex].checklist = previousChecklist
             }
+            homeworkError = error.localizedDescription
             handle(error)
+            return false
         }
     }
 
     /// Replaces the ordered checklist optimistically for add/delete/text edits.
-    func replaceHomeworkChecklist(_ item: HomeworkItem, checklist: [HomeworkChecklistItem]) async {
-        guard let itemIndex = homework.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = homework[itemIndex]
+    @discardableResult
+    func replaceHomeworkChecklist(_ item: HomeworkItem, checklist: [HomeworkChecklistItem]) async -> Bool {
+        guard let itemIndex = homework.firstIndex(where: { $0.id == item.id }) else { return false }
+        let previousChecklist = homework[itemIndex].checklist
+        guard checklist != homework[itemIndex].checklistItems,
+              beginHomeworkMutation(item.id) else { return false }
+        defer { finishHomeworkMutation(item.id) }
         homework[itemIndex].checklist = checklist
         do {
             let updated = try await api.setHomeworkChecklist(item.id, checklist: checklist)
             if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
                 homework[currentIndex] = updated
             }
+            homeworkError = nil
+            return true
         } catch {
             if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
-                homework[currentIndex] = previous
+                homework[currentIndex].checklist = previousChecklist
             }
+            homeworkError = error.localizedDescription
             handle(error)
+            return false
         }
     }
 
     /// Toggle a homework item done/undone (optimistic, reverts on failure).
     func toggleHomeworkDone(_ item: HomeworkItem) async {
         await setHomeworkStatus(item, status: item.isDone ? "todo" : "done")
+    }
+
+    private func beginHomeworkMutation(_ id: String) -> Bool {
+        guard !homeworkMutationIDs.contains(id) else { return false }
+        homeworkMutationIDs.insert(id)
+        homeworkMutationRevision &+= 1
+        return true
+    }
+
+    private func finishHomeworkMutation(_ id: String) {
+        homeworkMutationIDs.remove(id)
+        homeworkMutationRevision &+= 1
     }
 
     /// Kids see shared actions plus actions assigned to their linked kid. This
