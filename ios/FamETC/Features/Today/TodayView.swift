@@ -133,7 +133,7 @@ private struct ParentTodayStack: View {
 
 /// Selects one real, open assignment. Urgency is date/time first; an assignment
 /// already in progress wins only when that urgency is otherwise identical.
-private enum StudyStartPriority {
+enum StudyStartPriority {
     private static let displayDate: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMM d"

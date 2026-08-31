@@ -181,7 +181,7 @@ struct CalendarDisplayData {
 
 // MARK: - Next 7 days workload
 
-private struct HomeworkWorkloadBucket: Identifiable {
+struct HomeworkWorkloadBucket: Identifiable {
     let dayKey: String
     let date: Date
     let assignments: [HomeworkItem]
@@ -196,7 +196,7 @@ private struct HomeworkWorkloadBucket: Identifiable {
 
 /// Pure workload bucketing: only open assignments inside the next seven local
 /// calendar days are included. Empty days are omitted from the visual strip.
-private enum HomeworkWorkload {
+enum HomeworkWorkload {
     static func buckets(
         from homework: [HomeworkItem],
         startingAt startDate: Date = Date(),

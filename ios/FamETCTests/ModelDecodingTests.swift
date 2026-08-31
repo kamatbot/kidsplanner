@@ -544,4 +544,181 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(sudoku.sudoku?.size, 9)
         XCTAssertEqual(sudoku.sudoku?.puzzle.count, 81)
     }
+
+    // MARK: - iPad study planning
+
+    func testStudyStartPriorityOrdersByOverdueDateTimeThenProgress() {
+        let today = "2026-09-10"
+        let overdue = homeworkItem(
+            id: "overdue",
+            dueDate: "2026-09-09",
+            dueTime: "23:00"
+        )
+        let dueTodayStarted = homeworkItem(
+            id: "today-started",
+            dueDate: today,
+            dueTime: "08:00",
+            status: "in_progress"
+        )
+        XCTAssertEqual(
+            StudyStartPriority.select(from: [dueTodayStarted, overdue], today: today)?.id,
+            "overdue"
+        )
+
+        let dueTomorrow = homeworkItem(
+            id: "tomorrow",
+            dueDate: "2026-09-11"
+        )
+        let dueLaterStarted = homeworkItem(
+            id: "later-date-started",
+            dueDate: "2026-09-12",
+            status: "in_progress"
+        )
+        XCTAssertEqual(
+            StudyStartPriority.select(from: [dueLaterStarted, dueTomorrow], today: today)?.id,
+            "tomorrow"
+        )
+
+        let earlier = homeworkItem(
+            id: "earlier",
+            dueDate: today,
+            dueTime: "08:00"
+        )
+        let laterStarted = homeworkItem(
+            id: "later-started",
+            dueDate: today,
+            dueTime: "17:00",
+            status: "in_progress"
+        )
+        XCTAssertEqual(
+            StudyStartPriority.select(from: [laterStarted, earlier], today: today)?.id,
+            "earlier"
+        )
+
+        let tiedTodo = homeworkItem(
+            id: "tied-todo",
+            dueDate: today,
+            dueTime: "12:00"
+        )
+        let tiedStarted = homeworkItem(
+            id: "tied-started",
+            dueDate: today,
+            dueTime: "12:00",
+            status: "in_progress"
+        )
+        XCTAssertEqual(
+            StudyStartPriority.select(from: [tiedTodo, tiedStarted], today: today)?.id,
+            "tied-started"
+        )
+    }
+
+    func testStudyStartPriorityExcludesCompletedAssignments() {
+        let completedOverdue = homeworkItem(
+            id: "completed-overdue",
+            dueDate: "2026-09-01",
+            status: "done"
+        )
+        let open = homeworkItem(id: "open", dueDate: "2026-09-10")
+
+        XCTAssertEqual(
+            StudyStartPriority.select(from: [completedOverdue, open], today: "2026-09-10")?.id,
+            "open"
+        )
+        XCTAssertNil(StudyStartPriority.select(from: [completedOverdue], today: "2026-09-10"))
+    }
+
+    func testHomeworkWorkloadIncludesOnlyOpenAssignmentsInNextSevenLocalDays() throws {
+        let start = try XCTUnwrap(DateFmt.ymd.date(from: "2026-09-01"))
+        let homework = [
+            homeworkItem(id: "before", dueDate: "2026-08-31"),
+            homeworkItem(id: "today", dueDate: "2026-09-01", dueTime: "16:00"),
+            homeworkItem(id: "today-early", dueDate: "2026-09-01", dueTime: "08:00"),
+            homeworkItem(id: "completed", dueDate: "2026-09-02", status: "done"),
+            homeworkItem(id: "last-day", dueDate: "2026-09-07"),
+            homeworkItem(id: "eighth-day", dueDate: "2026-09-08"),
+        ]
+
+        let buckets = HomeworkWorkload.buckets(
+            from: homework,
+            startingAt: start,
+            calendar: Calendar.current
+        )
+
+        XCTAssertEqual(buckets.map(\.dayKey), ["2026-09-01", "2026-09-07"])
+        XCTAssertEqual(buckets[0].assignments.map(\.id), ["today-early", "today"])
+        XCTAssertEqual(buckets[1].assignments.map(\.id), ["last-day"])
+    }
+
+    func testHomeworkWorkloadPreservesAudienceSuppliedHomeworkScope() throws {
+        let start = try XCTUnwrap(DateFmt.ymd.date(from: "2026-09-01"))
+        let homework = [
+            homeworkItem(id: "shared", kidID: nil, dueDate: "2026-09-01"),
+            homeworkItem(id: "arya", kidID: "arya", dueDate: "2026-09-02"),
+            homeworkItem(id: "ryshi", kidID: "ryshi", dueDate: "2026-09-03"),
+        ]
+        let visible = CalendarDisplayData.resolve(
+            audience: .kid("arya"),
+            isParent: true,
+            events: [],
+            familyEvents: [],
+            homework: homework,
+            kidScope: nil
+        )
+
+        let buckets = HomeworkWorkload.buckets(
+            from: visible.homework,
+            startingAt: start,
+            calendar: Calendar.current
+        )
+
+        XCTAssertEqual(buckets.flatMap(\.assignments).map(\.id), ["shared", "arya"])
+    }
+
+    func testHomeworkWorkloadTotalsKnownEffortAndUsesExactHeavyDayThresholds() {
+        let mixed = HomeworkWorkloadBucket(
+            dayKey: "2026-09-01",
+            date: Date(timeIntervalSince1970: 0),
+            assignments: [
+                homeworkItem(id: "known", dueDate: "2026-09-01", effortMin: 35),
+                homeworkItem(id: "unknown", dueDate: "2026-09-01", effortMin: nil),
+            ]
+        )
+        XCTAssertEqual(mixed.knownEffortMinutes, 35)
+        XCTAssertEqual(mixed.knownEffortCount, 1)
+        XCTAssertTrue(mixed.isHeavy, "two assignments is a heavy day even with partial estimates")
+
+        let eightyNineMinutes = HomeworkWorkloadBucket(
+            dayKey: "2026-09-02",
+            date: Date(timeIntervalSince1970: 0),
+            assignments: [homeworkItem(id: "89-minutes", dueDate: "2026-09-02", effortMin: 89)]
+        )
+        XCTAssertFalse(eightyNineMinutes.isHeavy)
+
+        let ninetyMinutes = HomeworkWorkloadBucket(
+            dayKey: "2026-09-03",
+            date: Date(timeIntervalSince1970: 0),
+            assignments: [homeworkItem(id: "90-minutes", dueDate: "2026-09-03", effortMin: 90)]
+        )
+        XCTAssertTrue(ninetyMinutes.isHeavy)
+    }
+
+    private func homeworkItem(
+        id: String,
+        kidID: String? = nil,
+        dueDate: String,
+        dueTime: String? = nil,
+        status: String = "todo",
+        effortMin: Int? = nil
+    ) -> HomeworkItem {
+        HomeworkItem(
+            id: id,
+            kidId: kidID,
+            title: id,
+            subject: nil,
+            dueDate: dueDate,
+            dueTime: dueTime,
+            status: status,
+            effortMin: effortMin
+        )
+    }
 }
