@@ -186,6 +186,7 @@ test("calendar reminders share the audience scope and parent homework remains fa
   assert.match(source, /function renderHomeworkHub\(\)[\s\S]*?if \(activeKidId\) items = items\.filter/);
 
   const appStore = fs.readFileSync(path.join(__dirname, "..", "ios/FamETC/Domain/AppStore.swift"), "utf8");
-  assert.match(appStore, /if let hw = try\? await api\.homework\(\) \{ homework = hw \}/);
+  assert.match(appStore, /let freshHomework = try await api\.homework\(\)/);
+  assert.match(appStore, /if loadGeneration == homeworkLoadGeneration,[\s\S]*?homework = freshHomework/);
   assert.match(appStore, /NotificationScheduler\.reschedule\(events: visibleFamilyEvents, homework: homework/);
 });

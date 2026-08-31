@@ -345,7 +345,7 @@ final class WatchStoreTests: XCTestCase {
         XCTAssertTrue(restored.focusSession?.completionAcknowledged == true)
     }
 
-    func testFocusAndStepDoNotAutoCompleteAssignment() async {
+    func testCompletingFocusedStepDoesNotAutoCompleteAssignment() async {
         let homework = WatchHomework(
             id: "h1",
             title: "Science project",
@@ -367,7 +367,7 @@ final class WatchStoreTests: XCTestCase {
 
         XCTAssertNotEqual(store.snapshot.homework[0].status, "done")
         XCTAssertTrue(store.snapshot.homework[0].checklist[0].done)
-        XCTAssertNotNil(store.focusSession)
+        XCTAssertNil(store.focusSession)
     }
 
     func testSelectedStepDoneEndsFocusAfterDurableQueueing() async {
