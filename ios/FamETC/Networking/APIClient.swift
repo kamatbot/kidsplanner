@@ -162,6 +162,28 @@ final class APIClient: FamilyActionService {
         let r: HomeworkItemResponse = try await request("/api/homework/\(id)", method: "PATCH", body: ["status": status])
         return r.homework
     }
+    /// Sets an explicit desired state rather than toggling blindly, so replaying
+    /// the same request after a timeout is safe.
+    func setHomeworkChecklistStep(_ id: String, index: Int, done: Bool) async throws -> HomeworkItem {
+        let r: HomeworkItemResponse = try await request(
+            "/api/homework/\(pathComponent(id))/checklist/\(index)",
+            method: "PATCH",
+            body: ["done": done]
+        )
+        return r.homework
+    }
+    /// Replaces the ordered checklist through the generic homework PATCH. The
+    /// authenticated server derives family/kid scope; this payload contains only
+    /// canonical checklist fields.
+    func setHomeworkChecklist(_ id: String, checklist: [HomeworkChecklistItem]) async throws -> HomeworkItem {
+        let items: [[String: Any]] = checklist.map { ["text": $0.text, "done": $0.done] }
+        let r: HomeworkItemResponse = try await request(
+            "/api/homework/\(pathComponent(id))",
+            method: "PATCH",
+            body: ["checklist": items]
+        )
+        return r.homework
+    }
     /// Reschedule homework to a new due date (parent-only server-side; a kid's
     /// dueDate patch is ignored by the server).
     func setHomeworkDueDate(_ id: String, dueDate: String) async throws -> HomeworkItem {

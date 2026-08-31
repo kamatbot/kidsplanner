@@ -229,6 +229,67 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(r.event.canEdit)
     }
 
+    func testDecodesLegacyHomeworkWithoutChecklist() throws {
+        let payload = """
+        {
+          "id": "hw_legacy", "kidId": "k_1", "title": "Math worksheet",
+          "subject": "Math", "dueDate": "2026-09-01", "dueTime": null,
+          "status": "todo", "effortMin": 25
+        }
+        """
+
+        let item = try JSONDecoder().decode(HomeworkItem.self, from: Data(payload.utf8))
+
+        XCTAssertNil(item.notes)
+        XCTAssertNil(item.checklist)
+        XCTAssertTrue(item.checklistItems.isEmpty)
+        XCTAssertEqual(item.completedChecklistCount, 0)
+        XCTAssertEqual(item.remainingChecklistCount, 0)
+        XCTAssertNil(item.firstIncompleteChecklistIndex)
+        XCTAssertNil(item.firstIncompleteChecklistItem)
+    }
+
+    func testDecodesHomeworkChecklistProgressAndNextStep() throws {
+        let payload = """
+        {
+          "id": "hw_steps", "kidId": "k_1", "title": "History essay",
+          "subject": "History", "dueDate": "2026-09-03", "dueTime": "16:00",
+          "status": "in_progress", "effortMin": 60, "notes": "Use two sources",
+          "checklist": [
+            { "text": "Choose a topic", "done": true },
+            { "text": "Draft an outline", "done": false },
+            { "text": "Write the introduction", "done": false }
+          ]
+        }
+        """
+
+        let item = try JSONDecoder().decode(HomeworkItem.self, from: Data(payload.utf8))
+
+        XCTAssertEqual(item.notes, "Use two sources")
+        XCTAssertEqual(item.checklistItems.count, 3)
+        XCTAssertEqual(item.completedChecklistCount, 1)
+        XCTAssertEqual(item.remainingChecklistCount, 2)
+        XCTAssertEqual(item.firstIncompleteChecklistIndex, 1)
+        XCTAssertEqual(item.firstIncompleteChecklistItem?.text, "Draft an outline")
+        XCTAssertFalse(item.firstIncompleteChecklistItem?.done ?? true)
+    }
+
+    func testHomeworkMemberwiseInitializerKeepsChecklistFieldsOptional() {
+        let item = HomeworkItem(
+            id: "hw_memberwise",
+            kidId: nil,
+            title: "Read chapter 4",
+            subject: nil,
+            dueDate: "2026-09-04",
+            dueTime: nil,
+            status: "todo",
+            effortMin: nil
+        )
+
+        XCTAssertNil(item.notes)
+        XCTAssertTrue(item.checklistItems.isEmpty)
+    }
+
     // MARK: - Trips (docs/TRIPS-PLAN.md)
 
     /// A trip chat message carries `roomId`/`senderName` (server can't resolve

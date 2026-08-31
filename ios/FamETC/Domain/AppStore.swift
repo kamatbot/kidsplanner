@@ -837,19 +837,68 @@ final class AppStore {
         }
     }
 
-    /// Toggle a homework item done/undone (optimistic, reverts on failure).
-    func toggleHomeworkDone(_ item: HomeworkItem) async {
-        let next = item.isDone ? "todo" : "done"
+    /// Sets an explicit homework lifecycle state optimistically, then reconciles
+    /// with the authoritative server item. A failed request restores every field
+    /// from the prior item rather than leaving a partially-updated row behind.
+    func setHomeworkStatus(_ item: HomeworkItem, status: String) async {
         guard let idx = homework.firstIndex(where: { $0.id == item.id }) else { return }
-        let previous = homework[idx].status
-        homework[idx].status = next
+        let previous = homework[idx]
+        guard previous.status != status else { return }
+        homework[idx].status = status
         do {
-            let updated = try await api.setHomeworkStatus(item.id, status: next)
+            let updated = try await api.setHomeworkStatus(item.id, status: status)
             if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i] = updated }
         } catch {
-            if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i].status = previous }
+            if let i = homework.firstIndex(where: { $0.id == item.id }) { homework[i] = previous }
             handle(error)
         }
+    }
+
+    /// Sets one exact checklist state optimistically. Index validation uses the
+    /// current server-backed item so a stale row cannot address a different step.
+    func setHomeworkChecklistStep(_ item: HomeworkItem, index: Int, done: Bool) async {
+        guard let itemIndex = homework.firstIndex(where: { $0.id == item.id }) else { return }
+        let previous = homework[itemIndex]
+        guard previous.checklistItems.indices.contains(index),
+              previous.checklistItems[index].done != done else { return }
+
+        var checklist = previous.checklistItems
+        checklist[index].done = done
+        homework[itemIndex].checklist = checklist
+        do {
+            let updated = try await api.setHomeworkChecklistStep(item.id, index: index, done: done)
+            if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
+                homework[currentIndex] = updated
+            }
+        } catch {
+            if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
+                homework[currentIndex] = previous
+            }
+            handle(error)
+        }
+    }
+
+    /// Replaces the ordered checklist optimistically for add/delete/text edits.
+    func replaceHomeworkChecklist(_ item: HomeworkItem, checklist: [HomeworkChecklistItem]) async {
+        guard let itemIndex = homework.firstIndex(where: { $0.id == item.id }) else { return }
+        let previous = homework[itemIndex]
+        homework[itemIndex].checklist = checklist
+        do {
+            let updated = try await api.setHomeworkChecklist(item.id, checklist: checklist)
+            if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
+                homework[currentIndex] = updated
+            }
+        } catch {
+            if let currentIndex = homework.firstIndex(where: { $0.id == item.id }) {
+                homework[currentIndex] = previous
+            }
+            handle(error)
+        }
+    }
+
+    /// Toggle a homework item done/undone (optimistic, reverts on failure).
+    func toggleHomeworkDone(_ item: HomeworkItem) async {
+        await setHomeworkStatus(item, status: item.isDone ? "todo" : "done")
     }
 
     /// Kids see shared actions plus actions assigned to their linked kid. This

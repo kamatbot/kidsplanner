@@ -181,6 +181,18 @@ struct FamilyEvent: Codable, Identifiable {
     }
 }
 
+/// One student-owned step in a homework plan. The array order is significant:
+/// the server's idempotent step endpoint addresses these by index.
+struct HomeworkChecklistItem: Codable, Equatable {
+    var text: String
+    var done: Bool
+
+    init(text: String, done: Bool = false) {
+        self.text = text
+        self.done = done
+    }
+}
+
 /// A homework item (`/api/homework`). Kids see their own; parents see the family's.
 struct HomeworkItem: Codable, Identifiable {
     let id: String
@@ -191,8 +203,21 @@ struct HomeworkItem: Codable, Identifiable {
     var dueTime: String?   // HH:mm
     var status: String     // "todo" | "in_progress" | "done"
     var effortMin: Int?
+    /// Additive server fields stay optional so pre-checklist caches and existing
+    /// memberwise construction remain source- and wire-compatible.
+    var notes: String? = nil
+    var checklist: [HomeworkChecklistItem]? = nil
 
     var isDone: Bool { status == "done" }
+    /// Normalizes a missing legacy checklist without changing item order, since
+    /// checklist indices are part of the step-mutation API contract.
+    var checklistItems: [HomeworkChecklistItem] { checklist ?? [] }
+    var completedChecklistCount: Int { checklistItems.filter(\.done).count }
+    var remainingChecklistCount: Int { checklistItems.count - completedChecklistCount }
+    var firstIncompleteChecklistIndex: Int? { checklistItems.firstIndex { !$0.done } }
+    var firstIncompleteChecklistItem: HomeworkChecklistItem? {
+        firstIncompleteChecklistIndex.map { checklistItems[$0] }
+    }
 }
 
 /// A family action from `GET /api/family/actions`. The server scopes the list
