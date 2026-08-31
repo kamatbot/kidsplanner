@@ -76,7 +76,7 @@ struct MyNextView: View {
                     HomeworkHero(item: item)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Focus next: (item.title)")
+                .accessibilityLabel("Focus next: \(item.title)")
                 .accessibilityValue(homeworkAccessibilityValue(item))
                 .accessibilityHint("Opens the assignment and its next step.")
             } else if store.connection == .refreshing && store.snapshot.updatedAt == nil {
@@ -169,10 +169,10 @@ private struct HomeworkHero: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("(item.completedChecklistCount) of (item.checklist.count) steps complete")
+                Text("\(item.completedChecklistCount) of \(item.checklist.count) steps complete")
                     .font(.subheadline.weight(.semibold))
                     .accessibilityLabel("Checklist progress")
-                    .accessibilityValue("(item.completedChecklistCount) of (item.checklist.count) steps complete")
+                    .accessibilityValue("\(item.completedChecklistCount) of \(item.checklist.count) steps complete")
 
                 if let step = item.firstIncompleteChecklistItem {
                     VStack(alignment: .leading, spacing: 3) {
@@ -243,10 +243,10 @@ private struct HomeworkDetailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Checklist progress")
                             .font(.subheadline.weight(.semibold))
-                        Text("(currentItem.completedChecklistCount) of (currentItem.checklist.count) steps complete")
+                        Text("\(currentItem.completedChecklistCount) of \(currentItem.checklist.count) steps complete")
                             .font(.body)
                             .accessibilityLabel("Checklist progress")
-                            .accessibilityValue("(currentItem.completedChecklistCount) of (currentItem.checklist.count) steps complete")
+                            .accessibilityValue("\(currentItem.completedChecklistCount) of \(currentItem.checklist.count) steps complete")
 
                         if let step = currentItem.firstIncompleteChecklistItem {
                             Text("Next step")
@@ -455,7 +455,7 @@ private struct ActionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Complete (action.title)")
+        .accessibilityLabel("Complete \(action.title)")
         .accessibilityValue(dueText(date: action.dueDate, time: action.dueTime) ?? "No due date")
         .accessibilityHint("Marks this important action done.")
     }
@@ -503,7 +503,7 @@ private struct ShoppingRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Mark (item.text) bought")
+        .accessibilityLabel("Mark \(item.text) bought")
         .accessibilityHint("Marks this item bought.")
     }
 }
@@ -524,10 +524,10 @@ private func homeworkAccessibilityValue(_ item: WatchHomework) -> String {
     if item.checklist.isEmpty {
         values.append("No steps listed")
     } else if let step = item.firstIncompleteChecklistItem {
-        values.append("(item.completedChecklistCount) of (item.checklist.count) steps complete")
-        values.append("Next step: (step.text)")
+        values.append("\(item.completedChecklistCount) of \(item.checklist.count) steps complete")
+        values.append("Next step: \(step.text)")
     } else {
-        values.append("All (item.checklist.count) steps complete")
+        values.append("All \(item.checklist.count) steps complete")
     }
     return values.filter { !$0.isEmpty }.joined(separator: ". ")
 }
@@ -536,11 +536,11 @@ private func timerAccessibilityValue(_ session: WatchFocusSession, at date: Date
     let remaining = Int(ceil(session.remaining(at: date)))
     let minutes = remaining / 60
     let seconds = remaining % 60
-    return minutes > 0 ? "(minutes) minutes (seconds) seconds" : "(seconds) seconds"
+    return minutes > 0 ? "\(minutes) minutes \(seconds) seconds" : "\(seconds) seconds"
 }
 
 private func dueText(date: String?, time: String?) -> String? {
     guard let date, !date.isEmpty else { return nil }
-    if let time, !time.isEmpty { return "Due (date) at (time)" }
-    return "Due (date)"
+    if let time, !time.isEmpty { return "Due \(date) at \(time)" }
+    return "Due \(date)"
 }
