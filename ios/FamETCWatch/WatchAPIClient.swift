@@ -7,6 +7,7 @@ protocol WatchAPIClient {
 
     func updateActionStatus(_ id: String, status: String) async throws -> WatchAction
     func updateHomeworkStatus(_ id: String, status: String) async throws -> WatchHomework
+    func updateHomeworkChecklistStep(_ id: String, index: Int, done: Bool) async throws -> WatchHomework
     func updateShoppingDone(_ id: String, done: Bool) async throws -> WatchShoppingItem
 }
 
@@ -113,6 +114,16 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
             "/api/homework/\(pathComponent(id))",
             method: "PATCH",
             body: ["status": status],
+            response: HomeworkItemResponse.self
+        )
+        return response.homework
+    }
+
+    func updateHomeworkChecklistStep(_ id: String, index: Int, done: Bool) async throws -> WatchHomework {
+        let response: HomeworkItemResponse = try await request(
+            "/api/homework/\(pathComponent(id))/checklist/\(index)",
+            method: "PATCH",
+            body: ["done": done],
             response: HomeworkItemResponse.self
         )
         return response.homework

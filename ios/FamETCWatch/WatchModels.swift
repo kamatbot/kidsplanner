@@ -57,6 +57,13 @@ struct WatchSnapshot: Codable, Equatable {
             }
     }
 
+    /// The one assignment the watch should put in front of a student. This
+    /// deliberately reuses the existing due-date ordering instead of trying
+    /// to infer urgency or rank work with a second heuristic.
+    var focusHomework: WatchHomework? {
+        openHomework.first
+    }
+
     var openShopping: [WatchShoppingItem] {
         shopping
             .filter { !$0.done }
@@ -107,6 +114,16 @@ struct WatchAction: Codable, Equatable, Identifiable {
 /// Mirrors the server's `/api/homework` item. Homework is kept separate from
 /// actions because the server exposes a distinct status mutation and because a
 /// kid session has a narrower visibility scope for it.
+struct WatchChecklistItem: Codable, Equatable {
+    var text: String
+    var done: Bool
+
+    init(text: String, done: Bool = false) {
+        self.text = text
+        self.done = done
+    }
+}
+
 struct WatchHomework: Codable, Equatable, Identifiable {
     let id: String
     var kidId: String?
@@ -116,8 +133,68 @@ struct WatchHomework: Codable, Equatable, Identifiable {
     var dueTime: String?
     var status: String
     var effortMin: Int?
+    var checklist: [WatchChecklistItem]
+
+    init(id: String,
+         kidId: String? = nil,
+         title: String,
+         subject: String? = nil,
+         dueDate: String,
+         dueTime: String? = nil,
+         status: String,
+         effortMin: Int? = nil,
+         checklist: [WatchChecklistItem] = []) {
+        self.id = id
+        self.kidId = kidId
+        self.title = title
+        self.subject = subject
+        self.dueDate = dueDate
+        self.dueTime = dueTime
+        self.status = status
+        self.effortMin = effortMin
+        self.checklist = checklist
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kidId = try container.decodeIfPresent(String.self, forKey: .kidId)
+        title = try container.decode(String.self, forKey: .title)
+        subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        dueDate = try container.decode(String.self, forKey: .dueDate)
+        dueTime = try container.decodeIfPresent(String.self, forKey: .dueTime)
+        status = try container.decode(String.self, forKey: .status)
+        effortMin = try container.decodeIfPresent(Int.self, forKey: .effortMin)
+        // The checklist was added after the first watch cache schema. Missing
+        // data means that the assignment has no watch-visible steps.
+        checklist = try container.decodeIfPresent([WatchChecklistItem].self, forKey: .checklist) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kidId, title, subject, dueDate, dueTime, status, effortMin, checklist
+    }
 
     var isDone: Bool { status == "done" }
+
+    var completedChecklistCount: Int {
+        checklist.reduce(into: 0) { count, item in
+            if item.done { count += 1 }
+        }
+    }
+
+    var firstIncompleteChecklistIndex: Int? {
+        checklist.firstIndex(where: { !$0.done })
+    }
+
+    var firstIncompleteChecklistItem: WatchChecklistItem? {
+        guard let index = firstIncompleteChecklistIndex else { return nil }
+        return checklist[index]
+    }
+
+    /// Short aliases keep the projection readable at call sites that speak
+    /// about a project's next step rather than its wire-format checklist.
+    var firstIncompleteStepIndex: Int? { firstIncompleteChecklistIndex }
+    var firstIncompleteStep: WatchChecklistItem? { firstIncompleteChecklistItem }
 }
 
 /// The server calls shopping fields `text` and `done`. Older native payloads
@@ -184,6 +261,7 @@ enum WatchMutationKind: String, Codable {
     case actionStatus
     case homeworkStatus
     case shoppingDone
+    case homeworkChecklistStep
 }
 
 /// One user mutation in the durable outbox. The entry is written before any
@@ -194,6 +272,7 @@ struct WatchMutation: Codable, Equatable, Identifiable {
     let resourceID: String
     let stringValue: String?
     let boolValue: Bool?
+    let index: Int?
     let createdAt: Date
 
     init(id: UUID = UUID(),
@@ -201,29 +280,77 @@ struct WatchMutation: Codable, Equatable, Identifiable {
          resourceID: String,
          stringValue: String? = nil,
          boolValue: Bool? = nil,
+         index: Int? = nil,
          createdAt: Date = Date()) {
         self.id = id
         self.kind = kind
         self.resourceID = resourceID
         self.stringValue = stringValue
         self.boolValue = boolValue
+        self.index = index
         self.createdAt = createdAt
     }
 }
 
+/// A local focus block is intentionally a small timestamped record. It is
+/// not a background timer and contains only a title snapshot for the watch's
+/// in-app display; the canonical assignment remains the server's homework.
+struct WatchFocusSession: Codable, Equatable, Identifiable {
+    static let duration: TimeInterval = 20 * 60
+
+    let id: UUID
+    let homeworkID: String
+    let checklistIndex: Int?
+    let titleSnapshot: String
+    let startedAt: Date
+    let duration: TimeInterval
+    var completionAcknowledged: Bool
+
+    init(id: UUID = UUID(),
+         homeworkID: String,
+         checklistIndex: Int? = nil,
+         titleSnapshot: String,
+         startedAt: Date = Date(),
+         duration: TimeInterval = WatchFocusSession.duration,
+         completionAcknowledged: Bool = false) {
+        self.id = id
+        self.homeworkID = homeworkID
+        self.checklistIndex = checklistIndex
+        self.titleSnapshot = titleSnapshot
+        self.startedAt = startedAt
+        self.duration = duration
+        self.completionAcknowledged = completionAcknowledged
+    }
+
+    var endsAt: Date { startedAt.addingTimeInterval(duration) }
+
+    func remaining(at date: Date = Date()) -> TimeInterval {
+        max(0, endsAt.timeIntervalSince(date))
+    }
+
+    func isComplete(at date: Date = Date()) -> Bool {
+        date >= endsAt
+    }
+
+    var hasChecklistStep: Bool { checklistIndex != nil }
+}
+
 struct WatchPersistedState: Codable, Equatable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     let schemaVersion: Int
     var snapshot: WatchSnapshot
     var outbox: [WatchMutation]
+    var focusSession: WatchFocusSession?
 
     init(snapshot: WatchSnapshot = WatchSnapshot(),
          outbox: [WatchMutation] = [],
+         focusSession: WatchFocusSession? = nil,
          schemaVersion: Int = WatchPersistedState.currentSchemaVersion) {
         self.schemaVersion = schemaVersion
         self.snapshot = snapshot
         self.outbox = outbox
+        self.focusSession = focusSession
     }
 
     init(from decoder: Decoder) throws {
@@ -233,9 +360,10 @@ struct WatchPersistedState: Codable, Equatable {
         snapshot = try container.decodeIfPresent(WatchSnapshot.self, forKey: .snapshot)
             ?? WatchSnapshot()
         outbox = try container.decodeIfPresent([WatchMutation].self, forKey: .outbox) ?? []
+        focusSession = try container.decodeIfPresent(WatchFocusSession.self, forKey: .focusSession)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, snapshot, outbox
+        case schemaVersion, snapshot, outbox, focusSession
     }
 }

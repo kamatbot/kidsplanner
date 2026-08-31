@@ -76,6 +76,17 @@ private final class TestAPI: WatchAPIClient {
         return homework[index]
     }
 
+    func updateHomeworkChecklistStep(_ id: String, index checklistIndex: Int, done: Bool) async throws -> WatchHomework {
+        events.append("network-checklist-\(checklistIndex)-\(done)")
+        if let mutationError { throw mutationError }
+        guard let homeworkIndex = homework.firstIndex(where: { $0.id == id }),
+              homework[homeworkIndex].checklist.indices.contains(checklistIndex) else {
+            throw WatchAPIError.http(404, "missing")
+        }
+        homework[homeworkIndex].checklist[checklistIndex].done = done
+        return homework[homeworkIndex]
+    }
+
     func updateShoppingDone(_ id: String, done: Bool) async throws -> WatchShoppingItem {
         events.append("network-shopping")
         if let mutationError { throw mutationError }
@@ -89,6 +100,44 @@ private final class TestAPI: WatchAPIClient {
 
 @MainActor
 final class WatchStoreTests: XCTestCase {
+    func testHomeworkProjectionsChooseOneNextAssignmentAndStep() throws {
+        let later = WatchHomework(
+            id: "later",
+            title: "Read chapter",
+            dueDate: "2026-08-12",
+            status: "todo",
+            checklist: [WatchChecklistItem(text: "Read", done: false)]
+        )
+        let first = WatchHomework(
+            id: "first",
+            title: "Science project",
+            dueDate: "2026-08-10",
+            status: "todo",
+            checklist: [
+                WatchChecklistItem(text: "Choose a topic", done: true),
+                WatchChecklistItem(text: "Draft an outline", done: false),
+                WatchChecklistItem(text: "Review sources", done: false),
+            ]
+        )
+        let snapshot = WatchSnapshot(homework: [later, first])
+
+        XCTAssertEqual(snapshot.focusHomework?.id, "first")
+        XCTAssertEqual(snapshot.focusHomework?.completedChecklistCount, 1)
+        XCTAssertEqual(snapshot.focusHomework?.firstIncompleteChecklistIndex, 1)
+        XCTAssertEqual(snapshot.focusHomework?.firstIncompleteChecklistItem?.text, "Draft an outline")
+    }
+
+    func testSchemaOneCacheDefaultsChecklistFocusAndMutationIndex() throws {
+        let oldJSON = """
+        {"schemaVersion":1,"snapshot":{"actions":[],"homework":[{"id":"h1","title":"Essay","dueDate":"2026-08-10","status":"todo"}],"shopping":[]},"outbox":[{"id":"00000000-0000-0000-0000-000000000001","kind":"homeworkStatus","resourceID":"h1","stringValue":"in_progress","boolValue":null,"createdAt":0}]}
+        """
+        let state = try JSONDecoder().decode(WatchPersistedState.self, from: Data(oldJSON.utf8))
+        XCTAssertEqual(state.schemaVersion, 1)
+        XCTAssertNil(state.focusSession)
+        XCTAssertEqual(state.snapshot.homework.first?.checklist, [])
+        XCTAssertNil(state.outbox.first?.index)
+    }
+
     func testCodableStateRoundTripsSnapshotAndOutbox() throws {
         let snapshot = WatchSnapshot(
             actions: [WatchAction(id: "a1", familyId: "f1", title: "Pack kit", notes: nil,
@@ -108,6 +157,22 @@ final class WatchStoreTests: XCTestCase {
         let data = try JSONEncoder().encode(state)
         let decoded = try JSONDecoder().decode(WatchPersistedState.self, from: data)
         XCTAssertEqual(decoded, state)
+    }
+
+    func testChecklistMutationRoundTripsIndexAndDesiredState() throws {
+        let mutation = WatchMutation(
+            kind: .homeworkChecklistStep,
+            resourceID: "h1",
+            boolValue: true,
+            index: 2
+        )
+        let decoded = try JSONDecoder().decode(
+            WatchMutation.self,
+            from: JSONEncoder().encode(mutation)
+        )
+        XCTAssertEqual(decoded, mutation)
+        XCTAssertEqual(decoded.index, 2)
+        XCTAssertEqual(decoded.boolValue, true)
     }
 
     func testShoppingDecodesServerAndLegacyFieldNames() throws {
@@ -195,5 +260,113 @@ final class WatchStoreTests: XCTestCase {
         XCTAssertEqual(store.pendingMutationCount, 1)
         XCTAssertTrue(api.events.isEmpty)
         XCTAssertEqual(persistence.state?.outbox.count, 1)
+    }
+
+    func testChecklistStepIsOptimisticDurableAndReplaysInOrder() async {
+        let homework = WatchHomework(
+            id: "h1",
+            title: "Science project",
+            dueDate: "2026-08-10",
+            status: "todo",
+            checklist: [
+                WatchChecklistItem(text: "Choose a topic"),
+                WatchChecklistItem(text: "Draft an outline"),
+            ]
+        )
+        let api = TestAPI()
+        api.homework = [homework]
+        api.mutationError = WatchAPIError.transport("offline")
+        let persistence = TestPersistence()
+        let store = WatchStore(
+            api: api,
+            credentials: TestCredentials(),
+            persistence: persistence,
+            initialState: WatchPersistedState(snapshot: WatchSnapshot(homework: [homework]))
+        )
+
+        await store.markHomeworkStepDone(homework, index: 1)
+
+        XCTAssertEqual(store.snapshot.homework[0].checklist[1].done, true)
+        XCTAssertEqual(store.pendingMutationCount, 1)
+        XCTAssertEqual(persistence.state?.outbox.first?.kind, .homeworkChecklistStep)
+        XCTAssertEqual(persistence.state?.outbox.first?.index, 1)
+        XCTAssertEqual(persistence.state?.outbox.first?.boolValue, true)
+        XCTAssertEqual(api.events, ["network-checklist-1-true"])
+
+        api.mutationError = nil
+        await store.refresh()
+
+        XCTAssertEqual(api.events, ["network-checklist-1-true", "network-checklist-1-true"])
+        XCTAssertEqual(store.pendingMutationCount, 0)
+        XCTAssertEqual(persistence.state?.outbox, [])
+        XCTAssertTrue(api.homework[0].checklist[1].done)
+    }
+
+    func testFocusPersistsBeforeStatusReplayAndRestoresOneShotAcknowledgement() async {
+        let homework = WatchHomework(
+            id: "h1",
+            title: "Science project",
+            dueDate: "2026-08-10",
+            status: "todo",
+            checklist: [WatchChecklistItem(text: "Choose a topic")]
+        )
+        let api = TestAPI()
+        api.homework = [homework]
+        let persistence = TestPersistence()
+        let store = WatchStore(
+            api: api,
+            credentials: TestCredentials(),
+            persistence: persistence,
+            initialState: WatchPersistedState(snapshot: WatchSnapshot(homework: [homework]))
+        )
+
+        await store.startFocus(on: homework, checklistIndex: 0)
+
+        let session = try! XCTUnwrap(store.focusSession)
+        XCTAssertEqual(session.homeworkID, "h1")
+        XCTAssertEqual(session.checklistIndex, 0)
+        XCTAssertEqual(session.titleSnapshot, "Science project")
+        XCTAssertEqual(session.duration, WatchFocusSession.duration)
+        XCTAssertEqual(persistence.events.first, "save")
+        XCTAssertEqual(api.events, ["network-homework"])
+        XCTAssertEqual(persistence.state?.focusSession?.id, session.id)
+
+        let completedAt = session.endsAt.addingTimeInterval(1)
+        XCTAssertTrue(store.focusIsComplete(at: completedAt))
+        XCTAssertTrue(store.acknowledgeFocusCompletion(at: completedAt))
+        XCTAssertFalse(store.acknowledgeFocusCompletion(at: completedAt))
+
+        let restored = WatchStore(
+            api: api,
+            credentials: TestCredentials(),
+            persistence: persistence
+        )
+        XCTAssertEqual(restored.focusSession?.id, session.id)
+        XCTAssertTrue(restored.focusSession?.completionAcknowledged == true)
+    }
+
+    func testFocusAndStepDoNotAutoCompleteAssignment() async {
+        let homework = WatchHomework(
+            id: "h1",
+            title: "Science project",
+            dueDate: "2026-08-10",
+            status: "todo",
+            checklist: [WatchChecklistItem(text: "Choose a topic")]
+        )
+        let api = TestAPI()
+        api.homework = [homework]
+        let store = WatchStore(
+            api: api,
+            credentials: TestCredentials(value: nil),
+            persistence: TestPersistence(),
+            initialState: WatchPersistedState(snapshot: WatchSnapshot(homework: [homework]))
+        )
+
+        await store.startFocus(on: homework, checklistIndex: 0)
+        await store.markSelectedStepDone()
+
+        XCTAssertNotEqual(store.snapshot.homework[0].status, "done")
+        XCTAssertTrue(store.snapshot.homework[0].checklist[0].done)
+        XCTAssertNotNil(store.focusSession)
     }
 }

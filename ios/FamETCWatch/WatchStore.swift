@@ -45,6 +45,7 @@ private func captureWatchSection<Value>(
 @MainActor
 final class WatchStore: ObservableObject {
     @Published private(set) var snapshot: WatchSnapshot
+    @Published private(set) var focusSession: WatchFocusSession?
     @Published private(set) var connection: WatchConnectionState
     @Published private(set) var lastError: String?
     @Published private(set) var pendingMutationCount: Int
@@ -67,6 +68,7 @@ final class WatchStore: ObservableObject {
 
         let restored = initialState ?? persistence.load()
         self.snapshot = restored?.snapshot ?? WatchSnapshot()
+        self.focusSession = restored?.focusSession
         self.outbox = restored?.outbox ?? []
         self.pendingMutationCount = self.outbox.count
         self.connection = restored == nil ? .disconnected : .cached
@@ -76,6 +78,20 @@ final class WatchStore: ObservableObject {
     var urgentActions: [WatchAction] { snapshot.urgentActions }
     var openHomework: [WatchHomework] { snapshot.openHomework }
     var openShopping: [WatchShoppingItem] { snapshot.openShopping }
+    var focusHomework: WatchHomework? { snapshot.focusHomework }
+
+    func focusRemaining(at date: Date = Date()) -> TimeInterval {
+        focusSession?.remaining(at: date) ?? 0
+    }
+
+    func focusIsComplete(at date: Date = Date()) -> Bool {
+        focusSession?.isComplete(at: date) ?? false
+    }
+
+    func focusCompletionNeedsAcknowledgement(at date: Date = Date()) -> Bool {
+        guard let focusSession else { return false }
+        return focusSession.isComplete(at: date) && !focusSession.completionAcknowledged
+    }
 
     func endForegroundSession() {
         foregroundRefreshUsed = false
@@ -196,6 +212,101 @@ final class WatchStore: ObservableObject {
         await enqueue(mutation)
     }
 
+    /// Start the one local focus block the watch can hold. The focus record is
+    /// saved synchronously before the optional status mutation can touch the
+    /// network, so suspension at any point still restores the block.
+    func startFocus(on homework: WatchHomework, checklistIndex: Int? = nil) async {
+        guard focusSession == nil else { return }
+
+        let selectedIndex: Int?
+        if let checklistIndex, homework.checklist.indices.contains(checklistIndex) {
+            selectedIndex = checklistIndex
+        } else {
+            selectedIndex = homework.firstIncompleteChecklistIndex
+        }
+        focusSession = WatchFocusSession(
+            homeworkID: homework.id,
+            checklistIndex: selectedIndex,
+            titleSnapshot: homework.title
+        )
+        // Persist focus before awaiting status replay or checking credentials.
+        persist()
+
+        guard let current = snapshot.homework.first(where: { $0.id == homework.id }),
+              current.status == "todo",
+              !outbox.contains(where: { $0.kind == .homeworkStatus && $0.resourceID == homework.id }) else {
+            return
+        }
+
+        await enqueue(WatchMutation(
+            kind: .homeworkStatus,
+            resourceID: homework.id,
+            stringValue: "in_progress"
+        ))
+    }
+
+    /// Convenience spelling for callers that already use the noun-first form.
+    func startFocus(homework: WatchHomework, checklistIndex: Int? = nil) async {
+        await startFocus(on: homework, checklistIndex: checklistIndex)
+    }
+
+    /// Mark one explicit checklist index done. Desired state is carried in the
+    /// outbox instead of a toggle, making timeout/replay safe.
+    func markHomeworkStepDone(_ homework: WatchHomework, index: Int) async {
+        guard homework.checklist.indices.contains(index), !homework.checklist[index].done else { return }
+        await enqueue(WatchMutation(
+            kind: .homeworkChecklistStep,
+            resourceID: homework.id,
+            boolValue: true,
+            index: index
+        ))
+    }
+
+    func markSelectedStepDone() async {
+        guard let focusSession,
+              let index = focusSession.checklistIndex,
+              let homework = snapshot.homework.first(where: { $0.id == focusSession.homeworkID }) else {
+            return
+        }
+        await markHomeworkStepDone(homework, index: index)
+    }
+
+    /// Acknowledgement is a durable one-shot gate for the completion haptic.
+    /// The view plays the haptic only when this returns true.
+    @discardableResult
+    func acknowledgeFocusCompletion(at date: Date = Date()) -> Bool {
+        guard var session = focusSession,
+              session.isComplete(at: date),
+              !session.completionAcknowledged else {
+            return false
+        }
+        session.completionAcknowledged = true
+        focusSession = session
+        persist()
+        return true
+    }
+
+    func endFocus() {
+        guard focusSession != nil else { return }
+        focusSession = nil
+        persist()
+    }
+
+    /// Explicit assignment completion remains separate from both focus timer
+    /// expiry and checklist progress. Neither of those events auto-completes
+    /// homework.
+    func finishAssignment(_ homework: WatchHomework) async {
+        guard !homework.isDone else { return }
+        if focusSession?.homeworkID == homework.id {
+            endFocus()
+        }
+        await enqueue(WatchMutation(
+            kind: .homeworkStatus,
+            resourceID: homework.id,
+            stringValue: "done"
+        ))
+    }
+
     func isPending(_ id: String, kind: WatchMutationKind) -> Bool {
         outbox.contains { $0.resourceID == id && $0.kind == kind }
     }
@@ -249,6 +360,13 @@ final class WatchStore: ObservableObject {
                         try await api.updateShoppingDone(entry.resourceID, done: done)
                     }
                     replace(updated)
+                case .homeworkChecklistStep:
+                    guard let index = entry.index else { throw WatchAPIError.decoding("Checklist mutation has no index.") }
+                    let done = entry.boolValue ?? true
+                    let updated = try await withWatchTimeout(seconds: 8) { [api] in
+                        try await api.updateHomeworkChecklistStep(entry.resourceID, index: index, done: done)
+                    }
+                    replace(updated)
                 }
 
                 outbox.removeFirst()
@@ -300,6 +418,11 @@ final class WatchStore: ObservableObject {
         case .shoppingDone:
             guard let index = snapshot.shopping.firstIndex(where: { $0.id == mutation.resourceID }) else { return }
             snapshot.shopping[index].done = mutation.boolValue ?? true
+        case .homeworkChecklistStep:
+            guard let homeworkIndex = snapshot.homework.firstIndex(where: { $0.id == mutation.resourceID }),
+                  let checklistIndex = mutation.index,
+                  snapshot.homework[homeworkIndex].checklist.indices.contains(checklistIndex) else { return }
+            snapshot.homework[homeworkIndex].checklist[checklistIndex].done = mutation.boolValue ?? true
         }
     }
 
@@ -319,12 +442,18 @@ final class WatchStore: ObservableObject {
     }
 
     private func persist() {
-        persistence.save(WatchPersistedState(snapshot: snapshot, outbox: outbox))
+        persistence.save(WatchPersistedState(
+            snapshot: snapshot,
+            outbox: outbox,
+            focusSession: focusSession
+        ))
         WatchComplicationSnapshotStore.save(FamETCWatchComplicationSnapshot(
             urgentCount: snapshot.urgentActions.count,
             homeworkCount: snapshot.openHomework.count,
             shoppingCount: snapshot.openShopping.count,
-            updatedAt: snapshot.updatedAt
+            updatedAt: snapshot.updatedAt,
+            focusActive: focusSession != nil && !(focusSession?.isComplete() ?? true),
+            focusEndsAt: focusSession?.endsAt
         ))
         WidgetCenter.shared.reloadTimelines(ofKind: "FamETCWatchComplication")
     }
