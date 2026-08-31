@@ -470,6 +470,7 @@ private struct HomeworkCompactRow: View {
                                 .font(Typography.cardTitle)
                                 .foregroundStyle(item.isDone ? Palette.textSecond : Palette.text)
                                 .strikethrough(item.isDone, color: Palette.textSecond)
+                                .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                             if let subject = HomeworkCopy.nonEmpty(item.subject) {
                                 Text(subject).font(Typography.caption).foregroundStyle(Palette.textSecond)
