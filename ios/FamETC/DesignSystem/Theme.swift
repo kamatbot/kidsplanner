@@ -112,11 +112,19 @@ enum Signal {
 // `.weight()` modifier walks a bundled variable font's `wght` axis, so one file
 // per family covers every weight — no per-weight font files needed.
 enum Theme {
-    static func font(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom("SpaceGrotesk-Light", size: size).weight(weight)
+    static func font(
+        _ size: CGFloat,
+        weight: Font.Weight = .regular,
+        relativeTo textStyle: Font.TextStyle = .body
+    ) -> Font {
+        .custom("SpaceGrotesk-Light", size: size, relativeTo: textStyle).weight(weight)
     }
-    static func mono(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
-        .custom("JetBrainsMono-Regular", size: size).weight(weight)
+    static func mono(
+        _ size: CGFloat,
+        weight: Font.Weight = .medium,
+        relativeTo textStyle: Font.TextStyle = .body
+    ) -> Font {
+        .custom("JetBrainsMono-Regular", size: size, relativeTo: textStyle).weight(weight)
     }
 }
 
@@ -134,15 +142,15 @@ enum Typography {
         Theme.mono(size, weight: weight)
     }
 
-    static let largeTitle = display(28, .bold)
-    static let title      = display(22, .bold)
-    static let cardTitle  = display(16, .semibold)
-    static let body       = display(15)
-    static let label      = display(12.5)
-    static let caption    = display(11.5)
-    static let kpiNumber   = mono(34, .bold)
-    static let statNumber  = mono(20, .bold)
-    static let monoSmall   = mono(11, .medium)
+    static let largeTitle = Theme.font(28, weight: .bold, relativeTo: .largeTitle)
+    static let title      = Theme.font(22, weight: .bold, relativeTo: .title2)
+    static let cardTitle  = Theme.font(16, weight: .semibold, relativeTo: .headline)
+    static let body       = Theme.font(15, relativeTo: .body)
+    static let label      = Theme.font(12.5, relativeTo: .subheadline)
+    static let caption    = Theme.font(11.5, relativeTo: .caption)
+    static let kpiNumber  = Theme.mono(34, weight: .bold, relativeTo: .largeTitle)
+    static let statNumber = Theme.mono(20, weight: .bold, relativeTo: .title3)
+    static let monoSmall  = Theme.mono(11, weight: .medium, relativeTo: .caption)
 }
 
 // MARK: - Spacing / radius
