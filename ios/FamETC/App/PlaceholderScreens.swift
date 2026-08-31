@@ -8,6 +8,7 @@ import SwiftUI
 struct HomeworkScreen: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedKidID: String?
     @State private var selectedHomeworkID: String?
     @State private var compactHomeworkSelection: HomeworkSheetSelection?
@@ -52,7 +53,11 @@ struct HomeworkScreen: View {
     var body: some View {
         ZStack {
             ScreenBackground()
-            if horizontalSizeClass == .regular { regularWorkspace } else { compactWorkspace }
+            if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
+                regularWorkspace
+            } else {
+                compactWorkspace
+            }
         }
         .onAppear(perform: reconcileSelection)
         .onChange(of: orderedHomework.map(\.id)) { _, _ in reconcileSelection() }

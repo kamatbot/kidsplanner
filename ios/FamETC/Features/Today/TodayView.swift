@@ -104,10 +104,11 @@ private struct AddEventFAB: View {
 
 private struct ParentTodayStack: View {
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            if hSize == .compact {
+            if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
                 StudyStartCard()
                 ActionCard()
                 ScheduleCard()
@@ -582,6 +583,7 @@ private struct MoreMenu: View {
 private struct KidTodayStack: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var todayItems: [AgendaItem] {
         Agenda.items(on: Agenda.todayKey(), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework)
@@ -591,7 +593,7 @@ private struct KidTodayStack: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            if hSize == .compact {
+            if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
                 StudyStartCard()
                 ActionCard()
                 if let nextUp { KidNextUpCallout(item: nextUp) }
