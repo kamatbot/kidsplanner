@@ -230,14 +230,19 @@ struct HomeworkScreen: View {
     }
 
     private var listHeading: some View {
-        HStack(alignment: .firstTextBaseline) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Space.xs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Space.sm))
+        return layout {
             VStack(alignment: .leading, spacing: Space.xs) {
                 MicroLabel(text: store.isParent ? "Assignments" : "Your list")
                 Text("\(orderedHomework.filter { !$0.isDone }.count) open")
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
             }
-            Spacer(minLength: Space.sm)
+            if !dynamicTypeSize.isAccessibilitySize {
+                Spacer(minLength: Space.sm)
+            }
             Text(orderedHomework.count == 1 ? "1 assignment" : "\(orderedHomework.count) assignments")
                 .font(Typography.caption)
                 .foregroundStyle(Palette.textSecond)
@@ -489,6 +494,7 @@ private struct HomeworkCompactRow: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .multilineTextAlignment(.leading)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Palette.textSecond)
