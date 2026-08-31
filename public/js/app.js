@@ -4188,10 +4188,13 @@ function renderHomeworkRow(item) {
     <span class="hw-kid-tag" style="color:${kidColor || 'var(--text-2)'}">
       <span class="hw-kid-dot" style="background:${kidColor || 'var(--text-2)'}"></span>${esc(kidNameFor(item.kidId))}
     </span>` : '';
+  const progressControl = isKidSession()
+    ? `<button class="hw-check${done ? ' checked' : ''}${overdue ? ' hw-check-overdue' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')" title="${done ? 'Mark as not done' : 'Mark as done'}" aria-label="Toggle done">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}</button>`
+    : `<span class="hw-check${done ? ' checked' : ''}${overdue ? ' hw-check-overdue' : ''}" aria-label="${done ? 'Completed' : 'Not completed'}">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}</span>`;
 
   return `
     <div class="homework-row${done ? ' hw-done' : ''}" data-hw-id="${item.id}">
-      <button class="hw-check${done ? ' checked' : ''}${overdue ? ' hw-check-overdue' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')" title="${done ? 'Mark as not done' : 'Mark as done'}" aria-label="Toggle done">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}</button>
+      ${progressControl}
       <div class="hw-row-main" onclick="openHomeworkDetail('${item.id}')">
         <div class="hw-row-title-line">
           <span class="hw-row-title">${esc(item.title)}</span>
@@ -4206,6 +4209,7 @@ function renderHomeworkRow(item) {
 }
 
 async function toggleHomeworkDone(id) {
+  if (!isKidSession()) return;
   const item = homeworkItems.find((h) => h.id === id);
   if (!item) return;
   const nextStatus = item.status === 'done' ? 'todo' : 'done';
@@ -4929,8 +4933,14 @@ function renderTodayHomeworkRow(item, todayIso) {
   const checkMark = done
     ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
     : '';
-  return `<div class="homework-due-row${done ? ' done' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')">
-    <button type="button" class="homework-due-check ${checkCls}" aria-label="Toggle done">${checkMark}</button>
+  const rowAction = isKidSession()
+    ? `event.stopPropagation();toggleHomeworkDone('${item.id}')`
+    : `openHomeworkDetail('${item.id}')`;
+  const progressControl = isKidSession()
+    ? `<button type="button" class="homework-due-check ${checkCls}" aria-label="Toggle done">${checkMark}</button>`
+    : `<span class="homework-due-check ${checkCls}" aria-label="${done ? 'Completed' : 'Not completed'}">${checkMark}</span>`;
+  return `<div class="homework-due-row${done ? ' done' : ''}" onclick="${rowAction}">
+    ${progressControl}
     <span class="homework-due-title">${esc(item.title)}</span>
     ${when ? `<span class="homework-due-when ${whenClass}">${esc(when)}</span>` : ''}
     <span class="homework-due-kid-dot" style="background:${dotColor}"></span>
@@ -5017,6 +5027,7 @@ function openAddHomeworkModal(prefill) {
   document.getElementById('homework-notes').value = '';
   document.getElementById('homework-form-error').textContent = '';
   renderHomeworkChecklistEditor();
+  document.getElementById('homework-checklist-group').style.display = isKidSession() ? '' : 'none';
 
   const kidGroup = document.getElementById('homework-kid-group');
   const kidSelect = document.getElementById('homework-kid');
@@ -5045,6 +5056,7 @@ function editCurrentHomework() {
   document.getElementById('homework-notes').value = item.notes || '';
   document.getElementById('homework-form-error').textContent = '';
   renderHomeworkChecklistEditor();
+  document.getElementById('homework-checklist-group').style.display = isKidSession() ? '' : 'none';
 
   const kidGroup = document.getElementById('homework-kid-group');
   if (isKidSession()) {
@@ -5071,11 +5083,13 @@ function renderHomeworkChecklistEditor() {
 }
 
 function addHomeworkChecklistRow() {
+  if (!isKidSession()) return;
   homeworkChecklistDraft.push({ text: '', done: false });
   renderHomeworkChecklistEditor();
 }
 
 function removeHomeworkChecklistRow(i) {
+  if (!isKidSession()) return;
   homeworkChecklistDraft.splice(i, 1);
   renderHomeworkChecklistEditor();
 }
@@ -5089,19 +5103,20 @@ async function saveHomeworkForm(e) {
   const dueDate = document.getElementById('homework-due-date').value;
   const dueTime = document.getElementById('homework-due-time').value;
   const notes = document.getElementById('homework-notes').value.trim();
-  const checklist = homeworkChecklistDraft.filter((c) => c.text.trim());
   const kidId = isKidSession() ? sessionUser.kidId : document.getElementById('homework-kid').value;
 
   if (!isKidSession() && !kidId) { errEl.textContent = 'Add a kid profile first.'; return; }
 
   try {
+    const payload = { title, subject, dueDate, dueTime, effortMin, notes };
+    if (isKidSession()) payload.checklist = homeworkChecklistDraft.filter((c) => c.text.trim());
     if (editingHomeworkId) {
-      const res = await window.auth.updateHomework(editingHomeworkId, { title, subject, dueDate, dueTime, effortMin, notes, checklist });
+      const res = await window.auth.updateHomework(editingHomeworkId, payload);
       const idx = homeworkItems.findIndex((h) => h.id === editingHomeworkId);
       if (idx >= 0) homeworkItems[idx] = res.homework;
       toast('Homework updated 📚');
     } else {
-      const res = await window.auth.addHomework({ kidId, title, subject, dueDate, dueTime, effortMin, notes, checklist });
+      const res = await window.auth.addHomework(Object.assign({ kidId }, payload));
       homeworkItems.push(res.homework);
       toast('Homework added 📚');
     }
@@ -5147,7 +5162,7 @@ function openHomeworkDetail(id) {
   if (item.checklist && item.checklist.length) {
     checklistEl.innerHTML = item.checklist.map((c, i) => `
       <label class="hw-checklist-view-row">
-        <input type="checkbox" ${c.done ? 'checked' : ''} onchange="toggleHomeworkChecklistItem('${item.id}',${i},this.checked)">
+        <input type="checkbox" ${c.done ? 'checked' : ''} ${isKidSession() ? `onchange="toggleHomeworkChecklistItem('${item.id}',${i},this.checked)"` : 'disabled'}>
         <span${c.done ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(c.text)}</span>
       </label>`).join('');
   } else {
@@ -5164,6 +5179,7 @@ function openHomeworkDetail(id) {
 }
 
 async function toggleHomeworkChecklistItem(id, index, done) {
+  if (!isKidSession()) return;
   try {
     const res = await window.auth.updateHomework(id, {
       checklist: (homeworkItems.find((h) => h.id === id).checklist || []).map((c, i) => i === index ? { text: c.text, done } : c),

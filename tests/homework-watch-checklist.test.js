@@ -64,7 +64,7 @@ function fixture(label) {
       { text: "Draft the outline", done: false },
     ],
   }).homework;
-  return { fam, owner, sibling, item };
+  return { parent, fam, owner, sibling, item };
 }
 
 async function call(handler, { user, fam, item, index = "0", body, watchAuth = true }) {
@@ -149,4 +149,72 @@ test("generic homework PATCH remains status-only for Watch credentials", async (
 
   assert.equal(result.statusCode, 403);
   assert.equal(homework.getById(data.fam.id, data.item.id).checklist[0].text, "Choose a topic");
+});
+
+test("parents can view homework but cannot change student planning or progress", async () => {
+  const routes = buildRoutes();
+  const data = fixture("parent-read-only");
+
+  const status = await call(routes["PATCH /api/homework/:id"], {
+    ...data,
+    user: data.parent,
+    body: { status: "in_progress" },
+    watchAuth: false,
+  });
+  assert.equal(status.statusCode, 403);
+
+  const checklist = await call(routes["PATCH /api/homework/:id"], {
+    ...data,
+    user: data.parent,
+    body: { checklist: [{ text: "Parent-authored step", done: false }] },
+    watchAuth: false,
+  });
+  assert.equal(checklist.statusCode, 403);
+
+  const step = await call(routes["PATCH /api/homework/:id/checklist/:index"], {
+    ...data,
+    user: data.parent,
+    body: { done: true },
+    watchAuth: false,
+  });
+  assert.equal(step.statusCode, 403);
+
+  const stored = homework.getById(data.fam.id, data.item.id);
+  assert.equal(stored.status, "todo");
+  assert.deepEqual(stored.checklist, data.item.checklist);
+});
+
+test("parents can edit assignment facts without replacing student steps", async () => {
+  const routes = buildRoutes();
+  const data = fixture("parent-facts");
+  const result = await call(routes["PATCH /api/homework/:id"], {
+    ...data,
+    user: data.parent,
+    body: { title: "Revised history project", dueDate: "2026-09-20" },
+    watchAuth: false,
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.body.homework.title, "Revised history project");
+  assert.equal(result.body.homework.dueDate, "2026-09-20");
+  assert.equal(result.body.homework.checklist[0].text, "Choose a topic");
+});
+
+test("parents cannot create homework with student-authored steps", async () => {
+  const routes = buildRoutes();
+  const data = fixture("parent-create-steps");
+  const result = await call(routes["POST /api/homework"], {
+    ...data,
+    user: data.parent,
+    body: {
+      kidId: data.item.kidId,
+      title: "New assignment",
+      dueDate: "2026-09-21",
+      checklist: [{ text: "Parent-authored step", done: false }],
+    },
+    watchAuth: false,
+  });
+
+  assert.equal(result.statusCode, 403);
+  assert.match(result.body.error, /only be created by the student/i);
 });

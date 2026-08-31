@@ -313,7 +313,7 @@ test("route guard: a kidId derived from the session cannot be overridden by requ
   assert.notEqual(result.homework.kidId, kidB.id);
 });
 
-test("route guard: a parent can modify any kid's homework", () => {
+test("route guard: a parent can access any kid's homework", () => {
   const parent = store.createUser("routeguard5-p@example.com", "Route Guard Parent 5");
   const fam = family.createFamily(parent.id, "Route Guard Family 5");
   const { kid } = family.addKid(fam.id, parent.id, { name: "KidA5" });
