@@ -396,4 +396,34 @@ final class WatchStoreTests: XCTestCase {
         XCTAssertEqual(store.pendingMutationCount, 2)
         XCTAssertEqual(persistence.state?.outbox.last?.kind, .homeworkChecklistStep)
     }
+
+    func testStartingAnotherAssignmentCannotReplaceActiveFocus() async {
+        let first = WatchHomework(
+            id: "h1",
+            title: "History essay",
+            dueDate: "2026-09-02",
+            status: "todo"
+        )
+        let second = WatchHomework(
+            id: "h2",
+            title: "Science report",
+            dueDate: "2026-09-03",
+            status: "todo"
+        )
+        let store = WatchStore(
+            api: TestAPI(),
+            credentials: TestCredentials(value: nil),
+            persistence: TestPersistence(),
+            initialState: WatchPersistedState(snapshot: WatchSnapshot(homework: [first, second]))
+        )
+
+        await store.startFocus(on: first)
+        let originalSession = store.focusSession
+        await store.startFocus(on: second)
+
+        XCTAssertEqual(store.focusSession, originalSession)
+        XCTAssertEqual(store.focusSession?.homeworkID, first.id)
+        XCTAssertEqual(store.pendingMutationCount, 1)
+        XCTAssertEqual(store.snapshot.homework.first(where: { $0.id == second.id })?.status, "todo")
+    }
 }

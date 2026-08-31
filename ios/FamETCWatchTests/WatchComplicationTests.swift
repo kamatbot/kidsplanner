@@ -33,6 +33,24 @@ final class WatchComplicationTests: XCTestCase {
         XCTAssertNil(snapshot.focusEndsAt)
     }
 
+    func testFocusAggregateExpiresAtItsEndWithoutPrivateContent() throws {
+        let end = Date(timeIntervalSince1970: 1_000)
+        let snapshot = FamETCWatchComplicationSnapshot(
+            urgentCount: 1,
+            homeworkCount: 2,
+            focusActive: true,
+            focusEndsAt: end
+        )
+
+        XCTAssertTrue(snapshot.isFocusActive(at: end.addingTimeInterval(-1)))
+        XCTAssertFalse(snapshot.isFocusActive(at: end))
+
+        let json = String(decoding: try JSONEncoder().encode(snapshot), as: UTF8.self)
+        XCTAssertFalse(json.contains("title"))
+        XCTAssertFalse(json.contains("checklist"))
+        XCTAssertFalse(json.contains("homeworkID"))
+    }
+
     func testAppGroupStoreKeepsOnlyTheLatestAggregate() {
         let suiteName = "fametc.watch.complication.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
