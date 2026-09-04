@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fam ETC — the whole school week in one family app</title>
-  <meta name="description" content="Fam ETC brings STA Moodle homework, timetables, ECAs, house points, family chat, meals, trips and family planning into one calm family app.">
+  <title>Fam ETC — everyone knows what today looks like</title>
+  <meta name="description" content="One family app for school and home: homework, the timetable and after-school activities land without anyone typing them in, and the family chat turns a message into a plan. Built for St Andrews Bangkok families.">
   <meta name="theme-color" content="#f1efec">
   <link rel="canonical" href="https://www.fametc.com/">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -16,344 +16,263 @@
 </head>
 <body>
 <div class="landing-shell">
-  <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="/" aria-label="Fam ETC home">
-        <svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true">
-          <rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect>
-          <rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect>
-          <rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect>
-          <rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect>
-        </svg>
-        <span class="brand-name">Fam<span class="brand-etc">ETC</span></span>
-      </a>
-
-      <nav class="site-nav" aria-label="Landing page navigation">
-        <a href="#features">Features</a>
-        <a href="#moodle">School sync</a>
-        <a href="#kids">For kids</a>
-        <a href="#faq">FAQ</a>
-      </nav>
-
-      <div class="header-actions">
-        <span class="header-trial micro">Free for STA parents</span>
-        <a class="button button-secondary header-signin" href="/login">Sign in</a>
-        <a class="button button-primary header-create" href="/signup">Create family</a>
-      </div>
-    </div>
-  </header>
-
-  <main>
-    <section class="section hero" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <div class="school-badge">
-          <span class="school-badge-dot" aria-hidden="true"></span>
-          <span class="micro">Built for STA · St Andrews International School, Bangkok</span>
-        </div>
-        <h1 id="hero-title">The whole school week, in one calm family app.</h1>
-        <p class="hero-lede">Fam ETC brings homework, ECAs, activities, the timetable and house points together with family chat, meals, trips and planning — so everyone knows what today looks like.</p>
-        <div class="hero-actions">
-          <a class="button button-primary button-large" href="/signup">Create your family</a>
-          <a class="button button-secondary button-large" href="#moodle">See how school sync works</a>
-        </div>
-      </div>
-
-      <div class="hero-stage">
-        <div class="preview-card" role="img" aria-label="Fam ETC family dashboard preview">
-        <div class="preview-browser-bar" aria-hidden="true">
-          <div class="preview-browser-dots">
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-          <span class="preview-browser-address">www.fametc.com</span>
-        </div>
-
-        <div class="dashboard-viewport" aria-hidden="true">
-          <div class="dashboard-preview">
-            <div class="dashboard-sidebar">
-              <div class="dashboard-brand">
-                <span class="dashboard-brand-mark"><span></span><span></span><span></span><span></span></span>
-                <span>Fam<strong>ETC</strong></span>
-              </div>
-              <div class="dashboard-nav">
-                <div class="dashboard-nav-item active"><span></span>Today</div>
-                <div class="dashboard-nav-item"><span></span>Calendar</div>
-                <div class="dashboard-nav-item"><span></span>Homework</div>
-                <div class="dashboard-nav-item"><span></span>Chat</div>
-                <div class="dashboard-nav-item"><span></span>Meals</div>
-                <div class="dashboard-nav-item"><span></span>Trips</div>
-              </div>
-              <div class="dashboard-sidebar-note">
-                <span class="dashboard-avatar">P</span>
-                <span><strong>Priya</strong><small>Parent</small></span>
-              </div>
-            </div>
-
-            <div class="dashboard-main">
-              <div class="dashboard-heading">
-                <div>
-                  <span class="dashboard-eyebrow">Wednesday, August 22</span>
-                  <div class="dashboard-greeting">Good afternoon, Priya</div>
-                </div>
-                <div class="dashboard-heading-actions">
-                  <span class="dashboard-import"><i></i>School sync · 08:10</span>
-                  <span class="dashboard-add">Add event</span>
-                </div>
-              </div>
-
-              <div class="dashboard-card dashboard-actions-card">
-                <div class="dashboard-card-heading">
-                  <div><span class="dashboard-eyebrow">Family actions</span><strong>What matters next</strong></div>
-                  <span class="dashboard-card-link">Add action</span>
-                </div>
-                <div class="dashboard-action-list">
-                  <div><span class="dashboard-checkbox"></span><strong>Sign Mia’s swim gala permission slip</strong><small>Priya</small><em>Due today</em></div>
-                  <div><span class="dashboard-checkbox"></span><strong>Pack Leo’s football kit</strong><small>Dad</small><em>Tomorrow</em></div>
-                  <div><span class="dashboard-checkbox"></span><strong>Choose Friday dinner</strong><small>Family</small><em>Meals</em></div>
-                </div>
-              </div>
-
-              <div class="dashboard-card-grid">
-                <div class="dashboard-card">
-                  <div class="dashboard-card-heading"><span class="dashboard-eyebrow">Today’s schedule</span><span class="dashboard-card-link">Week</span></div>
-                  <div class="dashboard-schedule">
-                    <div><time>08:20</time><i class="green"></i><span><strong>Football · Leo</strong><small>Astro pitch · kit + boots</small></span></div>
-                    <div><time>10:00</time><i class="purple"></i><span><strong>Clarinet · Mia</strong><small>Music block · room 4</small></span></div>
-                    <div><time>15:30</time><i class="coral"></i><span><strong>Swim squad</strong><small>Pool 2 · bring goggles</small></span></div>
-                  </div>
-                </div>
-
-                <div class="dashboard-card">
-                  <div class="dashboard-card-heading"><span class="dashboard-eyebrow">Homework due</span><span class="dashboard-card-link">All</span></div>
-                  <div class="dashboard-homework">
-                    <div><span class="dashboard-status done"></span><strong>English · Reading log</strong><time>Done</time></div>
-                    <div><span class="dashboard-status"></span><strong>Maths · Fractions worksheet</strong><time>16:00</time></div>
-                    <div><span class="dashboard-status"></span><strong>Science · Food chains poster</strong><time>Mon</time></div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="dashboard-card-grid dashboard-card-grid-small">
-                <div class="dashboard-card dashboard-daily">
-                  <div class="dashboard-card-heading"><span class="dashboard-eyebrow">Daily 5</span><span class="dashboard-streak">7 day streak</span></div>
-                  <strong>Coherent</strong>
-                  <p>Forming a unified whole.</p>
-                </div>
-                <div class="dashboard-card dashboard-points">
-                  <span class="dashboard-eyebrow">House points</span>
-                  <div><strong>148<small>Mia</small></strong><strong>96<small>Leo</small></strong><em>+11 this week</em></div>
-                </div>
-              </div>
-            </div>
-
-            <div class="dashboard-chat">
-              <div class="dashboard-chat-heading">
-                <span class="dashboard-eyebrow">Family Chat</span>
-                <span class="dashboard-chat-avatars"><i>P</i><i>M</i><i>L</i></span>
-              </div>
-              <div class="dashboard-messages">
-                <div><small>School sync</small><p>Maths worksheet added for Mia, due today.</p><time>09:12</time></div>
-                <div><small>Mia</small><p>Finished my reading log.</p><time>11:40</time></div>
-                <div><small>Leo</small><p>Can someone bring my goggles?</p><time>12:05</time></div>
-                <div><small>Priya</small><p>They’re in the swim bag.</p><time>12:07</time></div>
-              </div>
-              <div class="dashboard-composer"><span>Message the family…</span><i>Send</i></div>
-            </div>
-          </div>
-        </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section proof-section" aria-labelledby="proof-title">
-      <div class="proof-intro">
-        <h2 id="proof-title">From the family thread to the week ahead.</h2>
-        <p>See the whole week at a glance, then turn a family message into a clear next step without re-entering the details.</p>
-      </div>
-
-      <div class="proof-grid">
-        <figure class="product-preview calendar-preview">
-          <div class="product-window" aria-hidden="true">
-            <div class="product-window-bar">
-              <div class="product-window-brand"><span class="dashboard-brand-mark"><span></span><span></span><span></span><span></span></span><strong>Calendar</strong></div>
-              <span class="product-window-status">Week view</span>
-            </div>
-            <div class="calendar-toolbar">
-              <strong>18–24 August 2026</strong>
-              <span class="calendar-toolbar-actions"><i>‹</i><i>›</i><b>Today</b></span>
-            </div>
-            <div class="calendar-all-day">
-              <span>ALL DAY</span>
-              <div class="calendar-all-day-event">School holiday · Family</div>
-            </div>
-            <div class="calendar-week-head">
-              <span></span>
-              <span>MON<small>18</small></span>
-              <span>TUE<small>19</small></span>
-              <span>WED<small>20</small></span>
-              <span>THU<small>21</small></span>
-              <span>FRI<small>22</small></span>
-            </div>
-            <div class="calendar-body">
-              <div class="calendar-times">
-                <time>08:00</time><time>10:00</time><time>12:00</time><time>14:00</time><time>16:00</time><time>18:00</time>
-              </div>
-              <div class="calendar-day monday"></div>
-              <div class="calendar-day tuesday"><div class="calendar-event event-leo"><strong>Football</strong><small>Leo · kid</small><span class="audience-chip kid-chip">Kid</span></div></div>
-              <div class="calendar-day wednesday"><div class="calendar-event event-mia"><strong>Science lab</strong><small>Mia · kid</small><span class="audience-chip kid-chip">Kid</span></div></div>
-              <div class="calendar-day thursday"><div class="calendar-event event-family"><strong>Grocery run</strong><small>14:30 · parent</small><span class="audience-chip parent-chip">Parent</span></div></div>
-              <div class="calendar-day friday"><div class="calendar-event event-mia-late"><strong>Piano practice</strong><small>Mia · kid</small><span class="audience-chip kid-chip">Kid</span></div></div>
-            </div>
-          </div>
-          <figcaption><strong>Calendar</strong><span>A week view that shows when things happen and who each plan is for.</span></figcaption>
-        </figure>
-
-        <figure class="product-preview chat-actions-preview">
-          <div class="product-window" aria-hidden="true">
-            <div class="product-window-bar">
-              <div class="product-window-brand"><span class="dashboard-brand-mark"><span></span><span></span><span></span><span></span></span><strong>Family Chat</strong></div>
-              <span class="product-window-status">4 people</span>
-            </div>
-            <div class="chat-proof-body">
-              <div class="chat-proof-meta">Priya · Today, 12:08</div>
-              <div class="chat-proof-message">Could we pick up pasta, tomatoes and basil for dinner?</div>
-              <div class="chat-proof-label">Turn this message into</div>
-              <div class="chat-proof-actions"><span>Action</span><span>Calendar</span><span>Shopping</span></div>
-              <div class="chat-proof-result">
-                <div><span class="result-icon">✓</span><strong>Shopping item ready</strong></div>
-                <span>3 items · Today</span>
-              </div>
-              <div class="chat-proof-list"><span>Pasta</span><span>Tomatoes</span><span>Basil</span></div>
-            </div>
-          </div>
-          <figcaption><strong>Chat Actions</strong><span>A message becomes a structured action, calendar entry or shopping item.</span></figcaption>
-        </figure>
-      </div>
-    </section>
-
-    <section id="moodle" class="section moodle-section" aria-labelledby="moodle-title">
-      <div class="panel-card">
-        <div class="moodle-grid">
-          <div class="moodle-copy">
-            <div class="kicker">School integration</div>
-            <h2 id="moodle-title">Bring the school week into Fam ETC</h2>
-            <p>From Settings, a parent pastes each child's private homework and timetable links once. Fam ETC then keeps both feeds synchronized automatically.</p>
-            <p class="moodle-trust"><strong>Parent-controlled.</strong> School links are encrypted, never displayed again, and used only for read-only synchronization every eight hours. <a href="/privacy">Read our privacy policy.</a></p>
-          </div>
-          <div class="moodle-items">
-            <div class="moodle-item"><strong>Homework</strong><span>Outstanding tasks, subjects and due dates</span></div>
-            <div class="moodle-item"><strong>Timetable</strong><span>Current-week periods, rooms and teachers</span></div>
-            <div class="moodle-item"><strong>ECA &amp; activities</strong><span>Included directly in the child's timetable</span></div>
-            <div class="moodle-item"><strong>Automatic refresh</strong><span>Conditional checks every eight hours</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="features" class="section" aria-labelledby="features-title">
-      <h2 id="features-title">Everything else a family week needs</h2>
-      <p class="section-intro">School data on one side, home life on the other — same app, same calm layout.</p>
-      <div class="feature-grid">
-        <article class="feature-card"><div class="feature-number">01</div><div class="feature-title">Family chat</div><p>One thread per family, plus quick pings for pickups and kit. Kids can read and reply safely.</p></article>
-        <article class="feature-card"><div class="feature-number">02</div><div class="feature-title">Family planning</div><p>Plan meals, trips and the moving parts of family life together in one shared place.</p></article>
-        <article class="feature-card"><div class="feature-number">03</div><div class="feature-title">Quizzes</div><p>Short rounds that follow this term's subjects — five minutes before dinner counts.</p></article>
-        <article class="feature-card"><div class="feature-number">04</div><div class="feature-title">Puzzles</div><p>A daily puzzle for each age band. Siblings can race; parents usually lose.</p></article>
-        <article class="feature-card"><div class="feature-number">05</div><div class="feature-title">Shared calendar</div><p>School events and family plans in one week view, filtered per child.</p></article>
-        <article class="feature-card"><div class="feature-number">06</div><div class="feature-title">Goals &amp; habits</div><p>Reading, practice, bedtime — small habits tracked without nagging.</p></article>
-        <article class="feature-card"><div class="feature-number">07</div><div class="feature-title">Homework hub</div><p>Due today, due soon, overdue — plus a photo of the diary page when Moodle is thin.</p></article>
-        <article class="feature-card"><div class="feature-number">08</div><div class="feature-title">Reminders</div><p>Kit bags, permission slips, deadlines — nudges that arrive the night before, not after.</p></article>
-      </div>
-    </section>
-
-    <section id="kids" class="section" aria-label="Parent and kid modes">
-      <div class="mode-grid">
-        <article class="mode-card">
-          <div class="kicker">Kid mode</div>
-          <h3>Big, bright and only today</h3>
-          <p>Kids see three things: what's due, what's on after school, and their streak. Nothing they can break, nothing they need a parent for.</p>
-          <div class="mode-pills" aria-hidden="true">
-            <span class="mode-pill primary">2 things due</span>
-            <span class="mode-pill">Swim 15:30</span>
-            <span class="mode-pill mono">9-day streak</span>
-          </div>
-        </article>
-        <article class="mode-card">
-          <div class="kicker">Parent mode</div>
-          <h3>The whole family at a glance</h3>
-          <p>Every child, every deadline, every ECA in one week. Plan meals and trips, set reminders, and keep chat in one place instead of five group threads.</p>
-          <div class="stats-grid" aria-hidden="true">
-            <div class="stat-box"><div class="stat-value">3</div><div class="stat-label micro">Children</div></div>
-            <div class="stat-box"><div class="stat-value">7</div><div class="stat-label micro">Due soon</div></div>
-            <div class="stat-box"><div class="stat-value">4</div><div class="stat-label micro">ECAs</div></div>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <section class="section steps-section" aria-label="How Fam ETC works">
-      <div class="steps-grid">
-        <article class="step-card"><div class="step-label">Step 01</div><div class="step-title">Create your family</div><p>One account, add each child. Takes about a minute.</p></article>
-        <article class="step-card"><div class="step-label">Step 02</div><div class="step-title">Connect STA feeds</div><p>Paste each child's private homework and timetable links in Settings. Fam ETC checks them automatically every eight hours.</p></article>
-        <article class="step-card"><div class="step-label">Step 03</div><div class="step-title">Open Today</div><p>Homework, ECAs, timetable and points are already there.</p></article>
-      </div>
-    </section>
-
-    <section id="faq" class="section faq-section" aria-labelledby="faq-title">
-      <h2 id="faq-title">Questions parents ask first</h2>
-      <div class="faq-list">
-        <details class="faq-item">
-          <summary>Is Fam ETC really free?</summary>
-          <div class="faq-answer"><p>Yes. Fam ETC is free for STA parents, with no card required. You need an STA invite code to sign up. <a href="/pricing">See pricing</a>.</p></div>
-        </details>
-        <details class="faq-item">
-          <summary>Is this an official STA app?</summary>
-          <div class="faq-answer"><p>No — Fam ETC is built by parents for STA families and reads the private school feeds you choose to connect.</p></div>
-        </details>
-        <details class="faq-item">
-          <summary>Who can see our data?</summary>
-          <div class="faq-answer"><p>Only your family. Parents control the connection, private feed codes are encrypted, and synchronization is strictly read-only. <a href="/privacy">Read our privacy policy</a>.</p></div>
-        </details>
-        <details class="faq-item">
-          <summary>What if a teacher doesn't use Moodle?</summary>
-          <div class="faq-answer"><p>Snap the homework diary page — Fam ETC reads it and adds the tasks alongside the synced ones.</p></div>
-        </details>
-      </div>
-    </section>
-
-    <section class="section cta-section" aria-labelledby="cta-title">
-      <div class="cta-panel">
-        <h2 id="cta-title">Start with this week</h2>
-        <p>Free for STA parents. Use your invite code to create your family account.</p>
-        <div class="cta-actions">
-          <a class="button button-primary button-large" href="/signup">Create your family</a>
-          <a class="button button-secondary button-large" href="#moodle">See how school sync works</a>
-          <a class="button button-secondary button-large" href="/pricing">See pricing</a>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <a class="brand footer-brand" href="/" aria-label="Fam ETC home">
-        <svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true">
-          <rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect>
-          <rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect>
-          <rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect>
-          <rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect>
-        </svg>
-        <span class="brand-name">Fam<span class="brand-etc">ETC</span></span>
-      </a>
-      <div class="footer-note micro">www.fametc.com · for STA families, Bangkok</div>
-      <div class="footer-links">
-        <a href="/privacy">Privacy</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/help">Support</a>
-        <a href="#moodle">School sync</a>
-      </div>
-    </div>
-  </footer>
-</div>
+<header class="site-header"><div class="header-inner"><a class="brand " href="/" aria-label="Fam ETC home"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></a>
+<nav class="site-nav" aria-label="Landing page navigation"><a href="#features">Features</a><a href="#chat">Family chat</a><a href="#school-sync">School sync</a><a href="#devices">iPhone &amp; iPad</a><a href="#faq">FAQ</a></nav>
+<div class="header-actions"><a class="button button-secondary header-signin" href="/login">Sign in</a><a class="button button-primary header-create" href="/signup">Create family</a></div></div></header><main>
+<section class="section hero" aria-labelledby="hero-title">
+ <div class="hero-copy">
+  <p class="hero-kicker micro">Stay in touch <i></i> Stay on top</p>
+  <h1 id="hero-title">Everyone knows what today looks like.</h1>
+  <p class="hero-lede">School on one side, home on the other, one family thread down the middle. Homework, the timetable and after-school activities land in Fam ETC without anyone typing them in; lifts, kit bags and dinner get decided in chat — and turned into the plan with a tap.</p>
+  <div class="hero-actions"><a class="button button-primary button-large" href="/signup">Create your family</a><a class="button button-secondary button-large" href="#day">See a family week</a></div>
+  <p class="availability">Open now to St Andrews Bangkok families. Other schools — <a href="mailto:hello@fametc.com?subject=Fam%20ETC%20for%20our%20school">join the list</a>.</p>
+ </div>
+ <div class="hero-stage" role="group" aria-label="Fam ETC Today screen with a family chat message, a homework due chip and a school sync notice">
+  <article class="today-card" aria-label="Today screen">
+   <div class="today-head"><div><span class="eyebrow">Wednesday 22 August</span><p class="today-greeting">Good morning, Priya</p></div><span class="chip"><span class="dot" style="background:var(--c-green)"></span>School sync 08:10</span></div>
+   <div class="momentum"><div class="momentum-label"><span>Today</span><span class="mono">3 of 6 done</span></div><div class="momentum-track" role="progressbar" aria-valuenow="3" aria-valuemin="0" aria-valuemax="6" aria-label="3 of 6 things done today"><div class="momentum-fill"></div></div></div>
+   <ul class="today-list">
+    <li><time>08:20</time><i class="bg-leo"></i><span>Football · Leo<small>Astro pitch · kit + boots</small></span><span class="who">ECA</span></li>
+    <li><time>10:00</time><i class="bg-mia"></i><span>Clarinet · Mia<small>Music block · room 4</small></span><span class="who">ECA</span></li>
+    <li><time>15:30</time><i class="bg-mia"></i><span>Swim squad · Mia<small>Pool 2 · bring goggles</small></span><span class="who">ECA</span></li>
+   </ul>
+   <div class="today-actions"><span class="eyebrow">Family actions</span>
+    <div class="action-row"><span class="checkbox" aria-hidden="true"></span><span>Sign Mia's swim gala permission slip</span><span class="due today">Due today</span></div>
+    <div class="action-row"><span class="checkbox" aria-hidden="true"></span><span>Pack Leo's football kit</span><span class="due">Tomorrow</span></div>
+   </div>
+  </article>
+  <aside class="float float-chat" aria-label="Family chat message"><div class="meta"><span class="avatar bg-leo" aria-hidden="true">L</span><span>Leo · 12:05</span></div><p>Can someone bring my goggles?</p></aside>
+  <aside class="float float-due" aria-label="Homework due"><span class="checkbox" aria-hidden="true"></span><div><strong>Maths · Fractions worksheet</strong><span><span class="kid-mia">Mia</span> · due 16:00</span></div></aside>
+  <aside class="float float-sync" aria-label="School sync notice"><span class="dot"></span><span>2 items added from school</span><time>09:12</time></aside>
+ </div>
+</section>
+<div class="trust-strip" role="list" aria-label="Trust commitments"><span role="listitem">Encrypted at rest</span><span role="listitem">Read-only school sync</span><span role="listitem">No ads, no tracking</span><span role="listitem">Kids can't sign up alone</span></div>
+<section class="section before-section" aria-labelledby="before-title">
+ <div class="before-grid">
+  <div class="before-fragments" aria-hidden="true">
+   <div class="fragment"><strong>Year 4 Parents</strong>47 members · "does anyone know if…"<span class="unread">128</span></div>
+   <div class="fragment"><strong>Swim squad parents</strong>Gala moved to Friday??<span class="unread">31</span></div>
+   <div class="fragment"><strong>Family</strong>Dad: who has the car Thursday<span class="unread">9</span></div>
+   <div class="fragment fragment-board">Thurs — Leo football<br>Fri — ??? dinner<br>~~Mia clarinet~~ moved</div>
+   <div class="fragment fragment-slip">PERMISSION SLIP · Swim gala<br>Return by Tue 13 Aug<br><em>Found Mon 19 Aug</em></div>
+  </div>
+  <div class="before-copy">
+   <p class="kicker">Before</p>
+   <h2 id="before-title">Five threads, a fridge door, and a slip you found on Monday.</h2>
+   <p>Everyone had a piece of the week. Nobody had the week. The kit gets remembered in the car and the due date at 8pm.</p>
+  </div>
+ </div>
+</section>
+<span id="moodle" class="legacy-anchor" aria-hidden="true"></span>
+<section id="school-sync" class="section" aria-labelledby="school-title">
+ <div class="pillar-grid">
+  <div class="pillar-copy">
+   <p class="kicker">Stay on top</p>
+   <h2 id="school-title">You never chase a due date again.</h2>
+   <p>A parent pastes each child's private homework and timetable links once, in Settings. From then on homework, the timetable and after-school activities land in Fam ETC by read-only synchronization every eight hours — nothing to re-type.</p>
+   <div class="sync-items">
+    <div class="sync-item"><strong>Homework</strong><span>Outstanding tasks, subjects and due dates — per child</span></div>
+    <div class="sync-item"><strong>Timetable</strong><span>This week's periods, rooms and teachers</span></div>
+    <div class="sync-item"><strong>ECAs &amp; activities</strong><span>Clubs and squads, right in the timetable</span></div>
+    <div class="sync-item"><strong>Automatic refresh</strong><span>Checked every eight hours, only if the school changed something</span></div>
+   </div>
+   <p class="sync-trust"><strong>Parent-controlled.</strong> The school link is encrypted, never shown again after you paste it, and only ever read. <a href="/privacy">How we handle school data</a></p>
+  </div>
+  <div class="pillar-visual" role="group" aria-label="Homework screen: Mia's Maths worksheet due today, reading log done; Leo's science poster due Monday. A notice shows the Maths worksheet arriving from school at 09:12.">
+   <div class="toast"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--c-green);flex:none;margin-top:6px"></span><div><span class="eyebrow">School sync</span>Maths worksheet added for <span class="kid-mia">Mia</span>, due today<time>09:12</time></div></div>
+   <article class="homework-card">
+    <div class="card-head"><strong>Homework</strong><span class="chip"><span class="dot" style="background:var(--c-green)"></span>Synced 08:10 · next 16:10</span></div>
+    <div class="kid-filter" role="tablist" aria-label="Filter by child"><span class="chip active">All</span><span class="chip"><span class="dot bg-mia"></span>Mia</span><span class="chip"><span class="dot bg-leo"></span>Leo</span></div>
+    <ul class="hw-list">
+     <li><span class="checkbox done" aria-hidden="true"></span><span>English · Reading log<small><span class="kid-mia">Mia</span> · Ms Harper</small></span><span class="due done">Done</span></li>
+     <li><span class="checkbox" aria-hidden="true"></span><span>Maths · Fractions worksheet<small><span class="kid-mia">Mia</span> · Mr Chen</small></span><span class="due today">Today 16:00</span></li>
+     <li><span class="checkbox" aria-hidden="true"></span><span>Science · Food chains poster<small><span class="kid-leo">Leo</span> · Ms Okafor</small></span><span class="due">Mon</span></li>
+     <li><span class="checkbox" aria-hidden="true"></span><span>French · Vocabulary set 4<small><span class="kid-leo">Leo</span> · Mme Roux</small></span><span class="due">Thu</span></li>
+    </ul>
+   </article>
+  </div>
+ </div>
+</section>
+<section id="chat" class="section chat-section center" aria-labelledby="chat-title">
+ <p class="kicker">Stay in touch</p>
+ <h2 id="chat-title">The thread where things actually get decided.</h2>
+ <p class="section-intro">One chat for the whole family — parents and kids. And when a message is really a job, a date or a shopping run, turn it into one without re-typing a word. That's the moment "in touch" and "on top" become the same thing.</p>
+ <div class="chat-sequence " data-reveal>
+<div class="chat-beat"><p class="beat-label"><b>01</b>A message</p>
+ <div class="chat-phone" role="group" aria-label="Family chat: Priya asks whether someone could pick up pasta, tomatoes and basil for dinner"><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
+  <div class="msg sys"><p>School sync · 09:12 · Maths worksheet added for Mia</p></div>
+  <div class="msg"><span class="meta">Leo · 12:05</span><p>Can someone bring my goggles?</p></div>
+  <div class="msg mine"><span class="meta">Priya · 12:07</span><p>In the swim bag.</p></div>
+  <div class="msg mine focus"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
+  <div class="composer"><span>Message the family…</span><b>Send</b></div>
+ </div></div>
+<div class="chat-beat"><p class="beat-label"><b>02</b>Turn it into…</p>
+ <div class="chat-phone" role="group" aria-label="Turn this message into: Action, Calendar or Shopping. Shopping is selected."><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
+  <div class="msg mine dim"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
+  <div class="action-sheet"><span class="eyebrow">Turn this message into</span>
+   <div class="action-options"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>Action</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>Calendar</span><span class="selected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.5 11h10L20 7H6"></path><circle cx="9" cy="19" r="1.5"></circle><circle cx="16.5" cy="19" r="1.5"></circle></svg>Shopping</span></div>
+  </div>
+  <div class="composer"><span>Message the family…</span><b>Send</b></div>
+ </div></div>
+<div class="chat-beat"><p class="beat-label"><b>03</b>It's on the list</p>
+ <div class="chat-phone" role="group" aria-label="Added to Shopping: Dinner, 3 items, today — Pasta, Tomatoes, Basil — shared with the family"><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
+  <div class="msg mine dim"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
+  <div class="result-card"><div class="result-head"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4.5 4.5L19 7"></path></svg></span>Added to Shopping</div><div class="result-sub">Dinner · 3 items · Today</div>
+   <ul class="result-list"><li><span class="checkbox" aria-hidden="true"></span>Pasta</li><li><span class="checkbox" aria-hidden="true"></span>Tomatoes</li><li><span class="checkbox" aria-hidden="true"></span>Basil</li></ul>
+   <div class="result-foot">Shared with the family · whoever's near a shop ticks them off</div>
+  </div>
+  <div class="msg sys"><p>Priya added 3 items to Shopping · 12:08</p></div>
+  <div class="composer"><span>Message the family…</span><b>Send</b></div>
+ </div></div></div>
+ <div class="chat-safety">
+  <div><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M16 15a5 5 0 0 1 5.5 5"></path></svg><span><strong>One thread per family</strong>No groups to manage, no one left out.</span></div>
+  <div><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg><span><strong>Kids read and reply safely</strong>They see the family thread and their own day — nothing else.</span></div>
+  <div><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg><span><strong>Parents keep the keys</strong>Any parent can delete any message or remove a member.</span></div>
+ </div>
+</section>
+<section id="day" class="section" aria-labelledby="day-title">
+ <div class="day-grid">
+  <div class="day-copy"><p class="kicker">One Wednesday</p><h2 id="day-title">A day in the family.</h2><p>Every moment below is a feature doing its job — for Priya, Mia and Leo, on a school day like any other. Nothing lands at 8pm that you should have known at 8am.</p></div>
+  <ol class="day-timeline">
+   
+<li class="moment"><time class="moment-time">07:10</time><span class="moment-dot leo" aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">Reminders</p><strong>Leo’s football kit</strong><p>Nudged the night before and again before the school run.</p></div><div class="mini"><span class="chip"><span class="dot bg-leo"></span>Kit + boots · in the car</span></div></div></li>
+   
+<li class="moment"><time class="moment-time">08:20</time><span class="moment-dot leo" aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">ECAs &amp; timetable</p><strong>Football · astro pitch</strong><p>From the school timetable, in Leo’s colour, on everyone’s Today.</p></div><div class="mini"><span class="chip">Period 1 · Astro pitch</span></div></div></li>
+   
+<li class="moment"><time class="moment-time">09:12</time><span class="moment-dot mia" aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">School sync</p><strong>Maths worksheet added for Mia</strong><p>Due today. It came from the school feed — nobody typed it in.</p></div><div class="mini"><span class="chip"><span class="dot" style="background:var(--c-green)"></span>Synced from school</span></div></div></li>
+   
+<li class="moment"><time class="moment-time">12:05</time><span class="moment-dot leo" aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">Family chat</p><strong>“Can someone bring my goggles?”</strong><p>Leo asks the family. Priya answers from the office.</p></div><div class="mini"><div class="mini-bubble">Can someone bring my goggles?</div><div class="mini-bubble">In the swim bag.</div></div></div></li>
+   
+<li class="moment"><time class="moment-time">12:08</time><span class="moment-dot " aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">Chat actions</p><strong>Dinner becomes a shopping list</strong><p>“Pasta, tomatoes, basil” → three items, shared with the family.</p></div><div class="mini"><div class="mini-list"><span>Pasta</span><span>Tomatoes</span><span>Basil</span></div></div></div></li>
+   
+<li class="moment"><time class="moment-time">16:00</time><span class="moment-dot mia" aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">Homework hub</p><strong>Fractions worksheet — done</strong><p>Mia ticks it off. Priya sees it without asking.</p></div><div class="mini"><span class="chip"><span class="dot" style="background:var(--c-green)"></span>Done 15:52</span></div></div></li>
+   
+<li class="moment"><time class="moment-time">19:00</time><span class="moment-dot " aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">Meals</p><strong>Friday dinner, chosen together</strong><p>Three votes, one winner, no debate at the table.</p></div><div class="mini"><div class="mini-poll"><div><span>Pad thai</span><b>3</b><i style="width:100%"></i></div><div><span>Pizza</span><b>1</b><i style="width:33%"></i></div></div></div></div></li>
+  </ol>
+ </div>
+</section>
+<section id="features" class="section" aria-labelledby="features-title">
+ <h2 id="features-title">Everything else a family week needs</h2>
+ <p class="section-intro">Same app, same calm layout, same family — one place for the things that don't come from school.</p>
+ <div class="bento">
+  <article class="feature-card large"><div class="feature-title">Meals</div><p>Plan the week's dinners together. Pick a night, put it to a vote, and the shopping list writes itself.</p>
+   <div class="feature-visual" role="img" aria-label="Friday dinner poll: Pad thai 3 votes, Pizza 1, Tacos 0"><span class="eyebrow" style="color:var(--text-2)">Friday dinner · 4 voted</span>
+    <div class="poll" style="margin-top:10px"><div class="lead"><span>Pad thai</span><b class="num">3</b><i><b style="width:75%"></b></i></div><div><span>Pizza</span><b class="num">1</b><i><b style="width:25%"></b></i></div><div><span>Tacos</span><b class="num">0</b><i><b style="width:0"></b></i></div></div></div></article>
+  <article class="feature-card wide"><div class="feature-title">Shared calendar</div><p>School events and family plans in one week, filtered per child.</p>
+   <div class="feature-visual" role="img" aria-label="Week strip: Monday Leo football, Tuesday Mia clarinet, Wednesday Mia swim squad, Thursday grocery run, Friday family dinner">
+    <div class="week-strip"><div>MON<span class="leo">Football</span></div><div>TUE<span class="mia">Clarinet</span></div><div>WED<span class="mia">Swim squad</span></div><div>THU<span>Grocery run</span></div><div>FRI<span>Family dinner</span></div></div></div></article>
+  <article class="feature-card"><div class="feature-title">Trips</div><p>Plan a holiday with the other adults who are coming — dates, bookings, who brings what.</p></article>
+  <article class="feature-card"><div class="feature-title">Goals &amp; habits</div><p>Reading, practice, bedtime — small habits tracked without nagging.</p></article>
+  <article class="feature-card"><div class="feature-title">Quizzes</div><p>Short rounds that follow this term's subjects — five minutes before dinner counts.</p></article>
+  <article class="feature-card"><div class="feature-title">Puzzles</div><p>A daily puzzle for each age band. Siblings can race; parents usually lose.</p></article>
+  <article class="feature-card wide"><div class="feature-title">House points</div><p>Straight from school, per child, with this week's change.</p>
+   <div class="feature-visual points" role="img" aria-label="House points: Mia 148, Leo 96, up 11 this week"><div><b>148</b><small class="kid-mia">Mia</small></div><div><b>96</b><small class="kid-leo">Leo</small></div><div><small style="font-family:'JetBrains Mono',monospace;color:var(--text-2)">+11 this week</small></div></div></article>
+ </div>
+</section>
+<section id="devices" class="section" aria-labelledby="devices-title">
+ <p class="kicker">iPhone · iPad · Web</p>
+ <h2 id="devices-title">Every screen the family already uses.</h2>
+ <p class="section-intro">One passkey login, one family, three surfaces. The layout adapts instead of shrinking: a tab bar on iPhone, a nav rail with the family chat docked beside your day on iPad, the full layout on the web.</p>
+ <div class="device-row">
+  <figure style="margin:0"><div class="device-frame frame-phone" role="img" aria-label="iPhone: Today screen with a tab bar — Today, Chat, Calendar, Homework"><div class="device-screen"><div class="mini-today"><span class="eyebrow">Wednesday 22 August</span><h4>Good morning, Priya</h4>
+ <div class="mini-card"><span class="kid-leo">Leo</span> · Football 08:20<small>Astro pitch · kit + boots</small></div>
+ <div class="mini-card">Sign Mia's permission slip<small style="color:var(--c-red)">Due today</small></div>
+ <div class="mini-card"><span class="kid-mia">Mia</span> · Maths worksheet<small>Due 16:00</small></div></div><div class="tabbar" aria-hidden="true"><span class="active"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>Today</span><span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg>Chat</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>Calendar</span><span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>Homework</span></div></div></div><figcaption class="device-caption"><strong>iPhone</strong><span>Today, Chat, Calendar and Homework as native tabs.</span></figcaption></figure>
+  <figure style="margin:0"><div class="device-frame frame-ipad" role="img" aria-label="iPad landscape: navigation rail, Today in the middle, family chat docked on the right"><div class="device-screen">
+    <div class="rail"><span class="active"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg></span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg></span><span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg></span><span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg></span></div>
+    <div class="ipad-main"><div class="mini-today"><span class="eyebrow">Wednesday 22 August</span><h4>Good morning, Priya</h4>
+ <div class="mini-card"><span class="kid-leo">Leo</span> · Football 08:20<small>Astro pitch · kit + boots</small></div>
+ <div class="mini-card">Sign Mia's permission slip<small style="color:var(--c-red)">Due today</small></div>
+ <div class="mini-card"><span class="kid-mia">Mia</span> · Maths worksheet<small>Due 16:00</small></div></div></div>
+    <div class="docked-chat"><div class="chat-head" style="font-size:12px">Family</div><div class="msg"><span class="meta">Leo · 12:05</span><p>Can someone bring my goggles?</p></div><div class="msg mine"><span class="meta">Priya · 12:07</span><p>In the swim bag.</p></div><div class="composer" style="font-size:12px;padding:7px 10px">Message…</div></div>
+   </div></div><figcaption class="device-caption"><strong>iPad</strong><span>Nav rail, your day, and the family chat docked alongside. In portrait, chat slides over.</span></figcaption></figure>
+  <figure style="margin:0"><div class="device-frame frame-web" role="img" aria-label="Web browser: the full Fam ETC layout at fametc.com"><div class="browser-bar"><i></i><i></i><i></i><span>fametc.com</span></div><div class="device-screen" style="flex-direction:row"><div class="rail" style="width:56px"><span class="active"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg></span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg></span><span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg></span></div><div class="ipad-main" style="padding:8px"><div class="mini-today"><span class="eyebrow">Wednesday 22 August</span><h4>Good morning</h4>
+ <div class="mini-card"><span class="kid-leo">Leo</span> · Football 08:20<small>Astro pitch · kit + boots</small></div>
+ <div class="mini-card">Sign Mia's permission slip<small style="color:var(--c-red)">Due today</small></div>
+ <div class="mini-card"><span class="kid-mia">Mia</span> · Maths worksheet<small>Due 16:00</small></div></div></div></div></div><figcaption class="device-caption"><strong>Web</strong><span>Everything, including Settings, Goals and Trips, at fametc.com.</span></figcaption></figure>
+ </div>
+ <p class="store-note"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"></rect><path d="M11 18.5h2"></path></svg><span>The iPhone &amp; iPad app is coming to the App Store. The web app is open today — same login, same family.</span></p>
+</section>
+<section id="kids" class="section" aria-labelledby="modes-title">
+ <p class="kicker">Kid mode · Parent mode</p>
+ <h2 id="modes-title">Same family, two very different days.</h2>
+ <div class="mode-switch">
+  <div class="mode-copy">
+   <div class="mode-toggle" role="tablist" aria-label="Choose a view"><button class="mode-tab" role="tab" aria-selected="true" aria-controls="mode-kid" id="tab-kid">Kid mode</button><button class="mode-tab" role="tab" aria-selected="false" aria-controls="mode-parent" id="tab-parent" tabindex="-1">Parent mode</button></div>
+   <div class="mode-text" data-mode="kid"><h3>Big, bright and only today.</h3><p>Kids see three things: what's due, what's on after school, and their streak. Nothing they can break, nothing they need a parent for.</p></div>
+   <div class="mode-text" data-mode="parent" hidden><h3>The whole family at a glance.</h3><p>Every child, every deadline, every ECA in one week — plus meals, trips, reminders and the family thread, in one place instead of five.</p></div>
+  </div>
+  <div class="mode-frame" role="tabpanel" id="mode-kid" aria-labelledby="tab-kid">
+   <div class="kid-hello"><span class="avatar bg-mia" aria-hidden="true">M</span>Hi Mia</div>
+   <div class="kid-tiles">
+    <div class="kid-tile"><b>2</b><span>things due today</span></div>
+    <div class="kid-tile row"><span style="margin:0;color:var(--text)">Swim squad · pool 2</span><b>15:30</b></div>
+    <div class="kid-tile row"><span style="margin:0;color:var(--text)">Reading streak</span><b>9 days</b></div>
+   </div>
+  </div>
+  <div class="mode-frame" role="tabpanel" id="mode-parent" aria-labelledby="tab-parent" hidden>
+   <div class="kid-hello"><span class="avatar bg-p" aria-hidden="true">P</span>This week</div>
+   <div class="parent-week">
+    <div class="rowh"><span></span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span></div>
+    <div class="row"><b class="kid-mia">Mia</b><div class="cell"><em class="mia">Clarinet</em></div><div class="cell"><em class="mia">Reading log</em></div><div class="cell"><em class="mia due">Maths due</em><em class="mia">Swim 15:30</em></div><div class="cell"></div><div class="cell"><em class="mia">Swim gala</em></div></div>
+    <div class="row"><b class="kid-leo">Leo</b><div class="cell"><em class="leo">Football</em></div><div class="cell"></div><div class="cell"><em class="leo">Football</em></div><div class="cell"><em class="leo">French due</em></div><div class="cell"></div></div>
+    <div class="row"><b>Family</b><div class="cell"></div><div class="cell"></div><div class="cell"><em>Slip due</em></div><div class="cell"><em>Grocery run</em></div><div class="cell"><em>Pad thai night</em></div></div>
+   </div>
+  </div>
+ </div>
+</section>
+<section id="privacy" class="privacy-band" aria-labelledby="privacy-title">
+ <div class="section privacy-grid">
+  <div><p class="kicker">Privacy &amp; safety</p><h2 id="privacy-title">You're handing us your children's week. Here's the deal.</h2><p>Plain commitments, not a policy summary. <a href="/privacy">Read the full privacy policy</a>.</p></div>
+  <ul class="privacy-list">
+   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span><strong>Encrypted at rest</strong>Chat messages and every piece of children's data are encrypted on our servers.</span></li>
+   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg><span><strong>School sync is read-only</strong>The school link is encrypted and never shown again after you paste it. We read; we never write back.</span></li>
+   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M5.5 5.5l13 13"></path></svg><span><strong>No ads, no tracking</strong>We count page views in aggregate. There is no per-person analytics profile — of you or your kids.</span></li>
+   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg><span><strong>Kids can't sign up alone</strong>A parent creates every child profile and approves every child device.</span></li>
+   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg><span><strong>Parents keep the keys</strong>Any parent can delete any message in the family and remove any member.</span></li>
+  </ul>
+ </div>
+</section>
+<section class="section" aria-labelledby="steps-title">
+ <h2 id="steps-title">Up and running in one evening</h2>
+ <div class="steps-grid">
+  <article class="step-card"><div class="step-label">Step 01</div><div class="step-title">Create your family</div><p>One passkey account, add each child. About a minute.</p></article>
+  <article class="step-card"><div class="step-label">Step 02</div><div class="step-title">Connect the school</div><p>Paste each child’s private homework and timetable links once, in Settings. Fam ETC checks them every eight hours from then on.</p></article>
+  <article class="step-card"><div class="step-label">Step 03</div><div class="step-title">Open Today</div><p>Homework, ECAs, the timetable and points are already there. Say hi in the family thread.</p></article>
+ </div>
+</section>
+<section id="faq" class="section" aria-labelledby="faq-title">
+ <h2 id="faq-title">Questions parents ask first</h2>
+ <div class="faq-list">
+  <details class="faq-item"><summary>Is Fam ETC really free?</summary><div class="faq-answer"><p>Free for STA parents. Sign up with your STA invite code and there is nothing to pay. <a href="/pricing">See pricing</a>.</p></div></details>
+  <details class="faq-item"><summary>Is this an official St Andrews app?</summary><div class="faq-answer"><p>No — Fam ETC is built by parents, for families. It reads the private school feeds you choose to connect, and nothing else.</p></div></details>
+  <details class="faq-item"><summary>Who can see our data?</summary><div class="faq-answer"><p>Only your family. Parents control every connection, the school link is encrypted, and school sync is strictly read-only. <a href="/privacy">Read the privacy policy</a>.</p></div></details>
+  <details class="faq-item"><summary>What if a teacher doesn’t post the homework?</summary><div class="faq-answer"><p>Snap the homework diary page. Fam ETC reads it and adds the tasks alongside the synced ones.</p></div></details>
+  <details class="faq-item"><summary>Does it work on iPhone and iPad?</summary><div class="faq-answer"><p>Yes. The web app works on every device today; the native iPhone &amp; iPad app is coming to the App Store. One passkey login covers both.</p></div></details>
+  <details class="faq-item"><summary>What if we’re not at St Andrews?</summary><div class="faq-answer"><p>Chat, the shared calendar, meals, reminders, goals and trips work for any family right now. School sync is live for St Andrews Bangkok; other schools can join the list and we’ll write when yours is ready.</p></div></details>
+  <details class="faq-item"><summary>Can my kids see everything I see?</summary><div class="faq-answer"><p>No. Kids see the family thread and their own day — homework, activities, streaks. Billing, family settings and other children’s details stay with parents.</p></div></details>
+  <details class="faq-item"><summary>What will it cost us?</summary><div class="faq-answer"><p>STA families sign up free with an invite code. Anything we charge other families in future will be listed on the <a href="/pricing">pricing page</a> before it applies.</p></div></details>
+ </div>
+</section>
+<section class="section" aria-labelledby="cta-title">
+ <div class="cta-panel">
+  <h2 id="cta-title">Start with this week.</h2>
+  <p>Create your family tonight. By the school run, everyone knows what today looks like.</p>
+  <div class="cta-actions"><a class="button button-primary button-large" href="/signup">Create your family</a></div>
+  <p class="availability">Open now to St Andrews Bangkok families. Other schools — <a href="mailto:hello@fametc.com?subject=Fam%20ETC%20for%20our%20school">join the list</a>.</p>
+ </div>
+</section></main>
+<footer class="site-footer"><div class="footer-inner"><a class="brand footer-brand" href="/" aria-label="Fam ETC home"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></a>
+ <div class="footer-note micro">www.fametc.com · made by parents in Bangkok</div>
+ <div class="footer-links"><a href="/privacy">Privacy</a><a href="/pricing">Pricing</a><a href="/help">Support</a><a href="#school-sync">School sync</a></div>
+</div></footer></div>
+<script src="/js/landing.js" defer></script>
 </body>
 </html>
