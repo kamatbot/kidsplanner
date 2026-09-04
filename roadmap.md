@@ -91,6 +91,14 @@ Operational controls and rollout instructions are documented in `docs/HERMES-OPE
 
 The M1–M5 product and safety scaffolding is implemented. A real limited-family rollout is intentionally a separate operational step: families should first accumulate shadow-mode evidence, be reviewed against the M4 graduation metrics, and then be explicitly enrolled through the M5 admin control plane.
 
+## Hermes v0.21 Action Capability prototype — implemented
+
+External services are now treated as execution paths behind one Action Capability Layer, not as a marketplace of provider integrations. Hermes resolves the first viable path in this order: official connector/API, agent-friendly MCP/API, a verified learned web/API workflow, then browser/computer use for bootstrap or recovery.
+
+The FamETC platform plugin bundles `fametc-platform:action-capability`. It uses Hermes v0.21 procedural memory and the optional official `har-derived-api-client` skill to turn one permitted browser-observed read path into a sanitized learned skill, then tries that skill before opening the browser on later requests. FamETC's existing Operator cases remain the audit boundary; credentials and raw HAR data remain ephemeral and are never copied into FamETC or learned skills.
+
+The first completion boundary is deliberately read-only and parent-scoped: locate an existing reservation and return minimum itinerary facts. Ticket purchases, product reorders, seat moves, booking changes/cancellations, external messages and payments remain non-executable until a constrained FamETC external-write driver and risk policy exist.
+
 ## Exit criteria for Weeks 7–12
 
 - zero unauthorized or cross-family writes in adversarial regression tests;

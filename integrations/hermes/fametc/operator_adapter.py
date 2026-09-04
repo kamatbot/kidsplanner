@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Dict
 
 from gateway.platforms.base import MessageEvent, MessageType
@@ -17,6 +18,8 @@ from .adapter import (
     validate_config,
 )
 
+_ACTION_CAPABILITY_SKILL = Path(__file__).parent / "skills" / "action-capability" / "SKILL.md"
+
 
 def _operator_channel_prompt(message: Dict[str, Any]) -> str | None:
     actor_token = message.get("actorToken")
@@ -24,9 +27,12 @@ def _operator_channel_prompt(message: Dict[str, Any]) -> str | None:
         return None
     if len(actor_token) > 5000:
         return None
+    actor = message.get("actor") if isinstance(message.get("actor"), dict) else {}
+    actor_type = actor.get("type") if actor.get("type") in {"parent", "kid"} else "unknown"
     return (
         "FamETC Family Operator authorization for this single incoming request:\n"
         f"- actorToken: {actor_token}\n"
+        f"- initiating actor type: {actor_type}\n"
         "- This opaque token was signed by FamETC for the human who initiated the request. "
         "For FamETC MCP tools that require actorToken, pass it exactly as received; never "
         "replace it with a guessed user, kid, or family id.\n"
@@ -34,7 +40,10 @@ def _operator_channel_prompt(message: Dict[str, Any]) -> str | None:
         "it in normal assistant prose, or save it to memory.\n"
         "- The token permits only the scoped context/case operations enforced by FamETC. "
         "It is not approval for purchases, bookings, messages, cancellations, payments, "
-        "medical/legal attestations, or any other irreversible external action."
+        "medical/legal attestations, or any other irreversible external action.\n"
+        "- For any request involving an external service, first load "
+        "skill_view(\"fametc-platform:action-capability\") and follow its route order and "
+        "prototype safety boundary."
     )
 
 
@@ -129,6 +138,11 @@ class OperatorFamETCAdapter(FamETCAdapter):
 
 
 def register(ctx):
+    ctx.register_skill(
+        "action-capability",
+        _ACTION_CAPABILITY_SKILL,
+        "Route an external FamETC action through official, MCP/API, learned, then browser paths.",
+    )
     ctx.register_platform(
         name="fametc",
         label="FamETC",
@@ -151,7 +165,9 @@ def register(ctx):
             "missing data must not be invented. In Trip rooms you may use browser/web tools "
             "on the host Mac for live travel research, but research never authorizes a "
             "booking, purchase, form submission, or outbound message. "
-            "Family Operator authority is never supplied in shared Trip rooms."
+            "Family Operator authority is never supplied in shared Trip rooms. In the family "
+            "room, external-service requests must load "
+            "fametc-platform:action-capability before choosing an execution path."
         ),
         emoji="🏠",
     )

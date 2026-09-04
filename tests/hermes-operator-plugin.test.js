@@ -13,6 +13,10 @@ function read(name) {
   return fs.readFileSync(path.join(pluginDir, name), "utf8");
 }
 
+function readActionSkill() {
+  return fs.readFileSync(path.join(pluginDir, "skills", "action-capability", "SKILL.md"), "utf8");
+}
+
 test("FamETC Hermes plugin loads the Operator-aware adapter", () => {
   const init = read("__init__.py");
   const operatorAdapter = read("operator_adapter.py");
@@ -21,6 +25,34 @@ test("FamETC Hermes plugin loads the Operator-aware adapter", () => {
   assert.match(operatorAdapter, /channel_prompt=_operator_channel_prompt\(message\)/);
   assert.match(operatorAdapter, /channel_context=channel_context/);
   assert.match(operatorAdapter, /await self\._family_channel_context\(room\)/);
+  assert.match(operatorAdapter, /ctx\.register_skill\(/);
+  assert.match(operatorAdapter, /fametc-platform:action-capability/);
+});
+
+test("Action Capability routes existing paths before browser bootstrap", () => {
+  const skill = readActionSkill();
+  const routes = [
+    "Official connector/API",
+    "Agent-friendly MCP/API",
+    "Learned web/API workflow",
+    "Browser/computer use",
+  ];
+  const positions = routes.map((route) => skill.indexOf(route));
+  assert.ok(positions.every((position) => position >= 0));
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions);
+  assert.match(skill, /skill_view/);
+  assert.match(skill, /har-derived-api-client/);
+  assert.match(skill, /skill_manage/);
+});
+
+test("Action Capability prototype is read-only and never persists captured authority", () => {
+  const skill = readActionSkill();
+  assert.match(skill, /read-only lookup\s+of an existing reservation/);
+  assert.match(skill, /Do not buy tickets, reorder products, move seats/);
+  assert.match(skill, /Delete the raw HAR/);
+  assert.match(skill, /Never put cookies, authorization headers, confirmation codes/);
+  assert.match(skill, /capability\.workflow\.learned/);
+  assert.match(skill, /capability\.workflow\.reused/);
 });
 
 test("actor capability is ephemeral model context, not raw diagnostic metadata", () => {

@@ -9,6 +9,30 @@ Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
+## What changed in v1.4
+
+The bridge now ships a Hermes v0.21 Action Capability skill. External-service
+requests are routed through one ordered layer:
+
+1. official connector or API;
+2. agent-friendly MCP or API;
+3. an already learned web/API workflow;
+4. browser/computer use as bootstrap or recovery.
+
+The first prototype is deliberately narrow: a parent may use Hermes to locate
+an existing reservation in read-only mode. Hermes can observe one browser run,
+derive a minimum read request with the optional `har-derived-api-client` skill,
+verify it without browser UI, and save the sanitized procedure as Hermes
+procedural memory. Future requests reuse that learned skill before returning to
+the browser. Raw HARs, cookies, tokens, confirmation codes, surnames and account
+identifiers must never be stored in the learned skill, FamETC, model memory,
+logs or chat.
+
+The prototype cannot buy tickets, reorder products, move seats, change/cancel a
+booking, send messages or make payments. Those need explicit FamETC external-
+write drivers and risk policy; browser state and a Hermes actor token do not
+create authority.
+
 ## What changed in v1.3
 
 Trip rooms now provide bounded ambient Trip context only when a traveler
@@ -68,15 +92,13 @@ credential and outstanding actor tokens.
 
 ## Install the platform plugin
 
-From the repository root, copy the plugin files to the local Hermes path:
+Hermes Agent v0.21.0 or newer is required. From the repository root, copy the
+plugin package, including its bundled Action Capability skill, to the local
+Hermes path:
 
 ```sh
 mkdir -p ~/.hermes/plugins/fametc
-cp integrations/hermes/fametc/plugin.yaml \
-   integrations/hermes/fametc/adapter.py \
-   integrations/hermes/fametc/operator_adapter.py \
-   integrations/hermes/fametc/__init__.py \
-   ~/.hermes/plugins/fametc/
+cp -R integrations/hermes/fametc/. ~/.hermes/plugins/fametc/
 ```
 
 Enable the user plugin in `~/.hermes/config.yaml` (the key may already exist):
@@ -103,6 +125,16 @@ FAMETC_HERMES_POLL_SECONDS=10
 
 Restart the Hermes gateway after changing the connection. Newly authorized Trip
 rooms are discovered on the next room refresh without another restart.
+
+For HAR-assisted learning, install the official optional v0.21 skill once:
+
+```sh
+hermes skills install official/web-development/har-derived-api-client --yes
+```
+
+The FamETC skill remains useful without it: Hermes can still use official,
+MCP/API, previously learned and browser paths, but it must report that a browser
+run was not converted into a learned API workflow.
 
 ## Enable Family Operator MCP tools
 
