@@ -51,16 +51,18 @@ printf '{"label":"%s","builtAt":"%s","commit":"%s"}\n' "$LABEL" "$BUILT_AT" "$CO
 # ONLY the APNs key named by APNS_KEY_PATH — never a blind *.p8 glob, so an
 # unrelated key that happens to be in the repo (e.g. an App Store Connect API
 # key) can't leak into a server deploy. The native iOS tree is intentionally
-# excluded: Hostinger serves only the Node/web application.
+# excluded: Hostinger serves only the Node/web application. Local design-tool
+# configuration is tracked project tooling, not runtime source, so it is also
+# excluded.
 EXTRAS=(build-info.json .env.hostinger)
 APNS_P8="$(grep -E '^APNS_KEY_PATH=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "[:space:]")"
 if [ -n "$APNS_P8" ] && [ -f "$APNS_P8" ]; then EXTRAS+=("$APNS_P8"); fi
 rm -f "$OUT"
 case "$OUT" in
   *.zip)
-    { git ls-files -- . ':(exclude)ios/**'; printf '%s\n' "${EXTRAS[@]}"; } | zip -q "$OUT" -@ ;;
+    { git ls-files -- . ':(exclude)ios/**' ':(exclude).impeccable/**'; printf '%s\n' "${EXTRAS[@]}"; } | zip -q "$OUT" -@ ;;
   *.tar.gz|*.tgz)
-    { git ls-files -z -- . ':(exclude)ios/**'; printf '%s\0' "${EXTRAS[@]}"; } | tar --null -czf "$OUT" -T - ;;
+    { git ls-files -z -- . ':(exclude)ios/**' ':(exclude).impeccable/**'; printf '%s\0' "${EXTRAS[@]}"; } | tar --null -czf "$OUT" -T - ;;
   *)
     echo "unsupported output extension: $OUT (use .zip or .tar.gz)" >&2; exit 1 ;;
 esac
