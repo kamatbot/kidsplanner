@@ -1,0 +1,749 @@
+// Generates the landing-2026 design-canvas artboards (*.dc.html) + canvas.json.
+// Run: node docs/design/landing-2026/build-artboards.mjs
+// Every artboard is the SAME section markup + the SAME stylesheet the
+// IMPLEMENTATION-GUIDE.md specifies, so the canvas doubles as a reference DOM.
+// Tokens are copied 1:1 from public/css/horizon.css (no new colors).
+import { writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const OUT = dirname(fileURLToPath(import.meta.url));
+
+/* ─────────────────────────── tokens (horizon.css 1:1) ─────────────────────── */
+const TOKENS = `
+:root{color-scheme:light;--bg:#f1efec;--sidebar:#f8f6f3;--panel:#ffffff;--panel-2:#faf8f5;--border:#e7e3dd;--text:#211e1b;--text-2:#6a655f;--muted:#6f6a63;--accent:#6f43d6;--accent-soft:rgba(111,67,214,0.11);--on-accent:#ffffff;--coral:#f0704f;--warn:#8a6410;--grid:#edeae5;--shadow:0 1px 2px rgba(0,0,0,0.04),0 10px 28px rgba(0,0,0,0.06);--hover:rgba(33,30,27,0.05);--c-blue:#2563eb;--c-violet:#7c3aed;--c-amber:#f59e0b;--c-green:#16a34a;--c-red:#dc2626;--c-teal:#0d9488;--c-orange:#ea580c;--c-orange-ink:#b8420c}
+.dark{color-scheme:dark;--bg:#211f1d;--sidebar:#262421;--panel:#2c2926;--panel-2:#33302c;--border:#3b3733;--text:#f1efec;--text-2:#a29c93;--muted:#968f86;--accent:#b98cff;--accent-soft:rgba(185,140,255,0.15);--on-accent:#1c1526;--coral:#ff8a66;--warn:#d6a24a;--c-orange-ink:#ff8a4d;--grid:#35322e;--shadow:0 1px 2px rgba(0,0,0,0.4),0 16px 38px rgba(0,0,0,0.5);--hover:rgba(241,239,236,0.07);--c-blue:#60a5fa;--c-violet:#a78bfa;--c-amber:#fbbf24;--c-green:#4ade80;--c-red:#f87171;--c-teal:#2dd4bf;--c-orange:#fb923c}
+`;
+
+/* ─────────────────────────── landing-2026 stylesheet ──────────────────────── */
+const CSS = `
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5}
+a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
+.mono,.eyebrow,.kicker,.micro,.step-label,.beat-label,.moment-time,.trust-strip,.num{font-family:"JetBrains Mono",monospace}
+.eyebrow,.kicker,.micro,.step-label,.beat-label{font-size:11px;line-height:1.35;letter-spacing:0.08em;text-transform:uppercase}
+.kicker{color:var(--text-2);margin:0 0 12px}
+.landing-shell{min-height:100vh;overflow:clip}
+.header-inner,.section,.footer-inner{width:min(1440px,100%);margin:0 auto;padding-inline:28px}
+.section{padding-block:88px}
+.section h2{margin:0;font-size:clamp(30px,3vw,40px);line-height:1.08;letter-spacing:-0.025em;font-weight:700;text-wrap:balance}
+.section-intro{max-width:56ch;margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;text-wrap:pretty}
+.center{text-align:center}.center .section-intro{margin-inline:auto}
+.panel-card,.feature-card,.cta-panel,.moment-card,.chat-phone,.today-card,.homework-card,.mode-switch,.device-frame,.step-card{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)}
+/* header */
+.site-header{position:sticky;top:0;z-index:20;border-bottom:1px solid var(--border);background:color-mix(in oklab,var(--bg) 88%,transparent);backdrop-filter:blur(10px)}
+.header-inner{min-height:64px;display:flex;align-items:center;gap:24px;padding-block:10px}
+.brand{display:inline-flex;align-items:center;gap:10px;min-height:44px;color:var(--text)}.brand:hover{color:var(--text)}
+.brand-mark{display:block;width:30px;height:30px}
+.brand-name{font-size:17px;font-weight:700;letter-spacing:-0.02em;white-space:nowrap}
+.brand-etc{margin-left:4px;color:var(--accent);font-family:"JetBrains Mono",monospace;font-size:14px;letter-spacing:0.02em}
+.site-nav{display:flex;align-items:center;gap:22px;margin-left:12px;font-size:14px}
+.site-nav a{color:var(--text-2);min-height:44px;display:inline-flex;align-items:center}.site-nav a:hover{color:var(--text)}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:12px}
+.button{min-height:44px;border-radius:12px;padding:10px 17px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;font:inherit;font-size:14px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap}
+.button-primary{background:var(--accent);color:var(--on-accent)}
+.button-secondary{border-color:var(--border);background:var(--panel);color:var(--text)}
+.button-large{min-height:48px;padding:13px 22px;font-size:15px}
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:56px;align-items:center;padding-block:64px 40px}
+.hero-kicker{display:flex;align-items:center;gap:10px;color:var(--text-2);margin:0 0 20px}
+.hero-kicker i{width:6px;height:6px;border-radius:50%;background:var(--coral);display:inline-block}
+.hero h1{margin:0;font-size:clamp(40px,4.4vw,62px);line-height:1;letter-spacing:-0.035em;font-weight:700;text-wrap:balance}
+.hero-lede{margin:22px 0 0;max-width:46ch;color:var(--text-2);font-size:18px;line-height:1.55;text-wrap:pretty}
+.hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.availability{margin:16px 0 0;font-size:14px;line-height:1.5;color:var(--text-2)}
+.availability a{white-space:nowrap}
+.waitlist-form{display:none;margin-top:14px;gap:8px;flex-wrap:wrap}
+.waitlist-form.is-open{display:flex}
+.waitlist-form input{font:inherit;font-size:14px;min-height:44px;border-radius:12px;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:0 14px;flex:1 1 180px}
+.hero-stage{position:relative;min-height:600px}
+.today-card{position:absolute;right:56px;top:36px;width:460px;border-radius:20px;padding:22px 22px 20px}
+.today-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.today-head .eyebrow{color:var(--text-2)}
+.today-greeting{margin:4px 0 0;font-size:22px;font-weight:700;letter-spacing:-0.02em}
+.momentum{margin-top:18px}
+.momentum-label{display:flex;justify-content:space-between;font-size:12px;color:var(--text-2)}
+.momentum-track{margin-top:8px;height:6px;border-radius:999px;background:var(--border);overflow:hidden}
+.momentum-fill{height:100%;width:50%;border-radius:999px;background:linear-gradient(90deg,var(--coral),var(--accent));transform-origin:left;animation:famFill 900ms cubic-bezier(.2,.7,.2,1) both}
+@keyframes famFill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.today-list{margin:20px 0 0;padding:0;list-style:none;display:grid;gap:10px}
+.today-list li{display:grid;grid-template-columns:52px 10px 1fr auto;align-items:center;gap:12px;font-size:15px}
+.today-list time{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--text-2)}
+.today-list i{width:10px;height:10px;border-radius:50%;display:block}
+.today-list small{display:block;color:var(--text-2);font-size:13px}
+.today-list .who{font-size:12px;color:var(--text-2);font-family:"JetBrains Mono",monospace}
+.today-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}
+.today-actions .eyebrow{color:var(--text-2)}
+.action-row{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:15px}
+.checkbox{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--text-2);flex:none}
+.checkbox.done{background:var(--c-green);border-color:var(--c-green);position:relative}
+.action-row .due{margin-left:auto;font-size:12px;font-family:"JetBrains Mono",monospace;color:var(--text-2);white-space:nowrap}
+.due.today{color:var(--c-red)}
+.kid-mia{color:var(--c-teal)}.kid-leo{color:var(--c-amber)}
+.bg-mia{background:var(--c-teal)}.bg-leo{background:var(--c-amber)}
+.float{position:absolute;background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:16px;animation:famRise .6s ease both}
+.float-chat{left:0;top:110px;width:272px;padding:12px 14px;animation-delay:.25s}
+.float-chat .meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2)}
+.avatar{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex:none}
+.float-chat p{margin:6px 0 0;font-size:15px;line-height:1.4}
+.float-due{left:24px;bottom:64px;width:290px;padding:12px 14px;display:flex;gap:12px;align-items:center;animation-delay:.4s}
+.float-due strong{display:block;font-size:14px}
+.float-due span{font-size:12px;color:var(--text-2)}
+.float-sync{right:0;bottom:120px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px;border-radius:999px;animation-delay:.55s}
+.float-sync .dot{width:8px;height:8px;border-radius:50%;background:var(--c-green)}
+.float-sync time{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-2)}
+@keyframes famRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+/* trust strip */
+.trust-strip{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding-block:14px;display:flex;flex-wrap:wrap;justify-content:center;gap:10px 28px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-2)}
+.trust-strip span::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--border);margin-right:10px;vertical-align:middle}
+/* before */
+.before-section{padding-block:72px}
+.before-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:48px;align-items:center}
+.before-fragments{position:relative;height:280px}
+.fragment{position:absolute;background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:13.5px;line-height:1.4;color:var(--text-2);box-shadow:var(--shadow)}
+.fragment:nth-child(1){left:0;top:22px;width:240px;transform:rotate(-3deg)}.fragment:nth-child(2){left:270px;top:0;width:230px;transform:rotate(2deg)}.fragment:nth-child(3){left:130px;top:118px;width:230px;transform:rotate(-1.5deg)}.fragment:nth-child(4){left:450px;top:96px;width:220px;transform:rotate(3deg)}.fragment:nth-child(5){left:30px;top:206px;width:270px;transform:rotate(1.5deg)}
+.fragment strong{display:block;color:var(--text);font-size:14px}
+.fragment .unread{position:absolute;top:-8px;right:-8px;background:var(--text);color:var(--bg);font-family:"JetBrains Mono",monospace;font-size:11px;padding:2px 7px;border-radius:999px}
+.fragment-slip{background:var(--panel);font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.5}
+.fragment-slip em{display:inline-block;margin-top:6px;color:var(--c-red);border:1.5px solid var(--c-red);border-radius:4px;padding:1px 6px;font-style:normal;text-transform:uppercase;letter-spacing:.06em;font-size:10px;transform:rotate(-4deg)}
+.fragment-board{font-style:italic;font-size:14px;line-height:1.6;background:var(--panel)}
+.before-copy h2{font-size:clamp(28px,2.6vw,36px)}
+.before-copy p{margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55}
+/* pillar grid (S3) */
+.pillar-grid{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:64px;align-items:center}
+.pillar-copy p{margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55}
+.sync-items{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sync-item{border:1px solid var(--border);border-radius:14px;padding:14px 16px;background:var(--panel)}
+.sync-item strong{display:block;font-size:15px}
+.sync-item span{font-size:13px;color:var(--text-2);line-height:1.45;display:block;margin-top:2px}
+.sync-trust{margin-top:18px;font-size:14px;color:var(--text-2);line-height:1.55}
+.pillar-visual{position:relative;min-height:520px}
+.homework-card{position:absolute;inset:auto 0 0 auto;width:min(520px,100%);border-radius:20px;padding:20px 22px 18px}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.card-head strong{font-size:18px;letter-spacing:-0.01em}
+.chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:5px 11px;font-size:12px;color:var(--text-2);background:var(--panel-2);white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%}
+.kid-filter{display:flex;gap:8px;margin-top:14px}
+.kid-filter .chip.active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.hw-list{list-style:none;margin:16px 0 0;padding:0;display:grid}
+.hw-list li{display:grid;grid-template-columns:20px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--border);font-size:15px}
+.hw-list li:first-child{border-top:0;padding-top:4px}
+.hw-list small{display:block;color:var(--text-2);font-size:13px}
+.hw-list .due{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-2);white-space:nowrap}
+.hw-list .due.today{color:var(--c-red)}
+.hw-list .due.done{color:var(--c-green)}
+.toast{position:absolute;left:0;top:60px;background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:14px;padding:12px 14px;width:300px;font-size:14px;display:flex;gap:12px;align-items:flex-start}
+.toast .eyebrow{color:var(--text-2);display:block;margin-bottom:2px}
+.toast time{display:block;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-2);margin-top:4px}
+/* chat section (S4) */
+.chat-section{padding-block:96px}
+.chat-sequence{margin-top:56px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px;align-items:start;position:relative}
+.chat-beat{position:relative;opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
+.chat-sequence.is-in .chat-beat,.chat-sequence.static .chat-beat{opacity:1;transform:none}
+.chat-sequence.is-in .chat-beat:nth-child(2){transition-delay:.35s}
+.chat-sequence.is-in .chat-beat:nth-child(3){transition-delay:.7s}
+.chat-beat+.chat-beat::before{content:"";position:absolute;left:-30px;top:50%;width:20px;height:20px;border-right:2px solid var(--text-2);border-top:2px solid var(--text-2);transform:translateY(-50%) rotate(45deg);opacity:.6}
+.beat-label{color:var(--text-2);margin:0 0 14px;display:flex;gap:10px}
+.beat-label b{color:var(--text);font-weight:600}
+.chat-phone{border-radius:24px;padding:18px 16px 16px;min-height:520px;display:flex;flex-direction:column;gap:10px}
+.chat-head{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.chat-head .avatars{display:flex}.chat-head .avatars .avatar{width:22px;height:22px;font-size:10px;margin-left:-6px;border:2px solid var(--panel)}
+.msg{max-width:88%;font-size:14.5px;line-height:1.4}
+.msg .meta{display:block;font-size:11px;color:var(--text-2);margin-bottom:3px;font-family:"JetBrains Mono",monospace}
+.msg p{margin:0;background:var(--panel-2);border:1px solid var(--border);border-radius:14px 14px 14px 4px;padding:9px 12px}
+.msg.mine{align-self:flex-end}.msg.mine p{border-radius:14px 14px 4px 14px}
+.msg.sys{align-self:center;max-width:100%;text-align:center;font-size:12px;color:var(--text-2)}
+.msg.sys p{background:transparent;border:0;padding:0}
+.msg.focus p{outline:2px solid var(--accent);outline-offset:2px}
+.msg.dim{opacity:.45}
+.composer{margin-top:auto;border:1px solid var(--border);border-radius:999px;padding:10px 14px;font-size:14px;color:var(--text-2);display:flex;justify-content:space-between}
+.composer b{color:var(--accent);font-weight:600}
+.action-sheet{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow)}
+.action-sheet .eyebrow{color:var(--text-2);display:block;margin-bottom:10px}
+.action-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.action-options span{border:1px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center;font-size:13px;font-weight:600;display:flex;flex-direction:column;gap:6px;align-items:center;color:var(--text)}
+.action-options span.selected{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.action-options svg{width:20px;height:20px}
+.result-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow)}
+.result-head{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px}
+.result-head .tick{width:22px;height:22px;border-radius:50%;background:var(--c-green);color:#fff;display:inline-flex;align-items:center;justify-content:center}
+.result-sub{margin:4px 0 0 32px;font-size:12px;color:var(--text-2);font-family:"JetBrains Mono",monospace}
+.result-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
+.result-list li{display:flex;align-items:center;gap:10px;font-size:14px}
+.result-list .checkbox{width:18px;height:18px}
+.result-foot{margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text-2)}
+.chat-safety{margin-top:56px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.chat-safety div{display:flex;gap:12px;align-items:flex-start;font-size:15px;line-height:1.5;color:var(--text-2)}
+.chat-safety strong{color:var(--text);display:block}
+.chat-safety svg{flex:none;width:22px;height:22px;stroke:var(--text);margin-top:2px}
+/* day timeline (S5) */
+.day-grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:64px;align-items:start}
+.day-copy{position:sticky;top:96px}
+.day-copy p{margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55}
+.day-timeline{list-style:none;margin:0;padding:0;position:relative}
+.day-timeline::before{content:"";position:absolute;left:97px;top:8px;bottom:8px;width:2px;background:var(--border)}
+.moment{display:grid;grid-template-columns:76px 44px minmax(0,1fr);align-items:start;padding-block:10px}
+.moment-time{font-size:15px;padding-top:14px;color:var(--text)}
+.moment-dot{width:14px;height:14px;border-radius:50%;background:var(--panel);border:3px solid var(--text-2);margin:16px 0 0 15px;position:relative;z-index:1}
+.moment-dot.mia{border-color:var(--c-teal)}.moment-dot.leo{border-color:var(--c-amber)}
+.moment-card{border-radius:16px;padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}
+.moment-card .kicker{margin:0 0 4px}
+.moment-card strong{font-size:16px;display:block}
+.moment-card p{margin:2px 0 0;color:var(--text-2);font-size:14px;line-height:1.45}
+.mini{font-size:13px}
+.mini .chip{font-size:12px}
+.mini-bubble{background:var(--panel-2);border:1px solid var(--border);border-radius:12px 12px 12px 4px;padding:7px 10px;font-size:13px;max-width:220px}
+.mini-bubble+.mini-bubble{margin-top:6px;border-radius:12px 12px 4px 12px}
+.mini-list{display:flex;gap:6px}
+.mini-list span{border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-size:12px}
+.mini-poll{display:grid;gap:4px;min-width:170px}
+.mini-poll div{display:flex;justify-content:space-between;font-size:12px;gap:10px}
+.mini-poll i{display:block;height:4px;border-radius:2px;background:var(--text-2);margin-top:3px}
+/* bento (S6) */
+.bento{margin-top:40px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:minmax(150px,auto);gap:16px}
+.feature-card{border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.feature-card.large{grid-column:span 2;grid-row:span 2}
+.feature-card.wide{grid-column:span 2}
+.feature-title{font-size:18px;font-weight:700;letter-spacing:-0.01em}
+.feature-card p{margin:0;color:var(--text-2);font-size:14.5px;line-height:1.5;max-width:40ch}
+.feature-visual{margin-top:auto;padding-top:16px}
+.poll{display:grid;gap:8px}
+.poll div{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:14px;align-items:center}
+.poll i{display:block;height:8px;border-radius:4px;background:var(--border);overflow:hidden;grid-column:1/-1}
+.poll i b{display:block;height:100%;background:var(--text-2);border-radius:4px}
+.poll .lead i b{background:var(--accent)}
+.week-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.week-strip div{border:1px solid var(--border);border-radius:10px;padding:8px;font-size:11px;font-family:"JetBrains Mono",monospace;color:var(--text-2);min-height:64px}
+.week-strip span{display:block;margin-top:6px;font-family:"Space Grotesk",sans-serif;font-size:12px;color:var(--text);border-left:3px solid var(--border);padding-left:5px;line-height:1.3}
+.week-strip .mia{border-left-color:var(--c-teal)}.week-strip .leo{border-left-color:var(--c-amber)}
+.points{display:flex;gap:28px;align-items:flex-end}
+.points b{font-family:"JetBrains Mono",monospace;font-size:34px;font-weight:600;line-height:1;display:block}
+.points small{display:block;font-size:12px;margin-top:4px}
+/* devices (S7) */
+.device-row{margin-top:48px;display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr) minmax(0,360px);gap:32px;align-items:end}
+.device-frame{border-radius:28px;padding:10px;background:var(--text);border-color:transparent}
+.device-screen{background:var(--bg);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;color:var(--text)}
+.frame-phone{max-width:260px}.frame-phone .device-screen{height:480px}
+.frame-ipad{border-radius:22px}.frame-ipad .device-screen{height:400px;border-radius:14px;flex-direction:row}
+.frame-web{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:0;overflow:hidden}
+.frame-web .device-screen{height:300px;border-radius:0}
+.browser-bar{height:34px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--panel)}
+.browser-bar i{width:8px;height:8px;border-radius:50%;background:var(--border)}
+.browser-bar span{margin-left:auto;margin-right:auto;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--text-2);letter-spacing:.06em}
+.mini-today{padding:16px 14px;flex:1;font-size:13px}
+.mini-today .eyebrow{color:var(--text-2)}
+.mini-today h4{margin:2px 0 12px;font-size:17px}
+.mini-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px;font-size:13px}
+.mini-card small{display:block;color:var(--text-2);font-size:11.5px}
+.tabbar{border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);padding:10px 6px 12px;font-size:10px;text-align:center;color:var(--text-2);background:var(--panel)}
+.tabbar span{display:grid;justify-items:center;gap:4px}
+.tabbar svg{width:20px;height:20px;stroke:currentColor}
+.tabbar .active{color:var(--accent)}
+.rail{width:64px;background:var(--sidebar);border-right:1px solid var(--border);display:grid;grid-auto-rows:min-content;gap:6px;padding:14px 10px;justify-items:center}
+.rail span{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;color:var(--text-2)}
+.rail span.active{background:var(--accent-soft);color:var(--accent)}
+.rail svg{width:18px;height:18px;stroke:currentColor}
+.ipad-main{flex:1;padding:16px;min-width:0}
+.docked-chat{width:200px;border-left:1px solid var(--border);background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.docked-chat .msg{font-size:12px}.docked-chat .msg p{padding:6px 9px}
+.device-caption{margin-top:16px}
+.device-caption strong{display:block;font-size:16px}
+.device-caption span{font-size:14px;color:var(--text-2);line-height:1.45;display:block;margin-top:2px}
+.store-note{margin-top:32px;font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:10px}
+.store-note svg{width:18px;height:18px;stroke:var(--text-2)}
+/* modes (S8) */
+.mode-switch{border-radius:24px;padding:32px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,380px);gap:48px;align-items:center;margin-top:40px}
+.mode-toggle{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:4px;background:var(--panel-2);gap:4px}
+.mode-tab{min-height:40px;padding:0 18px;border-radius:999px;font:inherit;font-size:14px;font-weight:600;border:0;background:transparent;color:var(--text-2);cursor:pointer}
+.mode-tab[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
+.mode-copy h3{margin:22px 0 0;font-size:28px;letter-spacing:-0.02em;line-height:1.1}
+.mode-copy p{margin:12px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;max-width:44ch}
+.mode-frame{border-radius:28px;background:var(--bg);border:1px solid var(--border);padding:20px}
+.kid-hello{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:700}
+.kid-tiles{display:grid;gap:12px;margin-top:20px}
+.kid-tile{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px}
+.kid-tile b{font-family:"JetBrains Mono",monospace;font-size:44px;font-weight:600;line-height:1;display:block;letter-spacing:-0.02em}
+.kid-tile span{display:block;font-size:15px;margin-top:6px;color:var(--text-2)}
+.kid-tile.row{display:flex;justify-content:space-between;align-items:center}
+.kid-tile.row b{font-size:22px}
+.parent-week{display:grid;gap:8px;margin-top:16px}
+.parent-week .rowh{display:grid;grid-template-columns:52px repeat(5,1fr);gap:4px;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--text-2);text-align:center}
+.parent-week .row{display:grid;grid-template-columns:52px repeat(5,1fr);gap:4px;align-items:stretch}
+.parent-week .row>b{font-size:13px;align-self:center}
+.parent-week .cell{background:var(--panel);border:1px solid var(--border);border-radius:8px;min-height:54px;padding:4px 5px;font-size:10px;line-height:1.25;color:var(--text-2)}
+.parent-week .cell em{display:block;font-style:normal;border-left:2px solid var(--border);padding-left:4px;color:var(--text);margin-bottom:3px}
+.parent-week .cell em.mia{border-color:var(--c-teal)}.parent-week .cell em.leo{border-color:var(--c-amber)}
+.parent-week .cell em.due{color:var(--c-red)}
+/* privacy (S9) */
+.privacy-band{background:var(--sidebar);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.privacy-grid{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:64px;align-items:start}
+.privacy-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:24px 40px}
+.privacy-list li{display:flex;gap:14px;font-size:15px;line-height:1.5;color:var(--text-2)}
+.privacy-list strong{display:block;color:var(--text)}
+.privacy-list svg{flex:none;width:22px;height:22px;stroke:var(--text);margin-top:2px}
+.privacy-grid p{margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55}
+/* steps, faq, cta, footer */
+.steps-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:40px}
+.step-card{border-radius:18px;padding:22px}
+.step-label{color:var(--text-2)}
+.step-title{margin-top:10px;font-size:19px;font-weight:700}
+.step-card p{margin:8px 0 0;color:var(--text-2);font-size:15px;line-height:1.5}
+.faq-list{margin-top:32px;display:grid;gap:8px;max-width:820px}
+.faq-item{border:1px solid var(--border);border-radius:14px;background:var(--panel)}
+.faq-item summary{list-style:none;cursor:pointer;padding:16px 18px;font-weight:600;font-size:16px;display:flex;justify-content:space-between;gap:16px}
+.faq-item summary::after{content:"+";font-family:"JetBrains Mono",monospace;color:var(--text-2)}
+.faq-item[open] summary::after{content:"−"}
+.faq-answer{padding:0 18px 16px;color:var(--text-2);font-size:15px;line-height:1.55}
+.faq-answer p{margin:0}
+.cta-panel{border-radius:22px;padding:56px 44px;text-align:center}
+.cta-panel h2{font-size:clamp(32px,3vw,40px)}
+.cta-panel p{max-width:44ch;margin:12px auto 0;color:var(--text-2);font-size:17px;line-height:1.5}
+.cta-actions{margin-top:26px;display:flex;justify-content:center}
+.cta-panel .availability{text-align:center}
+.site-footer{border-top:1px solid var(--border);background:var(--sidebar)}
+.footer-inner{min-height:88px;display:flex;align-items:center;flex-wrap:wrap;gap:16px 20px;padding-block:20px}
+.footer-note{color:var(--text-2)}
+.footer-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:18px;font-size:14px}
+.footer-links a{min-height:44px;display:inline-flex;align-items:center}
+/* Variants artboard helper */
+.variant-label{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-2);margin:0 0 16px}
+/* motion fallback */
+@media (prefers-reduced-motion:reduce){.momentum-fill,.float{animation:none}.chat-beat{opacity:1;transform:none;transition:none}}
+/* breakpoints */
+@media (max-width:1024px){
+ .site-nav{display:none}
+ .hero{grid-template-columns:1fr;gap:40px;padding-block:48px 24px}
+ .hero-stage{min-height:620px;max-width:640px}
+ .today-card{right:0;left:auto;width:min(460px,92%)}
+ .float-chat{left:0;top:40px}
+ .pillar-grid,.day-grid,.privacy-grid,.before-grid{grid-template-columns:1fr;gap:40px}
+ .pillar-visual{min-height:0;padding-top:70px}
+ .homework-card{position:relative;inset:auto;width:100%}
+ .toast{top:0}
+ .day-copy{position:static}
+ .device-row{grid-template-columns:1fr 1fr}
+ .frame-web{grid-column:1/-1}
+ .mode-switch{grid-template-columns:1fr;gap:32px}
+}
+@media (max-width:768px){
+ .section{padding-block:64px}
+ .chat-sequence{grid-template-columns:1fr;gap:44px;max-width:420px;margin-inline:auto}
+ .chat-beat+.chat-beat::before{left:50%;top:-32px;transform:translateX(-50%) rotate(135deg)}
+ .chat-safety{grid-template-columns:1fr;gap:18px}
+ .bento{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .steps-grid{grid-template-columns:1fr}
+ .privacy-list{grid-template-columns:1fr}
+ .device-row{grid-template-columns:1fr}
+ .frame-ipad .device-screen{height:320px}
+ .docked-chat{display:none}
+ .before-fragments{height:240px}
+}
+@media (max-width:520px){
+ .header-inner,.section,.footer-inner{padding-inline:20px}
+ .header-create{display:none}
+ .hero h1{font-size:clamp(36px,10.5vw,44px)}
+ .hero-actions .button,.cta-actions .button{width:100%}
+ .hero-stage{min-height:0;display:grid;gap:14px}
+ .today-card,.float{position:static;width:100%;animation:none;opacity:1}
+ .float-sync{border-radius:16px}
+ .sync-items{grid-template-columns:1fr}
+ .bento{grid-template-columns:minmax(0,1fr)}
+ .feature-card.large,.feature-card.wide{grid-column:auto;grid-row:auto}
+ .moment{grid-template-columns:56px 28px 1fr}
+ .day-timeline::before{left:69px}
+ .moment-dot{margin-left:7px}
+ .moment-card{grid-template-columns:1fr}
+ .mode-switch{padding:20px}
+ .trust-strip{justify-content:flex-start;flex-direction:column;gap:8px}
+ .today-head{flex-direction:column}
+ .before-fragments{height:auto;display:grid;gap:10px}
+ .fragment{position:static;width:auto;transform:none}
+ .fragment:nth-child(odd){transform:rotate(-1deg)}.fragment:nth-child(even){transform:rotate(1deg)}
+ .week-strip div{padding:6px 4px;font-size:10px}.week-strip span{font-size:11px}
+ .footer-links{margin-left:0}
+ .section h2{font-size:30px}
+}
+`;
+
+/* ─────────────────────────── shared bits ──────────────────────────────────── */
+const ICON = {
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+  noads: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M5.5 5.5l13 13"></path></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M16 15a5 5 0 0 1 5.5 5"></path></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4.5 4.5L19 7"></path></svg>',
+  action: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>',
+  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>',
+  cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.5 11h10L20 7H6"></path><circle cx="9" cy="19" r="1.5"></circle><circle cx="16.5" cy="19" r="1.5"></circle></svg>',
+  sun: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg>',
+  book: '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"></rect><path d="M11 18.5h2"></path></svg>',
+};
+const brandMark = `<svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg>`;
+const brand = (cls = '') => `<a class="brand ${cls}" href="/" aria-label="Fam ETC home">${brandMark}<span class="brand-name">Fam<span class="brand-etc">ETC</span></span></a>`;
+const av = (letter, cls) => `<span class="avatar ${cls}" aria-hidden="true">${letter}</span>`;
+
+const AVAIL = {
+  A: `<p class="availability">Open now to St Andrews Bangkok families. Other schools — <a href="mailto:hello@fametc.com?subject=Fam%20ETC%20for%20our%20school">join the list</a>.</p>`,
+  B: `<p class="availability">Open now to St Andrews Bangkok families. Other schools — <a href="#waitlist" class="waitlist-toggle" aria-expanded="true" aria-controls="waitlist">join the waitlist</a>.</p>
+      <form class="waitlist-form is-open" id="waitlist" action="/api/waitlist" method="post"><label class="micro" style="flex-basis:100%;color:var(--text-2)">Your school and an email — we'll write when it opens.</label><input name="school" placeholder="School name" aria-label="School name"><input name="email" type="email" placeholder="you@example.com" aria-label="Email"><button class="button button-secondary" type="submit">Notify me</button></form>`,
+};
+
+/* ─────────────────────────── sections ─────────────────────────────────────── */
+const header = `
+<header class="site-header"><div class="header-inner">${brand()}
+<nav class="site-nav" aria-label="Landing page navigation"><a href="#features">Features</a><a href="#chat">Family chat</a><a href="#school-sync">School sync</a><a href="#devices">iPhone &amp; iPad</a><a href="#faq">FAQ</a></nav>
+<div class="header-actions"><a class="button button-secondary header-signin" href="/login">Sign in</a><a class="button button-primary header-create" href="/signup">Create family</a></div></div></header>`;
+
+const hero = (variant = 'A') => `
+<section class="section hero" aria-labelledby="hero-title">
+ <div class="hero-copy">
+  <p class="hero-kicker micro">Stay in touch <i></i> Stay on top</p>
+  <h1 id="hero-title">Everyone knows what today looks like.</h1>
+  <p class="hero-lede">School on one side, home on the other, one family thread down the middle. Homework, the timetable and after-school activities arrive on their own; lifts, kit bags and dinner get decided in chat — and turned into the plan with a tap.</p>
+  <div class="hero-actions"><a class="button button-primary button-large" href="/signup">Create your family</a><a class="button button-secondary button-large" href="#day">See a family week</a></div>
+  ${AVAIL[variant]}
+ </div>
+ <div class="hero-stage" role="group" aria-label="Fam ETC Today screen with a family chat message, a homework due chip and a school sync notice">
+  <article class="today-card" aria-label="Today screen">
+   <div class="today-head"><div><span class="eyebrow">Wednesday 22 August</span><p class="today-greeting">Good morning, Priya</p></div><span class="chip"><span class="dot" style="background:var(--c-green)"></span>School sync 08:10</span></div>
+   <div class="momentum"><div class="momentum-label"><span>Today</span><span class="mono">3 of 6 done</span></div><div class="momentum-track" role="progressbar" aria-valuenow="3" aria-valuemin="0" aria-valuemax="6" aria-label="3 of 6 things done today"><div class="momentum-fill"></div></div></div>
+   <ul class="today-list">
+    <li><time>08:20</time><i class="bg-leo"></i><span>Football · Leo<small>Astro pitch · kit + boots</small></span><span class="who">ECA</span></li>
+    <li><time>10:00</time><i class="bg-mia"></i><span>Clarinet · Mia<small>Music block · room 4</small></span><span class="who">ECA</span></li>
+    <li><time>15:30</time><i class="bg-mia"></i><span>Swim squad · Mia<small>Pool 2 · bring goggles</small></span><span class="who">ECA</span></li>
+   </ul>
+   <div class="today-actions"><span class="eyebrow">Family actions</span>
+    <div class="action-row"><span class="checkbox" aria-hidden="true"></span><span>Sign Mia's swim gala permission slip</span><span class="due today">Due today</span></div>
+    <div class="action-row"><span class="checkbox" aria-hidden="true"></span><span>Pack Leo's football kit</span><span class="due">Tomorrow</span></div>
+   </div>
+  </article>
+  <aside class="float float-chat" aria-label="Family chat message"><div class="meta">${av('L', 'bg-leo')}<span>Leo · 12:05</span></div><p>Can someone bring my goggles?</p></aside>
+  <aside class="float float-due" aria-label="Homework due"><span class="checkbox" aria-hidden="true"></span><div><strong>Maths · Fractions worksheet</strong><span><span class="kid-mia">Mia</span> · due 16:00</span></div></aside>
+  <aside class="float float-sync" aria-label="School sync notice"><span class="dot"></span><span>2 items added from school</span><time>09:12</time></aside>
+ </div>
+</section>
+<div class="trust-strip" role="list" aria-label="Trust commitments"><span role="listitem">Encrypted at rest</span><span role="listitem">Read-only school sync</span><span role="listitem">No ads, no tracking</span><span role="listitem">Kids can't sign up alone</span></div>`;
+
+const before = `
+<section class="section before-section" aria-labelledby="before-title">
+ <div class="before-grid">
+  <div class="before-fragments" aria-hidden="true">
+   <div class="fragment"><strong>Year 4 Parents</strong>47 members · "does anyone know if…"<span class="unread">128</span></div>
+   <div class="fragment"><strong>Swim squad parents</strong>Gala moved to Friday??<span class="unread">31</span></div>
+   <div class="fragment"><strong>Family</strong>Dad: who has the car Thursday<span class="unread">9</span></div>
+   <div class="fragment fragment-board">Thurs — Leo football<br>Fri — ??? dinner<br>~~Mia clarinet~~ moved</div>
+   <div class="fragment fragment-slip">PERMISSION SLIP · Swim gala<br>Return by Tue 13 Aug<br><em>Found Mon 19 Aug</em></div>
+  </div>
+  <div class="before-copy">
+   <p class="kicker">Before</p>
+   <h2 id="before-title">Five threads, a fridge door, and a slip you found on Monday.</h2>
+   <p>Everyone had a piece of the week. Nobody had the week. The kit gets remembered in the car and the due date at 8pm.</p>
+  </div>
+ </div>
+</section>`;
+
+const school = `
+<section id="school-sync" class="section" aria-labelledby="school-title">
+ <div class="pillar-grid">
+  <div class="pillar-copy">
+   <p class="kicker">Stay on top</p>
+   <h2 id="school-title">You never chase a due date again.</h2>
+   <p>A parent pastes each child's private homework and timetable links once, in Settings. From then on homework, the timetable and after-school activities arrive in Fam ETC on their own — read-only, refreshed every eight hours, nothing to re-type.</p>
+   <div class="sync-items">
+    <div class="sync-item"><strong>Homework</strong><span>Outstanding tasks, subjects and due dates — per child</span></div>
+    <div class="sync-item"><strong>Timetable</strong><span>This week's periods, rooms and teachers</span></div>
+    <div class="sync-item"><strong>ECAs &amp; activities</strong><span>Clubs and squads, right in the timetable</span></div>
+    <div class="sync-item"><strong>Automatic refresh</strong><span>Checked every eight hours, only if the school changed something</span></div>
+   </div>
+   <p class="sync-trust"><strong>Parent-controlled.</strong> The school link is encrypted, never shown again after you paste it, and only ever read. <a href="/privacy">How we handle school data</a></p>
+  </div>
+  <div class="pillar-visual" role="group" aria-label="Homework screen: Mia's Maths worksheet due today, reading log done; Leo's science poster due Monday. A notice shows the Maths worksheet arriving from school at 09:12.">
+   <div class="toast"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--c-green);flex:none;margin-top:6px"></span><div><span class="eyebrow">School sync</span>Maths worksheet added for <span class="kid-mia">Mia</span>, due today<time>09:12</time></div></div>
+   <article class="homework-card">
+    <div class="card-head"><strong>Homework</strong><span class="chip"><span class="dot" style="background:var(--c-green)"></span>Synced 08:10 · next 16:10</span></div>
+    <div class="kid-filter" role="tablist" aria-label="Filter by child"><span class="chip active">All</span><span class="chip"><span class="dot bg-mia"></span>Mia</span><span class="chip"><span class="dot bg-leo"></span>Leo</span></div>
+    <ul class="hw-list">
+     <li><span class="checkbox done" aria-hidden="true"></span><span>English · Reading log<small><span class="kid-mia">Mia</span> · Ms Harper</small></span><span class="due done">Done</span></li>
+     <li><span class="checkbox" aria-hidden="true"></span><span>Maths · Fractions worksheet<small><span class="kid-mia">Mia</span> · Mr Chen</small></span><span class="due today">Today 16:00</span></li>
+     <li><span class="checkbox" aria-hidden="true"></span><span>Science · Food chains poster<small><span class="kid-leo">Leo</span> · Ms Okafor</small></span><span class="due">Mon</span></li>
+     <li><span class="checkbox" aria-hidden="true"></span><span>French · Vocabulary set 4<small><span class="kid-leo">Leo</span> · Mme Roux</small></span><span class="due">Thu</span></li>
+    </ul>
+   </article>
+  </div>
+ </div>
+</section>`;
+
+const chatHead = `<div class="chat-head"><span>Family</span><span class="avatars">${av('P', 'bg-p')}${av('M', 'bg-mia')}${av('L', 'bg-leo')}</span></div>`;
+const beat1 = `
+<div class="chat-beat"><p class="beat-label"><b>01</b>A message</p>
+ <div class="chat-phone" role="group" aria-label="Family chat: Priya asks whether someone could pick up pasta, tomatoes and basil for dinner">${chatHead}
+  <div class="msg sys"><p>School sync · 09:12 · Maths worksheet added for Mia</p></div>
+  <div class="msg"><span class="meta">Leo · 12:05</span><p>Can someone bring my goggles?</p></div>
+  <div class="msg mine"><span class="meta">Priya · 12:07</span><p>In the swim bag.</p></div>
+  <div class="msg mine focus"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
+  <div class="composer"><span>Message the family…</span><b>Send</b></div>
+ </div></div>`;
+const beat2 = `
+<div class="chat-beat"><p class="beat-label"><b>02</b>Turn it into…</p>
+ <div class="chat-phone" role="group" aria-label="Turn this message into: Action, Calendar or Shopping. Shopping is selected.">${chatHead}
+  <div class="msg mine dim"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
+  <div class="action-sheet"><span class="eyebrow">Turn this message into</span>
+   <div class="action-options"><span>${ICON.action}Action</span><span>${ICON.cal}Calendar</span><span class="selected">${ICON.cart}Shopping</span></div>
+  </div>
+  <div class="composer"><span>Message the family…</span><b>Send</b></div>
+ </div></div>`;
+const beat3 = `
+<div class="chat-beat"><p class="beat-label"><b>03</b>It's on the list</p>
+ <div class="chat-phone" role="group" aria-label="Added to Shopping: Dinner, 3 items, today — Pasta, Tomatoes, Basil — shared with the family">${chatHead}
+  <div class="msg mine dim"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
+  <div class="result-card"><div class="result-head"><span class="tick">${ICON.check}</span>Added to Shopping</div><div class="result-sub">Dinner · 3 items · Today</div>
+   <ul class="result-list"><li><span class="checkbox" aria-hidden="true"></span>Pasta</li><li><span class="checkbox" aria-hidden="true"></span>Tomatoes</li><li><span class="checkbox" aria-hidden="true"></span>Basil</li></ul>
+   <div class="result-foot">Shared with the family · whoever's near a shop ticks them off</div>
+  </div>
+  <div class="msg sys"><p>Priya added 3 items to Shopping · 12:08</p></div>
+  <div class="composer"><span>Message the family…</span><b>Send</b></div>
+ </div></div>`;
+const chat = (beats = beat1 + beat2 + beat3, seqClass = 'static') => `
+<section id="chat" class="section chat-section center" aria-labelledby="chat-title">
+ <p class="kicker">Stay in touch</p>
+ <h2 id="chat-title">The thread where things actually get decided.</h2>
+ <p class="section-intro">One chat for the whole family — parents and kids. And when a message is really a job, a date or a shopping run, turn it into one without re-typing a word. That's the moment "in touch" and "on top" become the same thing.</p>
+ <div class="chat-sequence ${seqClass}" data-reveal>${beats}</div>
+ <div class="chat-safety">
+  <div>${ICON.users}<span><strong>One thread per family</strong>No groups to manage, no one left out.</span></div>
+  <div>${ICON.shield}<span><strong>Kids read and reply safely</strong>They see the family thread and their own day — nothing else.</span></div>
+  <div>${ICON.trash}<span><strong>Parents keep the keys</strong>Any parent can delete any message or remove a member.</span></div>
+ </div>
+</section>`;
+
+const moment = (time, kid, feature, title, sub, mini) => `
+<li class="moment"><time class="moment-time">${time}</time><span class="moment-dot ${kid}" aria-hidden="true"></span>
+ <div class="moment-card"><div><p class="kicker">${feature}</p><strong>${title}</strong><p>${sub}</p></div><div class="mini">${mini}</div></div></li>`;
+const day = `
+<section id="day" class="section" aria-labelledby="day-title">
+ <div class="day-grid">
+  <div class="day-copy"><p class="kicker">One Wednesday</p><h2 id="day-title">A day in the family.</h2><p>Every moment below is a feature doing its job — for Priya, Mia and Leo, on a school day like any other. Nothing lands at 8pm that you should have known at 8am.</p></div>
+  <ol class="day-timeline">
+   ${moment('07:10', 'leo', 'Reminders', 'Leo’s football kit', 'Nudged the night before and again before the school run.', `<span class="chip"><span class="dot bg-leo"></span>Kit + boots · in the car</span>`)}
+   ${moment('08:20', 'leo', 'ECAs &amp; timetable', 'Football · astro pitch', 'From the school timetable, in Leo’s colour, on everyone’s Today.', `<span class="chip">Period 1 · Astro pitch</span>`)}
+   ${moment('09:12', 'mia', 'School sync', 'Maths worksheet added for Mia', 'Due today. Arrived on its own — nobody typed it in.', `<span class="chip"><span class="dot" style="background:var(--c-green)"></span>Synced from school</span>`)}
+   ${moment('12:05', 'leo', 'Family chat', '“Can someone bring my goggles?”', 'Leo asks the family. Priya answers from the office.', `<div class="mini-bubble">Can someone bring my goggles?</div><div class="mini-bubble">In the swim bag.</div>`)}
+   ${moment('12:08', '', 'Chat actions', 'Dinner becomes a shopping list', '“Pasta, tomatoes, basil” → three items, shared with the family.', `<div class="mini-list"><span>Pasta</span><span>Tomatoes</span><span>Basil</span></div>`)}
+   ${moment('16:00', 'mia', 'Homework hub', 'Fractions worksheet — done', 'Mia ticks it off. Priya sees it without asking.', `<span class="chip"><span class="dot" style="background:var(--c-green)"></span>Done 15:52</span>`)}
+   ${moment('19:00', '', 'Meals', 'Friday dinner, chosen together', 'Three votes, one winner, no debate at the table.', `<div class="mini-poll"><div><span>Pad thai</span><b>3</b><i style="width:100%"></i></div><div><span>Pizza</span><b>1</b><i style="width:33%"></i></div></div>`)}
+  </ol>
+ </div>
+</section>`;
+
+const bento = `
+<section id="features" class="section" aria-labelledby="features-title">
+ <h2 id="features-title">Everything else a family week needs</h2>
+ <p class="section-intro">Same app, same calm layout, same family — one place for the things that don't come from school.</p>
+ <div class="bento">
+  <article class="feature-card large"><div class="feature-title">Meals</div><p>Plan the week's dinners together. Pick a night, put it to a vote, and the shopping list writes itself.</p>
+   <div class="feature-visual" role="img" aria-label="Friday dinner poll: Pad thai 3 votes, Pizza 1, Tacos 0"><span class="eyebrow" style="color:var(--text-2)">Friday dinner · 4 voted</span>
+    <div class="poll" style="margin-top:10px"><div class="lead"><span>Pad thai</span><b class="num">3</b><i><b style="width:75%"></b></i></div><div><span>Pizza</span><b class="num">1</b><i><b style="width:25%"></b></i></div><div><span>Tacos</span><b class="num">0</b><i><b style="width:0"></b></i></div></div></div></article>
+  <article class="feature-card wide"><div class="feature-title">Shared calendar</div><p>School events and family plans in one week, filtered per child.</p>
+   <div class="feature-visual" role="img" aria-label="Week strip: Monday Leo football, Tuesday Mia clarinet, Wednesday Mia swim squad, Thursday grocery run, Friday family dinner">
+    <div class="week-strip"><div>MON<span class="leo">Football</span></div><div>TUE<span class="mia">Clarinet</span></div><div>WED<span class="mia">Swim squad</span></div><div>THU<span>Grocery run</span></div><div>FRI<span>Family dinner</span></div></div></div></article>
+  <article class="feature-card"><div class="feature-title">Trips</div><p>Plan a holiday with the other adults who are coming — dates, bookings, who brings what.</p></article>
+  <article class="feature-card"><div class="feature-title">Goals &amp; habits</div><p>Reading, practice, bedtime — small habits tracked without nagging.</p></article>
+  <article class="feature-card"><div class="feature-title">Quizzes</div><p>Short rounds that follow this term's subjects — five minutes before dinner counts.</p></article>
+  <article class="feature-card"><div class="feature-title">Puzzles</div><p>A daily puzzle for each age band. Siblings can race; parents usually lose.</p></article>
+  <article class="feature-card wide"><div class="feature-title">House points</div><p>Straight from school, per child, with this week's change.</p>
+   <div class="feature-visual points" role="img" aria-label="House points: Mia 148, Leo 96, up 11 this week"><div><b>148</b><small class="kid-mia">Mia</small></div><div><b>96</b><small class="kid-leo">Leo</small></div><div><small style="font-family:'JetBrains Mono',monospace;color:var(--text-2)">+11 this week</small></div></div></article>
+ </div>
+</section>`;
+
+const miniToday = (greet = 'Good morning, Priya') => `<div class="mini-today"><span class="eyebrow">Wednesday 22 August</span><h4>${greet}</h4>
+ <div class="mini-card"><span class="kid-leo">Leo</span> · Football 08:20<small>Astro pitch · kit + boots</small></div>
+ <div class="mini-card">Sign Mia's permission slip<small style="color:var(--c-red)">Due today</small></div>
+ <div class="mini-card"><span class="kid-mia">Mia</span> · Maths worksheet<small>Due 16:00</small></div></div>`;
+const tabbar = `<div class="tabbar" aria-hidden="true"><span class="active">${ICON.sun}Today</span><span>${ICON.chat}Chat</span><span>${ICON.cal}Calendar</span><span>${ICON.book}Homework</span></div>`;
+const devices = `
+<section id="devices" class="section" aria-labelledby="devices-title">
+ <p class="kicker">iPhone · iPad · Web</p>
+ <h2 id="devices-title">Every screen the family already uses.</h2>
+ <p class="section-intro">One passkey login, one family, three surfaces. The layout adapts instead of shrinking: a tab bar on iPhone, a nav rail with the family chat docked beside your day on iPad, the full layout on the web.</p>
+ <div class="device-row">
+  <figure style="margin:0"><div class="device-frame frame-phone" role="img" aria-label="iPhone: Today screen with a tab bar — Today, Chat, Calendar, Homework"><div class="device-screen">${miniToday()}${tabbar}</div></div><figcaption class="device-caption"><strong>iPhone</strong><span>Today, Chat, Calendar and Homework as native tabs.</span></figcaption></figure>
+  <figure style="margin:0"><div class="device-frame frame-ipad" role="img" aria-label="iPad landscape: navigation rail, Today in the middle, family chat docked on the right"><div class="device-screen">
+    <div class="rail"><span class="active">${ICON.sun}</span><span>${ICON.cal}</span><span>${ICON.book}</span><span>${ICON.chat}</span></div>
+    <div class="ipad-main">${miniToday()}</div>
+    <div class="docked-chat"><div class="chat-head" style="font-size:12px">Family</div><div class="msg"><span class="meta">Leo · 12:05</span><p>Can someone bring my goggles?</p></div><div class="msg mine"><span class="meta">Priya · 12:07</span><p>In the swim bag.</p></div><div class="composer" style="font-size:12px;padding:7px 10px">Message…</div></div>
+   </div></div><figcaption class="device-caption"><strong>iPad</strong><span>Nav rail, your day, and the family chat docked alongside. In portrait, chat slides over.</span></figcaption></figure>
+  <figure style="margin:0"><div class="device-frame frame-web" role="img" aria-label="Web browser: the full Fam ETC layout at fametc.com"><div class="browser-bar"><i></i><i></i><i></i><span>fametc.com</span></div><div class="device-screen" style="flex-direction:row"><div class="rail" style="width:56px"><span class="active">${ICON.sun}</span><span>${ICON.cal}</span><span>${ICON.book}</span></div><div class="ipad-main" style="padding:8px">${miniToday('Good morning')}</div></div></div><figcaption class="device-caption"><strong>Web</strong><span>Everything, including Settings, Goals and Trips, at fametc.com.</span></figcaption></figure>
+ </div>
+ <p class="store-note">${ICON.phone}<span>The iPhone &amp; iPad app is coming to the App Store. The web app is open today — same login, same family.</span></p>
+</section>`;
+
+const modeFrame = (state) => state === 'kid' ? `
+<div class="mode-frame" role="tabpanel" id="mode-kid" aria-label="Kid mode: Mia's view">
+ <div class="kid-hello">${av('M', 'bg-mia')}Hi Mia</div>
+ <div class="kid-tiles">
+  <div class="kid-tile"><b>2</b><span>things due today</span></div>
+  <div class="kid-tile row"><span style="margin:0;color:var(--text)">Swim squad · pool 2</span><b>15:30</b></div>
+  <div class="kid-tile row"><span style="margin:0;color:var(--text)">Reading streak</span><b>9 days</b></div>
+ </div>
+</div>` : `
+<div class="mode-frame" role="tabpanel" id="mode-parent" aria-label="Parent mode: the whole family's week">
+ <div class="kid-hello">${av('P', 'bg-p')}This week</div>
+ <div class="parent-week">
+  <div class="rowh"><span></span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span></div>
+  <div class="row"><b class="kid-mia">Mia</b><div class="cell"><em class="mia">Clarinet</em></div><div class="cell"><em class="mia">Reading log</em></div><div class="cell"><em class="mia due">Maths due</em><em class="mia">Swim 15:30</em></div><div class="cell"></div><div class="cell"><em class="mia">Swim gala</em></div></div>
+  <div class="row"><b class="kid-leo">Leo</b><div class="cell"><em class="leo">Football</em></div><div class="cell"></div><div class="cell"><em class="leo">Football</em></div><div class="cell"><em class="leo">French due</em></div><div class="cell"></div></div>
+  <div class="row"><b>Family</b><div class="cell"></div><div class="cell"></div><div class="cell"><em>Slip due</em></div><div class="cell"><em>Grocery run</em></div><div class="cell"><em>Pad thai night</em></div></div>
+ </div>
+</div>`;
+const modes = (state = 'kid') => `
+<section id="kids" class="section" aria-labelledby="modes-title">
+ <p class="kicker">Kid mode · Parent mode</p>
+ <h2 id="modes-title">Same family, two very different days.</h2>
+ <div class="mode-switch">
+  <div class="mode-copy">
+   <div class="mode-toggle" role="tablist" aria-label="Choose a view"><button class="mode-tab" role="tab" aria-selected="${state === 'kid'}" aria-controls="mode-kid" id="tab-kid">Kid mode</button><button class="mode-tab" role="tab" aria-selected="${state === 'parent'}" aria-controls="mode-parent" id="tab-parent">Parent mode</button></div>
+   ${state === 'kid'
+    ? `<h3>Big, bright and only today.</h3><p>Kids see three things: what's due, what's on after school, and their streak. Nothing they can break, nothing they need a parent for.</p>`
+    : `<h3>The whole family at a glance.</h3><p>Every child, every deadline, every ECA in one week — plus meals, trips, reminders and the family thread, in one place instead of five.</p>`}
+  </div>
+  ${modeFrame(state)}
+ </div>
+</section>`;
+
+const privacy = `
+<section id="privacy" class="privacy-band" aria-labelledby="privacy-title">
+ <div class="section privacy-grid">
+  <div><p class="kicker">Privacy &amp; safety</p><h2 id="privacy-title">You're handing us your children's week. Here's the deal.</h2><p>Plain commitments, not a policy summary. <a href="/privacy">Read the full privacy policy</a>.</p></div>
+  <ul class="privacy-list">
+   <li>${ICON.lock}<span><strong>Encrypted at rest</strong>Chat messages and every piece of children's data are encrypted on our servers.</span></li>
+   <li>${ICON.eye}<span><strong>School sync is read-only</strong>The school link is encrypted and never shown again after you paste it. We read; we never write back.</span></li>
+   <li>${ICON.noads}<span><strong>No ads, no tracking</strong>We count page views in aggregate. There is no per-person analytics profile — of you or your kids.</span></li>
+   <li>${ICON.shield}<span><strong>Kids can't sign up alone</strong>A parent creates every child profile and approves every child device.</span></li>
+   <li>${ICON.trash}<span><strong>Parents keep the keys</strong>Any parent can delete any message in the family and remove any member.</span></li>
+  </ul>
+ </div>
+</section>`;
+
+const steps = (variant = 'A') => `
+<section class="section" aria-labelledby="steps-title">
+ <h2 id="steps-title">Up and running in one evening</h2>
+ <div class="steps-grid">
+  <article class="step-card"><div class="step-label">Step 01</div><div class="step-title">Create your family</div><p>One passkey account, add each child. About a minute.</p></article>
+  <article class="step-card"><div class="step-label">Step 02</div><div class="step-title">Connect the school</div><p>${variant === 'B'
+    ? 'St Andrews: paste each child’s private homework and timetable links once, in Settings. Another school: skip this — chat, calendar, meals and reminders work everywhere, and we’ll write when your school is ready.'
+    : 'Paste each child’s private homework and timetable links once, in Settings. Fam ETC checks them every eight hours from then on.'}</p></article>
+  <article class="step-card"><div class="step-label">Step 03</div><div class="step-title">Open Today</div><p>Homework, ECAs, the timetable and points are already there. Say hi in the family thread.</p></article>
+ </div>
+</section>`;
+
+const faqItem = (q, a) => `<details class="faq-item"><summary>${q}</summary><div class="faq-answer"><p>${a}</p></div></details>`;
+const faq = `
+<section id="faq" class="section" aria-labelledby="faq-title">
+ <h2 id="faq-title">Questions parents ask first</h2>
+ <div class="faq-list">
+  ${faqItem('Is Fam ETC really free?', 'Yes, to start. Every family gets a 30-day trial with no card. St Andrews families currently sign up free with an invite code. <a href="/pricing">See pricing</a>.')}
+  ${faqItem('Is this an official St Andrews app?', 'No — Fam ETC is built by parents, for families. It reads the private school feeds you choose to connect, and nothing else.')}
+  ${faqItem('Who can see our data?', 'Only your family. Parents control every connection, the school link is encrypted, and school sync is strictly read-only. <a href="/privacy">Read the privacy policy</a>.')}
+  ${faqItem('What if a teacher doesn’t post the homework?', 'Snap the homework diary page. Fam ETC reads it and adds the tasks alongside the synced ones.')}
+  ${faqItem('Does it work on iPhone and iPad?', 'Yes. The web app works on every device today; the native iPhone &amp; iPad app is coming to the App Store. One passkey login covers both.')}
+  ${faqItem('What if we’re not at St Andrews?', 'Chat, the shared calendar, meals, reminders, goals and trips work for any family right now. Automatic school sync is live for St Andrews Bangkok; other schools can join the list and we’ll write when yours is ready.')}
+  ${faqItem('Can my kids see everything I see?', 'No. Kids see the family thread and their own day — homework, activities, streaks. Billing, family settings and other children’s details stay with parents.')}
+  ${faqItem('What does it cost after the trial?', 'One annual family plan covering both parents and all the kids. Current prices are on the <a href="/pricing">pricing page</a>; St Andrews invite-code families stay free.')}
+ </div>
+</section>`;
+
+const cta = (variant = 'A') => `
+<section class="section" aria-labelledby="cta-title">
+ <div class="cta-panel">
+  <h2 id="cta-title">Start with this week.</h2>
+  <p>Create your family tonight. By the school run, everyone knows what today looks like.</p>
+  <div class="cta-actions"><a class="button button-primary button-large" href="/signup">Create your family</a></div>
+  ${AVAIL[variant].replace(' is-open', '').replace('aria-expanded="true"', 'aria-expanded="false"').replace('id="waitlist"', 'id="waitlist-2"').replace('aria-controls="waitlist"', 'aria-controls="waitlist-2"')}
+ </div>
+</section>`;
+
+const footer = `
+<footer class="site-footer"><div class="footer-inner">${brand('footer-brand')}
+ <div class="footer-note micro">www.fametc.com · made by parents in Bangkok</div>
+ <div class="footer-links"><a href="/privacy">Privacy</a><a href="/pricing">Pricing</a><a href="/help">Support</a><a href="#school-sync">School sync</a></div>
+</div></footer>`;
+
+/* ─────────────────────────── artboard wrapper ─────────────────────────────── */
+const page = (title, body, { dark = false, extraCss = '' } = {}) => `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&amp;family=JetBrains+Mono:wght@400..700&amp;display=swap">
+  <style>${TOKENS}${CSS}.bg-p{background:var(--text-2)}.landing-shell{background:var(--bg);color:var(--text)}${dark ? 'html,body{background:#211f1d}' : ''}${extraCss}</style>
+</helmet>
+<div class="landing-shell${dark ? ' dark' : ''}">${body}</div>
+</x-dc>
+</body>
+</html>`;
+
+const write = (name, html) => writeFileSync(join(OUT, name), html);
+
+// 1. Full desktop page (Variant A)
+write('Main.dc.html', page('Fam ETC landing — full page', header + '<main>' + hero('A') + before + school + chat() + day + bento + devices + modes('kid') + privacy + steps('A') + faq + cta('A') + '</main>' + footer));
+// 2/3. Hero light + dark
+write('HeroLight.dc.html', page('Hero — light', header + '<main>' + hero('A') + '</main>'));
+write('HeroDark.dc.html', page('Hero — dark', header + '<main>' + hero('A') + '</main>', { dark: true }));
+// 4. Mobile full page
+write('Mobile390.dc.html', page('Mobile 390', header + '<main>' + hero('A') + before + school + chat() + day + bento + devices + modes('kid') + privacy + steps('A') + faq + cta('A') + '</main>' + footer));
+// 5. Chat beats — one frame each
+const beatOnly = (b, label) => page(label, `<main><section class="section" style="padding:32px 28px;width:auto"><div class="chat-sequence static" style="grid-template-columns:1fr;margin:0">${b}</div></section></main>`, { extraCss: '.chat-beat+.chat-beat::before{display:none}' });
+write('ChatBeat1.dc.html', beatOnly(beat1, 'Chat → action · beat 1'));
+write('ChatBeat2.dc.html', beatOnly(beat2, 'Chat → action · beat 2'));
+write('ChatBeat3.dc.html', beatOnly(beat3, 'Chat → action · beat 3'));
+// 6. Chat section — dark
+write('ChatSectionDark.dc.html', page('Chat section — dark', '<main>' + chat() + '</main>', { dark: true }));
+// 7. Day timeline
+write('DayTimeline.dc.html', page('A day in the family', '<main>' + day + '</main>'));
+// 8. Kid / Parent — both states
+write('KidParentModes.dc.html', page('Kid mode / Parent mode', '<main>' + modes('kid') + modes('parent').replace('id="kids"', 'id="kids-parent"').replace('modes-title', 'modes-title-2') + '</main>', { extraCss: '#kids-parent{padding-top:0}' }));
+// 9. Hero CTA area — variants A and B
+write('HeroCTAVariants.dc.html', page('Hero CTA — Variant A vs B', `<main><div class="section" style="display:grid;grid-template-columns:1fr 1fr;gap:56px;padding-block:48px">
+ <div><p class="variant-label">Variant A · Focused (no product change)</p><div class="hero-actions" style="margin-top:0"><a class="button button-primary button-large" href="/signup">Create your family</a><a class="button button-secondary button-large" href="#day">See a family week</a></div>${AVAIL.A}</div>
+ <div><p class="variant-label">Variant B · Waitlist (POST /api/waitlist)</p><div class="hero-actions" style="margin-top:0"><a class="button button-primary button-large" href="/signup">Create your family</a><a class="button button-secondary button-large" href="#day">See a family week</a></div>${AVAIL.B}</div>
+</div></main>`));
+// 10. Final CTA + footer — dark
+write('FinalCTADark.dc.html', page('Final CTA + footer — dark', '<main>' + cta('A') + '</main>' + footer, { dark: true }));
+
+const canvas = {
+  artboards: [
+    { file: 'HeroLight.dc.html', x: 0, y: 0, w: 1440, h: 900, title: 'S1 Hero — desktop light' },
+    { file: 'HeroDark.dc.html', x: 1540, y: 0, w: 1440, h: 900, title: 'S1 Hero — desktop dark' },
+    { file: 'HeroCTAVariants.dc.html', x: 3080, y: 0, w: 1200, h: 420, title: 'S1 CTA area — Variant A / Variant B' },
+    { file: 'Main.dc.html', x: 0, y: 1040, w: 1440, h: 8600, title: 'Full desktop page (Variant A, light)' },
+    { file: 'Mobile390.dc.html', x: 1540, y: 1040, w: 390, h: 8600, title: 'Mobile 390 — full page', expand: 'fill' },
+    { file: 'ChatBeat1.dc.html', x: 2030, y: 1040, w: 460, h: 660, title: 'S4 beat 01 — a message' },
+    { file: 'ChatBeat2.dc.html', x: 2570, y: 1040, w: 460, h: 660, title: 'S4 beat 02 — turn it into' },
+    { file: 'ChatBeat3.dc.html', x: 3110, y: 1040, w: 460, h: 660, title: 'S4 beat 03 — on the list' },
+    { file: 'ChatSectionDark.dc.html', x: 2030, y: 1820, w: 1440, h: 1180, title: 'S4 Chat → action — dark' },
+    { file: 'DayTimeline.dc.html', x: 2030, y: 3120, w: 1440, h: 1180, title: 'S5 A day in the family' },
+    { file: 'KidParentModes.dc.html', x: 2030, y: 4420, w: 1440, h: 1500, title: 'S8 Kid mode / Parent mode — both states' },
+    { file: 'FinalCTADark.dc.html', x: 2030, y: 6040, w: 1440, h: 620, title: 'S12–13 Final CTA + footer — dark' },
+  ],
+  annotations: [
+    { id: 'read-me', x: 0, y: -200, w: 900, text: 'Fam ETC landing 2026 — re-composition, not a rebrand. Horizon tokens 1:1; violet = interactive only; coral→violet gradient once per screen (the hero "3 of 6 done" momentum bar). Mia = teal, Leo = amber everywhere. Build from docs/design/landing-2026/IMPLEMENTATION-GUIDE.md; the markup in these frames uses the exact class names the guide specifies.' },
+    { id: 'hero-note', x: 1540, y: -120, w: 520, text: 'Hero: ONE surface (Today) at readable size + three floating elements at their own scale. Recommended headline: "Everyone knows what today looks like."' },
+  ],
+  launch: { view: 'canvas' },
+};
+writeFileSync(join(OUT, 'canvas.json'), JSON.stringify(canvas, null, 2));
+// Handoff files for the implementer (see IMPLEMENTATION-GUIDE.md):
+//  - reference-landing.css  = the section stylesheet to port into public/css/landing.css
+//  - reference-landing.body.html = the exact DOM (Variant A) for public/landing.html <body>
+writeFileSync(join(OUT, 'reference-landing.css'), '/* Fam ETC landing 2026 — reference stylesheet (tokens come from horizon.css; do not paste TOKENS). */' + CSS);
+writeFileSync(join(OUT, 'reference-landing.body.html'), '<!-- Fam ETC landing 2026 — reference <body> markup, Variant A. Generated by build-artboards.mjs -->\n<div class="landing-shell">' + header + '<main>' + hero('A') + before + school + chat('' + beat1 + beat2 + beat3, '') + day + bento + devices + modes('kid') + privacy + steps('A') + faq + cta('A') + '</main>' + footer + '</div>\n');
+console.log('wrote', canvas.artboards.length, 'artboards + canvas.json to', OUT);
