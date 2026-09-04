@@ -72,15 +72,16 @@ final class AppStore {
     /// signed-in kid's id for a kid session. `GET /api/calendar/events` and
     /// `/api/calendar/sync` return every family member's events unfiltered (no
     /// server-side kid scoping, unlike homework), so the client applies the
-    /// strict kid rule: a kid sees only events scoped to themself. A kid whose
-    /// profile has not resolved yet fails closed rather than seeing shared rows.
+    /// kid rule: a kid sees family-wide events plus events scoped to themself,
+    /// never a sibling's kid-scoped rows. A kid whose profile has not resolved
+    /// yet fails closed rather than seeing any rows.
     var kidScope: String? { me?.role == "kid" ? me?.kidId : nil }
 
     /// Family (manually-added) calendar events visible to the current session.
     var visibleFamilyEvents: [FamilyEvent] {
         if me?.role == "kid" {
             guard let scope = kidScope else { return [] }
-            return familyEvents.filter { $0.kidId == scope }
+            return familyEvents.filter { $0.kidId == nil || $0.kidId == scope }
         }
         return familyEvents.filter { !$0.isImportedTimetable }
     }
@@ -89,7 +90,7 @@ final class AppStore {
     var visibleEvents: [CalendarEvent] {
         if me?.role == "kid" {
             guard let scope = kidScope else { return [] }
-            return events.filter { $0.kidId == scope }
+            return events.filter { $0.kidId == nil || $0.kidId == scope }
         }
         return events
     }

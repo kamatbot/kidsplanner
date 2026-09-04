@@ -157,8 +157,8 @@ struct CalendarDisplayData {
                 return CalendarDisplayData(events: [], familyEvents: [], homework: [])
             }
             return CalendarDisplayData(
-                events: events.filter { $0.kidId == kidScope },
-                familyEvents: familyEvents.filter { $0.kidId == kidScope },
+                events: events.filter { $0.kidId == nil || $0.kidId == kidScope },
+                familyEvents: familyEvents.filter { $0.kidId == nil || $0.kidId == kidScope },
                 homework: homework
             )
         }

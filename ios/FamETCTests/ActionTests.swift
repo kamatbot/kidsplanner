@@ -238,7 +238,7 @@ final class ActionStoreTests: XCTestCase {
         XCTAssertEqual(store.actions.first?.status, "snoozed")
     }
 
-    func testKidCalendarVisibilityExcludesSiblingEvents() {
+    func testKidCalendarVisibilityIncludesSharedAndOwnButExcludesSiblingEvents() {
         let store = AppStore(actionService: FakeActionService(items: []))
         store.family = family()
         store.me = User(id: "u-k1", email: "", name: "Ava", role: "kid", kidId: "k1")
@@ -265,7 +265,7 @@ final class ActionStoreTests: XCTestCase {
                         occurrenceDate: nil, canEdit: nil)
         ]
 
-        XCTAssertEqual(store.visibleEvents.map(\.id), ["school-own"])
-        XCTAssertEqual(store.visibleFamilyEvents.map(\.id), ["family-own"])
+        XCTAssertEqual(store.visibleEvents.map(\.id), ["school-shared", "school-own"])
+        XCTAssertEqual(store.visibleFamilyEvents.map(\.id), ["family-shared", "family-own"])
     }
 }

@@ -162,7 +162,7 @@ final class LogicTests: XCTestCase {
         )
     }
 
-    func testKidSessionIgnoresParentAudienceAndKeepsExistingScope() {
+    func testKidSessionIgnoresParentAudienceAndKeepsSharedPlusOwnScope() {
         let data = calendarFixture()
         let visible = CalendarDisplayData.resolve(
             audience: .timetable,
@@ -173,8 +173,8 @@ final class LogicTests: XCTestCase {
             kidScope: "arya"
         )
 
-        XCTAssertEqual(Set(visible.events.map(\.id)), Set(["arya-feed"]))
-        XCTAssertEqual(Set(visible.familyEvents.map(\.id)), Set(["arya-timetable"]))
+        XCTAssertEqual(Set(visible.events.map(\.id)), Set(["shared-feed", "arya-feed"]))
+        XCTAssertEqual(Set(visible.familyEvents.map(\.id)), Set(["shared-family", "arya-timetable"]))
         XCTAssertEqual(visible.homework.map(\.id), ["arya-homework"])
     }
 
