@@ -36,6 +36,11 @@ explicit confirmation first.
 
 ## Deploy pipeline (standing authorization granted 2026-07-03)
 Every web change: **test → commit → deploy → verify on live fametc.com.**
+- **Artifact-only means no deployment:** if the user asks for a ZIP, build, or
+  archive, package and provide that artifact only. Do not upload it, start a
+  hosting build, or deploy it—even when an earlier deployment was planned or
+  authorized—unless the user explicitly asks to deploy again after receiving
+  the artifact.
 - Run tests (`node --test`) before committing.
 - Commit each completed task with a conventional commit message; never bundle
   unrelated changes.
