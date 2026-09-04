@@ -55,6 +55,22 @@ test("addKid: only a parent in the family can add a kid; minimal fields only", (
   assert.equal(result.kid.email, undefined); // never collected
 });
 
+test("removeKidUsersForProfile: removing a kid revokes the provisioned login account", () => {
+  const parent = store.createUser("p16@example.com", "P16");
+  const fam = family.createFamily(parent.id, "Kid Revocation Family");
+  const added = family.addKid(fam.id, parent.id, { name: "Removed Kid", grade: "7" });
+  const kidUser = store.findOrCreateKidUser(fam.id, added.kid.id, added.kid.name);
+  assert.ok(store.getUser(kidUser.id));
+
+  const removedProfile = family.removeKid(fam.id, parent.id, added.kid.id);
+  assert.ok(!removedProfile.error);
+  const removedUsers = store.removeKidUsersForProfile(fam.id, added.kid.id);
+
+  assert.deepEqual(removedUsers, [kidUser.id]);
+  assert.equal(store.getUser(kidUser.id), null);
+  assert.equal(store.listKidUserIdsForFamily(fam.id).includes(kidUser.id), false);
+});
+
 test("removeMember: cannot remove the last parent", () => {
   const parent = store.createUser("p9@example.com", "Solo Parent");
   const fam = family.createFamily(parent.id, "Solo Family");
