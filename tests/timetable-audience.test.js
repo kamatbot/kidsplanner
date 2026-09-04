@@ -188,9 +188,9 @@ test("synced school lessons keep absolute week-grid positioning", () => {
   assert.doesNotMatch(schoolEventRule[1], /position\s*:/);
 });
 
-test("calendar reminders share the audience scope and parent homework remains family-wide", () => {
+test("calendar reminders exclude timetable lessons and parent homework remains family-wide", () => {
   assert.match(source, /window\.auth\.getHomework\(isKidSession\(\) \? \{ kidId: sessionUser\.kidId \} : \{\}\)/);
-  assert.match(source, /function scheduleReminders\(\)[\s\S]*?const events = allEvents\(\);/);
+  assert.match(source, /function scheduleReminders\(\)[\s\S]*?const events = allEvents\(\)\.filter\(\(event\) => !isImportedTimetableEvent\(event\)\);/);
   assert.match(source, /function renderTodaySchedule\(todayIso\)[\s\S]*?const events = allEvents\(\)/);
   assert.match(source, /function renderHomeworkHub\(\)[\s\S]*?if \(activeKidId\) items = items\.filter/);
 

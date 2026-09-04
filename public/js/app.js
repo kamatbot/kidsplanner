@@ -5953,7 +5953,7 @@ function scheduleReminders() {
   // Calendar events: remind 10 min before start. allEvents() applies the same
   // role scope as Calendar and Today, so parents are not reminded about a
   // child's imported timetable and kids never receive sibling reminders.
-  const events = allEvents();
+  const events = allEvents().filter((event) => !isImportedTimetableEvent(event));
   events.forEach((ev) => {
     if (!ev || !ev.time) return;
     const start = famLocalDate(ev.date, ev.time);
