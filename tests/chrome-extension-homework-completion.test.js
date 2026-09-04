@@ -530,7 +530,7 @@ test("unknown or failed queue state returns errors without inventing pending wor
   assert.deepEqual(Array.from(failed.errors), ["COMPLETION_SYNC_FAILED"]);
 });
 
-test("content script guards hidden delivery tabs and triggers completion sync before normal throttled import work", async () => {
+test("content script guards hidden delivery tabs and triggers completion sync before stats work", async () => {
   const calls = [];
   const context = {
     window: {
@@ -574,8 +574,8 @@ test("content script guards hidden delivery tabs and triggers completion sync be
 
 test("completion feedback inserts runtime counts with textContent and uses the exact hidden-tab hash", () => {
   assert.match(contentSource, /window\.location\.hash !== "#fametc-completion-sync"/);
-  assert.match(contentSource, /data-fam-completion-message[^`]*`[\s\S]*\.textContent = message/);
-  assert.doesNotMatch(contentSource, /data-fam-completion-message[^\n]*\$\{/);
+  assert.match(contentSource, /banner\.querySelector\("\[data-fam-message\]"\)\.textContent = message/);
+  assert.doesNotMatch(contentSource, /data-fam-message[^\n]*\$\{/);
   assert.match(backgroundSource, /showcompleted=0&limit=0\$\{COMPLETION_SYNC_HASH\}/);
   assert.match(backgroundSource, /cache:\s*"no-store"/);
 });

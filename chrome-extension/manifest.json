@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Fam ETC School Import",
-  "version": "0.4.0",
-  "description": "Syncs Moodle school data into Fam ETC and verified homework completions back to Moodle using your logged-in session.",
+  "name": "Fam ETC School Helper",
+  "version": "0.5.0",
+  "description": "Syncs school stats not available in the private feeds and delivers verified legacy homework completions using your logged-in Moodle session.",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Fam ETC School Import"
+    "default_title": "Fam ETC School Helper"
   },
   "background": {
     "service_worker": "background.js"

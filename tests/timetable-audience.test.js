@@ -35,12 +35,13 @@ function scopedEvents({ kidSession, kidId }) {
     notes: "Import warning — needs review: time is missing or invalid\nRaw values — title: Chess; date: 2026-08-25; time: (missing)",
   };
   const schoolFeed = { id: "school_feed", kidId: "kid-a", category: "school", notes: "Timetable", source: "school" };
+  const schoolApiTimetable = { id: "school_api_timetable", kidId: "kid-a", category: "school", source: "school", isTimetable: true };
   const ownEvent = { id: "ev_own", kidId: "kid-a", category: "sports", notes: "Training", source: "manual" };
   const siblingEvent = { id: "ev_sibling", kidId: "kid-b", category: "arts", notes: "Music", source: "manual" };
   const familyEvent = { id: "ev_family", kidId: null, category: "social", notes: "Dinner", source: "manual" };
   const sandbox = {
     getEvents: () => [timetable, localTimetable, warningTimetable, warningActivity, ownEvent, siblingEvent, familyEvent],
-    schoolEvents: [schoolFeed],
+    schoolEvents: [schoolFeed, schoolApiTimetable],
     normalizeSchoolEvent: (event) => event,
     isKidSession: () => kidSession,
     sessionUser: { kidId },
@@ -58,12 +59,13 @@ function visibleCalendarEvents({ kidSession, kidId, activeKidId = null, audience
   const timetableA = { id: "ev_timetable_a", kidId: "kid-a", category: "school", notes: "Timetable", source: "manual" };
   const timetableB = { id: "ev_timetable_b", kidId: "kid-b", category: "school", notes: "", source: "timetable-import" };
   const schoolFeed = { id: "school_feed", kidId: "kid-a", category: "school", notes: "Timetable", source: "school" };
+  const schoolApiTimetable = { id: "school_api_timetable", kidId: "kid-a", category: "school", source: "school", isTimetable: true };
   const ownEvent = { id: "ev_own", kidId: "kid-a", category: "sports", notes: "Training", source: "manual" };
   const siblingEvent = { id: "ev_sibling", kidId: "kid-b", category: "arts", notes: "Music", source: "manual" };
   const familyEvent = { id: "ev_family", kidId: null, category: "social", notes: "Dinner", source: "manual" };
   const sandbox = {
     getEvents: () => [timetableA, timetableB, ownEvent, siblingEvent, familyEvent],
-    schoolEvents: [schoolFeed],
+    schoolEvents: [schoolFeed, schoolApiTimetable],
     normalizeSchoolEvent: (event) => event,
     isKidSession: () => kidSession,
     sessionUser: { kidId },
@@ -106,7 +108,7 @@ test("parents exclude imported timetable rows but retain other kid and family ev
 });
 
 test("kids retain family events and only their own kid-scoped calendar", () => {
-  assert.deepEqual(scopedEvents({ kidSession: true, kidId: "kid-a" }), ["ev_timetable", "local_timetable", "warning_timetable", "warning_activity", "ev_own", "ev_family", "school_feed"]);
+  assert.deepEqual(scopedEvents({ kidSession: true, kidId: "kid-a" }), ["ev_timetable", "local_timetable", "warning_timetable", "warning_activity", "ev_own", "ev_family", "school_feed", "school_api_timetable"]);
 });
 
 test("Today replaces import diagnostics with a concise review prompt", () => {
@@ -126,21 +128,21 @@ test("Today replaces import diagnostics with a concise review prompt", () => {
 test("parent child selection adds that child's timetable without sibling events", () => {
   assert.deepEqual(
     visibleCalendarEvents({ kidSession: false, activeKidId: "kid-a" }),
-    ["ev_own", "ev_family", "school_feed", "ev_timetable_a"]
+    ["ev_own", "ev_family", "school_feed", "ev_timetable_a", "school_api_timetable"]
   );
 });
 
 test("parent Timetable mode shows every imported lesson and no ordinary or school-feed event", () => {
   assert.deepEqual(
     visibleCalendarEvents({ kidSession: false, audience: "timetable" }),
-    ["ev_timetable_a", "ev_timetable_b"]
+    ["ev_timetable_a", "ev_timetable_b", "school_api_timetable"]
   );
 });
 
 test("kids cannot enter the parent Timetable mode and keep their own timetable rows", () => {
   assert.deepEqual(
     visibleCalendarEvents({ kidSession: true, kidId: "kid-a", audience: "timetable" }),
-    ["ev_timetable_a", "ev_own", "ev_family", "school_feed"]
+    ["ev_timetable_a", "ev_own", "ev_family", "school_feed", "school_api_timetable"]
   );
   assert.match(source, /if \(isCalendar\)[\s\S]*Timetable/);
   const switcher = source.slice(source.indexOf("function renderKidSwitcher"), source.indexOf("function setCalendarAudience"));

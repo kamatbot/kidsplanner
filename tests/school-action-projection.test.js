@@ -30,12 +30,12 @@ function makeResponse() {
   return { statusCode: 200, body: null, headers: {}, set(name, value) { this.headers[name] = value; return this; }, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
 }
 
-function buildHarness(syncFamily) {
+function buildHarness(syncFamily, schoolApi) {
   const routes = {};
   const register = (method) => (route, ...handlers) => { routes[`${method} ${route}`] = handlers[handlers.length - 1]; };
   const app = { get: register("GET"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") };
   const pass = (req, res, next) => next();
-  calendarRoutes(app, { schoolFeeds: { syncFamily }, homework: { removeBySource() {} }, actions, events: {}, chat: { sendMessage() {} }, trips: { allTrips: () => [] }, meals: { getState: () => ({ prefs: {}, menu: [] }) }, requireAuth: pass, requireParent: pass, requireFamily: pass, userRole, kidIdForUser: (req) => req.user?.data?.kid?.kidId, friendlyDate: (date) => date });
+  calendarRoutes(app, { schoolFeeds: { syncFamily }, schoolApi, homework: { removeBySource() {} }, actions, events: {}, chat: { sendMessage() {} }, trips: { allTrips: () => [] }, meals: { getState: () => ({ prefs: {}, menu: [] }) }, requireAuth: pass, requireParent: pass, requireFamily: pass, userRole, kidIdForUser: (req) => req.user?.data?.kid?.kidId, friendlyDate: (date) => date });
   actionRoutes(app, { actions, analytics: null, requireAuth: pass, requireParent: pass, requireFamily: pass, userRole, kidIdForUser: (req) => req.user?.data?.kid?.kidId });
   return routes;
 }
@@ -68,6 +68,19 @@ test("calendar sync projects a throttled public-feed deadline into one kid actio
   assert.equal(list[0].sourceType, "school");
   assert.equal(list[0].sourceId, "sub-1::uid-1");
   assert.equal(list[0].createdBy, null);
+});
+
+test("calendar sync returns cached private timetable rows alongside public school events", async () => {
+  const { fam, parent, kid } = makeFamily("private-timetable");
+  const publicEvent = { uid: "public-1", subscriptionId: "sub-public", title: "Sports day", start: "2026-09-08", allDay: true, type: "event", kidId: kid.id };
+  const timetableEvent = { uid: "lesson-1", subscriptionId: `sta-api:${kid.id}`, feedId: "sta-child-timetable", title: "Basketball", start: "2026-09-08T15:00:00+07:00", end: "2026-09-08T16:00:00+07:00", allDay: false, type: "event", kidId: kid.id };
+  const routes = buildHarness(
+    async () => ({ events: [publicEvent], errors: [] }),
+    { syncFamily: async () => ({ events: [timetableEvent], errors: [] }) }
+  );
+  const response = await call(routes["POST /api/calendar/sync"], { user: parent, fam });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body.events, [publicEvent, timetableEvent]);
 });
 
 test("re-sync updates only source-owned fields and preserves family edits and lifecycle", () => {

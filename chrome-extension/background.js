@@ -1,9 +1,9 @@
 "use strict";
 /* ============================================================
-   Fam ETC School Import — background.js (MV3 service worker)
+   Fam ETC School Helper — background.js (MV3 service worker)
 
    The bridge between the Moodle content script and an open, logged-in
-   fametc.com tab. Runs window.famGetSchoolMappings() / window.famImportSchoolData()
+   fametc.com tab. Runs window.famImportSchoolData()
    inside the tab via chrome.scripting.executeScript world:"MAIN" — the
    default "isolated" world shares the DOM but NOT the page's window globals,
    so those functions (defined by the page's public/js/app.js) are only
@@ -12,8 +12,8 @@
 
    Message types (all sent from content.js or popup.js via
    chrome.runtime.sendMessage):
-     - AUTO_SYNC_CHECK -> { famOpen, mappings }
-     - IMPORT { kidId, moodleUserId, homework, timetable, activitySnapshots } -> import result
+     - AUTO_SYNC_CHECK -> { famOpen }
+     - IMPORT_STATS { schoolStats } -> update result
      - OPEN_FAMETC -> opens/focuses a fametc.com tab
 ============================================================ */
 
@@ -431,26 +431,6 @@ function handleCompletionSync(sender) {
   return completionSyncInFlight;
 }
 
-async function getMappingsFromTab(tabId) {
-  try {
-    const [{ result } = {}] = await chrome.scripting.executeScript({
-      target: { tabId },
-      world: "MAIN",
-      func: () => {
-        if (typeof window.famGetSchoolMappings !== "function") return [];
-        try {
-          return window.famGetSchoolMappings() || [];
-        } catch (e) {
-          return [];
-        }
-      },
-    });
-    return Array.isArray(result) ? result : [];
-  } catch (e) {
-    return [];
-  }
-}
-
 async function importIntoTab(tabId, payload) {
   const [{ result } = {}] = await chrome.scripting.executeScript({
     target: { tabId },
@@ -468,23 +448,14 @@ async function importIntoTab(tabId, payload) {
 
 async function handleAutoSyncCheck() {
   const tab = await findFamEtcTab();
-  if (!tab) return { famOpen: false, mappings: [] };
-  const mappings = await getMappingsFromTab(tab.id);
-  return { famOpen: true, mappings };
+  return { famOpen: !!tab };
 }
 
-async function handleImport(msg) {
+async function handleStatsImport(msg) {
   const tab = await findFamEtcTab();
   if (!tab) return { error: "NO_FAMETC_TAB" };
   const payload = {
-    kidId: msg.kidId || undefined,
-    kidName: msg.kidName || undefined,
-    moodleUserId: msg.moodleUserId,
-    homework: msg.homework || [],
-    timetable: msg.timetable || [],
-    activitySnapshots: msg.activitySnapshots || [],
     schoolStats: msg.schoolStats || [],
-    parseWarnings: msg.parseWarnings || [],
   };
   try {
     const result = await importIntoTab(tab.id, payload);
@@ -518,8 +489,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // keep the message channel open for the async response
   }
 
-  if (msg.type === "IMPORT") {
-    handleImport(msg).then(sendResponse);
+  if (msg.type === "IMPORT_STATS") {
+    handleStatsImport(msg).then(sendResponse);
     return true;
   }
 

@@ -59,6 +59,7 @@ const dailyPuzzles = require("./lib/daily-puzzles");
 const wordbank = require("./lib/wordbank");
 const brainteaser = require("./lib/brainteaser");
 const schoolAccount = require("./lib/school-account");
+const schoolApi = require("./lib/school-api");
 const moodleClient = require("./lib/moodle-client");
 const notifications = require("./lib/fam-notifications");
 const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
@@ -554,7 +555,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, moodleClient, notifications,
+  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications,
   requireAuth, requireParent, requireFamily, requireAdmin, requireOperatorAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter, buzzLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -694,6 +695,7 @@ const listenTarget = process.env.SOCKET_PATH || PORT;
 const server = app.listen(listenTarget, () => {
   console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD_INFO.label}${BUILD_INFO.builtAt ? " @ " + BUILD_INFO.builtAt : ""}, assets ${BUILD})`);
 });
+schoolApi.startScheduler();
 
 // Tests require this module directly and need the bound `server` (e.g. to
 // read its ephemeral port when PORT=0, and to close() it when done) — `app`

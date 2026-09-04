@@ -57,19 +57,10 @@ test("normalizeSchoolImportDate: preserves ISO and academic-year day/month parsi
   assert.equal(normalizeSchoolImportDate("31 April", new Date(2026, 7, 22, 12)), null);
 });
 
-test("school import refreshes every homework-backed surface after processing homework", () => {
+test("active extension bridge no longer processes homework-backed surfaces", () => {
   const start = appSource.indexOf("async function famImportSchoolData(");
   const end = appSource.indexOf("function normalizeSchoolImportDate(", start);
   const bridge = appSource.slice(start, end);
-
-  for (const call of [
-    "await loadHomework();",
-    "renderHomeworkHub();",
-    "renderCalendar();",
-    "renderTodayScreen();",
-    "updateHomeworkBadge();",
-  ]) {
-    assert.match(bridge, new RegExp(call.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  }
-  assert.doesNotMatch(bridge, /applyEnrichmentGating/);
+  assert.match(bridge, /processSchoolStats/);
+  assert.doesNotMatch(bridge, /addHomework|addCalendarEvent|activitySnapshots|loadHomework/);
 });

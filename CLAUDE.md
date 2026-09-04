@@ -25,12 +25,14 @@ explicit confirmation first.
   scanner — see the iOS note in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
-- **`chrome-extension/`** (MV3, "Fam ETC School Import"): auto-syncs a child's
-  Moodle homework + timetable from `bangkok.learn.nae.school` into FamETC using
-  the parent's already-logged-in browser sessions (no credentials handled). It's
-  the zero-server-credentials path complementing the stored-credential scrape;
-  the web app references it (`public/js/app.js`). Keep — load unpacked per
-  `chrome-extension/README.md`.
+- **Private child feeds** (`lib/school-api.js`): parents connect each child in
+  Settings with the St Andrews homework + timetable capability URLs. FamETC
+  retains only the separately encrypted shared code, performs an immediate
+  import, then conditionally syncs server-side every eight hours using ETags.
+  `chrome-extension/` is now an optional helper only for school stats and
+  legacy verified-completion delivery; its active flow must not import
+  homework, timetable, or ECA data. The stored-credential Moodle importer is
+  retained only as rollback compatibility and is not presented in the UI.
 
 ## Deploy pipeline (standing authorization granted 2026-07-03)
 Every web change: **test → commit → deploy → verify on live fametc.com.**

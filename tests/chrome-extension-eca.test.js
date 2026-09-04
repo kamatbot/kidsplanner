@@ -12,9 +12,9 @@ function loadParser(extraGlobals = {}) {
   return context;
 }
 
-test("extension version identifies the completion-sync release", () => {
+test("extension version identifies the private-feed helper release", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "chrome-extension", "manifest.json"), "utf8"));
-  assert.equal(manifest.version, "0.4.0");
+  assert.equal(manifest.version, "0.5.0");
 });
 
 function extractFunction(source, name) {

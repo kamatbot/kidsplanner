@@ -290,7 +290,184 @@ function renderSchoolStatsWidget() {
 }
 
 /* ============================================================
-   SCHOOL ACCOUNT (Moodle) IMPORT — parent-only.
+   PRIVATE CHILD FEEDS (Settings)
+   Parents paste each child's homework + timetable capability URLs. The
+   server stores the shared code encrypted and returns status only.
+============================================================ */
+let schoolApiStatusCache = null;
+let schoolApiStatusState = 'idle';
+
+function schoolApiErrorText(value, fallback = 'Could not update the school feeds. Try again later.') {
+  const raw = String(value && value.message ? value.message : value || '').toLowerCase();
+  if (raw.includes('same child')) return 'The homework and timetable links must belong to the same child.';
+  if (raw.includes('homework:')) return 'Check the homework link and paste the complete private URL.';
+  if (raw.includes('timetable:')) return 'Check the timetable link and paste the complete private URL.';
+  if (raw.includes('no longer valid')) return 'The private links are no longer valid. Replace them in Settings or contact school IT.';
+  if (raw.includes('format has changed')) return 'The school feed format has changed. Contact school IT before syncing again.';
+  if (raw.includes('saved school link could not be read')) return 'The saved private links could not be read. Replace them in Settings.';
+  if (raw.includes('temporarily unavailable') || raw.includes('could not reach')) return 'The school feeds are temporarily unavailable. Try again later.';
+  if (raw.includes('secure storage') || raw.includes('encryption')) return 'Secure storage is not configured, so private school links cannot be saved.';
+  if (raw.includes('kid not found')) return 'That child is no longer available in this family.';
+  return fallback;
+}
+
+async function loadSchoolApiStatus() {
+  if (isKidSession()) { schoolApiStatusCache = null; schoolApiStatusState = 'idle'; return null; }
+  schoolApiStatusState = 'loading';
+  renderSchoolApiSettings();
+  try {
+    schoolApiStatusCache = await window.auth.getSchoolStatus();
+    schoolApiStatusState = 'ready';
+  } catch (e) {
+    schoolApiStatusCache = null;
+    schoolApiStatusState = 'error';
+  }
+  return schoolApiStatusCache;
+}
+
+function schoolApiConnectionFor(kidId) {
+  return ((schoolApiStatusCache && schoolApiStatusCache.feedConnections) || [])
+    .find((connection) => connection.kidId === kidId);
+}
+
+function schoolApiStatusText(connection) {
+  if (!connection) return 'Not connected';
+  if (connection.paused) return schoolApiErrorText(connection.lastError, 'The private links need attention.');
+  if (connection.lastError) return schoolApiErrorText(connection.lastError);
+  if (!connection.lastSyncAt) return 'Connected · waiting for first sync';
+  const counts = `${connection.homeworkCount || 0} homework · ${connection.timetableCount || 0} timetable entries`;
+  return `Synced ${timeAgo(connection.lastSyncAt)} · ${counts}`;
+}
+
+function renderSchoolApiSettings() {
+  const el = document.getElementById('school-api-feeds-list');
+  if (!el || isKidSession()) return;
+  if (!currentFamily) {
+    el.innerHTML = '<p class="text-muted">Create or join a family before connecting school feeds.</p>';
+    return;
+  }
+  const kids = currentFamily.kids || [];
+  if (!kids.length) {
+    el.innerHTML = '<p class="text-muted">Add a kid profile below, then connect their private school links here.</p>';
+    return;
+  }
+  if (schoolApiStatusState === 'idle' || schoolApiStatusState === 'loading') {
+    el.innerHTML = '<p class="text-muted" role="status">Checking private school connections…</p>';
+    return;
+  }
+  if (schoolApiStatusState === 'error') {
+    el.innerHTML = '<p class="error-msg" role="alert">Could not check private school connections. <button type="button" class="btn-secondary" onclick="loadSchoolApiStatus().then(renderSchoolApiSettings)">Try again</button></p>';
+    return;
+  }
+  if (schoolApiStatusCache && schoolApiStatusCache.feedEncryptionAvailable === false) {
+    el.innerHTML = '<p class="error-msg">Secure storage is not configured on this server, so private school links cannot be saved.</p>';
+    return;
+  }
+
+  el.innerHTML = kids.map((kid) => {
+    const connection = schoolApiConnectionFor(kid.id);
+    const connected = !!(connection && connection.connected);
+    const attention = !!(connection && (connection.paused || connection.lastError));
+    const statusClass = attention ? 'needs-attention' : (connected ? 'is-connected' : '');
+    return `<section class="school-api-kid" aria-labelledby="school-api-name-${kid.id}">
+      <div class="school-api-kid-head">
+        <span class="kid-row-swatch" style="background:${kidColorFor(kid.id) || kid.color}"></span>
+        <div class="school-api-kid-title">
+          <strong id="school-api-name-${kid.id}">${esc(kid.name)}</strong>
+          <span class="school-api-status ${statusClass}" role="status">${esc(schoolApiStatusText(connection))}</span>
+        </div>
+        ${connected ? `<button type="button" class="btn-secondary" onclick="handleSyncSchoolApi('${kid.id}', this)">Sync now</button>` : ''}
+      </div>
+      <details class="school-api-link-editor" ${connected ? '' : 'open'}>
+        <summary>${connected ? 'Replace private links' : 'Connect private links'}</summary>
+        <form onsubmit="handleSaveSchoolApiFeeds(event, '${kid.id}')" class="school-api-form">
+          <div class="form-group">
+            <label for="school-api-homework-${kid.id}">Homework link</label>
+            <input type="password" id="school-api-homework-${kid.id}" autocomplete="off" spellcheck="false" inputmode="url" placeholder="Paste childhomework.php link" required>
+          </div>
+          <div class="form-group">
+            <label for="school-api-timetable-${kid.id}">Timetable link</label>
+            <input type="password" id="school-api-timetable-${kid.id}" autocomplete="off" spellcheck="false" inputmode="url" placeholder="Paste childtimetable.php link" required>
+          </div>
+          <div class="school-api-actions">
+            <button type="submit" class="btn-primary">${connected ? 'Replace links' : 'Connect and sync'}</button>
+            ${connected ? `<button type="button" class="btn-link-danger" onclick="handleDisconnectSchoolApi('${kid.id}')">Disconnect</button>` : ''}
+          </div>
+          <p class="error-msg" id="school-api-error-${kid.id}" role="alert"></p>
+        </form>
+      </details>
+    </section>`;
+  }).join('');
+}
+
+async function refreshSchoolApiSurfaces() {
+  await loadSchoolApiStatus();
+  renderSchoolApiSettings();
+  await loadHomework();
+  try {
+    const calendarResult = await window.auth.syncCalendar(false);
+    schoolEvents = calendarResult.events || [];
+    schoolSyncErrors = calendarResult.errors || [];
+  } catch (e) { /* keep the last calendar snapshot if its refresh is offline */ }
+  renderHomeworkHub();
+  updateHomeworkBadge();
+  renderCalendar();
+  renderTodayScreen();
+  scheduleReminders();
+}
+
+async function handleSaveSchoolApiFeeds(event, kidId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const homeworkInput = document.getElementById(`school-api-homework-${kidId}`);
+  const timetableInput = document.getElementById(`school-api-timetable-${kidId}`);
+  const errorEl = document.getElementById(`school-api-error-${kidId}`);
+  const submit = form.querySelector('button[type="submit"]');
+  errorEl.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Connecting…';
+  try {
+    const result = await window.auth.saveSchoolFeeds(kidId, homeworkInput.value.trim(), timetableInput.value.trim());
+    homeworkInput.value = '';
+    timetableInput.value = '';
+    await refreshSchoolApiSurfaces();
+    if (result.sync && !result.sync.ok) toast(`Links saved. ${schoolApiErrorText(result.sync.error, 'The first sync needs attention.')}`);
+    else toast('School timetable and homework connected.');
+  } catch (err) {
+    errorEl.textContent = schoolApiErrorText(err, 'Could not connect these school links.');
+  } finally {
+    submit.disabled = false;
+    submit.textContent = schoolApiConnectionFor(kidId) ? 'Replace links' : 'Connect and sync';
+  }
+}
+
+async function handleSyncSchoolApi(kidId, button) {
+  if (button) { button.disabled = true; button.textContent = 'Syncing…'; }
+  try {
+    const result = await window.auth.syncSchoolFeeds(kidId);
+    await refreshSchoolApiSurfaces();
+    if (!result.ok) toast(schoolApiErrorText(result.error, 'The school links need attention.'));
+    else toast('School timetable and homework are up to date.');
+  } catch (err) {
+    toast(schoolApiErrorText(err, 'Could not sync school data. Try again later.'));
+  } finally {
+    if (button && button.isConnected) { button.disabled = false; button.textContent = 'Sync now'; }
+  }
+}
+
+async function handleDisconnectSchoolApi(kidId) {
+  if (!confirm('Disconnect these private school links and remove their synced homework and timetable?')) return;
+  try {
+    await window.auth.disconnectSchoolFeeds(kidId);
+    await refreshSchoolApiSurfaces();
+    toast('School feeds disconnected.');
+  } catch (err) {
+    toast(schoolApiErrorText(err, 'Could not disconnect school feeds. Try again later.'));
+  }
+}
+
+/* ============================================================
+   LEGACY SCHOOL ACCOUNT (Moodle) IMPORT — retained for rollback only.
    Modal flow: connect credentials -> map kid to Moodle user id -> Import
    (server returns a PREVIEW, nothing saved yet) -> "Add to Fam ETC" confirms.
    Homework confirms into the server-side homework hub (see loadHomework()).

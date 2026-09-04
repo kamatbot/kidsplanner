@@ -567,19 +567,19 @@ function applyRoleScopingToUI() {
   if (schoolParentOnly) schoolParentOnly.style.display = kid ? 'none' : '';
   if (schoolNotice) schoolNotice.style.display = kid ? '' : 'none';
 
-  const moodleIdsParentOnly = document.getElementById('settings-parent-only-moodle-ids');
-  const moodleIdsNotice = document.getElementById('kid-moodle-ids-notice');
-  if (moodleIdsParentOnly) moodleIdsParentOnly.style.display = kid ? 'none' : '';
-  if (moodleIdsNotice) moodleIdsNotice.style.display = kid ? '' : 'none';
+  const schoolApiParentOnly = document.getElementById('settings-parent-only-school-api');
+  const schoolApiNotice = document.getElementById('kid-school-api-notice');
+  if (schoolApiParentOnly) schoolApiParentOnly.style.display = kid ? 'none' : '';
+  if (schoolApiNotice) schoolApiNotice.style.display = kid ? '' : 'none';
 
   // Adding school calendars is a parent action — hide the sidebar shortcut for kids.
   const addSchoolCal = document.getElementById('sidebar-add-school-cal');
   if (addSchoolCal) addSchoolCal.style.display = kid ? 'none' : '';
 
-  // "Import from school" (Moodle) is a parent-only action — the button is
-  // hidden by default in the HTML and only shown here for parent sessions.
+  // Legacy account import stays hidden; private feeds are now configured in
+  // Settings and synchronized server-side.
   const schoolImportBtn = document.getElementById('school-import-btn');
-  if (schoolImportBtn) schoolImportBtn.style.display = kid ? 'none' : '';
+  if (schoolImportBtn) schoolImportBtn.style.display = 'none';
 }
 
 function showFirstRunPanel() {
@@ -931,7 +931,7 @@ function renderManageFamily() {
     removeHermesConnectionCard();
     return;
   }
-  renderMoodleIdsSettings(); // kid list may have changed (add/remove)
+  renderSchoolApiSettings(); // kid list may have changed (add/remove)
 
   const parentsEl0 = document.getElementById('manage-family-parents');
   const inviteEl0  = document.getElementById('co-parent-invite');
@@ -1175,10 +1175,9 @@ function showDashboard() {
     renderTodayScreen();
   });
 
-  // Moodle IDs (extension auto-sync): load once up front, same lifecycle as
-  // the other Settings sections above — cheap GET, no need to gate the rest
-  // of the dashboard on it.
-  loadSchoolKidMappings().then(() => renderMoodleIdsSettings());
+  // Private child feeds: status contains no URLs/codes and is safe to load on
+  // app start. The server performs the actual eight-hour synchronization.
+  loadSchoolApiStatus().then(() => renderSchoolApiSettings());
 
   // School stats (house points/attendance/canteen) — purely localStorage-
   // sourced (populated by the extension's famImportSchoolData bridge calls),
@@ -1240,6 +1239,7 @@ function normalizeSchoolEvent(ev) {
     isDeadline: !!ev.isDeadline,
     feedLabel: ev.feedLabel,
     recurring: !!ev.recurring,
+    isTimetable: ev.feedId === 'sta-child-timetable',
   };
 }
 
@@ -1249,6 +1249,7 @@ function normalizeSchoolEvent(ev) {
 // shape. They belong on the child's calendar only, never a parent's calendar.
 function isImportedTimetableEvent(ev) {
   if (!ev || !ev.kidId) return false;
+  if (ev.isTimetable === true) return true;
   if (ev.source === 'timetable-import') return true;
   if (ev.source === 'school' || ev.category !== 'school') return false;
   if (ev.notes === 'Timetable') return true;
@@ -1675,7 +1676,9 @@ function famGetSchoolMappings() {
   }
   return out;
 }
-window.famGetSchoolMappings = famGetSchoolMappings;
+// Intentionally not exposed: extension v0.5 no longer needs per-child Moodle
+// ids, and withdrawing the global prevents a still-loaded v0.4 worker from
+// continuing its covered homework/timetable import loop.
 
 /* ============================================================
    EVENTS — ADD / VIEW / DELETE
@@ -4049,7 +4052,9 @@ function updateHomeworkBadge() {
 }
 
 function homeworkSourceBadge(source) {
-  if (source === 'school') return '<span class="hw-source-badge" title="Synced from school calendar">🎓</span>';
+  if (['school', 'school-portal', 'school-api'].includes(source)) {
+    return '<span class="hw-source-badge" title="Synced from school">🎓</span>';
+  }
   if (source === 'ai') return '<span class="hw-source-badge" title="Added from a photo (AI parsed)">📸</span>';
   return '<span class="hw-source-badge" title="Added manually">✏️</span>';
 }
@@ -4137,7 +4142,7 @@ function homeworkMetaLine(item) {
     const done = item.checklist.filter((c) => c.done).length;
     return `${done} of ${checklistTotal} steps done`;
   }
-  if (item.source === 'school') {
+  if (['school', 'school-portal', 'school-api'].includes(item.source)) {
     const feed = item.subject ? esc(item.subject) : 'the school calendar';
     const effort = item.effortMin ? ` · ~${Math.max(1, Math.round(item.effortMin / 60))}h effort` : '';
     return `Synced from ${feed}${effort}`;
@@ -5122,11 +5127,22 @@ function openHomeworkDetail(id) {
   }
 
   const notesRow = document.getElementById('hw-detail-notes-row');
-  if (item.notes) {
-    document.getElementById('hw-detail-notes').textContent = item.notes;
+  const detailNotes = [item.schoolDescription, item.notes && item.notes !== item.schoolDescription ? item.notes : ''].filter(Boolean).join('\n\n');
+  if (detailNotes) {
+    document.getElementById('hw-detail-notes').textContent = detailNotes;
     notesRow.style.display = '';
   } else {
     notesRow.style.display = 'none';
+  }
+
+  const schoolLinkRow = document.getElementById('hw-detail-school-link-row');
+  const schoolLink = document.getElementById('hw-detail-school-link');
+  if (item.schoolLink && newsUrlIsHttps(item.schoolLink)) {
+    schoolLink.href = item.schoolLink;
+    schoolLinkRow.style.display = '';
+  } else {
+    schoolLink.removeAttribute('href');
+    schoolLinkRow.style.display = 'none';
   }
 
   const checklistEl = document.getElementById('hw-detail-checklist');
@@ -5674,7 +5690,7 @@ function switchNavTab(tab) {
 
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
-  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); }
+  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); }
   if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
@@ -6209,16 +6225,16 @@ window.famGetSchoolStats = famGetSchoolStats;
 // and (best-effort, fire-and-forget) a real web push via /api/notify/self
 // so it reaches the parent even if the tab is backgrounded.
 async function processSchoolStats(kids, statsList) {
-  if (!Array.isArray(statsList) || !statsList.length) return;
+  if (!Array.isArray(statsList) || !statsList.length) return 0;
   const stored = getSchoolStats();
   const now = Date.now();
-  let anyMatched = false;
+  let matched = 0;
 
   for (const stat of statsList) {
     if (!stat) continue;
     const kid = matchKidByFirstName(kids, stat.name);
     if (!kid) continue;
-    anyMatched = true;
+    matched++;
 
     const prev = stored[kid.id] || null;
     const { record, notifications: fired } = compareSchoolStats(kid.name || stat.name, prev, {
@@ -6240,19 +6256,21 @@ async function processSchoolStats(kids, statsList) {
     }
   }
 
-  if (anyMatched) {
+  if (matched) {
     saveSchoolStats(stored);
     renderSchoolStatsWidget();
   }
+  return matched;
 }
 
-async function famImportSchoolData(payload) {
+async function legacyFamImportSchoolData(payload) {
   const result = {
     homeworkAdded: 0,
     eventsAdded: 0,
     timetableEventsAdded: 0,
     activityEventsAdded: 0,
     activityEventsRemoved: 0,
+    schoolStatsUpdated: 0,
     homeworkSkipped: 0,
     intentionalSkipped: 0,
     homeworkIntentionalSkipped: 0,
@@ -6274,10 +6292,30 @@ async function famImportSchoolData(payload) {
       toast('❌ Please finish loading Fam ETC (sign in) before importing.');
       return result;
     }
+    const kids = currentFamily.kids || [];
+    const statsList = (payload && Array.isArray(payload.schoolStats)) ? payload.schoolStats : [];
+    if (statsList.length) {
+      try {
+        result.schoolStatsUpdated = await processSchoolStats(kids, statsList);
+      } catch (e) {
+        schoolImportWarning(result, 'school-stats', 'School stats',
+          `Could not update school stats: ${schoolImportErrorMessage(e)}`, false);
+      }
+    }
+
+    const hasLegacyImport = !!(payload && (
+      (Array.isArray(payload.homework) && payload.homework.length)
+      || (Array.isArray(payload.timetable) && payload.timetable.length)
+      || (Array.isArray(payload.activitySnapshots) && payload.activitySnapshots.length)
+    ));
+    if (!hasLegacyImport) {
+      if (result.schoolStatsUpdated) toast(`🏫 Updated school stats for ${result.schoolStatsUpdated} child${result.schoolStatsUpdated === 1 ? '' : 'ren'}.`);
+      return result;
+    }
+
     // Resolve which child to import into: an explicit kidId, else a name
     // match, else the only child in the family. No need for the parent to
     // know any internal id.
-    const kids = currentFamily.kids || [];
     let kid = null;
     if (payload && payload.kidId) kid = kids.find((k) => k.id === payload.kidId);
     if (!kid && payload && payload.kidName) {
@@ -6698,20 +6736,6 @@ async function famImportSchoolData(payload) {
       }
     }
 
-    /* ---------- School stats (house points/attendance/canteen) ----------
-       Family-wide, not scoped to the single `kid` resolved above — each row
-       is matched independently by first name against every kid in the
-       family (see processSchoolStats/matchKidByFirstName). ---------- */
-    const statsList = (payload && Array.isArray(payload.schoolStats)) ? payload.schoolStats : [];
-    if (statsList.length) {
-      try {
-        await processSchoolStats(kids, statsList);
-      } catch (e) {
-        // Best-effort — never let a stats hiccup block the homework/timetable
-        // import result the parent is waiting on.
-      }
-    }
-
     const firstWarning = result.importWarnings[0];
     toast(`🎓 Imported: ${result.homeworkAdded} homework, ${result.timetableEventsAdded} timetable events, ${result.activityEventsAdded} activities added, ${result.activityEventsRemoved} removed` +
       (result.intentionalSkipped ? ` (${result.intentionalSkipped} intentional skips)` : '') +
@@ -6723,6 +6747,41 @@ async function famImportSchoolData(payload) {
     toast(`❌ Import failed — review/error warning: ${firstWarning.title} — ${firstWarning.message}`);
     return result;
   }
+}
+
+// Stable bridge used by the current helper and safely callable by a stale
+// extension worker. Only school stats cross this boundary; covered homework,
+// timetable, and ECA fields are ignored even if an older extension sends them.
+async function famImportSchoolData(payload) {
+  const result = {
+    homeworkAdded: 0,
+    eventsAdded: 0,
+    timetableEventsAdded: 0,
+    activityEventsAdded: 0,
+    activityEventsRemoved: 0,
+    schoolStatsUpdated: 0,
+    homeworkSkipped: 0,
+    intentionalSkipped: 0,
+    homeworkIntentionalSkipped: 0,
+    timetableIntentionalSkipped: 0,
+    activityIntentionalSkipped: 0,
+    importWarnings: [],
+  };
+  if (isKidSession()) return result;
+  if (!sessionUser || !currentFamily) return result;
+
+  const stats = payload && Array.isArray(payload.schoolStats) ? payload.schoolStats : [];
+  if (!stats.length) return result;
+  try {
+    result.schoolStatsUpdated = await processSchoolStats(currentFamily.kids || [], stats);
+    if (result.schoolStatsUpdated) {
+      toast(`🏫 Updated school stats for ${result.schoolStatsUpdated} child${result.schoolStatsUpdated === 1 ? '' : 'ren'}.`);
+    }
+  } catch (e) {
+    // Stats are optional and local; the helper will retry on a later Moodle
+    // visit without exposing Moodle content through an error string.
+  }
+  return result;
 }
 
 // Homework dates from Moodle look like "Thu 18 June" (no year) — infer the

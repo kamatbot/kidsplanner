@@ -1295,6 +1295,35 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 /* ============================================================
    SCHOOL CALENDAR — synced, read-only events + Settings UI
 ============================================================ */
+.school-api-intro {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
+  max-width: 860px; margin-bottom: 18px;
+}
+.school-api-intro p { max-width: 68ch; margin: 0 0 6px; line-height: 1.55; }
+.school-api-source-link { display: inline-flex; align-items: center; flex: none; text-decoration: none; white-space: nowrap; }
+#school-api-feeds-card :is(a, button, input, select, textarea, summary) { min-height: 44px; }
+.school-api-kid { max-width: 860px; padding: 18px 0; border-top: 1px solid var(--border); }
+.school-api-kid:last-child { padding-bottom: 0; }
+.school-api-kid-head { display: flex; align-items: center; gap: 11px; }
+.school-api-kid-title { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+.school-api-kid-title strong { font-size: 15px; color: var(--text); }
+.school-api-status { font-size: 12.5px; line-height: 1.4; color: var(--text-2); }
+.school-api-status.is-connected { color: var(--c-green); }
+.school-api-status.needs-attention { color: var(--c-red); }
+.school-api-link-editor { margin: 12px 0 0 25px; }
+.school-api-link-editor summary {
+  width: max-content; min-height: 44px; display: inline-flex; align-items: center;
+  color: var(--accent); font-size: 13px; font-weight: 700;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+}
+.school-api-link-editor summary:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 3px; border-radius: 4px; }
+.school-api-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; margin-top: 14px; }
+.school-api-form .form-group { margin: 0; }
+.school-api-form input { width: 100%; font-family: inherit; }
+.school-api-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }
+.school-api-actions .btn-link-danger { min-height: 44px; padding-block: 8px; }
+.school-api-form .error-msg { grid-column: 1 / -1; margin: 0; min-height: 1.25em; }
+
 .school-badge { margin-right: 3px; font-size: 11px; }
 .week-evt.school-evt, .month-evt.school-evt { opacity: .92; position: relative; }
 .week-evt.school-evt::after, .month-evt.school-evt::after { content: "\1F512"; font-size: 9px; opacity: .6; margin-left: 4px; }
@@ -1327,6 +1356,15 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .feed-guide-panel.active { display: block; }
 .feed-guide-panel li { margin-bottom: 4px; }
 .feed-guide-panel code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+@media (max-width: 680px) {
+  .school-api-intro { flex-direction: column; gap: 12px; }
+  .school-api-source-link { align-self: flex-start; }
+  .school-api-kid-head { align-items: flex-start; flex-wrap: wrap; }
+  .school-api-kid-head > .btn-secondary { margin-left: 25px; }
+  .school-api-link-editor { margin-left: 0; }
+  .school-api-form { grid-template-columns: 1fr; }
+}
 
 /* ============================================================
    HOMEWORK HUB — canvas 1c

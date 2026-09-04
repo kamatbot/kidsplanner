@@ -513,6 +513,27 @@
     return api("/api/school/status", { method: "GET" });
   }
 
+  async function saveSchoolFeeds(kidId, homeworkUrl, timetableUrl) {
+    return api("/api/school/feeds", {
+      method: "POST",
+      body: JSON.stringify({ kidId: kidId || "", homeworkUrl: homeworkUrl || "", timetableUrl: timetableUrl || "" }),
+    });
+  }
+
+  async function syncSchoolFeeds(kidId) {
+    return api("/api/school/feeds/sync", {
+      method: "POST",
+      body: JSON.stringify(kidId ? { kidId } : {}),
+    });
+  }
+
+  async function disconnectSchoolFeeds(kidId) {
+    return api("/api/school/feeds/disconnect", {
+      method: "POST",
+      body: JSON.stringify({ kidId: kidId || "" }),
+    });
+  }
+
   async function connectSchoolAccount(username, password) {
     return api("/api/school/connect", {
       method: "POST",
@@ -1118,6 +1139,9 @@
     updateActivity,
     deleteActivity,
     getSchoolStatus,
+    saveSchoolFeeds,
+    syncSchoolFeeds,
+    disconnectSchoolFeeds,
     connectSchoolAccount,
     mapSchoolKid,
     setKidMoodleId,

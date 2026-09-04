@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Fam ETC School Import</title>
+  <title>Fam ETC School Helper</title>
   <style>
     body {
       font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -20,19 +20,6 @@
       margin: 0 0 14px;
       color: #666;
       font-size: 12px;
-    }
-    label {
-      display: block;
-      font-weight: 600;
-      margin: 10px 0 4px;
-    }
-    input[type="text"] {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 7px 8px;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 13px;
     }
     button {
       width: 100%;
@@ -64,36 +51,17 @@
       font-size: 11px;
       color: #888;
     }
-    #mappings-hint {
-      margin: 4px 0 0;
-      font-size: 11px;
-      color: #6C63FF;
-    }
-    #mappings-hint a {
-      color: #6C63FF;
-      font-weight: 600;
-      text-decoration: none;
-      margin-right: 4px;
-    }
   </style>
 </head>
 <body>
-  <h1>Fam ETC School Import</h1>
-  <p class="sub">Auto-syncs while you're signed in — this is the manual fallback. Pulls homework, timetable, and signed-up activities from your logged-in Moodle session into Fam ETC.</p>
+  <h1>Fam ETC School Helper</h1>
+  <p class="sub">Homework, timetable, and activities now sync through the private feeds in Fam ETC Settings. This helper only updates school stats that those feeds do not provide.</p>
 
-  <p id="mappings-hint" class="text-muted"></p>
-
-  <label for="moodle-user-id">Child's Moodle user id</label>
-  <input type="text" id="moodle-user-id" placeholder="e.g. 14197" inputmode="numeric" />
-
-  <label for="fametc-kid-id">Child's name in Fam ETC</label>
-  <input type="text" id="fametc-kid-id" placeholder="e.g. Ryshi (blank if only one child)" />
-
-  <button id="import-btn">Import school data</button>
+  <button id="import-btn">Sync school stats</button>
 
   <div id="status" class="info"></div>
 
-  <p class="hint">Requires both a Moodle tab (logged in) and a fametc.com tab (logged in) open. Auto-sync runs automatically on Moodle pages every ~10 minutes once your kids' Moodle IDs are set in Fam ETC → Settings.</p>
+  <p class="hint">Keep a logged-in Moodle tab and a logged-in fametc.com tab open. Legacy homework completions already queued in Fam ETC are also delivered when Moodle opens.</p>
 
   <script src="parse.js"></script>
   <script src="popup.js"></script>

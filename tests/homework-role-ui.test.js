@@ -16,3 +16,9 @@ test("web homework progress controls are student-only while parent steps stay vi
   assert.match(appSource, /isKidSession\(\) \? `onchange=.*toggleHomeworkChecklistItem[\s\S]*: 'disabled'/);
   assert.match(appSource, /async function toggleHomeworkChecklistItem[\s\S]*if \(!isKidSession\(\)\) return;/);
 });
+
+test("API homework is labelled as school-synced and exposes only validated HTTPS assignment links", () => {
+  assert.match(appSource, /\['school', 'school-portal', 'school-api'\]\.includes\(source\)/);
+  assert.match(markup, /id="hw-detail-school-link"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
+  assert.match(appSource, /if \(item\.schoolLink && newsUrlIsHttps\(item\.schoolLink\)\)/);
+});

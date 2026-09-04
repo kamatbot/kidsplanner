@@ -605,25 +605,23 @@
           </div>
         </section>
 
-        <!-- School (Moodle) IDs — lets a parent set each kid's Moodle numeric
-             user id so the Chrome extension's auto-sync (content script +
-             background worker) knows which kids to import homework/timetable
-             for. Parent-only, same scoping as Manage Family below. This is
-             independent of the credential-based "Import from school" modal
-             (#school-account-modal) — that flow logs into Moodle server-side;
-             this one just stores the id(s) the extension reads client-side
-             via window.famGetSchoolMappings(). -->
-        <section class="card" id="school-moodle-ids-card">
-          <h3>🆔 School (Moodle) IDs</h3>
-          <p id="kid-moodle-ids-notice" class="text-muted" style="display:none">
-            Moodle IDs are managed by a parent — ask them to set these up to enable auto-sync.
+        <!-- Private per-child capability feeds. The server stores only the
+             encrypted access code and never returns it to the browser. -->
+        <section class="card" id="school-api-feeds-card">
+          <h3>School timetable &amp; homework</h3>
+          <p id="kid-school-api-notice" class="text-muted" style="display:none">
+            A parent manages the private school links. Connected homework and timetable entries sync automatically.
           </p>
-          <div id="settings-parent-only-moodle-ids">
-            <p class="text-muted" style="margin-bottom:12px">
-              Set each kid's Moodle numeric user id so the Fam ETC School Import Chrome extension
-              can auto-sync their homework and timetable whenever you're signed into Moodle.
-            </p>
-            <div id="moodle-ids-list"></div>
+          <div id="settings-parent-only-school-api">
+            <div class="school-api-intro">
+              <div>
+                <p>Connect each child once. Fam ETC checks both private feeds every eight hours and keeps homework, lessons, and timetable activities current.</p>
+                <p class="text-muted">These links work like passwords. They are encrypted, never shown again, and should not be shared.</p>
+                <p class="text-muted">The first successful homework sync replaces that child's existing homework list with the feed.</p>
+              </div>
+              <a class="btn-secondary school-api-source-link" href="https://bangkok.learn.nae.school/local/sta/pages/childfeed.php" target="_blank" rel="noopener noreferrer">Get private links</a>
+            </div>
+            <div id="school-api-feeds-list" aria-live="polite"></div>
           </div>
         </section>
 
@@ -1171,6 +1169,7 @@
       <div class="detail-row"><span class="detail-icon">📅</span><span id="hw-detail-due"></span></div>
       <div class="detail-row" id="hw-detail-effort-row"><span class="detail-icon">⏱️</span><span id="hw-detail-effort"></span></div>
       <div class="detail-row" id="hw-detail-notes-row"><span class="detail-icon">📝</span><span id="hw-detail-notes"></span></div>
+      <div class="detail-row" id="hw-detail-school-link-row"><span class="detail-icon">↗</span><a id="hw-detail-school-link" target="_blank" rel="noopener noreferrer">Open school assignment</a></div>
     </div>
     <div id="hw-detail-checklist" class="homework-checklist-view"></div>
     <div class="modal-actions">

@@ -1,6 +1,6 @@
 "use strict";
 /* ============================================================
-   Fam ETC School Import — parse.js
+   Fam ETC School Helper — parse.js
    Shared Moodle HTML parsing, used by BOTH popup.js (manual trigger) and
    content.js (auto-sync). Kept dependency-free (DOMParser is a browser
    global available in both the popup document and a content-script page

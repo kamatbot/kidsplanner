@@ -8,43 +8,38 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, "chrome-extension", file), "utf8");
 
-test("extension warning transport forwards parser warnings to the Fam ETC bridge", () => {
+test("extension active flow imports only school stats not covered by the private API", () => {
   const background = read("background.js");
   const popup = read("popup.js");
   const content = read("content.js");
 
-  assert.match(background, /parseWarnings:\s*msg\.parseWarnings\s*\|\|\s*\[\]/);
-  assert.match(popup, /parseWarnings,\s*\n\s*\}\);/);
-  assert.match(content, /parseWarnings:\s*collectWarnings\(parseWarnings/);
-  assert.match(content, /response\.result\.importWarnings/);
+  for (const source of [popup, content]) {
+    assert.match(source, /parseSchoolStatsHtml/);
+    assert.match(source, /type:\s*"IMPORT_STATS"/);
+    assert.doesNotMatch(source, /parseHomeworkHtml|parseTimetableHtml|parseSignedUpActivitiesHtml/);
+  }
+  assert.match(background, /if \(msg\.type === "IMPORT_STATS"\)/);
+  assert.match(background, /schoolStats:\s*msg\.schoolStats\s*\|\|\s*\[\]/);
+  assert.doesNotMatch(background, /homework:\s*msg\.|timetable:\s*msg\.|activitySnapshots:\s*msg\./);
 });
 
-test("warning callouts use textContent for parser/import messages and never report clean success", () => {
-  const popup = read("popup.js");
+test("extension retains completion delivery without enabling a new homework import path", () => {
+  const background = read("background.js");
   const content = read("content.js");
-
-  assert.match(popup, /warnings\.length \? .*\"error\" : \"ok\"/s);
-  assert.match(content, /el\.querySelector\(\"\[data-fam-warning-message\]\"\)\.textContent = warnings\[0\]/);
-  assert.doesNotMatch(content, /data-fam-warning-message[^\n]*\$\{warnings/);
+  assert.match(content, /type:\s*"SYNC_MOODLE_COMPLETIONS"/);
+  assert.match(background, /if \(msg\.type === "SYNC_MOODLE_COMPLETIONS"\)/);
+  assert.doesNotMatch(content, /type:\s*"IMPORT"/);
+  assert.doesNotMatch(background, /msg\.type === "IMPORT"/);
 });
 
-test("extension reports ECA, auto-sync, and live-sync failures with bounded actionable warnings", () => {
-  const popup = read("popup.js");
-  const content = read("content.js");
-  const parser = read("parse.js");
-
-  assert.match(parser, /toLowerCase\(\) !== "signed up"|toLowerCase\(\) === "signed up"/);
-  assert.match(popup, /Could not read a signed-up ECA page/);
-  assert.match(popup, /parserWarningStatus[\s\S]*parseWarnings\[0\]/);
-  assert.match(content, /Auto-sync could not complete for one child/);
-  assert.match(content, /Live activity sync could not complete/);
-  assert.match(popup, /2-week timetable detected; unusual rows will be marked for review/);
-});
-
-test("extension completion-sync version is 0.4.0", () => {
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, "chrome-extension", "manifest.json"), "utf8"));
-  assert.equal(manifest.version, "0.4.0");
+test("extension helper release keeps its least-privilege permission set", () => {
+  const manifest = JSON.parse(read("manifest.json"));
+  const popup = read("popup.html");
+  assert.equal(manifest.version, "0.5.0");
+  assert.equal(manifest.name, "Fam ETC School Helper");
   assert.deepEqual(manifest.permissions, ["scripting", "storage"]);
   assert.equal(manifest.permissions.includes("activeTab"), false);
   assert.equal(manifest.permissions.includes("tabs"), false);
+  assert.doesNotMatch(popup, /Moodle user id|Child's name in Fam ETC|Import school data/);
+  assert.match(popup, /Sync school stats/);
 });

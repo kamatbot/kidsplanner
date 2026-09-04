@@ -117,14 +117,14 @@ test("landing public copy makes no permanence or obsolete product promise", () =
   assert.doesNotMatch(landing, /keeps itself current|checks again through the day|automatic(?:ally)? sync/i);
 });
 
-test("landing page describes the honest Moodle and privacy flow", () => {
-  assert.match(landing, /From Settings, a parent can connect Moodle and import/);
-  assert.match(landing, /Chrome extension while signed into Moodle/);
+test("landing page describes the honest private-feed and privacy flow", () => {
+  assert.match(landing, /From Settings, a parent pastes each child's private homework and timetable links once/);
+  assert.match(landing, /used only for read-only synchronization every eight hours/);
   assert.match(landing, /Parent-controlled/);
-  assert.match(landing, /mark that exact task complete/);
+  assert.match(landing, /synchronization is strictly read-only/);
   assert.doesNotMatch(landing, /never posts as you/);
   assert.match(landing, /href="\/privacy"/);
-  assert.match(landing, /See how Moodle sync works/);
+  assert.match(landing, /See how school sync works/);
   assert.doesNotMatch(landing, /keeps itself current|checks again through the day|on their own/i);
 });
 
