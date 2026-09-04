@@ -14,8 +14,11 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const trips = require("../lib/trips");
 const chat = require("../lib/chat");
+const notificationOutbox = require("../lib/notification-outbox");
 const chatRoutes = require("../lib/routes/chat");
 const tripsRoutes = require("../lib/routes/trips");
+
+test.after(() => notificationOutbox.closeForTest());
 
 let userCounter = 0;
 function freshUser(label) {
@@ -225,6 +228,10 @@ test("family Buzz route is auth/scope protected, isolated from normal messages, 
   assert.equal(buzz.body.message.card, null);
   assert.equal(buzz.body.message.media, null);
   assert.equal(limiterCalls.length, 1);
+  // Provider I/O must not happen before the message response. Delivery is
+  // durable in the outbox and verified explicitly after the response.
+  assert.equal(notifyCalls.length, 0);
+  await notificationOutbox.drain();
   assert.equal(notifyCalls.length, 1);
   assert.equal(notifyCalls[0].senderUserId, sender.id);
   assert.equal(notifyCalls[0].familyId, fam.id);
