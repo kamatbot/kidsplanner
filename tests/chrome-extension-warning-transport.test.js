@@ -23,6 +23,17 @@ test("extension active flow imports only school stats not covered by the private
   assert.doesNotMatch(background, /homework:\s*msg\.|timetable:\s*msg\.|activitySnapshots:\s*msg\./);
 });
 
+test("manual stats sync reads through the authenticated Moodle tab", () => {
+  const popup = read("popup.js");
+  assert.match(popup, /chrome\.tabs\.query\(\{\s*url:/);
+  assert.match(popup, /chrome\.scripting\.executeScript/);
+  assert.match(popup, /target:\s*\{\s*tabId:\s*schoolTab\.id\s*\}/);
+  assert.match(popup, /func:\s*async \(url\).*fetch\(url, \{ credentials: "include" \}\)/s);
+  assert.doesNotMatch(popup, /^\s*const response = await fetch\(moodleHomeUrl\(\)/m);
+  assert.match(popup, /NO_MOODLE_TAB/);
+  assert.match(popup, /MOODLE_TAB_NOT_READY/);
+});
+
 test("extension retains completion delivery without enabling a new homework import path", () => {
   const background = read("background.js");
   const content = read("content.js");
@@ -35,7 +46,7 @@ test("extension retains completion delivery without enabling a new homework impo
 test("extension helper release keeps its least-privilege permission set", () => {
   const manifest = JSON.parse(read("manifest.json"));
   const popup = read("popup.html");
-  assert.equal(manifest.version, "0.5.0");
+  assert.equal(manifest.version, "0.5.1");
   assert.equal(manifest.name, "Fam ETC School Helper");
   assert.deepEqual(manifest.permissions, ["scripting", "storage"]);
   assert.equal(manifest.permissions.includes("activeTab"), false);

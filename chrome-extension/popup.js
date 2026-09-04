@@ -18,14 +18,40 @@ function setStatus(message, kind = "info") {
 }
 
 async function fetchSchoolStats() {
-  const response = await fetch(moodleHomeUrl(), { credentials: "include" });
-  const html = await response.text();
-  if (!response.ok || looksLikeMoodleLoginPage(html)) {
+  const tabs = await chrome.tabs.query({ url: [`${MOODLE_BASE}/*`] });
+  const schoolTab = tabs
+    .filter((tab) => Number.isInteger(tab.id))
+    .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
+  if (!schoolTab) {
+    const error = new Error("NO_MOODLE_TAB");
+    error.code = "NO_MOODLE_TAB";
+    throw error;
+  }
+
+  let execution;
+  try {
+    execution = await chrome.scripting.executeScript({
+      target: { tabId: schoolTab.id },
+      args: [moodleHomeUrl()],
+      func: async (url) => {
+        const response = await fetch(url, { credentials: "include" });
+        return { ok: response.ok, html: await response.text() };
+      },
+    });
+  } catch (cause) {
+    const error = new Error("MOODLE_TAB_NOT_READY");
+    error.code = "MOODLE_TAB_NOT_READY";
+    error.cause = cause;
+    throw error;
+  }
+
+  const page = execution && execution[0] && execution[0].result;
+  if (!page || !page.ok || looksLikeMoodleLoginPage(page.html)) {
     const error = new Error("MOODLE_LOGIN_REQUIRED");
     error.code = "MOODLE_LOGIN_REQUIRED";
     throw error;
   }
-  return Array.from(parseSchoolStatsHtml(html));
+  return Array.from(parseSchoolStatsHtml(page.html));
 }
 
 async function syncStats() {
@@ -56,12 +82,15 @@ async function syncStats() {
       updated ? "ok" : "error"
     );
   } catch (error) {
-    setStatus(
-      error && error.code === "MOODLE_LOGIN_REQUIRED"
-        ? `Sign in to ${MOODLE_BASE} first, then try again.`
-        : "School stats could not be read right now.",
-      "error"
-    );
+    if (error && error.code === "NO_MOODLE_TAB") {
+      setStatus(`Open ${MOODLE_BASE} in a tab, sign in, then try again.`, "error");
+    } else if (error && error.code === "MOODLE_TAB_NOT_READY") {
+      setStatus("Reload the open Moodle tab, then try again.", "error");
+    } else if (error && error.code === "MOODLE_LOGIN_REQUIRED") {
+      setStatus(`Sign in to ${MOODLE_BASE} first, then try again.`, "error");
+    } else {
+      setStatus("School stats could not be read right now.", "error");
+    }
   } finally {
     button.disabled = false;
   }

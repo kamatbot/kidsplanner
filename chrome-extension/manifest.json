@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fam ETC School Helper",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Syncs school stats not available in the private feeds and delivers verified legacy homework completions using your logged-in Moodle session.",
   "action": {
     "default_popup": "popup.html",
