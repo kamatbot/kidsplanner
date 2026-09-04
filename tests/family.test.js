@@ -61,9 +61,12 @@ test("removeKidUsersForProfile: removing a kid revokes the provisioned login acc
   const added = family.addKid(fam.id, parent.id, { name: "Removed Kid", grade: "7" });
   const kidUser = store.findOrCreateKidUser(fam.id, added.kid.id, added.kid.name);
   assert.ok(store.getUser(kidUser.id));
+  assert.equal(family.familyForKidUser(kidUser).id, fam.id);
 
   const removedProfile = family.removeKid(fam.id, parent.id, added.kid.id);
   assert.ok(!removedProfile.error);
+  // Fail closed even while an in-flight request still holds the old user object.
+  assert.equal(family.familyForKidUser(kidUser), null);
   const removedUsers = store.removeKidUsersForProfile(fam.id, added.kid.id);
 
   assert.deepEqual(removedUsers, [kidUser.id]);
