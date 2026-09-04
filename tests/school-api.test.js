@@ -16,6 +16,7 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const homework = require("../lib/homework");
 const actions = require("../lib/actions");
+const events = require("../lib/events");
 const schoolApi = require("../lib/school-api");
 
 const CODE = "testCapabilityCode_1234567890";
@@ -176,6 +177,52 @@ test("a successful empty homework snapshot removes stale API homework and its To
   await schoolApi.syncKid(fam.id, kid.id, { force: true, nowMs: now + schoolApi.SYNC_INTERVAL_MS, fetchImpl });
   assert.equal(homework.listForFamily(fam.id, { kidId: kid.id }).length, 0);
   assert.equal(actions.listForFamily(fam.id, { sourceType: "homework" }).length, 0);
+});
+
+test("sync clears old extension timetable and activity events without touching family events", async () => {
+  const { parent, fam, kid } = makeFamily("calendar-cleanup");
+  const sibling = family.addKid(fam.id, parent.id, { name: "Sibling", grade: "7" }).kid;
+  const date = "2026-09-07";
+  const add = (values) => events.addEvent(fam.id, {
+    title: values.title,
+    date,
+    time: "08:00",
+    category: values.category || "school",
+    notes: values.notes || "",
+    kidId: values.kidId || kid.id,
+    createdBy: parent.id,
+    sourceType: values.sourceType,
+    sourceId: values.sourceId,
+  }).event;
+
+  const oldIds = [
+    add({ title: "Maths", notes: "Timetable" }).id,
+    add({ title: "Imported timetable item — needs review", notes: "Import warning — needs review: time is missing\nRaw values — day: Mon; period: P1" }).id,
+    add({ title: "Chess", notes: "Signed up activity" }).id,
+    add({ title: "Basketball", notes: "Signed up activity", sourceType: "eca", sourceId: `${kid.id}:834:64894` }).id,
+    add({ title: "Imported activity — needs review", notes: "Import warning — needs review: club is missing\nRaw values — title: Club; clubId: (missing); timeslot: Tue" }).id,
+  ];
+  const manual = add({ title: "Parent meeting", notes: "Added by the family" });
+  const siblingLegacy = add({ title: "Sibling maths", notes: "Timetable", kidId: sibling.id });
+
+  schoolApi.saveConnection(fam.id, parent.id, kid.id, { homeworkUrl: HOMEWORK_URL, timetableUrl: TIMETABLE_URL });
+  const now = Date.parse("2026-09-07T00:00:00Z");
+  const emptyFeeds = async (url) => url.pathname === schoolApi.HOMEWORK_PATH
+    ? jsonResponse(homeworkPayload([]))
+    : jsonResponse(timetablePayload([]));
+  const first = await schoolApi.syncKid(fam.id, kid.id, { force: true, nowMs: now, fetchImpl: emptyFeeds });
+  assert.equal(first.ok, true);
+
+  let remaining = events.listEvents(fam.id, { from: date, to: date });
+  assert.equal(remaining.some((event) => oldIds.includes(event.id)), false);
+  assert.equal(remaining.some((event) => event.id === manual.id), true, "ordinary family-created school events remain");
+  assert.equal(remaining.some((event) => event.id === siblingLegacy.id), true, "a connected child cleanup does not touch siblings");
+
+  const resurrected = add({ title: "Old cached timetable", notes: "Timetable" });
+  const throttled = await schoolApi.syncKid(fam.id, kid.id, { force: true, nowMs: now + 1, fetchImpl: emptyFeeds });
+  assert.equal(throttled.throttled, true);
+  remaining = events.listEvents(fam.id, { from: date, to: date });
+  assert.equal(remaining.some((event) => event.id === resurrected.id), false, "cleanup runs before the network throttle");
 });
 
 test("API reconciliation adopts the matching legacy assignment without losing student progress", () => {

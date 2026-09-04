@@ -27,6 +27,7 @@ async function syncSchoolCalendar(opts) {
     const result = await window.auth.syncCalendar(force);
     schoolEvents = result.events || [];
     schoolSyncErrors = result.errors || [];
+    await loadFamilyEvents();
     renderCalendar();
     renderSchoolSettings();
     scheduleReminders();
@@ -408,6 +409,7 @@ async function refreshSchoolApiSurfaces() {
     const calendarResult = await window.auth.syncCalendar(false);
     schoolEvents = calendarResult.events || [];
     schoolSyncErrors = calendarResult.errors || [];
+    await loadFamilyEvents();
   } catch (e) { /* keep the last calendar snapshot if its refresh is offline */ }
   renderHomeworkHub();
   updateHomeworkBadge();

@@ -181,6 +181,13 @@ test("Timetable controls are semantic, keyboard-visible, and safe to wrap", () =
   assert.match(styles, /\.timetable-event-kid\s*\{/);
 });
 
+test("synced school lessons keep absolute week-grid positioning", () => {
+  assert.match(styles, /\.timed-event\s*\{[^}]*position:\s*absolute/);
+  const schoolEventRule = styles.match(/\.week-evt\.school-evt, \.month-evt\.school-evt\s*\{([^}]*)\}/);
+  assert.ok(schoolEventRule, "expected shared school-event styling");
+  assert.doesNotMatch(schoolEventRule[1], /position\s*:/);
+});
+
 test("calendar reminders share the audience scope and parent homework remains family-wide", () => {
   assert.match(source, /window\.auth\.getHomework\(isKidSession\(\) \? \{ kidId: sessionUser\.kidId \} : \{\}\)/);
   assert.match(source, /function scheduleReminders\(\)[\s\S]*?const events = allEvents\(\);/);

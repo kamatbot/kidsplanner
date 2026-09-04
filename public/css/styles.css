@@ -1325,7 +1325,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .school-api-form .error-msg { grid-column: 1 / -1; margin: 0; min-height: 1.25em; }
 
 .school-badge { margin-right: 3px; font-size: 11px; }
-.week-evt.school-evt, .month-evt.school-evt { opacity: .92; position: relative; }
+.week-evt.school-evt, .month-evt.school-evt { opacity: .92; }
 .week-evt.school-evt::after, .month-evt.school-evt::after { content: "\1F512"; font-size: 9px; opacity: .6; margin-left: 4px; }
 
 .school-sync-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

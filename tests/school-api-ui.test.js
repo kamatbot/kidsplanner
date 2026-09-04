@@ -47,3 +47,8 @@ test("settings distinguishes loading and error states and keeps mobile actions t
   assert.match(styles, /\.school-api-link-editor summary\s*\{[^}]*min-height:\s*44px/s);
   assert.match(styles, /\.school-api-actions \.btn-link-danger\s*\{[^}]*min-height:\s*44px/s);
 });
+
+test("school feed sync refreshes the family-event mirror after legacy cleanup", () => {
+  assert.match(extractFunction("syncSchoolCalendar"), /await loadFamilyEvents\(\)/);
+  assert.match(extractFunction("refreshSchoolApiSurfaces"), /await loadFamilyEvents\(\)/);
+});
