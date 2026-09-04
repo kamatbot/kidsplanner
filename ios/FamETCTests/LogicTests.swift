@@ -112,7 +112,7 @@ final class LogicTests: XCTestCase {
             homework: data.homework,
             kidScope: nil
         )
-        XCTAssertEqual(Set(ryshi.events.map(\.id)), Set(["shared-feed", "ryshi-feed"]))
+        XCTAssertEqual(Set(ryshi.events.map(\.id)), Set(["shared-feed", "ryshi-feed", "ryshi-timetable-feed"]))
         XCTAssertEqual(Set(ryshi.familyEvents.map(\.id)), Set(["shared-family", "ryshi-regular", "ryshi-timetable"]))
         XCTAssertEqual(Set(ryshi.homework.map(\.id)), Set(["shared-homework", "ryshi-homework"]))
     }
@@ -128,7 +128,7 @@ final class LogicTests: XCTestCase {
             kidScope: nil
         )
 
-        XCTAssertTrue(timetable.events.isEmpty)
+        XCTAssertEqual(Set(timetable.events.map(\.id)), Set(["ryshi-timetable-feed", "arya-timetable-feed"]))
         XCTAssertEqual(Set(timetable.familyEvents.map(\.id)), Set(["ryshi-timetable", "arya-timetable"]))
         XCTAssertTrue(timetable.homework.isEmpty)
     }
@@ -173,7 +173,7 @@ final class LogicTests: XCTestCase {
             kidScope: "arya"
         )
 
-        XCTAssertEqual(Set(visible.events.map(\.id)), Set(["shared-feed", "arya-feed"]))
+        XCTAssertEqual(Set(visible.events.map(\.id)), Set(["shared-feed", "arya-feed", "arya-timetable-feed"]))
         XCTAssertEqual(Set(visible.familyEvents.map(\.id)), Set(["shared-family", "arya-timetable"]))
         XCTAssertEqual(visible.homework.map(\.id), ["arya-homework"])
     }
@@ -245,6 +245,8 @@ final class LogicTests: XCTestCase {
             calendarEvent(id: "shared-feed", kidID: nil),
             calendarEvent(id: "ryshi-feed", kidID: "ryshi"),
             calendarEvent(id: "arya-feed", kidID: "arya"),
+            calendarEvent(id: "ryshi-timetable-feed", kidID: "ryshi", timetable: true),
+            calendarEvent(id: "arya-timetable-feed", kidID: "arya", timetable: true),
         ]
         let familyEvents = [
             familyEvent(id: "shared-family", kidID: nil),
@@ -260,9 +262,10 @@ final class LogicTests: XCTestCase {
         return (events, familyEvents, homework)
     }
 
-    private func calendarEvent(id: String, kidID: String?) -> CalendarEvent {
+    private func calendarEvent(id: String, kidID: String?, timetable: Bool = false) -> CalendarEvent {
         CalendarEvent(
             uid: id,
+            feedId: timetable ? "sta-child-timetable" : nil,
             title: id,
             start: "2026-08-13",
             end: nil,

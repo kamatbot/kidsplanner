@@ -126,6 +126,7 @@ struct KidAccessRequest: Codable, Identifiable {
 /// objects returned by `/api/calendar/sync` (lib/school-feeds.collectFromCache).
 struct CalendarEvent: Codable, Identifiable {
     var uid: String?
+    var feedId: String? = nil
     var title: String
     var start: String?     // ISO-8601 (or all-day date)
     var end: String?
@@ -137,6 +138,7 @@ struct CalendarEvent: Codable, Identifiable {
     var type: String?      // "event" | "deadline"
 
     var id: String { uid ?? "\(feedLabel ?? "")|\(title)|\(start ?? "")" }
+    var isImportedTimetable: Bool { feedId == "sta-child-timetable" }
 }
 
 /// A manually-added family appointment (`/api/calendar/events`), server-synced

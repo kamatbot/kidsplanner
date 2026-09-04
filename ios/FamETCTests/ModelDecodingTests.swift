@@ -5,6 +5,21 @@ import XCTest
 /// response shapes (lib/family.js publicFamily, lib/chat.js sendMessage/listMessages).
 final class ModelDecodingTests: XCTestCase {
 
+    func testDecodesPrivateFeedTimetableMarker() throws {
+        let payload = """
+        {
+          "uid": "lesson-1",
+          "feedId": "sta-child-timetable",
+          "title": "Maths",
+          "start": "2026-09-07T08:00:00+07:00",
+          "kidId": "arya"
+        }
+        """
+        let event = try JSONDecoder().decode(CalendarEvent.self, from: Data(payload.utf8))
+        XCTAssertEqual(event.feedId, "sta-child-timetable")
+        XCTAssertTrue(event.isImportedTimetable)
+    }
+
     private let chatPayload = """
     {
       "messages": [

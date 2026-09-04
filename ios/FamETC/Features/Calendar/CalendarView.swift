@@ -166,7 +166,7 @@ struct CalendarDisplayData {
         switch audience {
         case .parents:
             return CalendarDisplayData(
-                events: events,
+                events: events.filter { !$0.isImportedTimetable },
                 familyEvents: familyEvents.filter { !$0.isImportedTimetable },
                 homework: homework
             )
@@ -178,7 +178,7 @@ struct CalendarDisplayData {
             )
         case .timetable:
             return CalendarDisplayData(
-                events: [],
+                events: events.filter(\.isImportedTimetable),
                 familyEvents: familyEvents.filter(\.isImportedTimetable),
                 homework: []
             )
