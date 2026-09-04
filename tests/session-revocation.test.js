@@ -15,7 +15,8 @@ const store = require("../lib/store");
 const app = require("../server");
 
 function encodeSession(value) {
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64").replace(/\/+$/, "");
+  // cookie-session@2.1.0 serializes JSON directly to standard base64.
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
 }
 
 function signedCookie(session) {
