@@ -73,6 +73,21 @@ test("removeMember: a parent can remove the other parent (block-equivalent contr
   assert.ok(!result.family.parentIds.includes(p2.id));
 });
 
+test("removeMember: rotates the invite so a removed parent cannot immediately rejoin", () => {
+  const p1 = store.createUser("p14@example.com", "P14");
+  const p2 = store.createUser("p15@example.com", "P15");
+  const fam = family.createFamily(p1.id, "Rotating Invite Family");
+  const oldInvite = fam.inviteCode;
+  family.joinFamilyAsParent(oldInvite, p2.id);
+
+  const removed = family.removeMember(fam.id, p1.id, p2.id);
+  assert.ok(!removed.error);
+  assert.notEqual(removed.family.inviteCode, oldInvite);
+
+  const retry = family.joinFamilyAsParent(oldInvite, p2.id);
+  assert.equal(retry.error, "Invite code not found.");
+});
+
 test("publicFamily: lists parents with resolved names and the parent cap", () => {
   const p1 = store.createUser("p12@example.com", "Mum");
   const p2 = store.createUser("p13@example.com", "Dad");
