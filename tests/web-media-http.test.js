@@ -1,11 +1,14 @@
 'use strict';
 // Real Express + SQLite + encrypted attachment integration, synthetic accounts only.
+// SESSION_SECRET is SET, not deleted: lib/loadenv backfills any undefined var
+// from a local .env/.env.hostinger, so deleting it made this test pass only on
+// a machine without those files (i.e. CI). Setting it wins in both places.
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),os=require('os'),path=require('path'),crypto=require('crypto'),Keygrip=require('keygrip');
 process.env.FAM_DATA_DIR=fs.mkdtempSync(path.join(os.tmpdir(),'fametc-media-http-'));process.env.PORT='0';process.env.NODE_ENV='test';
-delete process.env.SESSION_SECRET;process.env.DATA_ENCRYPTION_KEY=crypto.randomBytes(32).toString('hex');
+process.env.SESSION_SECRET='web-media-http-test-secret';process.env.DATA_ENCRYPTION_KEY=crypto.randomBytes(32).toString('hex');
 const store=require('../lib/store'),family=require('../lib/family'),trips=require('../lib/trips'),chat=require('../lib/chat');
 const app=require('../server');
-function cookie(user){const val=Buffer.from(JSON.stringify({uid:user.id,authGen:store.sessionGeneration(user)})).toString('base64');return `fam_sess=${val}; fam_sess.sig=${new Keygrip(['fametc-dev-secret-change-me']).sign('fam_sess='+val)}`;}
+function cookie(user){const val=Buffer.from(JSON.stringify({uid:user.id,authGen:store.sessionGeneration(user)})).toString('base64');return `fam_sess=${val}; fam_sess.sig=${new Keygrip([process.env.SESSION_SECRET]).sign('fam_sess='+val)}`;}
 test('web media HTTP: upload is private; retry is idempotent; Trip scope and ranges stay enforced',async(t)=>{
  const server=app.server;t.after(()=>server.close());if(!server.listening)await new Promise(resolve=>server.once('listening',resolve));
  const base='http://127.0.0.1:'+server.address().port;

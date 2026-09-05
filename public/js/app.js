@@ -3847,6 +3847,30 @@ async function handleSendChatMessage(e) {
   }
 }
 
+// Opens the shared attachment composer for the family room. The composer does
+// its own compression, upload and send (see chat-media.js); we only tell it
+// which room it is in, how to know the chat is still on screen, and how to
+// show the message it sent. Merge, never push: the long-poll may already have
+// delivered the same message (same reason as handleSendChatMessage).
+function openFamilyChatMedia() {
+  if (!window.FamChatMedia || !window.FamMediaCompression) {
+    toast('❌ Attachments are still loading. Try again in a moment.');
+    return;
+  }
+  try {
+    window.FamChatMedia.open({
+      roomId: 'family',
+      isCurrent: () => !!document.getElementById('chat-messages'),
+      onSent: (message) => {
+        mergeChatMessages([message]);
+        scrollChatToBottom();
+      },
+    });
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
 async function handleDeleteChatMessage(id) {
   if (!confirm('Delete this message for the whole family?')) return;
   try {

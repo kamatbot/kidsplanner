@@ -30,6 +30,7 @@
        feature's CSS is easy to find/own. -->
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/web-experience.css">
+  <link rel="stylesheet" href="/css/chat-media.css">
   <!-- PDF.js for rendering PDF uploads to images for AI parsing. Self-hosted
        (not cdnjs) so it loads under CSP script-src 'self'. -->
   <script src="/js/vendor/pdfjs/pdf.min.js"></script>
@@ -756,6 +757,7 @@
           <form id="chat-send-form" class="chat-send-row" onsubmit="handleSendChatMessage(event)">
             <button type="button" class="chat-picker-btn" id="chat-emoji-btn" title="Add an emoji" onclick="toggleEmojiPicker()">😀</button>
             <button type="button" class="chat-picker-btn chat-gif-btn" id="chat-gif-btn" title="Send a GIF" onclick="toggleGifPicker()">GIF</button>
+            <button type="button" class="chat-media-add" id="chat-media-btn" title="Share a photo or video" aria-label="Share a photo or video" onclick="openFamilyChatMedia()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1 12.3 20.2a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg></button>
             <input type="text" id="chat-input" class="chat-input" placeholder="Message the family…" autocomplete="off" maxlength="4000">
             <button type="submit" class="btn-primary chat-send-btn" title="Send" aria-label="Send"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg></button>
           </form>
@@ -1431,6 +1433,8 @@
 <script src="/js/school.js"></script>
 <script src="/js/action-queue.js"></script>
 <script src="/js/homework-workspace.js"></script>
+<script src="/js/media-compression.js"></script>
+<script src="/js/chat-media.js"></script>
 <script src="/js/onboarding.js"></script>
 <script src="/js/app.js"></script>
 <script>
