@@ -36,6 +36,14 @@ test("landing page states free STA access and keeps pricing/signup paths", () =>
   // external links (school newsletters) must keep working.
   assert.match(landing, /id="moodle" class="legacy-anchor"/);
   assert.doesNotMatch(landing, /chores/i);
+  assert.doesNotMatch(landing, /mailto:hello@fametc\.com|join the list/i);
+  assert.match(landing, /Other schools are coming next/);
+});
+
+test("landing offers keyboard users a direct route to main content", () => {
+  assert.match(landing, /<a class="skip-link" href="#main-content">Skip to main content<\/a>/);
+  assert.match(landing, /<main id="main-content">/);
+  assert.match(styles, /\.skip-link:focus\{transform:none\}/);
 });
 
 // The 2026 re-composition. Hero = ONE legible surface (the Today card) plus a
@@ -114,6 +122,8 @@ test("devices section uses real product screenshots, not CSS mockups", () => {
   // and they have to actually be served
   const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
   assert.match(server, /app\.use\("\/img", express\.static/);
+  assert.match(server, /"public, max-age=3600, must-revalidate"/);
+  assert.doesNotMatch(server, /app\.use\("\/img"[\s\S]{0,200}IMMUTABLE/);
 });
 
 // The page wrapped body copy into narrow 3-line columns that ate vertical space.
@@ -173,7 +183,9 @@ test("landing promotes privacy and safety to its own band", () => {
   assert.equal((privacy.match(/<li>/g) || []).length, 5);
   assert.match(privacy, /Encrypted at rest/);
   assert.match(privacy, /School sync is read-only/);
-  assert.match(privacy, /No ads, no tracking/);
+  assert.match(privacy, /No ads, aggregate analytics/);
+  assert.match(privacy, /short-lived first-party cookie/);
+  assert.match(privacy, /only aggregate daily totals/);
   assert.match(privacy, /Kids can't sign up alone/);
   assert.match(privacy, /Parents keep the keys/);
 });

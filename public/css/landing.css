@@ -11,6 +11,8 @@
 html,body{margin:0}
 body{background:var(--bg);color:var(--text);font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5}
 a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
+.skip-link{position:fixed;inset-block-start:12px;inset-inline-start:12px;z-index:40;transform:translateY(calc(-100% - 24px));border:1px solid var(--border);border-radius:10px;padding:10px 14px;background:var(--panel);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
+.skip-link:focus{transform:none}
 .mono,.eyebrow,.kicker,.micro,.step-label,.beat-label,.moment-time,.trust-strip,.num{font-family:"JetBrains Mono",monospace}
 .eyebrow,.kicker,.micro,.step-label,.beat-label{font-size:11px;line-height:1.35;letter-spacing:0.08em;text-transform:uppercase}
 .kicker{color:var(--text-2);margin:0 0 12px}

@@ -16,18 +16,19 @@
 </head>
 <body>
 <div class="landing-shell">
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <header class="site-header"><div class="header-inner"><a class="brand " href="/" aria-label="Fam ETC home"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></a>
 <nav class="site-nav" aria-label="Landing page navigation"><a href="#features">Features</a><a href="#chat">Family chat</a><a href="#school-sync">School sync</a><a href="#devices">iPhone &amp; iPad</a><a href="#faq">FAQ</a></nav>
-<div class="header-actions"><a class="button button-secondary header-signin" href="/login">Sign in</a><a class="button button-primary header-create" href="/signup">Create family</a></div></div></header><main>
+<div class="header-actions"><a class="button button-secondary header-signin" href="/login">Sign in</a><a class="button button-primary header-create" href="/signup">Create family</a></div></div></header><main id="main-content">
 <section class="section hero" aria-labelledby="hero-title">
  <div class="hero-copy">
   <p class="hero-kicker micro">Stay in touch <i></i> Stay on top</p>
   <h1 id="hero-title">Everyone knows what today looks like.</h1>
   <p class="hero-lede">School on one side, home on the other, one family thread down the middle. Homework, the timetable and after-school activities land in Fam ETC without anyone typing them in; lifts, kit bags and dinner get decided in chat — and turned into the plan with a tap.</p>
   <div class="hero-actions"><a class="button button-primary button-large" href="/signup">Create your family</a><a class="button button-secondary button-large" href="#day">See a family week</a></div>
-  <p class="availability">Open now to St Andrews Bangkok families. Other schools — <a href="mailto:hello@fametc.com?subject=Fam%20ETC%20for%20our%20school">join the list</a>.</p>
+  <p class="availability">Open now to St Andrews Bangkok families. Other schools are coming next.</p>
  </div>
- <div class="hero-stage" role="group" aria-label="Fam ETC Today screen with a family chat message, a homework due chip and a school sync notice">
+ <div class="hero-stage" role="img" aria-label="Fam ETC Today screen with a family chat message, a homework due chip and a school sync notice">
   <article class="today-card" aria-label="Today screen">
    <div class="today-head"><div><span class="eyebrow">Wednesday 22 August</span><p class="today-greeting">Good morning, Priya</p></div><span class="chip"><span class="dot" style="background:var(--c-green)"></span>School sync 08:10</span></div>
    <div class="momentum"><div class="momentum-label"><span>Today</span><span class="mono">3 of 6 done</span></div><div class="momentum-track" role="progressbar" aria-valuenow="3" aria-valuemin="0" aria-valuemax="6" aria-label="3 of 6 things done today"><div class="momentum-fill"></div></div></div>
@@ -46,7 +47,7 @@
   <aside class="float float-sync" aria-label="School sync notice"><span class="dot"></span><span>2 items added from school</span><time>09:12</time></aside>
  </div>
 </section>
-<div class="trust-strip" role="list" aria-label="Trust commitments"><span role="listitem">Encrypted at rest</span><span role="listitem">Read-only school sync</span><span role="listitem">No ads, no tracking</span><span role="listitem">Kids can't sign up alone</span></div>
+<div class="trust-strip" role="list" aria-label="Trust commitments"><span role="listitem">Encrypted at rest</span><span role="listitem">Read-only school sync</span><span role="listitem">No ads, aggregate analytics</span><span role="listitem">Kids can't sign up alone</span></div>
 <section class="section before-section" aria-labelledby="before-title">
  <div class="before-grid">
   <div class="before-fragments" aria-hidden="true">
@@ -78,11 +79,11 @@
    </div>
    <p class="sync-trust"><strong>Parent-controlled.</strong> The school link is encrypted, never shown again after you paste it, and only ever read. <a href="/privacy">How we handle school data</a></p>
   </div>
-  <div class="pillar-visual" role="group" aria-label="Homework screen: Mia's Maths worksheet due today, reading log done; Leo's science poster due Monday. A notice shows the Maths worksheet arriving from school at 09:12.">
+  <div class="pillar-visual" role="img" aria-label="Homework screen: Mia's Maths worksheet due today, reading log done; Leo's science poster due Monday. A notice shows the Maths worksheet arriving from school at 09:12.">
    <div class="toast"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--c-green);flex:none;margin-top:6px"></span><div><span class="eyebrow">School sync</span>Maths worksheet added for <span class="kid-mia">Mia</span>, due today<time>09:12</time></div></div>
    <article class="homework-card">
     <div class="card-head"><strong>Homework</strong><span class="chip"><span class="dot" style="background:var(--c-green)"></span>Synced 08:10 · next 16:10</span></div>
-    <div class="kid-filter" role="tablist" aria-label="Filter by child"><span class="chip active">All</span><span class="chip"><span class="dot bg-mia"></span>Mia</span><span class="chip"><span class="dot bg-leo"></span>Leo</span></div>
+    <div class="kid-filter"><span class="chip active">All</span><span class="chip"><span class="dot bg-mia"></span>Mia</span><span class="chip"><span class="dot bg-leo"></span>Leo</span></div>
     <ul class="hw-list">
      <li><span class="checkbox done" aria-hidden="true"></span><span>English · Reading log<small><span class="kid-mia">Mia</span> · Ms Harper</small></span><span class="due done">Done</span></li>
      <li><span class="checkbox" aria-hidden="true"></span><span>Maths · Fractions worksheet<small><span class="kid-mia">Mia</span> · Mr Chen</small></span><span class="due today">Today 16:00</span></li>
@@ -99,7 +100,7 @@
  <p class="section-intro">One chat for the whole family — parents and kids. And when a message is really a job, a date or a shopping run, turn it into one without re-typing a word. That's the moment "in touch" and "on top" become the same thing.</p>
  <div class="chat-sequence " data-reveal>
 <div class="chat-beat"><p class="beat-label"><b>01</b>A message</p>
- <div class="chat-phone" role="group" aria-label="Family chat: Priya asks whether someone could pick up pasta, tomatoes and basil for dinner"><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
+ <div class="chat-phone" role="img" aria-label="Family chat: Priya asks whether someone could pick up pasta, tomatoes and basil for dinner"><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
   <div class="msg sys"><p>School sync · 09:12 · Maths worksheet added for Mia</p></div>
   <div class="msg"><span class="meta">Leo · 12:05</span><p>Can someone bring my goggles?</p></div>
   <div class="msg mine"><span class="meta">Priya · 12:07</span><p>In the swim bag.</p></div>
@@ -107,7 +108,7 @@
   <div class="composer"><span>Message the family…</span><b>Send</b></div>
  </div></div>
 <div class="chat-beat"><p class="beat-label"><b>02</b>Turn it into…</p>
- <div class="chat-phone" role="group" aria-label="Turn this message into: Action, Calendar or Shopping. Shopping is selected."><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
+ <div class="chat-phone" role="img" aria-label="Turn this message into: Action, Calendar or Shopping. Shopping is selected."><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
   <div class="msg mine dim"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
   <div class="action-sheet"><span class="eyebrow">Turn this message into</span>
    <div class="action-options"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>Action</span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>Calendar</span><span class="selected"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.5 11h10L20 7H6"></path><circle cx="9" cy="19" r="1.5"></circle><circle cx="16.5" cy="19" r="1.5"></circle></svg>Shopping</span></div>
@@ -115,7 +116,7 @@
   <div class="composer"><span>Message the family…</span><b>Send</b></div>
  </div></div>
 <div class="chat-beat"><p class="beat-label"><b>03</b>It's on the list</p>
- <div class="chat-phone" role="group" aria-label="Added to Shopping: Dinner, 3 items, today — Pasta, Tomatoes, Basil — shared with the family"><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
+ <div class="chat-phone" role="img" aria-label="Added to Shopping: Dinner, 3 items, today — Pasta, Tomatoes, Basil — shared with the family"><div class="chat-head"><span>Family</span><span class="avatars"><span class="avatar bg-p" aria-hidden="true">P</span><span class="avatar bg-mia" aria-hidden="true">M</span><span class="avatar bg-leo" aria-hidden="true">L</span></span></div>
   <div class="msg mine dim"><span class="meta">Priya · 12:08</span><p>Could we pick up pasta, tomatoes and basil for dinner?</p></div>
   <div class="result-card"><div class="result-head"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4.5 4.5L19 7"></path></svg></span>Added to Shopping</div><div class="result-sub">Dinner · 3 items · Today</div>
    <ul class="result-list"><li><span class="checkbox" aria-hidden="true"></span>Pasta</li><li><span class="checkbox" aria-hidden="true"></span>Tomatoes</li><li><span class="checkbox" aria-hidden="true"></span>Basil</li></ul>
@@ -204,7 +205,7 @@
   <ul class="privacy-list">
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span><strong>Encrypted at rest</strong>Chat messages and every piece of children's data are encrypted on our servers.</span></li>
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg><span><strong>School sync is read-only</strong>The school link is encrypted and never shown again after you paste it. We read; we never write back.</span></li>
-   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M5.5 5.5l13 13"></path></svg><span><strong>No ads, no tracking</strong>We count page views in aggregate. There is no per-person analytics profile — of you or your kids.</span></li>
+   <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M5.5 5.5l13 13"></path></svg><span><strong>No ads, aggregate analytics</strong>We use a short-lived first-party cookie to count daily visitors, then store only aggregate daily totals — no per-person analytics profile for you or your kids.</span></li>
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg><span><strong>Kids can't sign up alone</strong>A parent creates every child profile and approves every child device.</span></li>
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg><span><strong>Parents keep the keys</strong>Any parent can delete any message in the family and remove any member.</span></li>
   </ul>
@@ -226,7 +227,7 @@
   <details class="faq-item"><summary>Who can see our data?</summary><div class="faq-answer"><p>Only your family. Parents control every connection, the school link is encrypted, and school sync is strictly read-only. <a href="/privacy">Read the privacy policy</a>.</p></div></details>
   <details class="faq-item"><summary>What if a teacher doesn’t post the homework?</summary><div class="faq-answer"><p>Snap the homework diary page. Fam ETC reads it and adds the tasks alongside the synced ones.</p></div></details>
   <details class="faq-item"><summary>Does it work on iPhone and iPad?</summary><div class="faq-answer"><p>Yes. The web app works on every device today; the native iPhone &amp; iPad app is coming to the App Store. One passkey login covers both.</p></div></details>
-  <details class="faq-item"><summary>What if we’re not at St Andrews?</summary><div class="faq-answer"><p>Chat, the shared calendar, meals, reminders, goals and trips work for any family right now. School sync is live for St Andrews Bangkok; other schools can join the list and we’ll write when yours is ready.</p></div></details>
+  <details class="faq-item"><summary>What if we’re not at St Andrews?</summary><div class="faq-answer"><p>Chat, the shared calendar, meals, reminders, goals and trips work for any family right now. School sync is currently available for St Andrews Bangkok.</p></div></details>
   <details class="faq-item"><summary>Can my kids see everything I see?</summary><div class="faq-answer"><p>No. Kids see the family thread and their own day — homework, activities, streaks. Billing, family settings and other children’s details stay with parents.</p></div></details>
   <details class="faq-item"><summary>What will it cost us?</summary><div class="faq-answer"><p>STA families sign up free with an invite code. Anything we charge other families in future will be listed on the <a href="/pricing">pricing page</a> before it applies.</p></div></details>
  </div>
@@ -236,7 +237,7 @@
   <h2 id="cta-title">Start with this week.</h2>
   <p>Create your family tonight. By the school run, everyone knows what today looks like.</p>
   <div class="cta-actions"><a class="button button-primary button-large" href="/signup">Create your family</a></div>
-  <p class="availability">Open now to St Andrews Bangkok families. Other schools — <a href="mailto:hello@fametc.com?subject=Fam%20ETC%20for%20our%20school">join the list</a>.</p>
+  <p class="availability">Open now to St Andrews Bangkok families. Other schools are coming next.</p>
  </div>
 </section></main>
 <footer class="site-footer"><div class="footer-inner"><a class="brand footer-brand" href="/" aria-label="Fam ETC home"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></a>
