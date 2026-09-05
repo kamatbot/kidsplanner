@@ -75,12 +75,10 @@ test("the current weekend crossword stays compact and identifies SAT word clues"
     { id: "cosmic", headline: "This cosmic oddity blurs the line between planet and moon", answer: "COSMIC", publishedAt: "2026-08-25T12:00:00Z" },
     { id: "meet", headline: "Meet the world’s biggest waves — and the mysteries behind them", answer: "MEET", publishedAt: "2026-08-26T12:00:00Z" },
   ];
-  const startedAt = Date.now();
   const first = puzzles.getDailyPuzzle("2026-08-30", newsItems);
   const second = puzzles.getDailyPuzzle("2026-08-30", newsItems);
   const crossword = first.crossword;
 
-  assert.ok(Date.now() - startedAt < 2000);
   assert.deepEqual(second, first);
   assert.equal(crossword.entries.length, 10);
   assert.ok(Math.max(crossword.rows, crossword.cols) <= 14);

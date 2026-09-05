@@ -334,7 +334,16 @@ app.use("/api", apiLimiter);
 // ---------- helpers ----------
 function currentUser(req) {
   const id = req.session && req.session.uid;
-  return id ? store.getUser(id) : null;
+  if (!id) return null;
+  const user = store.getUser(id);
+  if (!user) return null;
+  const rawGeneration = req.session && req.session.authGen;
+  // Legacy cookies minted before generation tracking are generation 0. This
+  // keeps rollout non-disruptive while still making them revocable: the first
+  // logout bumps the stored generation and every copied legacy cookie fails.
+  const cookieGeneration = rawGeneration == null ? 0 : Number(rawGeneration);
+  if (!Number.isSafeInteger(cookieGeneration) || cookieGeneration < 0) return null;
+  return cookieGeneration === store.sessionGeneration(user) ? user : null;
 }
 function requireAuth(req, res, next) {
   const sessionUser = currentUser(req);
@@ -434,6 +443,14 @@ function publicProfile(user) {
 
 // ===================== AUTH: session =====================
 app.post("/api/logout", (req, res) => {
+  const user = currentUser(req);
+  if (user) {
+    store.bumpSessionGeneration(user.id);
+    // Logout is a security boundary. Make the revocation durable before the
+    // client is told it succeeded, so a crash immediately after the response
+    // cannot resurrect a copied cookie on restart.
+    db.flushSync();
+  }
   req.session = null;
   res.json({ ok: true });
 });
@@ -453,6 +470,7 @@ app.get("/api/me", (req, res) => {
 // ===================== HEALTH =====================
 app.get("/api/health", (req, res) => {
   res.set("Cache-Control", "no-store");
+  const persistence = typeof db.persistenceStatus === "function" ? db.persistenceStatus() : null;
   res.json({
     ok: true,
     build: BUILD_INFO.label,
@@ -463,6 +481,12 @@ app.get("/api/health", (req, res) => {
       keyConfigured: !!(process.env.DATA_ENCRYPTION_KEY || "").trim(),
       atRestEncrypted: db.isFileEncrypted(),
     },
+    persistence: persistence ? {
+      dirty: persistence.dirty,
+      flushing: persistence.flushing,
+      writeHealthy: !persistence.lastWriteError,
+      lastWriteErrorAt: persistence.lastWriteErrorAt || undefined,
+    } : undefined,
     billing: {
       enabled: billing.enabled(),
       mode: /_live_/.test(process.env.STRIPE_SECRET_KEY || "") ? "live" : (/_test_/.test(process.env.STRIPE_SECRET_KEY || "") ? "test" : "none"),

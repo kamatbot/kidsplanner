@@ -55,6 +55,25 @@ test("addKid: only a parent in the family can add a kid; minimal fields only", (
   assert.equal(result.kid.email, undefined); // never collected
 });
 
+test("removeKidUsersForProfile: removing a kid revokes the provisioned login account", () => {
+  const parent = store.createUser("p16@example.com", "P16");
+  const fam = family.createFamily(parent.id, "Kid Revocation Family");
+  const added = family.addKid(fam.id, parent.id, { name: "Removed Kid", grade: "7" });
+  const kidUser = store.findOrCreateKidUser(fam.id, added.kid.id, added.kid.name);
+  assert.ok(store.getUser(kidUser.id));
+  assert.equal(family.familyForKidUser(kidUser).id, fam.id);
+
+  const removedProfile = family.removeKid(fam.id, parent.id, added.kid.id);
+  assert.ok(!removedProfile.error);
+  // Fail closed even while an in-flight request still holds the old user object.
+  assert.equal(family.familyForKidUser(kidUser), null);
+  const removedUsers = store.removeKidUsersForProfile(fam.id, added.kid.id);
+
+  assert.deepEqual(removedUsers, [kidUser.id]);
+  assert.equal(store.getUser(kidUser.id), null);
+  assert.equal(store.listKidUserIdsForFamily(fam.id).includes(kidUser.id), false);
+});
+
 test("removeMember: cannot remove the last parent", () => {
   const parent = store.createUser("p9@example.com", "Solo Parent");
   const fam = family.createFamily(parent.id, "Solo Family");
@@ -71,6 +90,21 @@ test("removeMember: a parent can remove the other parent (block-equivalent contr
   assert.ok(!result.error);
   assert.equal(result.family.parentIds.length, 1);
   assert.ok(!result.family.parentIds.includes(p2.id));
+});
+
+test("removeMember: rotates the invite so a removed parent cannot immediately rejoin", () => {
+  const p1 = store.createUser("p14@example.com", "P14");
+  const p2 = store.createUser("p15@example.com", "P15");
+  const fam = family.createFamily(p1.id, "Rotating Invite Family");
+  const oldInvite = fam.inviteCode;
+  family.joinFamilyAsParent(oldInvite, p2.id);
+
+  const removed = family.removeMember(fam.id, p1.id, p2.id);
+  assert.ok(!removed.error);
+  assert.notEqual(removed.family.inviteCode, oldInvite);
+
+  const retry = family.joinFamilyAsParent(oldInvite, p2.id);
+  assert.equal(retry.error, "Invite code not found.");
 });
 
 test("publicFamily: lists parents with resolved names and the parent cap", () => {
