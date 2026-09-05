@@ -62,3 +62,15 @@ test("snooze presets return timezone-qualified ISO timestamps", () => {
   });
   assert.equal(queue.snoozeUntil("unknown", now), null);
 });
+
+
+test("Family Actions preview caps at three, excludes done/future snoozes and leaves source intact", () => {
+  const now = new Date(2026, 7, 8, 12);
+  const items = [action('done', { status: 'done' }), action('sleep', { status: 'snoozed', dueDate: '2026-08-01', snoozedUntil: new Date(2026, 7, 9).toISOString() }),
+    action('later', { dueDate: '2026-09-01' }), action('no-date'), action('soon', { dueDate: '2026-08-09' }), action('today', { dueDate: '2026-08-08' }), action('late', { dueDate: '2026-08-07' })];
+  assert.deepEqual(Array.from(queue.previewActions(items, now), x => x.id), ['late', 'today', 'soon']);
+  assert.equal(items.length, 7);
+  assert.equal(queue.previewActions([], now).length, 0);
+  assert.deepEqual(Array.from(queue.previewActions(items.slice(0, 2), now), x => x.id), []);
+  assert.equal(queue.previewActions([action('awake', {status: 'snoozed', snoozedUntil: new Date(2026, 7, 7).toISOString()})], now)[0].id, 'awake');
+});

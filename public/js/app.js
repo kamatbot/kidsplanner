@@ -4405,12 +4405,21 @@ function todayActionCanDeleteForViewer(kidSession) {
 function todayActionSnoozeOptions(action) {
   const id = todayActionIdArg(action.id);
   const title = esc(action.title || 'action');
-  return `<select class="today-action-snooze" aria-label="Snooze ${title}" onchange="snoozeTodayActionFromSelect(this,'${id}')">
-    <option value="">Snooze…</option>
-    <option value="later-today">Later today</option>
-    <option value="tomorrow">Tomorrow</option>
-    <option value="next-week">Next week</option>
-  </select>`;
+  return `<details class="today-action-menu" name="family-action-menu">
+    <summary aria-label="Snooze or manage ${title}" title="Snooze or manage action"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg><span>Snooze</span></summary>
+    <div class="today-action-popover">
+      <span class="today-action-popover-label">Remind me</span>
+      <button type="button" onclick="snoozeTodayAction('${id}','later-today',this)">Later today <span>+2 hours</span></button>
+      <button type="button" onclick="snoozeTodayAction('${id}','tomorrow',this)">Tomorrow <span>9:00 am</span></button>
+      <button type="button" onclick="snoozeTodayAction('${id}','next-week',this)">Next week <span>9:00 am</span></button>
+      ${todayActionCanDeleteForViewer(isKidSession()) ? `<button type="button" class="today-action-remove" onclick="this.closest('details').open=false;deleteTodayAction('${id}')">Delete action</button>` : ''}
+    </div>
+  </details>`;
+}
+
+function snoozeTodayAction(id, preset, button) {
+  if (button) button.closest('details').open = false;
+  return snoozeTodayActionFromSelect({ value: preset }, id);
 }
 
 function renderTodayActionRow(action, now, later) {
@@ -4421,18 +4430,11 @@ function renderTodayActionRow(action, now, later) {
   const due = todayActionDueLabel(action, now);
   const source = todayActionSourceLabel(action.sourceType);
   const snoozed = action.status === 'snoozed' && due.text.indexOf('Snoozed until') === 0;
-  const statusBadge = snoozed
-    ? '<span class="today-action-status-badge snoozed">Snoozed</span>'
-    : '<span class="today-action-status-badge">Open</span>';
+  const statusBadge = snoozed ? '<span class="today-action-status-badge snoozed">Snoozed</span>' : '';
   const check = canManage
     ? `<button type="button" class="today-action-check" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete" title="Mark complete">○</button>`
     : '<span class="today-action-check" aria-hidden="true">·</span>';
-  const controls = canManage
-    ? `${todayActionSnoozeOptions(action)}${canDelete
-      ? `
-       <button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${id}')" aria-label="Delete ${title}">Delete</button>`
-      : ''}`
-    : '';
+  const controls = canManage ? todayActionSnoozeOptions(action) : '';
   return `<article class="today-action-row${later ? ' later' : ''}">
     ${check}
     <div class="today-action-body">
@@ -4485,19 +4487,37 @@ function renderTodayCompletedSection(items) {
 
 function renderTodayActionRoleCopy() {
   const titleEl = document.getElementById('today-actions-title');
-  const headingEl = titleEl && titleEl.parentElement;
-  if (!headingEl) return;
-  const kid = isKidSession();
-  const eyebrowEl = headingEl.querySelector('.micro-label');
-  const descriptionEl = headingEl.querySelector('p');
-  if (eyebrowEl) eyebrowEl.textContent = kid ? 'My next' : 'Family actions';
-  titleEl.textContent = kid ? 'Your next steps' : 'What matters next';
-  if (descriptionEl) {
-    descriptionEl.textContent = kid
-      ? 'Your actions are here, plus shared family steps.'
-      : 'Small next steps, together — with room for everyone.';
-  }
+  if (titleEl) titleEl.textContent = 'Family Actions';
 }
+
+function openAllFamilyActions() {
+  renderAllFamilyActions();
+  const dialog = document.getElementById('family-actions-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function renderAllFamilyActions() {
+  const list = document.getElementById('family-actions-dialog-list');
+  if (!list || !window.famActionQueue) return;
+  const now = new Date();
+  const groups = window.famActionQueue.groupActions(todayActionItems, now);
+  const rows = groups.now.concat(groups.next7, groups.sharedNoDate, groups.later);
+  list.innerHTML = rows.map((action) => renderTodayActionRow(action, now, false)).join('') + renderTodayCompletedSection(groups.completed);
+  if (!todayActionItems.length) list.innerHTML = '<p class="today-actions-empty">No family actions yet.</p>';
+}
+
+// Native details/summary keeps keyboard interaction without a custom menu
+// widget. Escape and outside-click close popovers without moving focus away.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const menu = document.querySelector('.today-action-menu[open]');
+  if (menu) { event.preventDefault(); menu.open = false; menu.querySelector('summary').focus(); }
+});
+document.addEventListener('click', (event) => {
+  document.querySelectorAll('.today-action-menu[open]').forEach((menu) => {
+    if (!menu.contains(event.target)) menu.open = false;
+  });
+});
 
 function renderTodayActionQueue() {
   const listEl = document.getElementById('today-actions-list');
@@ -4531,23 +4551,16 @@ function renderTodayActionQueue() {
     listEl.innerHTML = '<div class="today-actions-error" role="alert">The action queue could not load. Please refresh and try again.</div>';
     return;
   }
-  const groups = window.famActionQueue.groupActions(todayActionItems, new Date());
   const now = new Date();
-  const nextEntries = groups.next7.map((action) => ({ action, later: false }))
-    .concat(groups.later.map((action) => ({ action, later: true })));
+  const preview = window.famActionQueue.previewActions(todayActionItems, now);
   const canShowContents = todayActionQueueState === 'ready' || todayActionItems.length > 0;
-  let html = '';
-  html += renderTodayActionSection('Now', groups.now.map((action) => ({ action, later: false })), now, 'today-actions-now-label');
-  html += renderTodayActionSection('Next 7 days', nextEntries, now, 'today-actions-next-label', groups.later.length);
-  html += renderTodayActionSection('Shared / no date', groups.sharedNoDate.map((action) => ({ action, later: false })), now, 'today-actions-shared-label');
-  if (canShowContents && !groups.now.length && !nextEntries.length && !groups.sharedNoDate.length && !groups.completed.length) {
-    html = '<div class="today-actions-empty"><strong>Nothing waiting right now.</strong> Add a small next step when your family needs one.</div>';
-  }
-  if (canShowContents && !groups.now.length && !nextEntries.length && !groups.sharedNoDate.length && groups.completed.length) {
-    html = '<div class="today-actions-empty"><strong>Everyone is caught up.</strong> Your completed actions are below.</div>';
-  }
-  html += renderTodayCompletedSection(groups.completed);
-  listEl.innerHTML = html;
+  listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now, false)).join('') ||
+    (canShowContents ? '<div class="today-actions-empty"><strong>Nothing waiting right now.</strong> Enjoy a little breathing room.</div>' : '');
+  const footer = document.getElementById('today-actions-footer');
+  if (footer) footer.innerHTML = todayActionItems.length > preview.length
+    ? `<button type="button" class="family-actions-view-all" onclick="openAllFamilyActions()">View all ${todayActionItems.length} actions <span aria-hidden="true">↗</span></button>` : '';
+  const dialog = document.getElementById('family-actions-dialog');
+  if (dialog && dialog.open) renderAllFamilyActions();
 }
 
 async function loadFamilyActions() {

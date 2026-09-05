@@ -27,3 +27,9 @@ Run focused Node regressions per milestone and full CI at completion. Exercise b
 - New regressions cover async encrypted round trips, corruption, indexed request paths, quota reservations, cleanup, bounded concurrency and provider-failure/dead-letter handling.
 
 Storage remains a single-host design. FAT1 byte-range responses still authenticate/decrypt the complete bounded file (maximum 25 MiB); chunk-encrypted range storage is not introduced in this pass. Push delivery is at-least-once, not exactly-once, and partial provider successes can be repeated after a failure. No live deployment or real APNs delivery is claimed.
+
+## Milestone 3a — focused Family Actions
+
+- One Family Actions heading, at most three unsnoozed pending actions, stable urgency ordering. Completed and future-snoozed records remain accessible through a separate All actions dialog.
+- Compact clock/snooze popovers replace native select boxes and inline red Delete links. Parent/student permissions remain unchanged. Escape, outside-click and keyboard focus are supported.
+- Full local Node suite: 928 passed, zero failures. Actual components rendered in Chromium with synthetic fixtures at desktop/mobile sizes; three-row cap and the seven-item All dialog verified. Browser navigation is restricted in this environment, so these are inline component checks, not a deployed end-to-end session.

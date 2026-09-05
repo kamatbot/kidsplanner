@@ -29,6 +29,7 @@
        brain teaser, gating overlay). Kept separate from styles.css so this
        feature's CSS is easy to find/own. -->
   <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/web-experience.css">
   <!-- PDF.js for rendering PDF uploads to images for AI parsing. Self-hosted
        (not cdnjs) so it loads under CSP script-src 'self'. -->
   <script src="/js/vendor/pdfjs/pdf.min.js"></script>
@@ -218,9 +219,7 @@
           <section class="card today-actions-card" id="today-actions-card" aria-labelledby="today-actions-title">
             <div class="today-actions-header">
               <div class="today-actions-heading">
-                <div class="micro-label">Family actions</div>
-                <h2 id="today-actions-title">What matters next</h2>
-                <p>Small next steps, together — with room for everyone.</p>
+                <h2 id="today-actions-title">Family Actions</h2>
               </div>
               <div class="today-actions-header-actions">
                 <button type="button" class="btn-primary parent-only" id="today-action-add-btn"
@@ -275,6 +274,7 @@
             </div>
 
             <div id="today-actions-list" class="today-actions-list"></div>
+            <div id="today-actions-footer" class="today-actions-footer"></div>
           </section>
 
           <div class="today-grid">
@@ -1102,6 +1102,11 @@
     </div>
   </div>
 </div>
+
+<dialog id="family-actions-dialog" class="family-actions-dialog" aria-labelledby="family-actions-dialog-title">
+  <header><h2 id="family-actions-dialog-title">All family actions</h2><form method="dialog"><button type="submit" class="btn-secondary" aria-label="Close all family actions">Close</button></form></header>
+  <div id="family-actions-dialog-list"></div>
+</dialog>
 
 <!-- Add/Edit Homework Modal (Phase 3) -->
 <div id="add-homework-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-homework-modal')">

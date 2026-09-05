@@ -37,11 +37,13 @@ test("kid action affordances are limited to their own actions", () => {
   assert.equal(todayActionCanDeleteForViewer(true), false);
 });
 
-test("parent action affordances and My next copy remain explicit", () => {
+test("parent action affordances and single Family Actions heading remain explicit", () => {
   const { todayActionCanManageForViewer, todayActionCanDeleteForViewer } = sandbox.helpers;
   assert.equal(todayActionCanManageForViewer({ assigneeType: "family" }, false, null), true);
   assert.equal(todayActionCanDeleteForViewer(false), true);
   assert.match(appSource, /renderTodayActionRoleCopy\(\)/);
-  assert.match(appSource, /My next/);
-  assert.match(appSource, /Your actions are here, plus shared family steps\./);
+  assert.match(appSource, /titleEl.textContent = 'Family Actions'/);
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public/index.html'), 'utf8');
+  assert.match(html, /id="today-actions-title">Family Actions<\/h2>/);
+  assert.doesNotMatch(html, /What matters next|Small next steps, together/);
 });
