@@ -22,8 +22,9 @@ jobs:
           cache: npm
       - name: Apply exact milestone diff and stage only source changes
         run: |
-          git apply --check .github/milestones/current.patch
-          git apply .github/milestones/current.patch
+          python3 -c "import base64,gzip,pathlib; pathlib.Path('/tmp/milestone.patch').write_bytes(gzip.decompress(base64.b64decode(pathlib.Path('.github/milestones/current.patch').read_text())))"
+          git apply --check /tmp/milestone.patch
+          git apply /tmp/milestone.patch
           git add -A
       - run: npm ci --no-audit --no-fund
       - name: Full regression suite
