@@ -229,13 +229,16 @@ test("family Buzz route is auth/scope protected, isolated from normal messages, 
   assert.equal(buzz.body.message.media, null);
   assert.equal(limiterCalls.length, 1);
   // Provider I/O must not happen before the message response. Delivery is
-  // durable in the outbox and verified explicitly after the response.
+  // durable in the outbox and verified explicitly after the response. Revoke
+  // the recipient before draining to prove retries re-check current membership.
   assert.equal(notifyCalls.length, 0);
+  family.removeMember(fam.id, sender.id, recipient.id);
   await notificationOutbox.drain();
   assert.equal(notifyCalls.length, 1);
   assert.equal(notifyCalls[0].senderUserId, sender.id);
   assert.equal(notifyCalls[0].familyId, fam.id);
   assert.equal(notifyCalls[0].messageId, buzz.body.message.id);
+  assert.deepEqual(notifyCalls[0].familyParentIds, [sender.id]);
 
   const empty = await call(buzzRoute, { user: sender, body: { text: "   " } });
   assert.equal(empty.statusCode, 400);

@@ -9,6 +9,7 @@ process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-db-test
 process.env.DB_WRITE_RETRY_MS = "20";
 
 const db = require("../lib/db");
+const datacrypto = require("../lib/datacrypto");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 test("db writer coalesces bursts and retries a failed write without losing data", async () => {
@@ -56,5 +57,25 @@ test("db writer coalesces bursts and retries a failed write without losing data"
     assert.equal(disk.retryMarker, "survived");
   } finally {
     fs.writeFile = originalWriteFile;
+  }
+
+  const originalLoadKey = datacrypto.loadKey;
+  let preparationAttempts = 0;
+  datacrypto.loadKey = function failFirstPreparation() {
+    preparationAttempts += 1;
+    if (preparationAttempts === 1) throw new Error("simulated key service failure");
+    return originalLoadKey.apply(this, arguments);
+  };
+  try {
+    root.preparationRetryMarker = "survived";
+    db.persist();
+    await sleep(100);
+    assert.ok(preparationAttempts >= 2, "a synchronous snapshot failure should be retried");
+    assert.equal(db.persistenceStatus().flushing, false, "the writer must not remain wedged");
+    assert.equal(db.persistenceStatus().dirty, false);
+    const disk = JSON.parse(fs.readFileSync(db.DB_FILE, "utf8"));
+    assert.equal(disk.preparationRetryMarker, "survived");
+  } finally {
+    datacrypto.loadKey = originalLoadKey;
   }
 });
