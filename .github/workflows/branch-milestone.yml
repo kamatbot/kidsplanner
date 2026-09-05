@@ -22,7 +22,7 @@ jobs:
           cache: npm
       - name: Apply exact milestone diff and stage only source changes
         run: |
-          python3 -c "import base64,gzip,pathlib; p=pathlib.Path('.github/milestones/current.patch'); b=p.read_text().replace('JKLL3x','JKL3x'); pathlib.Path('/tmp/milestone.patch').write_bytes(gzip.decompress(base64.b64decode(b))); p.write_text(b)"
+          python3 -c "import base64,gzip,pathlib; p=pathlib.Path('.github/milestones/current.patch'); b=p.read_text().replace('afa/W628AMP','afa/W6AMP'); pathlib.Path('/tmp/milestone.patch').write_bytes(gzip.decompress(base64.b64decode(b))); p.write_text(b)"
           git apply --check /tmp/milestone.patch
           git apply /tmp/milestone.patch
           git add -A
