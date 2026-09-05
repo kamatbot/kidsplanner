@@ -31,7 +31,7 @@ test("landing page states free STA access and keeps pricing/signup paths", () =>
     assert.match(landing, new RegExp(`id="${id}"`), `no element with id="${id}"`);
   }
   // sections that carry an id but are reached by scrolling, not by a link
-  for (const id of ["kids", "privacy"]) assert.match(landing, new RegExp(`id="${id}"`));
+  assert.match(landing, /id="privacy"/);
   // /#moodle was the school-sync anchor before the 2026 re-composition;
   // external links (school newsletters) must keep working.
   assert.match(landing, /id="moodle" class="legacy-anchor"/);
@@ -90,19 +90,6 @@ test("chat beats are only hidden once the script has run", () => {
   assert.match(script, /setTimeout\([\s\S]*?is-in[\s\S]*?\}, 2000\)/);
 });
 
-test("kid/parent modes are one component with two real tab panels", () => {
-  const modes = landing.match(/<section id="kids"[\s\S]*?<\/section>/)?.[0];
-  assert.ok(modes);
-  assert.equal((modes.match(/role="tabpanel"/g) || []).length, 2);
-  assert.equal((modes.match(/class="mode-tab"/g) || []).length, 2);
-  assert.match(modes, /id="mode-kid" aria-labelledby="tab-kid"/);
-  assert.match(modes, /id="mode-parent" aria-labelledby="tab-parent" hidden/);
-  assert.equal((modes.match(/class="mode-text"/g) || []).length, 2);
-  // keyboard support for the tablist is required, not optional
-  assert.match(script, /ArrowRight/);
-  assert.match(script, /aria-selected/);
-});
-
 // The devices section used hand-built CSS mockups of the app. Those are
 // replaced by real product screenshots, which read far better at this size.
 test("devices section uses real product screenshots, not CSS mockups", () => {
@@ -143,6 +130,12 @@ test("every avatar variant has a background", () => {
     assert.match(landing, new RegExp(`avatar ${cls}`), `${cls} is used`);
     assert.match(styles, new RegExp(`\\.${cls}\\{background:`), `${cls} has a background`);
   }
+});
+
+test("the kid/parent mode switch is gone", () => {
+  assert.doesNotMatch(landing, /id="kids"|mode-switch|mode-tab|mode-text|kid-tile|parent-week/);
+  assert.doesNotMatch(styles, /\.mode-switch|\.mode-tab|\.kid-tile|\.parent-week/);
+  assert.doesNotMatch(script, /mode-tab|selectTab/);
 });
 
 test("landing FAQ uses native disclosure bars", () => {
@@ -203,7 +196,6 @@ test("landing CSS protects anchors, focus, touch targets, and narrow layouts", (
   assert.match(styles, /outline:\s*3px solid var\(--accent\)/);
   assert.match(styles, /\.site-nav a\{[^}]*min-height:44px/s);
   assert.match(styles, /\.footer-links a\{[^}]*min-height:44px/s);
-  assert.match(styles, /\.mode-tab\{[^}]*min-height:44px/s);
   assert.match(styles, /@media \(max-width:520px\)[\s\S]*\.header-create\{display:none\}/);
   assert.doesNotMatch(styles, /\.header-signin\s*\{\s*display:\s*none;/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);

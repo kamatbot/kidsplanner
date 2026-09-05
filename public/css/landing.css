@@ -22,7 +22,7 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .section h2{margin:0;font-size:clamp(30px,3vw,40px);line-height:1.08;letter-spacing:-0.025em;font-weight:700;text-wrap:balance}
 .section-intro{max-width:min(100%,1040px);margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;text-wrap:pretty}
 .center{text-align:center}.center .section-intro{margin-inline:auto}
-.panel-card,.feature-card,.cta-panel,.moment-card,.chat-phone,.today-card,.homework-card,.mode-switch,.device-frame,.step-card{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)}
+.panel-card,.feature-card,.cta-panel,.moment-card,.chat-phone,.today-card,.homework-card,.device-frame,.step-card{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)}
 /* header */
 .site-header{position:sticky;top:0;z-index:20;border-bottom:1px solid var(--border);background:color-mix(in oklab,var(--bg) 88%,transparent);backdrop-filter:blur(10px)}
 .header-inner{min-height:64px;display:flex;align-items:center;gap:24px;padding-block:10px}
@@ -231,29 +231,6 @@ html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14p
 .device-caption span{font-size:14px;color:var(--text-2);line-height:1.45;display:block;margin-top:2px}
 .store-note{margin-top:36px;font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:10px}
 .store-note svg{width:18px;height:18px;stroke:var(--text-2);flex:none}
-/* modes (S8) */
-.mode-switch{border-radius:24px;padding:32px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,380px);gap:48px;align-items:center;margin-top:40px}
-.mode-toggle{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:4px;background:var(--panel-2);gap:4px}
-.mode-tab{min-height:44px;padding:0 18px;border-radius:999px;font:inherit;font-size:14px;font-weight:600;border:0;background:transparent;color:var(--text-2);cursor:pointer}
-.mode-tab[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
-.mode-copy h3{margin:22px 0 0;font-size:28px;letter-spacing:-0.02em;line-height:1.1}
-.mode-copy p{margin:12px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;max-width:60ch}
-.mode-frame{border-radius:28px;background:var(--bg);border:1px solid var(--border);padding:20px}
-.kid-hello{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:700}
-.kid-tiles{display:grid;gap:12px;margin-top:20px}
-.kid-tile{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px}
-.kid-tile b{font-family:"JetBrains Mono",monospace;font-size:44px;font-weight:600;line-height:1;display:block;letter-spacing:-0.02em}
-.kid-tile span{display:block;font-size:15px;margin-top:6px;color:var(--text-2)}
-.kid-tile.row{display:flex;justify-content:space-between;align-items:center}
-.kid-tile.row b{font-size:22px}
-.parent-week{display:grid;gap:8px;margin-top:16px}
-.parent-week .rowh{display:grid;grid-template-columns:52px repeat(5,1fr);gap:4px;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--text-2);text-align:center}
-.parent-week .row{display:grid;grid-template-columns:52px repeat(5,1fr);gap:4px;align-items:stretch}
-.parent-week .row>b{font-size:13px;align-self:center}
-.parent-week .cell{background:var(--panel);border:1px solid var(--border);border-radius:8px;min-height:54px;padding:4px 5px;font-size:10px;line-height:1.25;color:var(--text-2)}
-.parent-week .cell em{display:block;font-style:normal;border-left:2px solid var(--border);padding-left:4px;color:var(--text);margin-bottom:3px}
-.parent-week .cell em.mia{border-color:var(--c-teal)}.parent-week .cell em.leo{border-color:var(--c-amber)}
-.parent-week .cell em.due{color:var(--c-red)}
 /* privacy (S9) */
 .privacy-band{background:var(--sidebar);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .privacy-grid{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:56px;align-items:start}
@@ -292,7 +269,6 @@ section[id] {
 }
 .button:focus-visible,
 a:focus-visible,
-.mode-tab:focus-visible,
 .faq-item summary:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
@@ -322,7 +298,6 @@ a:focus-visible,
  .toast{top:0}
  .day-copy{position:static}
  .device-row{gap:40px}
- .mode-switch{grid-template-columns:1fr;gap:32px}
 }
 @media (max-width:830px){
  .hero-stage{min-height:0;display:grid;gap:14px;max-width:none}
@@ -354,7 +329,6 @@ a:focus-visible,
  .day-timeline::before{left:69px}
  .moment-dot{margin-left:7px}
  .moment-card{grid-template-columns:1fr}
- .mode-switch{padding:20px}
  .trust-strip{justify-content:flex-start;flex-direction:column;gap:8px}
  .today-head{flex-direction:column}
  .before-fragments{height:auto;display:grid;gap:10px}

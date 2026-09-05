@@ -27,38 +27,3 @@ if ('IntersectionObserver' in window) {
 window.setTimeout(function () {
   reveal.forEach(function (el) { el.classList.add('is-in'); });
 }, 2000);
-
-// 2. Kid mode / Parent mode tablist. Both panels live in the DOM; `hidden`
-//    toggles. Arrow/Home/End keys move between tabs (WAI-ARIA tabs pattern).
-var tabs = Array.prototype.slice.call(document.querySelectorAll('.mode-tab'));
-
-function selectTab(tab, focus) {
-  tabs.forEach(function (t) {
-    var on = t === tab;
-    t.setAttribute('aria-selected', String(on));
-    t.tabIndex = on ? 0 : -1;
-    var panel = document.getElementById(t.getAttribute('aria-controls'));
-    if (panel) panel.hidden = !on;
-  });
-  var mode = tab.id.replace('tab-', '');
-  document.querySelectorAll('.mode-text').forEach(function (p) {
-    p.hidden = p.dataset.mode !== mode;
-  });
-  if (focus) tab.focus();
-}
-
-tabs.forEach(function (t, i) {
-  t.addEventListener('click', function () { selectTab(t, false); });
-  t.addEventListener('keydown', function (e) {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-      e.preventDefault();
-      selectTab(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length], true);
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      selectTab(tabs[0], true);
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      selectTab(tabs[tabs.length - 1], true);
-    }
-  });
-});
