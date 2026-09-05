@@ -216,7 +216,7 @@ function renderChatMedia(media) {
 
   if (media.kind === 'video') {
     const mimeType = String(media.mimeType || '').toLowerCase();
-    const allowedMime = ['video/mp4', 'video/quicktime', 'video/mpeg'].includes(mimeType);
+    const allowedMime = ['video/mp4', 'video/quicktime', 'video/mpeg', 'video/webm'].includes(mimeType);
     const source = allowedMime ? `<source src="${safeUrl}" type="${chatMediaEscape(mimeType)}">` : '';
     return `<figure class="chat-msg-attachment chat-msg-attachment-video">
       ${allowedMime ? `<video class="chat-msg-attachment-media" controls playsinline preload="metadata" onloadedmetadata="chatMediaMaybeScroll(this)">${source}</video>` : ''}

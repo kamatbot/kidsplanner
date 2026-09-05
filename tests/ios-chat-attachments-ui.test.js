@@ -50,7 +50,7 @@ test("attachment bytes stay behind authenticated and scoped chat routes", () => 
   assert.match(routeSource, /app\.post\("\/api\/chat\/attachments",\s*requireAuth/);
   assert.match(routeSource, /app\.get\("\/api\/chat\/attachments\/:id",\s*requireAuth/);
   assert.match(routeSource, /canReadAttachment\(req,\s*meta\)/);
-  assert.match(chatSource, /chatAttachments\.validateMediaForScope\(scopeKey,\s*media,\s*uploaderUserId\)/);
+  assert.match(chatSource, /chatAttachments\.validateMediaForScope\(scopeKey,\s*media,\s*uploaderUserId,\s*expectedMessageId\)/);
   assert.match(chatSource, /chatAttachments\.claimForMessage\(/);
   assert.match(routeSource, /Cache-Control",\s*"private, no-store"/);
   assert.match(routeSource, /const verifiedKind = chatAttachments\.kindForMime\(meta\.mimeType\)/);
