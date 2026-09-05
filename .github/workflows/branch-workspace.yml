@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 22.16.0
       - run: npm ci --no-audit --no-fund
-      - name: Recover tracked milestone source and locked test dependencies
+      - name: Export final source and locked test dependencies without credentials
         run: |
           mkdir -p /tmp/fametc-workspace
           git archive HEAD | tar -x -C /tmp/fametc-workspace
