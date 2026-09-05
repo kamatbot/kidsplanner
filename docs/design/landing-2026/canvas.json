@@ -1,0 +1,120 @@
+{
+  "artboards": [
+    {
+      "file": "HeroLight.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "S1 Hero — desktop light"
+    },
+    {
+      "file": "HeroDark.dc.html",
+      "x": 1540,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "S1 Hero — desktop dark"
+    },
+    {
+      "file": "HeroCTAVariants.dc.html",
+      "x": 3080,
+      "y": 0,
+      "w": 1200,
+      "h": 420,
+      "title": "S1 CTA area — Variant A / Variant B"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 1040,
+      "w": 1440,
+      "h": 8600,
+      "title": "Full desktop page (Variant A, light)"
+    },
+    {
+      "file": "Mobile390.dc.html",
+      "x": 1540,
+      "y": 1040,
+      "w": 390,
+      "h": 8600,
+      "title": "Mobile 390 — full page",
+      "expand": "fill"
+    },
+    {
+      "file": "ChatBeat1.dc.html",
+      "x": 2030,
+      "y": 1040,
+      "w": 460,
+      "h": 660,
+      "title": "S4 beat 01 — a message"
+    },
+    {
+      "file": "ChatBeat2.dc.html",
+      "x": 2570,
+      "y": 1040,
+      "w": 460,
+      "h": 660,
+      "title": "S4 beat 02 — turn it into"
+    },
+    {
+      "file": "ChatBeat3.dc.html",
+      "x": 3110,
+      "y": 1040,
+      "w": 460,
+      "h": 660,
+      "title": "S4 beat 03 — on the list"
+    },
+    {
+      "file": "ChatSectionDark.dc.html",
+      "x": 2030,
+      "y": 1820,
+      "w": 1440,
+      "h": 1180,
+      "title": "S4 Chat → action — dark"
+    },
+    {
+      "file": "DayTimeline.dc.html",
+      "x": 2030,
+      "y": 3120,
+      "w": 1440,
+      "h": 1180,
+      "title": "S5 A day in the family"
+    },
+    {
+      "file": "KidParentModes.dc.html",
+      "x": 2030,
+      "y": 4420,
+      "w": 1440,
+      "h": 1500,
+      "title": "S8 Kid mode / Parent mode — both states"
+    },
+    {
+      "file": "FinalCTADark.dc.html",
+      "x": 2030,
+      "y": 6040,
+      "w": 1440,
+      "h": 620,
+      "title": "S12–13 Final CTA + footer — dark"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "read-me",
+      "x": 0,
+      "y": -200,
+      "w": 900,
+      "text": "Fam ETC landing 2026 — re-composition, not a rebrand. Horizon tokens 1:1; violet = interactive only; coral→violet gradient once per screen (the hero \"3 of 6 done\" momentum bar). Mia = teal, Leo = amber everywhere. Build from docs/design/landing-2026/IMPLEMENTATION-GUIDE.md; the markup in these frames uses the exact class names the guide specifies."
+    },
+    {
+      "id": "hero-note",
+      "x": 1540,
+      "y": -120,
+      "w": 520,
+      "text": "Hero: ONE surface (Today) at readable size + three floating elements at their own scale. Recommended headline: \"Everyone knows what today looks like.\""
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

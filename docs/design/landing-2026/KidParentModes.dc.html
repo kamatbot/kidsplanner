@@ -1,30 +1,31 @@
-/* Fam ETC public landing page — 2026 re-composition.
-   Design: docs/design/landing-2026/ (canvas + IMPLEMENTATION-GUIDE.md).
-   Tokens come from horizon.css — no raw hex belongs in this file.
-   Variant A (no waitlist form), light theme only: the page never sets .dark,
-   so the light token values resolve. */
-:root {
-  scroll-behavior: smooth;
-  --landing-stage: 1440px;
-}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&amp;family=JetBrains+Mono:wght@400..700&amp;display=swap">
+  <style>
+:root{color-scheme:light;--bg:#f1efec;--sidebar:#f8f6f3;--panel:#ffffff;--panel-2:#faf8f5;--border:#e7e3dd;--text:#211e1b;--text-2:#6a655f;--muted:#6f6a63;--accent:#6f43d6;--accent-soft:rgba(111,67,214,0.11);--on-accent:#ffffff;--coral:#f0704f;--warn:#8a6410;--grid:#edeae5;--shadow:0 1px 2px rgba(0,0,0,0.04),0 10px 28px rgba(0,0,0,0.06);--hover:rgba(33,30,27,0.05);--c-blue:#2563eb;--c-violet:#7c3aed;--c-amber:#f59e0b;--c-green:#16a34a;--c-red:#dc2626;--c-teal:#0d9488;--c-orange:#ea580c;--c-orange-ink:#b8420c}
+.dark{color-scheme:dark;--bg:#211f1d;--sidebar:#262421;--panel:#2c2926;--panel-2:#33302c;--border:#3b3733;--text:#f1efec;--text-2:#a29c93;--muted:#968f86;--accent:#b98cff;--accent-soft:rgba(185,140,255,0.15);--on-accent:#1c1526;--coral:#ff8a66;--warn:#d6a24a;--c-orange-ink:#ff8a4d;--grid:#35322e;--shadow:0 1px 2px rgba(0,0,0,0.4),0 16px 38px rgba(0,0,0,0.5);--hover:rgba(241,239,236,0.07);--c-blue:#60a5fa;--c-violet:#a78bfa;--c-amber:#fbbf24;--c-green:#4ade80;--c-red:#f87171;--c-teal:#2dd4bf;--c-orange:#fb923c}
+
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--text);font-family:"Space Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:16px;line-height:1.5}
 a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
-.skip-link{position:fixed;inset-block-start:12px;inset-inline-start:12px;z-index:40;transform:translateY(calc(-100% - 24px));border:1px solid var(--border);border-radius:10px;padding:10px 14px;background:var(--panel);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
-.skip-link:focus{transform:none}
 .mono,.eyebrow,.kicker,.micro,.step-label,.beat-label,.moment-time,.trust-strip,.num{font-family:"JetBrains Mono",monospace}
 .eyebrow,.kicker,.micro,.step-label,.beat-label{font-size:11px;line-height:1.35;letter-spacing:0.08em;text-transform:uppercase}
 .kicker{color:var(--text-2);margin:0 0 12px}
 .landing-shell{min-height:100vh;overflow:clip}
-.header-inner,
-.section,
-.footer-inner{width:min(var(--landing-stage), 100%);margin:0 auto;padding-inline:28px}
-.section{padding-block:60px}
+.header-inner,.section,.footer-inner{width:min(1440px,100%);margin:0 auto;padding-inline:28px}
+.section{padding-block:88px}
 .section h2{margin:0;font-size:clamp(30px,3vw,40px);line-height:1.08;letter-spacing:-0.025em;font-weight:700;text-wrap:balance}
-.section-intro{max-width:min(100%,1040px);margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;text-wrap:pretty}
+.section-intro{max-width:56ch;margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;text-wrap:pretty}
 .center{text-align:center}.center .section-intro{margin-inline:auto}
-.panel-card,.feature-card,.cta-panel,.moment-card,.chat-phone,.today-card,.homework-card,.device-frame,.step-card{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)}
+.panel-card,.feature-card,.cta-panel,.moment-card,.chat-phone,.today-card,.homework-card,.mode-switch,.device-frame,.step-card{background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow)}
 /* header */
 .site-header{position:sticky;top:0;z-index:20;border-bottom:1px solid var(--border);background:color-mix(in oklab,var(--bg) 88%,transparent);backdrop-filter:blur(10px)}
 .header-inner{min-height:64px;display:flex;align-items:center;gap:24px;padding-block:10px}
@@ -40,11 +41,11 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .button-secondary{border-color:var(--border);background:var(--panel);color:var(--text)}
 .button-large{min-height:48px;padding:13px 22px;font-size:15px}
 /* hero */
-.hero{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:56px;align-items:center;padding-block:56px 32px}
+.hero{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:56px;align-items:center;padding-block:64px 40px}
 .hero-kicker{display:flex;align-items:center;gap:10px;color:var(--text-2);margin:0 0 20px}
 .hero-kicker i{width:6px;height:6px;border-radius:50%;background:var(--coral);display:inline-block}
 .hero h1{margin:0;font-size:clamp(40px,4.4vw,62px);line-height:1;letter-spacing:-0.035em;font-weight:700;text-wrap:balance}
-.hero-lede{margin:20px 0 0;max-width:62ch;color:var(--text-2);font-size:18px;line-height:1.55;text-wrap:pretty}
+.hero-lede{margin:22px 0 0;max-width:46ch;color:var(--text-2);font-size:18px;line-height:1.55;text-wrap:pretty}
 .hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
 .availability{margin:16px 0 0;font-size:14px;line-height:1.5;color:var(--text-2)}
 .availability a{white-space:nowrap}
@@ -76,16 +77,15 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .due.today{color:var(--c-red)}
 .kid-mia{color:var(--c-teal)}.kid-leo{color:var(--c-amber)}
 .bg-mia{background:var(--c-teal)}.bg-leo{background:var(--c-amber)}
-.bg-p{background:var(--text)}
 .float{position:absolute;background:var(--panel);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:16px;animation:famRise .6s ease both}
 .float-chat{left:0;top:110px;width:272px;padding:12px 14px;animation-delay:.25s}
 .float-chat .meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2)}
-.avatar{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--bg);flex:none}
+.avatar{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex:none}
 .float-chat p{margin:6px 0 0;font-size:15px;line-height:1.4}
 .float-due{left:24px;bottom:64px;width:290px;padding:12px 14px;display:flex;gap:12px;align-items:center;animation-delay:.4s}
 .float-due strong{display:block;font-size:14px}
 .float-due span{font-size:12px;color:var(--text-2)}
-.float-sync{right:0;bottom:92px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px;border-radius:999px;animation-delay:.55s}
+.float-sync{right:0;bottom:120px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:13px;border-radius:999px;animation-delay:.55s}
 .float-sync .dot{width:8px;height:8px;border-radius:50%;background:var(--c-green)}
 .float-sync time{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-2)}
 @keyframes famRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -93,8 +93,8 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .trust-strip{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding-block:14px;display:flex;flex-wrap:wrap;justify-content:center;gap:10px 28px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-2)}
 .trust-strip span::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--border);margin-right:10px;vertical-align:middle}
 /* before */
-.before-section{padding-block:52px}
-.before-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,540px);gap:48px;align-items:center}
+.before-section{padding-block:72px}
+.before-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:48px;align-items:center}
 .before-fragments{position:relative;height:280px}
 .fragment{position:absolute;background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:13.5px;line-height:1.4;color:var(--text-2);box-shadow:var(--shadow)}
 .fragment:nth-child(1){left:0;top:22px;width:240px;transform:rotate(-3deg)}.fragment:nth-child(2){left:270px;top:0;width:230px;transform:rotate(2deg)}.fragment:nth-child(3){left:130px;top:118px;width:230px;transform:rotate(-1.5deg)}.fragment:nth-child(4){left:450px;top:96px;width:220px;transform:rotate(3deg)}.fragment:nth-child(5){left:30px;top:206px;width:270px;transform:rotate(1.5deg)}
@@ -106,7 +106,7 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .before-copy h2{font-size:clamp(28px,2.6vw,36px)}
 .before-copy p{margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55}
 /* pillar grid (S3) */
-.pillar-grid{display:grid;grid-template-columns:minmax(0,580px) minmax(0,1fr);gap:56px;align-items:center}
+.pillar-grid{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:64px;align-items:center}
 .pillar-copy p{margin:14px 0 0;color:var(--text-2);font-size:17px;line-height:1.55}
 .sync-items{margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .sync-item{border:1px solid var(--border);border-radius:14px;padding:14px 16px;background:var(--panel)}
@@ -132,12 +132,9 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .toast .eyebrow{color:var(--text-2);display:block;margin-bottom:2px}
 .toast time{display:block;font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--text-2);margin-top:4px}
 /* chat section (S4) */
-.chat-section{padding-block:68px}
+.chat-section{padding-block:96px}
 .chat-sequence{margin-top:56px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:40px;align-items:start;position:relative}
-.chat-beat{position:relative;transition:opacity .5s ease,transform .5s ease}
-/* Hidden only once the script has run (it sets html.js) — with JS off or
-   the observer unavailable, all three beats stay visible. */
-html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14px)}
+.chat-beat{position:relative;opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
 .chat-sequence.is-in .chat-beat,.chat-sequence.static .chat-beat{opacity:1;transform:none}
 .chat-sequence.is-in .chat-beat:nth-child(2){transition-delay:.35s}
 .chat-sequence.is-in .chat-beat:nth-child(3){transition-delay:.7s}
@@ -165,7 +162,7 @@ html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14p
 .action-options svg{width:20px;height:20px}
 .result-card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow)}
 .result-head{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px}
-.result-head .tick{width:22px;height:22px;border-radius:50%;background:var(--c-green);color:var(--bg);display:inline-flex;align-items:center;justify-content:center}
+.result-head .tick{width:22px;height:22px;border-radius:50%;background:var(--c-green);color:#fff;display:inline-flex;align-items:center;justify-content:center}
 .result-sub{margin:4px 0 0 32px;font-size:12px;color:var(--text-2);font-family:"JetBrains Mono",monospace}
 .result-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
 .result-list li{display:flex;align-items:center;gap:10px;font-size:14px}
@@ -218,24 +215,64 @@ html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14p
 .points{display:flex;gap:28px;align-items:flex-end}
 .points b{font-family:"JetBrains Mono",monospace;font-size:34px;font-weight:600;line-height:1;display:block}
 .points small{display:block;font-size:12px;margin-top:4px}
-/* devices (S7) — real product screenshots.
-   object-fit:cover + object-position:top crops the shot instead of shrinking
-   it, so the UI in the image stays legible at these frame sizes. */
-.device-row{margin-top:48px;display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:56px;align-items:start}
-.device-shot{margin:0}
-.device-frame{border-radius:30px;padding:10px;background:var(--text);border-color:transparent;overflow:hidden}
-.device-frame img{display:block;width:100%;border-radius:22px;background:var(--bg)}
-.frame-phone img{height:560px;object-fit:cover;object-position:top}
-.frame-ipad{border-radius:22px}
-.frame-ipad img{height:560px;object-fit:cover;object-position:top;border-radius:14px}
-.device-caption{margin-top:18px}
+/* devices (S7) */
+.device-row{margin-top:48px;display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr) minmax(0,360px);gap:32px;align-items:end}
+.device-frame{border-radius:28px;padding:10px;background:var(--text);border-color:transparent}
+.device-screen{background:var(--bg);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;color:var(--text)}
+.frame-phone{max-width:260px}.frame-phone .device-screen{height:480px}
+.frame-ipad{border-radius:22px}.frame-ipad .device-screen{height:400px;border-radius:14px;flex-direction:row}
+.frame-web{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:0;overflow:hidden}
+.frame-web .device-screen{height:300px;border-radius:0}
+.browser-bar{height:34px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--panel)}
+.browser-bar i{width:8px;height:8px;border-radius:50%;background:var(--border)}
+.browser-bar span{margin-left:auto;margin-right:auto;font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--text-2);letter-spacing:.06em}
+.mini-today{padding:16px 14px;flex:1;font-size:13px}
+.mini-today .eyebrow{color:var(--text-2)}
+.mini-today h4{margin:2px 0 12px;font-size:17px}
+.mini-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px;font-size:13px}
+.mini-card small{display:block;color:var(--text-2);font-size:11.5px}
+.tabbar{border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);padding:10px 6px 12px;font-size:10px;text-align:center;color:var(--text-2);background:var(--panel)}
+.tabbar span{display:grid;justify-items:center;gap:4px}
+.tabbar svg{width:20px;height:20px;stroke:currentColor}
+.tabbar .active{color:var(--accent)}
+.rail{width:64px;background:var(--sidebar);border-right:1px solid var(--border);display:grid;grid-auto-rows:min-content;gap:6px;padding:14px 10px;justify-items:center}
+.rail span{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;color:var(--text-2)}
+.rail span.active{background:var(--accent-soft);color:var(--accent)}
+.rail svg{width:18px;height:18px;stroke:currentColor}
+.ipad-main{flex:1;padding:16px;min-width:0}
+.docked-chat{width:200px;border-left:1px solid var(--border);background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.docked-chat .msg{font-size:12px}.docked-chat .msg p{padding:6px 9px}
+.device-caption{margin-top:16px}
 .device-caption strong{display:block;font-size:16px}
 .device-caption span{font-size:14px;color:var(--text-2);line-height:1.45;display:block;margin-top:2px}
-.store-note{margin-top:36px;font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:10px}
-.store-note svg{width:18px;height:18px;stroke:var(--text-2);flex:none}
+.store-note{margin-top:32px;font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:10px}
+.store-note svg{width:18px;height:18px;stroke:var(--text-2)}
+/* modes (S8) */
+.mode-switch{border-radius:24px;padding:32px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,380px);gap:48px;align-items:center;margin-top:40px}
+.mode-toggle{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:4px;background:var(--panel-2);gap:4px}
+.mode-tab{min-height:40px;padding:0 18px;border-radius:999px;font:inherit;font-size:14px;font-weight:600;border:0;background:transparent;color:var(--text-2);cursor:pointer}
+.mode-tab[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
+.mode-copy h3{margin:22px 0 0;font-size:28px;letter-spacing:-0.02em;line-height:1.1}
+.mode-copy p{margin:12px 0 0;color:var(--text-2);font-size:17px;line-height:1.55;max-width:44ch}
+.mode-frame{border-radius:28px;background:var(--bg);border:1px solid var(--border);padding:20px}
+.kid-hello{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:700}
+.kid-tiles{display:grid;gap:12px;margin-top:20px}
+.kid-tile{background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:18px}
+.kid-tile b{font-family:"JetBrains Mono",monospace;font-size:44px;font-weight:600;line-height:1;display:block;letter-spacing:-0.02em}
+.kid-tile span{display:block;font-size:15px;margin-top:6px;color:var(--text-2)}
+.kid-tile.row{display:flex;justify-content:space-between;align-items:center}
+.kid-tile.row b{font-size:22px}
+.parent-week{display:grid;gap:8px;margin-top:16px}
+.parent-week .rowh{display:grid;grid-template-columns:52px repeat(5,1fr);gap:4px;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--text-2);text-align:center}
+.parent-week .row{display:grid;grid-template-columns:52px repeat(5,1fr);gap:4px;align-items:stretch}
+.parent-week .row>b{font-size:13px;align-self:center}
+.parent-week .cell{background:var(--panel);border:1px solid var(--border);border-radius:8px;min-height:54px;padding:4px 5px;font-size:10px;line-height:1.25;color:var(--text-2)}
+.parent-week .cell em{display:block;font-style:normal;border-left:2px solid var(--border);padding-left:4px;color:var(--text);margin-bottom:3px}
+.parent-week .cell em.mia{border-color:var(--c-teal)}.parent-week .cell em.leo{border-color:var(--c-amber)}
+.parent-week .cell em.due{color:var(--c-red)}
 /* privacy (S9) */
 .privacy-band{background:var(--sidebar);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.privacy-grid{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:56px;align-items:start}
+.privacy-grid{display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:64px;align-items:start}
 .privacy-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:24px 40px}
 .privacy-list li{display:flex;gap:14px;font-size:15px;line-height:1.5;color:var(--text-2)}
 .privacy-list strong{display:block;color:var(--text)}
@@ -254,9 +291,9 @@ html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14p
 .faq-item[open] summary::after{content:"−"}
 .faq-answer{padding:0 18px 16px;color:var(--text-2);font-size:15px;line-height:1.55}
 .faq-answer p{margin:0}
-.cta-panel{border-radius:22px;padding:48px 44px;text-align:center}
+.cta-panel{border-radius:22px;padding:56px 44px;text-align:center}
 .cta-panel h2{font-size:clamp(32px,3vw,40px)}
-.cta-panel p{max-width:74ch;margin:12px auto 0;color:var(--text-2);font-size:17px;line-height:1.5}
+.cta-panel p{max-width:44ch;margin:12px auto 0;color:var(--text-2);font-size:17px;line-height:1.5}
 .cta-actions{margin-top:26px;display:flex;justify-content:center}
 .cta-panel .availability{text-align:center}
 .site-footer{border-top:1px solid var(--border);background:var(--sidebar)}
@@ -264,58 +301,37 @@ html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14p
 .footer-note{color:var(--text-2)}
 .footer-links{margin-left:auto;display:flex;flex-wrap:wrap;gap:18px;font-size:14px}
 .footer-links a{min-height:44px;display:inline-flex;align-items:center}
-/* focus + anchor offset (carried over from the previous landing.css — the
-   reference stylesheet omits these because the canvas has no keyboard flow) */
-section[id] {
-  scroll-margin-top: 88px;
-}
-.button:focus-visible,
-a:focus-visible,
-.faq-item summary:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 4px;
-}
+/* Variants artboard helper */
+.variant-label{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-2);margin:0 0 16px}
 /* motion fallback */
-@media (prefers-reduced-motion: reduce) {
-  :root { scroll-behavior: auto; }
-  .momentum-fill, .float { animation: none; }
-  .chat-beat { opacity: 1 !important; transform: none !important; transition: none; }
-}
+@media (prefers-reduced-motion:reduce){.momentum-fill,.float{animation:none}.chat-beat{opacity:1;transform:none;transition:none}}
 /* breakpoints */
-/* The layered hero composition needs ~788px of stage (460px Today card +
-   272px float). Two columns only clear that at the 1440 design width, so collapse to a
-   single column here and give the stage the full content width. */
-@media (max-width:1439px){
- .hero{grid-template-columns:1fr;gap:40px;padding-block:48px 24px}
- .hero-stage{min-height:620px;max-width:820px}
- .today-card{right:0;left:auto;width:460px}
- .float-chat{left:0;top:40px}
-}
 @media (max-width:1024px){
  .site-nav{display:none}
+ .hero{grid-template-columns:1fr;gap:40px;padding-block:48px 24px}
+ .hero-stage{min-height:620px;max-width:640px}
+ .today-card{right:0;left:auto;width:min(460px,92%)}
+ .float-chat{left:0;top:40px}
  .pillar-grid,.day-grid,.privacy-grid,.before-grid{grid-template-columns:1fr;gap:40px}
  .pillar-visual{min-height:0;padding-top:70px}
  .homework-card{position:relative;inset:auto;width:100%}
  .toast{top:0}
  .day-copy{position:static}
- .device-row{gap:40px}
-}
-@media (max-width:830px){
- .hero-stage{min-height:0;display:grid;gap:14px;max-width:none}
- .today-card,.float{position:static;width:100%;animation:none;opacity:1}
+ .device-row{grid-template-columns:1fr 1fr}
+ .frame-web{grid-column:1/-1}
+ .mode-switch{grid-template-columns:1fr;gap:32px}
 }
 @media (max-width:768px){
- .section{padding-block:48px}
+ .section{padding-block:64px}
  .chat-sequence{grid-template-columns:1fr;gap:44px;max-width:420px;margin-inline:auto}
  .chat-beat+.chat-beat::before{left:50%;top:-32px;transform:translateX(-50%) rotate(135deg)}
  .chat-safety{grid-template-columns:1fr;gap:18px}
  .bento{grid-template-columns:repeat(2,minmax(0,1fr))}
  .steps-grid{grid-template-columns:1fr}
  .privacy-list{grid-template-columns:1fr}
- .device-row{grid-template-columns:1fr;justify-items:center}
- .device-shot{max-width:420px;width:100%}
- .frame-phone img,.frame-ipad img{height:440px}
+ .device-row{grid-template-columns:1fr}
+ .frame-ipad .device-screen{height:320px}
+ .docked-chat{display:none}
  .before-fragments{height:240px}
 }
 @media (max-width:520px){
@@ -323,6 +339,8 @@ a:focus-visible,
  .header-create{display:none}
  .hero h1{font-size:clamp(36px,10.5vw,44px)}
  .hero-actions .button,.cta-actions .button{width:100%}
+ .hero-stage{min-height:0;display:grid;gap:14px}
+ .today-card,.float{position:static;width:100%;animation:none;opacity:1}
  .float-sync{border-radius:16px}
  .sync-items{grid-template-columns:1fr}
  .bento{grid-template-columns:minmax(0,1fr)}
@@ -331,6 +349,7 @@ a:focus-visible,
  .day-timeline::before{left:69px}
  .moment-dot{margin-left:7px}
  .moment-card{grid-template-columns:1fr}
+ .mode-switch{padding:20px}
  .trust-strip{justify-content:flex-start;flex-direction:column;gap:8px}
  .today-head{flex-direction:column}
  .before-fragments{height:auto;display:grid;gap:10px}
@@ -340,6 +359,48 @@ a:focus-visible,
  .footer-links{margin-left:0}
  .section h2{font-size:30px}
 }
-/* Back-compat anchor: /#moodle was the school-sync section id before the 2026
-   re-composition. External links (school newsletters) still point at it. */
-.legacy-anchor { display: block; scroll-margin-top: 88px; }
+.bg-p{background:var(--text-2)}.landing-shell{background:var(--bg);color:var(--text)}#kids-parent{padding-top:0}</style>
+</helmet>
+<div class="landing-shell"><main>
+<section id="kids" class="section" aria-labelledby="modes-title">
+ <p class="kicker">Kid mode · Parent mode</p>
+ <h2 id="modes-title">Same family, two very different days.</h2>
+ <div class="mode-switch">
+  <div class="mode-copy">
+   <div class="mode-toggle" role="tablist" aria-label="Choose a view"><button class="mode-tab" role="tab" aria-selected="true" aria-controls="mode-kid" id="tab-kid">Kid mode</button><button class="mode-tab" role="tab" aria-selected="false" aria-controls="mode-parent" id="tab-parent">Parent mode</button></div>
+   <h3>Big, bright and only today.</h3><p>Kids see three things: what's due, what's on after school, and their streak. Nothing they can break, nothing they need a parent for.</p>
+  </div>
+  
+<div class="mode-frame" role="tabpanel" id="mode-kid" aria-label="Kid mode: Mia's view">
+ <div class="kid-hello"><span class="avatar bg-mia" aria-hidden="true">M</span>Hi Mia</div>
+ <div class="kid-tiles">
+  <div class="kid-tile"><b>2</b><span>things due today</span></div>
+  <div class="kid-tile row"><span style="margin:0;color:var(--text)">Swim squad · pool 2</span><b>15:30</b></div>
+  <div class="kid-tile row"><span style="margin:0;color:var(--text)">Reading streak</span><b>9 days</b></div>
+ </div>
+</div>
+ </div>
+</section>
+<section id="kids-parent" class="section" aria-labelledby="modes-title-2">
+ <p class="kicker">Kid mode · Parent mode</p>
+ <h2 id="modes-title">Same family, two very different days.</h2>
+ <div class="mode-switch">
+  <div class="mode-copy">
+   <div class="mode-toggle" role="tablist" aria-label="Choose a view"><button class="mode-tab" role="tab" aria-selected="false" aria-controls="mode-kid" id="tab-kid">Kid mode</button><button class="mode-tab" role="tab" aria-selected="true" aria-controls="mode-parent" id="tab-parent">Parent mode</button></div>
+   <h3>The whole family at a glance.</h3><p>Every child, every deadline, every ECA in one week — plus meals, trips, reminders and the family thread, in one place instead of five.</p>
+  </div>
+  
+<div class="mode-frame" role="tabpanel" id="mode-parent" aria-label="Parent mode: the whole family's week">
+ <div class="kid-hello"><span class="avatar bg-p" aria-hidden="true">P</span>This week</div>
+ <div class="parent-week">
+  <div class="rowh"><span></span><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span></div>
+  <div class="row"><b class="kid-mia">Mia</b><div class="cell"><em class="mia">Clarinet</em></div><div class="cell"><em class="mia">Reading log</em></div><div class="cell"><em class="mia due">Maths due</em><em class="mia">Swim 15:30</em></div><div class="cell"></div><div class="cell"><em class="mia">Swim gala</em></div></div>
+  <div class="row"><b class="kid-leo">Leo</b><div class="cell"><em class="leo">Football</em></div><div class="cell"></div><div class="cell"><em class="leo">Football</em></div><div class="cell"><em class="leo">French due</em></div><div class="cell"></div></div>
+  <div class="row"><b>Family</b><div class="cell"></div><div class="cell"></div><div class="cell"><em>Slip due</em></div><div class="cell"><em>Grocery run</em></div><div class="cell"><em>Pad thai night</em></div></div>
+ </div>
+</div>
+ </div>
+</section></main></div>
+</x-dc>
+</body>
+</html>
