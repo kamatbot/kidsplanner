@@ -500,6 +500,7 @@ app.get("/api/health", (req, res) => {
       // Present only when a key was supplied but failed to load (bad .p8 / path).
       configError: notifications.configError() || undefined,
     },
+    notificationQueue: require("./lib/notification-outbox").status(),
     chat: {
       // "sqlite" once better-sqlite3 loaded; "json" if it fell back (e.g. no
       // prebuilt binary on this host) — see lib/chat.js.
@@ -722,6 +723,7 @@ const server = app.listen(listenTarget, () => {
   console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD_INFO.label}${BUILD_INFO.builtAt ? " @ " + BUILD_INFO.builtAt : ""}, assets ${BUILD})`);
 });
 schoolApi.startScheduler();
+require("./lib/chat-attachments").startMaintenance();
 
 // Tests require this module directly and need the bound `server` (e.g. to
 // read its ephemeral port when PORT=0, and to close() it when done) — `app`

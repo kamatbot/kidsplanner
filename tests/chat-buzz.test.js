@@ -287,6 +287,7 @@ test("trip Buzz route uses shared limiter plus trip-member scope and derives the
   assert.equal(buzz.body.message.card, null);
   assert.equal(buzz.body.message.media, null);
   assert.equal(limiterCalls.length, 1);
+  await require("../lib/notification-outbox").drain();
   assert.equal(notifyCalls.length, 1);
   assert.equal(notifyCalls[0][0].id, created.trip.id);
   assert.equal(notifyCalls[0][1], editor.id);
