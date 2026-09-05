@@ -220,7 +220,9 @@ test("POST trip chat message: a member can post; response carries roomId + sende
   assert.equal(res.body.message.roomId, "trip:" + trip.id);
   assert.equal(res.body.message.senderType, "member");
   assert.equal(typeof res.body.message.senderName, "string");
-  assert.equal(notifyCalls.length, 1); // push fan-out triggered
+  assert.equal(notifyCalls.length, 0); // provider I/O cannot delay acknowledgement
+  await require("../lib/notification-outbox").drain();
+  assert.equal(notifyCalls.length, 1); // durable intent dispatches after response
   assert.equal(notifyCalls[0][3], "ahoy");
   assert.equal(notifyCalls[0][4], res.body.message.id);
 });

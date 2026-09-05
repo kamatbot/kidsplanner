@@ -1966,6 +1966,7 @@ function renderChatTabHtml() {
     <div class="card trip-chat-card">
       <div class="chat-messages" id="trip-chat-messages"></div>
       <form class="chat-send-row" onsubmit="tripSendChatMessage(event)">
+        <button type="button" class="chat-media-add" title="Share a photo or video" aria-label="Share a photo or video" onclick="openTripChatMedia()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1 12.3 20.2a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg></button>
         <input type="text" id="trip-chat-input" class="chat-input" placeholder="Message the crew…" autocomplete="off" maxlength="4000">
         <button type="submit" class="btn-primary chat-send-btn" title="Send" aria-label="Send">${ICON_SEND}</button>
       </form>
@@ -2534,6 +2535,31 @@ async function tripSendChatMessage(e) {
     // here rendered every sent message twice.
     if (res && res.message) tripMergeChatMessages([res.message]);
     tripScrollChatToBottom();
+  } catch (err) {
+    toast('❌ ' + err.message);
+  }
+}
+
+// Trip half of the shared attachment composer (see chat-media.js). The room is
+// pinned at open time: if the user switches trip or tab while compressing or
+// uploading, isCurrent() goes false and the composer refuses to post into the
+// wrong room rather than silently retargeting.
+function openTripChatMedia() {
+  if (!window.FamChatMedia || !window.FamMediaCompression) {
+    toast('❌ Attachments are still loading. Try again in a moment.');
+    return;
+  }
+  const tripId = currentTripId;
+  if (!tripId) { toast('❌ Open a trip first.'); return; }
+  try {
+    window.FamChatMedia.open({
+      roomId: 'trip:' + tripId,
+      isCurrent: () => currentTripId === tripId && currentTab === 'chat',
+      onSent: (message) => {
+        tripMergeChatMessages([message]);
+        tripScrollChatToBottom();
+      },
+    });
   } catch (err) {
     toast('❌ ' + err.message);
   }

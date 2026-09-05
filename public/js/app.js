@@ -3847,6 +3847,30 @@ async function handleSendChatMessage(e) {
   }
 }
 
+// Opens the shared attachment composer for the family room. The composer does
+// its own compression, upload and send (see chat-media.js); we only tell it
+// which room it is in, how to know the chat is still on screen, and how to
+// show the message it sent. Merge, never push: the long-poll may already have
+// delivered the same message (same reason as handleSendChatMessage).
+function openFamilyChatMedia() {
+  if (!window.FamChatMedia || !window.FamMediaCompression) {
+    toast('❌ Attachments are still loading. Try again in a moment.');
+    return;
+  }
+  try {
+    window.FamChatMedia.open({
+      roomId: 'family',
+      isCurrent: () => !!document.getElementById('chat-messages'),
+      onSent: (message) => {
+        mergeChatMessages([message]);
+        scrollChatToBottom();
+      },
+    });
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
+}
+
 async function handleDeleteChatMessage(id) {
   if (!confirm('Delete this message for the whole family?')) return;
   try {
@@ -4010,14 +4034,25 @@ document.addEventListener('click', (e) => {
    server-side — see server.js /api/homework routes).
 ============================================================ */
 let homeworkItems   = [];   // last-loaded list from GET /api/homework
+let homeworkWorkspaceSelection = null;
+let homeworkWorkspaceStatus = 'open';
+let homeworkLoadState = 'idle';
+let homeworkLoadToken = 0;
 let editingHomeworkId = null; // set when add-homework modal is in edit mode
 let activeHomeworkId  = null; // currently open in the detail modal
 
 async function loadHomework() {
+  const token = ++homeworkLoadToken;
+  homeworkLoadState = 'loading';
   try {
-    homeworkItems = await window.auth.getHomework(isKidSession() ? { kidId: sessionUser.kidId } : {});
+    const items = await window.auth.getHomework(isKidSession() ? { kidId: sessionUser.kidId } : {});
+    if (token !== homeworkLoadToken) return homeworkItems;
+    homeworkItems = Array.isArray(items) ? items : [];
+    homeworkLoadState = 'ready';
   } catch (e) {
-    homeworkItems = [];
+    if (token !== homeworkLoadToken) return homeworkItems;
+    // Keep the last successful snapshot; a network failure is not "all done".
+    homeworkLoadState = 'error';
   }
   if (typeof scheduleReminders === 'function') scheduleReminders();
   return homeworkItems;
@@ -4076,56 +4111,86 @@ function populateSubjectFilter() {
   if (subjects.includes(current)) sel.value = current;
 }
 
+function setHomeworkWorkspaceStatus(status) {
+  homeworkWorkspaceStatus = status === 'done' ? 'done' : 'open';
+  renderHomeworkHub();
+  document.querySelector(`[data-homework-status="${homeworkWorkspaceStatus}"]`)?.focus();
+}
+
+function homeworkWorkspaceModel() {
+  return window.famHomeworkWorkspace.project(homeworkItems, {
+    kidId: isKidSession() ? sessionUser.kidId : activeKidId,
+    subject: document.getElementById('homework-subject-filter')?.value || '',
+    status: homeworkWorkspaceStatus,
+  });
+}
+
+function homeworkDateHeading(date) {
+  if (!date) return 'No due date';
+  const today = isoDate(new Date());
+  if (date === today) return 'Today';
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date === isoDate(tomorrow)) return 'Tomorrow';
+  return parseIso(date).toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
+}
+
 function renderHomeworkHub() {
   populateSubjectFilter();
   const list = document.getElementById('homework-list');
-  if (!list) return;
+  if (!list || !window.famHomeworkWorkspace) return;
+  const model = homeworkWorkspaceModel();
+  const {counts, groups, visible} = model;
+  if (!visible.some(item => item.id === homeworkWorkspaceSelection)) homeworkWorkspaceSelection = visible[0]?.id || null;
+  const error = homeworkLoadState === 'error' ? `<div class="homework-load-error" role="alert">Couldn't refresh homework. ${homeworkItems.length ? 'Showing the last loaded assignments.' : ''}<button type="button" class="btn-link" onclick="loadHomework().then(renderHomeworkHub)">Try again</button></div>` : '';
+  const empty = homeworkLoadState === 'loading' ? 'Loading assignments…' : homeworkLoadState === 'error' ? 'Assignments are temporarily unavailable.' : homeworkWorkspaceStatus === 'done' ? 'No completed assignments in this view yet.' : (homeworkItems.length ? 'No open assignments match these filters.' : 'No homework yet. Add an assignment or connect a school feed in Settings.');
+  list.innerHTML = `${error}
+    <section class="homework-overview" aria-label="Homework summary for current filters">
+      <div><span>Open assignments</span><strong>${counts.open}</strong></div>
+      <div><span>Due in the next 7 days</span><strong>${counts.soon}</strong></div>
+      <div class="${counts.overdue ? 'needs-attention' : ''}"><span>Overdue</span><strong>${counts.overdue}</strong></div>
+      <div><span>Completed</span><strong>${counts.done}<small> / ${counts.open+counts.done}</small></strong></div>
+    </section>
+    <div class="homework-viewbar"><h2>Assignments</h2><div class="homework-status-switch" role="group" aria-label="Assignment status">
+      <button type="button" data-homework-status="open" aria-pressed="${homeworkWorkspaceStatus==='open'}" onclick="setHomeworkWorkspaceStatus('open')">To do <span>${counts.open}</span></button>
+      <button type="button" data-homework-status="done" aria-pressed="${homeworkWorkspaceStatus==='done'}" onclick="setHomeworkWorkspaceStatus('done')">Completed <span>${counts.done}</span></button>
+    </div></div>
+    <div class="homework-workspace">
+      <div class="homework-timeline">${groups.length ? groups.map(group => `<section class="homework-day${group.overdue ? ' overdue' : ''}">
+        <header><h3>${esc(homeworkDateHeading(group.date))}</h3><span>${group.items.length} assignment${group.items.length===1?'':'s'}${group.overdue?' · Overdue':''}</span></header>
+        <div class="homework-day-items">${group.items.map(renderHomeworkRow).join('')}</div>
+      </section>`).join('') : `<div class="homework-empty-state"><span aria-hidden="true">${homeworkLoadState==='error'?'!':'✓'}</span><h3>${homeworkLoadState==='error'?'Unable to load assignments':homeworkLoadState==='loading'?'Getting your homework':homeworkWorkspaceStatus==='done'?'Completed work':'A little breathing room'}</h3><p>${empty}</p></div>`}</div>
+      <aside id="homework-focus" class="homework-focus" aria-label="Selected assignment" aria-live="polite" ${visible.length?'':'hidden'}></aside>
+    </div>`;
+  renderHomeworkFocus();
+}
 
-  const subjectFilter = document.getElementById('homework-subject-filter')?.value || '';
-  let items = homeworkItems.slice();
-  if (activeKidId) items = items.filter((h) => h.kidId === activeKidId);
-  if (subjectFilter) items = items.filter((h) => h.subject === subjectFilter);
+function selectHomeworkAssignment(id) {
+  if (!homeworkWorkspaceModel().visible.some(item => item.id === id)) return;
+  homeworkWorkspaceSelection = id;
+  if (window.matchMedia('(max-width: 850px)').matches) { openHomeworkDetail(id); return; }
+  document.querySelectorAll('.homework-row').forEach(row => {
+    const selected = row.dataset.hwId === id;
+    row.classList.toggle('selected', selected);
+    row.querySelector('.hw-row-main')?.setAttribute('aria-pressed', String(selected));
+  });
+  renderHomeworkFocus();
+}
 
-  if (!items.length) {
-    list.innerHTML = `<p class="text-muted">No homework yet. ${isKidSession() ? "Nice — you're all caught up! 🎉" : 'Add one, or sync your school calendars for automatic deadlines.'}</p>`;
-    return;
-  }
-
-  // Overdue/Due today/This week/Later come from the shared groupHomeworkByDueDate
-  // (pending items only — same bucketing Today's homework widget uses, see that
-  // function's header comment). "Done this week" is computed separately here
-  // rather than folded into groupHomeworkByDueDate, so completed items don't
-  // also vanish from Today's due-list (out of scope for this pass).
-  const groups = groupHomeworkByDueDate(items.filter((h) => h.status !== 'done'));
-  const mondayIso = isoDate(mondayOf(new Date()));
-  // ponytail: "done this week" uses updatedAt as a completion-time proxy (any
-  // edit bumps it, not just the done toggle) — there's no separate completedAt
-  // field. Good enough; revisit if stale edits make this noisy.
-  const doneThisWeek = items.filter((h) => h.status === 'done' && (h.updatedAt || h.dueDate || '').slice(0, 10) >= mondayIso);
-
-  const sections = [
-    ['overdue', 'Overdue', groups.overdue],
-    ['today', 'Due today', groups.today],
-    ['thisWeek', 'This week', groups.thisWeek],
-    ['later', 'Later', groups.later],
-    ['done', 'Done this week', doneThisWeek],
-  ].filter(([, , rows]) => rows.length);
-
-  if (!sections.length) {
-    list.innerHTML = `<p class="text-muted">${isKidSession() ? "Nothing due — you're all caught up! 🎉" : 'Nothing due right now.'}</p>`;
-    return;
-  }
-
-  list.innerHTML = sections.map(([key, label, rows]) => `
-    <div class="homework-group">
-      <div class="homework-group-title micro-label homework-group-title-${key}">
-        <span>${label}</span><span class="homework-group-count">${rows.length}</span>
-      </div>
-      <div class="homework-group-items">
-        ${rows.slice().sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).map(renderHomeworkRow).join('')}
-      </div>
-    </div>
-  `).join('');
+function renderHomeworkFocus() {
+  const el = document.getElementById('homework-focus');
+  const item = homeworkWorkspaceModel().visible.find(item => item.id === homeworkWorkspaceSelection);
+  if (!el || !item) return;
+  const id = todayActionIdArg(item.id);
+  const checklist = item.checklist || [];
+  const done = checklist.filter(step => step.done).length;
+  el.innerHTML = `<div class="homework-focus-eyebrow">In focus <span>${['school','school-portal','school-api'].includes(item.source)?'School assignment':'Assignment'}</span></div>
+    <div class="homework-focus-subject">${esc(item.subject || 'Homework')}<span>${esc(kidNameFor(item.kidId))}</span></div>
+    <h2>${esc(item.title)}</h2>
+    <dl><div><dt>Due</dt><dd>${esc(homeworkDateHeading(item.dueDate))}${item.dueTime ? ' · '+esc(fmt12(item.dueTime)) : ''}</dd></div><div><dt>Estimated effort</dt><dd>${window.famHomeworkWorkspace.effort(item.effortMin)}</dd></div></dl>
+    ${item.notes ? `<div class="homework-focus-notes"><h3>Instructions</h3><p>${esc(item.notes)}</p></div>` : ''}
+    ${checklist.length ? `<div class="homework-focus-progress"><h3>${done} of ${checklist.length} steps complete</h3><progress value="${done}" max="${checklist.length}" aria-label="Assignment steps completed"></progress><ul>${checklist.slice(0,5).map(step=>`<li>${step.done?'✓':'○'} ${esc(step.text)}</li>`).join('')}</ul></div>` : ''}
+    <button type="button" class="btn-primary" onclick="openHomeworkDetail('${id}')">Open assignment <span aria-hidden="true">↗</span></button>
+    <p class="homework-focus-hint">${isKidSession() ? 'Take it one step at a time.' : 'A shared view. Students manage their own progress.'}</p>`;
 }
 
 // "Plan a work session" from a homework row (canvas 1c's inline hint) — thin
@@ -4144,7 +4209,7 @@ function homeworkMetaLine(item) {
   }
   if (['school', 'school-portal', 'school-api'].includes(item.source)) {
     const feed = item.subject ? esc(item.subject) : 'the school calendar';
-    const effort = item.effortMin ? ` · ~${Math.max(1, Math.round(item.effortMin / 60))}h effort` : '';
+    const effort = item.effortMin ? ` · ${window.famHomeworkWorkspace.effort(item.effortMin)} estimated` : '';
     return `Synced from ${feed}${effort}`;
   }
   if (item.effortMin) return `~${item.effortMin} min effort`;
@@ -4169,18 +4234,13 @@ function renderHomeworkRow(item) {
     : `<span class="hw-check${done ? ' checked' : ''}${overdue ? ' hw-check-overdue' : ''}" aria-label="${done ? 'Completed' : 'Not completed'}">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}</span>`;
 
   return `
-    <div class="homework-row${done ? ' hw-done' : ''}" data-hw-id="${item.id}">
+    <div class="homework-row${done ? ' hw-done' : ''}${item.id === homeworkWorkspaceSelection ? ' selected' : ''}" data-hw-id="${esc(item.id)}">
       ${progressControl}
-      <div class="hw-row-main" onclick="openHomeworkDetail('${item.id}')">
-        <div class="hw-row-title-line">
-          <span class="hw-row-title">${esc(item.title)}</span>
-          ${homeworkSourceBadge(item.source)}
-        </div>
-        <div class="hw-row-sub">${homeworkMetaLine(item)}</div>
-      </div>
-      ${item.subject ? `<span class="hw-chip hw-subject-chip">${esc(item.subject)}</span>` : ''}
-      ${kidTag}
-      <span class="hw-due-label ${dueClass}">${dueText}</span>
+      <button type="button" class="hw-row-main" onclick="selectHomeworkAssignment('${todayActionIdArg(item.id)}')" aria-pressed="${item.id === homeworkWorkspaceSelection}">
+        <span class="hw-row-title-line"><span class="hw-row-title">${esc(item.title)}</span></span>
+        <span class="hw-row-sub">${item.subject ? `<span class="hw-subject-text">${esc(item.subject)}</span>` : ''}${kidTag}${item.effortMin ? `<span>${window.famHomeworkWorkspace.effort(item.effortMin)} estimated</span>` : ''}${['school','school-portal','school-api'].includes(item.source)?'<span class="hw-synced">School synced</span>':''}</span>
+      </button>
+      <span class="hw-row-chevron" aria-hidden="true">›</span>
     </div>`;
 }
 
@@ -4405,12 +4465,21 @@ function todayActionCanDeleteForViewer(kidSession) {
 function todayActionSnoozeOptions(action) {
   const id = todayActionIdArg(action.id);
   const title = esc(action.title || 'action');
-  return `<select class="today-action-snooze" aria-label="Snooze ${title}" onchange="snoozeTodayActionFromSelect(this,'${id}')">
-    <option value="">Snooze…</option>
-    <option value="later-today">Later today</option>
-    <option value="tomorrow">Tomorrow</option>
-    <option value="next-week">Next week</option>
-  </select>`;
+  return `<details class="today-action-menu" name="family-action-menu">
+    <summary aria-label="Snooze or manage ${title}" title="Snooze or manage action"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg><span>Snooze</span></summary>
+    <div class="today-action-popover">
+      <span class="today-action-popover-label">Remind me</span>
+      <button type="button" onclick="snoozeTodayAction('${id}','later-today',this)">Later today <span>+2 hours</span></button>
+      <button type="button" onclick="snoozeTodayAction('${id}','tomorrow',this)">Tomorrow <span>9:00 am</span></button>
+      <button type="button" onclick="snoozeTodayAction('${id}','next-week',this)">Next week <span>9:00 am</span></button>
+      ${todayActionCanDeleteForViewer(isKidSession()) ? `<button type="button" class="today-action-remove" onclick="this.closest('details').open=false;deleteTodayAction('${id}')">Delete action</button>` : ''}
+    </div>
+  </details>`;
+}
+
+function snoozeTodayAction(id, preset, button) {
+  if (button) button.closest('details').open = false;
+  return snoozeTodayActionFromSelect({ value: preset }, id);
 }
 
 function renderTodayActionRow(action, now, later) {
@@ -4421,18 +4490,11 @@ function renderTodayActionRow(action, now, later) {
   const due = todayActionDueLabel(action, now);
   const source = todayActionSourceLabel(action.sourceType);
   const snoozed = action.status === 'snoozed' && due.text.indexOf('Snoozed until') === 0;
-  const statusBadge = snoozed
-    ? '<span class="today-action-status-badge snoozed">Snoozed</span>'
-    : '<span class="today-action-status-badge">Open</span>';
+  const statusBadge = snoozed ? '<span class="today-action-status-badge snoozed">Snoozed</span>' : '';
   const check = canManage
     ? `<button type="button" class="today-action-check" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete" title="Mark complete">○</button>`
     : '<span class="today-action-check" aria-hidden="true">·</span>';
-  const controls = canManage
-    ? `${todayActionSnoozeOptions(action)}${canDelete
-      ? `
-       <button type="button" class="btn-link-danger today-action-delete" onclick="deleteTodayAction('${id}')" aria-label="Delete ${title}">Delete</button>`
-      : ''}`
-    : '';
+  const controls = canManage ? todayActionSnoozeOptions(action) : '';
   return `<article class="today-action-row${later ? ' later' : ''}">
     ${check}
     <div class="today-action-body">
@@ -4485,19 +4547,37 @@ function renderTodayCompletedSection(items) {
 
 function renderTodayActionRoleCopy() {
   const titleEl = document.getElementById('today-actions-title');
-  const headingEl = titleEl && titleEl.parentElement;
-  if (!headingEl) return;
-  const kid = isKidSession();
-  const eyebrowEl = headingEl.querySelector('.micro-label');
-  const descriptionEl = headingEl.querySelector('p');
-  if (eyebrowEl) eyebrowEl.textContent = kid ? 'My next' : 'Family actions';
-  titleEl.textContent = kid ? 'Your next steps' : 'What matters next';
-  if (descriptionEl) {
-    descriptionEl.textContent = kid
-      ? 'Your actions are here, plus shared family steps.'
-      : 'Small next steps, together — with room for everyone.';
-  }
+  if (titleEl) titleEl.textContent = 'Family Actions';
 }
+
+function openAllFamilyActions() {
+  renderAllFamilyActions();
+  const dialog = document.getElementById('family-actions-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function renderAllFamilyActions() {
+  const list = document.getElementById('family-actions-dialog-list');
+  if (!list || !window.famActionQueue) return;
+  const now = new Date();
+  const groups = window.famActionQueue.groupActions(todayActionItems, now);
+  const rows = groups.now.concat(groups.next7, groups.sharedNoDate, groups.later);
+  list.innerHTML = rows.map((action) => renderTodayActionRow(action, now, false)).join('') + renderTodayCompletedSection(groups.completed);
+  if (!todayActionItems.length) list.innerHTML = '<p class="today-actions-empty">No family actions yet.</p>';
+}
+
+// Native details/summary keeps keyboard interaction without a custom menu
+// widget. Escape and outside-click close popovers without moving focus away.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const menu = document.querySelector('.today-action-menu[open]');
+  if (menu) { event.preventDefault(); menu.open = false; menu.querySelector('summary').focus(); }
+});
+document.addEventListener('click', (event) => {
+  document.querySelectorAll('.today-action-menu[open]').forEach((menu) => {
+    if (!menu.contains(event.target)) menu.open = false;
+  });
+});
 
 function renderTodayActionQueue() {
   const listEl = document.getElementById('today-actions-list');
@@ -4531,23 +4611,16 @@ function renderTodayActionQueue() {
     listEl.innerHTML = '<div class="today-actions-error" role="alert">The action queue could not load. Please refresh and try again.</div>';
     return;
   }
-  const groups = window.famActionQueue.groupActions(todayActionItems, new Date());
   const now = new Date();
-  const nextEntries = groups.next7.map((action) => ({ action, later: false }))
-    .concat(groups.later.map((action) => ({ action, later: true })));
+  const preview = window.famActionQueue.previewActions(todayActionItems, now);
   const canShowContents = todayActionQueueState === 'ready' || todayActionItems.length > 0;
-  let html = '';
-  html += renderTodayActionSection('Now', groups.now.map((action) => ({ action, later: false })), now, 'today-actions-now-label');
-  html += renderTodayActionSection('Next 7 days', nextEntries, now, 'today-actions-next-label', groups.later.length);
-  html += renderTodayActionSection('Shared / no date', groups.sharedNoDate.map((action) => ({ action, later: false })), now, 'today-actions-shared-label');
-  if (canShowContents && !groups.now.length && !nextEntries.length && !groups.sharedNoDate.length && !groups.completed.length) {
-    html = '<div class="today-actions-empty"><strong>Nothing waiting right now.</strong> Add a small next step when your family needs one.</div>';
-  }
-  if (canShowContents && !groups.now.length && !nextEntries.length && !groups.sharedNoDate.length && groups.completed.length) {
-    html = '<div class="today-actions-empty"><strong>Everyone is caught up.</strong> Your completed actions are below.</div>';
-  }
-  html += renderTodayCompletedSection(groups.completed);
-  listEl.innerHTML = html;
+  listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now, false)).join('') ||
+    (canShowContents ? '<div class="today-actions-empty"><strong>Nothing waiting right now.</strong> Enjoy a little breathing room.</div>' : '');
+  const footer = document.getElementById('today-actions-footer');
+  if (footer) footer.innerHTML = todayActionItems.length > preview.length
+    ? `<button type="button" class="family-actions-view-all" onclick="openAllFamilyActions()">View all ${todayActionItems.length} actions <span aria-hidden="true">↗</span></button>` : '';
+  const dialog = document.getElementById('family-actions-dialog');
+  if (dialog && dialog.open) renderAllFamilyActions();
 }
 
 async function loadFamilyActions() {
@@ -5691,7 +5764,7 @@ function switchNavTab(tab) {
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
   if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); }
-  if (tab === 'homework') { loadHomework().then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
+  if (tab === 'homework') { const pending = loadHomework(); renderHomeworkHub(); pending.then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
   if (tab === 'notes') { loadNotes(); }

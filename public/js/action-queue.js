@@ -133,7 +133,18 @@
     return groups;
   }
 
+  // Today stays a focused preview, not a second homework backlog. A snoozed
+  // item re-enters only when its snooze expires; all records remain in All.
+  function previewActions(items, nowValue) {
+    const now = asDate(nowValue) || new Date();
+    const eligible = (Array.isArray(items) ? items : []).filter((item) => item &&
+      item.status !== "done" && !(item.status === "snoozed" && Date.parse(item.snoozedUntil) > now.getTime()));
+    const groups = groupActions(eligible, now);
+    return groups.now.concat(groups.next7, groups.sharedNoDate, groups.later).slice(0, 3);
+  }
+
   root.famActionQueue = {
+    previewActions,
     localIsoDate,
     effectiveDue,
     snoozeUntil,

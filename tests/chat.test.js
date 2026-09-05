@@ -246,7 +246,7 @@ function callChatRoute(handler, { query, familyId } = {}) {
     };
     const req = {
       body: {}, params: {}, query: query || {},
-      user: { id: "u1", data: {} },
+      user: store.getUser(family.getFamily(familyId).parentIds[0]),
       family: { id: familyId },
       on() {}, // no disconnect simulated in these tests
     };

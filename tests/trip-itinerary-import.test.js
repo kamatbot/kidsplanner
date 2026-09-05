@@ -254,6 +254,7 @@ test("Trip itinerary parser handles conservative Hanoi prose and Hermes preview/
   });
   assert.equal(confirmed.statusCode, 200);
   assert.equal(confirmed.body.importedItems.length, items.length);
+  await require("../lib/notification-outbox").drain();
   assert.equal(notifyCalls.length, 1);
 });
 
@@ -340,6 +341,7 @@ test("Trip itinerary import previews exact duplicates and confirms one additive 
   assert.equal(trips.getTrip(trip.id).itinerary.length, 2);
   assert.equal(trips.getTrip(trip.id).activity.length, beforeActivity + 1);
   assert.equal(chat.listMessages(`trip:${trip.id}`).length, beforeChat + 1);
+  await require("../lib/notification-outbox").drain();
   assert.equal(notifyCalls.length, 1);
 
   const afterFirst = JSON.stringify(trips.getTrip(trip.id));
@@ -352,6 +354,7 @@ test("Trip itinerary import previews exact duplicates and confirms one additive 
   assert.equal(retry.body.importedItems.length, 1);
   assert.equal(JSON.stringify(trips.getTrip(trip.id)), afterFirst);
   assert.equal(chat.listMessages(`trip:${trip.id}`).length, afterFirstChat);
+  await require("../lib/notification-outbox").drain();
   assert.equal(notifyCalls.length, 1);
 
   // A source that contains only already-present items is still a successful
@@ -364,6 +367,7 @@ test("Trip itinerary import previews exact duplicates and confirms one additive 
   assert.equal(allDuplicate.body.existing, false);
   assert.equal(allDuplicate.body.importedItems.length, 0);
   assert.equal(allDuplicate.body.skippedDuplicates.length, 2);
+  await require("../lib/notification-outbox").drain();
   assert.equal(notifyCalls.length, 1);
 });
 
