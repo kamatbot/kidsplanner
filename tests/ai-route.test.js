@@ -113,6 +113,27 @@ test("POST /api/ai/parse: rejects an unsupported media type with 400", async () 
   assert.equal(res.statusCode, 400);
 });
 
+test("POST /api/ai/parse: malformed successful provider JSON is contained as 502", async () => {
+  const routes = buildHarness();
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() { throw new SyntaxError("invalid provider JSON"); },
+  });
+  try {
+    const res = await call(routes["POST /api/ai/parse"], {
+      kind: "schedule",
+      mediaType: "image/png",
+      dataBase64: "abc",
+    });
+    assert.equal(res.statusCode, 502);
+    assert.match(res.body.error, /AI service/i);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 // ---------- POST /api/ai/parse-booking (v1.1) — validation paths only,
 // never a live Anthropic call (env-gate 503 short-circuits before fetch).
 
