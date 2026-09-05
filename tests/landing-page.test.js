@@ -103,6 +103,48 @@ test("kid/parent modes are one component with two real tab panels", () => {
   assert.match(script, /aria-selected/);
 });
 
+// The devices section used hand-built CSS mockups of the app. Those are
+// replaced by real product screenshots, which read far better at this size.
+test("devices section uses real product screenshots, not CSS mockups", () => {
+  const devices = landing.match(/<section id="devices"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(devices);
+  const imgs = devices.match(/<img[^>]+>/g) || [];
+  assert.equal(imgs.length, 2, "one real screenshot per device");
+  for (const src of ["/img/app-iphone-today.png", "/img/app-ipad-today.png"]) {
+    assert.match(devices, new RegExp(src.replace(/[/.]/g, "\\$&")));
+    assert.ok(fs.existsSync(path.join(root, "public", src.replace("/img/", "img/"))), `${src} exists on disk`);
+  }
+  // every screenshot needs real alt text and explicit dimensions (no layout shift)
+  for (const img of imgs) {
+    assert.match(img, /alt="[^"]{40,}"/, "screenshot has descriptive alt text");
+    assert.match(img, /width="\d+"/);
+    assert.match(img, /height="\d+"/);
+    assert.match(img, /loading="lazy"/);
+  }
+  // the old CSS mockups must not creep back
+  assert.doesNotMatch(landing, /mini-today|tabbar|docked-chat|browser-bar|frame-web|device-screen/);
+  assert.doesNotMatch(styles, /\.mini-today|\.tabbar|\.docked-chat|\.browser-bar|\.frame-web/);
+  // and they have to actually be served
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  assert.match(server, /app\.use\("\/img", express\.static/);
+});
+
+// The page wrapped body copy into narrow 3-line columns that ate vertical space.
+test("body copy uses wide measures and a tight section rhythm", () => {
+  assert.match(styles, /\.section\{padding-block:60px\}/);
+  assert.match(styles, /\.section-intro\{max-width:min\(100%,1040px\)/);
+  assert.doesNotMatch(styles, /\.section\{padding-block:88px\}/);
+  assert.doesNotMatch(styles, /\.chat-section\{padding-block:96px\}/);
+});
+
+// .bg-p had no rule at all, so the parent avatar rendered as invisible text.
+test("every avatar variant has a background", () => {
+  for (const cls of ["bg-p", "bg-mia", "bg-leo"]) {
+    assert.match(landing, new RegExp(`avatar ${cls}`), `${cls} is used`);
+    assert.match(styles, new RegExp(`\\.${cls}\\{background:`), `${cls} has a background`);
+  }
+});
+
 test("landing FAQ uses native disclosure bars", () => {
   const faq = landing.match(/<section id="faq"[\s\S]*?<\/section>/)?.[0];
   assert.ok(faq);
@@ -172,7 +214,7 @@ test("landing CSS protects anchors, focus, touch targets, and narrow layouts", (
 // The design system is a contract (APP-BRIEF "Design (FINAL)"): tokens only,
 // and the coral->violet gradient is rationed to one momentum element.
 test("landing CSS uses Horizon tokens and rations the hero gradient", () => {
-  assert.doesNotMatch(styles, /#[0-9a-fA-F]{6}/);
+  assert.doesNotMatch(styles, /#[0-9a-fA-F]{3,8}\b/);
   assert.equal((styles.match(/linear-gradient|radial-gradient/g) || []).length, 1);
   assert.match(styles, /\.momentum-fill\{[^}]*linear-gradient\(90deg,var\(--coral\),var\(--accent\)\)/);
 });
