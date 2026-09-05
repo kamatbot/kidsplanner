@@ -33,3 +33,9 @@ Storage remains a single-host design. FAT1 byte-range responses still authentica
 - One Family Actions heading, at most three unsnoozed pending actions, stable urgency ordering. Completed and future-snoozed records remain accessible through a separate All actions dialog.
 - Compact clock/snooze popovers replace native select boxes and inline red Delete links. Parent/student permissions remain unchanged. Escape, outside-click and keyboard focus are supported.
 - Full local Node suite: 928 passed, zero failures. Actual components rendered in Chromium with synthetic fixtures at desktop/mobile sizes; three-row cap and the seven-item All dialog verified. Browser navigation is restricted in this environment, so these are inline component checks, not a deployed end-to-end session.
+
+### M3b — Homework workspace
+
+Replaced the constrained list with a full-width desktop workspace: filter-scoped counts, exact due-date groups, and an in-focus assignment panel with instructions, precise effort and existing checklist progress. Narrow layouts retain a single readable list and open the existing assignment sheet. Existing parent read-only / student completion permissions remain unchanged. Network failures retain the last successful snapshot and show a retry state, never a false all-done state.
+
+Validation: 931 Node tests passed locally (Node 22.16); browser component checks on Chromium at 1512px and 390px passed for selection, 75-minute formatting, completed/subject/child filters, parent/student completion affordances, mobile detail, error states, and no horizontal overflow. These are actual component renders with synthetic data, not a production passkey end-to-end test. Safari/device verification remains a release check.
