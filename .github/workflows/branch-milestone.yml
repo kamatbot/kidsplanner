@@ -1,0 +1,36 @@
+name: Branch milestone validation
+on:
+  push:
+    branches: [feature/web-media-performance-family-ux]
+    paths: [.github/milestones/current.patch]
+permissions:
+  contents: write
+concurrency:
+  group: fametc-web-experience-milestone
+  cancel-in-progress: false
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/web-media-performance-family-ux
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply exact milestone diff and stage only source changes
+        run: |
+          git apply --check .github/milestones/current.patch
+          git apply .github/milestones/current.patch
+          git add -A
+      - run: npm ci --no-audit --no-fund
+      - name: Full regression suite
+        run: node --test --test-concurrency=2 tests/*.test.js
+      - name: Check in validated milestone to this branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: check in validated web experience milestone'
+          git push origin HEAD:refs/heads/feature/web-media-performance-family-ux
