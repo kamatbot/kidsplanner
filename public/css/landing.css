@@ -276,11 +276,100 @@ a:focus-visible,
   outline-offset: 3px;
   border-radius: 4px;
 }
+/* ── motion ────────────────────────────────────────────────────────────────
+   Rules of the road for this page:
+   - Nothing here carries information. Every section is complete and legible
+     with JavaScript off and with reduced motion on.
+   - Hidden-until-revealed states are gated on html.js, so a script that never
+     runs cannot leave content invisible.
+   - Hover states belong to things you can actually press. Content cards get
+     no hover lift: a card that rises under the cursor claims to be a link.
+   - The coral->violet gradient stays rationed to the hero momentum bar. */
+
+/* Hero: the copy settles in on load, one line at a time. Reuses famRise so
+   the copy and the floating cards share one motion vocabulary. */
+html.js .hero-copy > *{animation:famRise .62s cubic-bezier(.2,.7,.2,1) both}
+html.js .hero-copy > *:nth-child(1){animation-delay:.04s}
+html.js .hero-copy > *:nth-child(2){animation-delay:.10s}
+html.js .hero-copy > *:nth-child(3){animation-delay:.17s}
+html.js .hero-copy > *:nth-child(4){animation-delay:.24s}
+html.js .hero-copy > *:nth-child(5){animation-delay:.30s}
+
+/* The floating cards keep breathing after they arrive. `translate` is used
+   instead of `transform` so this composites alongside famRise's transform
+   rather than overwriting it. Amplitude is deliberately ~5px: enough to read
+   as alive, not enough to notice as animation. */
+.float{animation:famRise .6s ease both,famDrift 7.5s ease-in-out infinite alternate}
+.float-chat{animation-delay:.25s,1.6s}
+.float-due{animation-delay:.4s,2.3s}
+.float-sync{animation-delay:.55s,1.1s}
+@keyframes famDrift{from{translate:0 0}to{translate:0 -5px}}
+
+/* Scroll reveal. [data-reveal] is observed by landing.js; the "stagger"
+   variant fades its own children in sequence (--i set by the script).
+   The transition is declared ONLY on the revealed state. Declaring it on the
+   base rule made entering the hidden state animate too, so every section
+   painted visible and then faded itself out — a flash of content on load. */
+html.js [data-reveal="stagger"]:not(.is-in) > *{opacity:0;transform:translateY(14px)}
+[data-reveal="stagger"].is-in > *{opacity:1;transform:none;transition:opacity .5s cubic-bezier(.2,.7,.2,1),transform .5s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--i,0) * 65ms)}
+
+/* The timeline rail draws downward as the day scrolls into view, so the
+   sequence reads as a sequence. */
+.day-timeline::before{transform-origin:top}
+html.js [data-reveal="stagger"]:not(.is-in) .day-timeline::before{transform:scaleY(0)}
+[data-reveal="stagger"].is-in .day-timeline::before{transform:none;transition:transform .9s cubic-bezier(.2,.7,.2,1)}
+
+/* Poll bars grow from zero once the tile is on screen. scaleX leaves the
+   inline width untouched, so the static state is still correct. */
+.poll i b{transform-origin:left}
+html.js [data-reveal="stagger"]:not(.is-in) .poll i b{transform:scaleX(0)}
+[data-reveal="stagger"].is-in .poll i b{transform:none;transition:transform .7s cubic-bezier(.2,.7,.2,1) .2s}
+
+/* Controls. */
+.button{transition:transform .16s ease,box-shadow .16s ease,background-color .16s ease,border-color .16s ease}
+.button-primary:hover{transform:translateY(-1px);box-shadow:0 6px 18px var(--accent-soft)}
+.button-secondary:hover{border-color:color-mix(in oklab,var(--accent) 40%,var(--border));color:var(--accent)}
+.button:active{transform:translateY(0) scale(.985)}
+
+.site-nav a{position:relative}
+.site-nav a::after{content:"";position:absolute;left:0;right:0;bottom:9px;height:1.5px;background:var(--accent);transform:scaleX(0);transform-origin:right;transition:transform .24s cubic-bezier(.2,.7,.2,1)}
+.site-nav a:hover::after,.site-nav a:focus-visible::after{transform:scaleX(1);transform-origin:left}
+
+.footer-links a{transition:color .16s ease}
+
+/* Sticky header earns a shadow only once the page has moved under it. */
+.site-header{transition:box-shadow .28s ease}
+.site-header.is-scrolled{box-shadow:var(--shadow)}
+#scroll-sentinel{position:absolute;top:0;left:0;width:1px;height:1px}
+
+/* FAQ: a real control, so it gets a real hover. The answer animates in on
+   open only — <details> does not render its content while closed, so there is
+   nothing to animate on close and pretending otherwise stutters. */
+.faq-item summary{border-radius:14px;transition:background-color .16s ease}
+.faq-item summary:hover{background:var(--panel-2)}
+.faq-item summary::after{transition:transform .22s cubic-bezier(.2,.7,.2,1)}
+.faq-item[open] summary::after{transform:rotate(180deg)}
+.faq-item[open] .faq-answer{animation:faqIn .26s cubic-bezier(.2,.7,.2,1) both}
+@keyframes faqIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
 /* motion fallback */
 @media (prefers-reduced-motion: reduce) {
   :root { scroll-behavior: auto; }
   .momentum-fill, .float { animation: none; }
   .chat-beat { opacity: 1 !important; transform: none !important; transition: none; }
+  /* Every reveal must resolve to its final, readable frame — not to its
+     hidden one. Anything animated above is listed here. */
+  html.js .hero-copy > * { animation: none; }
+  [data-reveal="stagger"] > *,
+  html.js [data-reveal="stagger"]:not(.is-in) > * { opacity: 1 !important; transform: none !important; transition: none; }
+  .day-timeline::before,
+  html.js [data-reveal="stagger"]:not(.is-in) .day-timeline::before { transform: none !important; transition: none; }
+  .poll i b,
+  html.js [data-reveal="stagger"]:not(.is-in) .poll i b { transform: none !important; transition: none; }
+  .button, .button:hover, .button:active { transform: none !important; transition: none; }
+  .site-nav a::after { transition: none; }
+  .faq-item[open] .faq-answer { animation: none; }
+  .faq-item summary::after { transition: none; }
 }
 /* breakpoints */
 /* The layered hero composition needs ~788px of stage (460px Today card +

@@ -22,6 +22,24 @@ if ('IntersectionObserver' in window) {
   reveal.forEach(function (el) { el.classList.add('is-in'); });
 }
 
+// 2. Stagger indices for [data-reveal="stagger"] groups. Done here rather than
+//    with nth-child rules so a group can hold any number of children.
+document.querySelectorAll('[data-reveal="stagger"]').forEach(function (group) {
+  Array.prototype.forEach.call(group.children, function (child, i) {
+    child.style.setProperty('--i', i);
+  });
+});
+
+// 3. The sticky header takes a shadow once the page has scrolled under it.
+//    An observer on a 1px sentinel, not a scroll listener: no work per frame.
+var sentinel = document.getElementById('scroll-sentinel');
+var header = document.querySelector('.site-header');
+if (sentinel && header && 'IntersectionObserver' in window) {
+  new IntersectionObserver(function (entries) {
+    header.classList.toggle('is-scrolled', !entries[0].isIntersecting);
+  }).observe(sentinel);
+}
+
 // Safety net: nothing on a marketing page should stay invisible because an
 // observer did not fire. Reveal anything still hidden shortly after load.
 window.setTimeout(function () {
