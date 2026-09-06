@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "build": "echo 'Build complete'",
     "test": "node --test tests/*.test.js",
     "shadow:publish": "node scripts/publish-odds-shadow.js",
     "benchmark:operator": "node scripts/operator-benchmark.js",

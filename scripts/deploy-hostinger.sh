@@ -32,7 +32,7 @@ rm -f "$ZIP"
 # caches, editor lockfiles, prior zips, and .DS_Store.
 cd "$REPO_ROOT"
 zip -r -q "$ZIP" . \
-  -x ".git/*" ".git" "ios/*" "ios" "marketing/*" "marketing" \
+  -x ".git/*" ".git" "ios/*" "ios" "android/*" "android" "marketing/*" "marketing" \
      ".claude/*" ".claude" ".serena/*" ".serena" ".gstack/*" ".gstack" \
      "data/db.json" "data/fx.json" "data/*.json" ".env" ".env.*" \
      "*.DS_Store" "*/.DS_Store" ".~lock*" "*.~lock*" \
@@ -50,6 +50,7 @@ has "data/db.json$"          && fail "user data (data/db.json) must be excluded"
 has "\.env$"                 && fail ".env (secrets) must be excluded"
 has "(^| )\.env\."           && fail ".env.* (secrets, e.g. .env.hostinger) must be excluded"
 has "(^| )ios/"              && fail "ios/ app must be excluded"
+has "(^| )android/"          && fail "android/ app must be excluded"
 has "\.git/"                 && fail ".git must be excluded"
 
 # Keep the parent folder holding exactly ONE current deploy zip — the
