@@ -276,6 +276,10 @@ a:focus-visible,
   outline-offset: 3px;
   border-radius: 4px;
 }
+/* demo video */
+.video-frame{margin:40px auto 0;max-width:1040px;border-radius:22px;overflow:hidden;border:1px solid var(--border);background:var(--panel);box-shadow:var(--shadow);line-height:0}
+.video-frame video{display:block;width:100%;height:auto;background:var(--bg)}
+
 /* ── motion ────────────────────────────────────────────────────────────────
    Rules of the road for this page:
    - Nothing here carries information. Every section is complete and legible

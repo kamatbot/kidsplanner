@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fam ETC — STA launch pamphlet (print)</title>
+<!-- Standalone print file: cannot load /css/horizon.css, so the tokens below are
+     copied literally from public/css/horizon.css :root (light palette only —
+     this is a print piece, no dark mode). See that file for the source of truth. -->
+<link rel="stylesheet" href="../../public/fonts/fonts.css">
+<style>
+:root{
+  --bg:#f1efec;
+  --muted:#6f6a63;      /* screen-only backdrop around the page; never printed */
+  --panel:#ffffff;
+  --panel-2:#faf8f5;
+  --border:#e7e3dd;
+  --text:#211e1b;
+  --text-2:#6a655f;
+  --accent:#6f43d6;      /* violet — the only accent for emphasis/interactive-style elements */
+  --accent-soft:rgba(111,67,214,.11);
+  --coral:#f0704f;       /* partner accent — decorative only (logo, one rule) */
+  --c-green:#16a34a;     /* semantic only — not used decoratively here */
+  --c-red:#dc2626;       /* semantic only — not used decoratively here */
+}
+*{box-sizing:border-box}
+@page{size:A5;margin:0}
+html,body{margin:0;padding:0;background:var(--muted);color:var(--text);font-family:'Space Grotesk',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;letter-spacing:.07em;font-size:11px}
+.panel{width:148mm;height:210mm;margin:0 auto 6mm;padding:13mm 11mm 11mm;page-break-after:always;break-after:page;position:relative;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+.panel:last-of-type{page-break-after:auto;break-after:auto;margin-bottom:0}
+@media print{html,body{background:var(--bg)}.panel{margin:0;box-shadow:none}}
+h1,h2,h3,p,ul{margin:0}
+.kicker{color:var(--text);font-weight:700;margin-bottom:6mm}
+.brand-row{display:flex;align-items:center;gap:3mm;margin-bottom:8mm}
+.brand-mark{width:9mm;height:9mm;flex:none}
+.brand-name{font-weight:700;font-size:16px;letter-spacing:-.01em}
+.brand-etc{color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:12px;margin-left:1mm}
+.notice-box{border:1.4pt solid var(--text);border-radius:2mm;padding:4mm 5mm;margin-bottom:9mm;background:var(--panel)}
+.notice-box p{font-size:12.5px;line-height:1.5}
+.cover-headline{font-size:24px;line-height:1.24;font-weight:700;margin-bottom:6mm}
+.cover-sub{font-size:13px;line-height:1.5;color:var(--text-2);margin-bottom:auto}
+.free-line{display:inline-block;border:1.4pt solid var(--accent);color:var(--text);border-radius:99px;padding:2.5mm 5mm;font-weight:700;font-size:12.5px;margin-top:6mm}
+.cover-foot{margin-top:8mm;padding-top:5mm;border-top:1pt solid var(--border);font-size:11px;color:var(--text-2)}
+.panel-title{font-size:19px;font-weight:700;margin-bottom:2mm}
+.panel-lede{font-size:12px;color:var(--text-2);margin-bottom:7mm;line-height:1.45}
+.what-list{list-style:none;padding:0;display:flex;flex-direction:column;gap:5mm;margin-bottom:7mm}
+.what-list li{border-left:2pt solid var(--accent);padding-left:4mm}
+.what-list b{display:block;font-size:13.5px;margin-bottom:1mm}
+.what-list span{font-size:11.5px;color:var(--text-2);line-height:1.4;display:block}
+.shots{margin-top:auto;display:flex;align-items:flex-end;gap:6mm;border-top:1pt solid var(--border);padding-top:6mm}
+.shot{text-align:center}
+.shot img{display:block;border:1pt solid var(--border);border-radius:2mm;background:var(--panel)}
+.shot.phone img{width:26mm;height:auto}
+.shot.pad img{width:38mm;height:auto}
+.shot figcaption{margin-top:2mm;font-size:9.5px;color:var(--text-2)}
+.shots-note{font-size:10px;color:var(--text-2);align-self:center;line-height:1.4}
+.steps{display:flex;flex-direction:column;gap:5mm}
+.step{border:1pt solid var(--border);border-radius:2mm;padding:5mm 5mm}
+.step-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);font-weight:700;margin-bottom:2mm}
+.step h3{font-size:14px;margin-bottom:2mm}
+.step p{font-size:12px;line-height:1.5;color:var(--text-2)}
+.step.big{background:var(--panel);border:1.4pt solid var(--accent);padding:6mm}
+.step.big p{color:var(--text)}
+.where-tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;background:var(--accent-soft);color:var(--text);border:1pt solid var(--accent);border-radius:1.5mm;padding:1mm 2.5mm;margin-top:3mm}
+.priv-list{list-style:none;padding:0;display:flex;flex-direction:column;gap:5mm}
+.priv-list li{border-left:2pt solid var(--text);padding-left:4mm}
+.priv-list b{display:block;font-size:13px;margin-bottom:1mm}
+.priv-list span{font-size:11.5px;color:var(--text-2);line-height:1.45;display:block}
+.priv-foot{margin-top:auto;padding-top:6mm;border-top:1pt solid var(--border);font-size:10.5px;color:var(--text-2);font-style:italic}
+.back-mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6mm;text-align:center}
+.qr-box{width:34mm;height:34mm;border:1.6pt dashed var(--text);border-radius:2mm;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center;line-height:1.5;padding:3mm}
+.invite-row{font-family:'JetBrains Mono',monospace;font-size:13px;border:1.4pt solid var(--text);border-radius:2mm;padding:3mm 6mm}
+.invite-row b{color:var(--text)}
+.back-list{display:flex;flex-direction:column;gap:3mm;align-items:center}
+.back-list p{font-size:12px;color:var(--text-2)}
+.back-list strong{color:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- Panel 1 — Cover -->
+<section class="panel cover">
+ <div class="brand-row"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></div>
+ <p class="mono kicker">Stay in touch · Stay on top</p>
+ <h1 class="cover-headline">It pulls your kids' homework and timetable out of the school system into one family app, next to a family chat that can turn a message into a plan.</h1>
+ <p class="cover-sub">One passkey login. One app for school and home. Built by an STA parent, for STA families.</p>
+ <span class="free-line">Free for St Andrews families while we're testing</span>
+ <div class="notice-box"><p><strong>Fam ETC is not an official St Andrews app.</strong> It's an independent tool built by a parent at the school — not run, reviewed, or endorsed by St Andrews.</p></div>
+ <p class="cover-foot">fametc.com</p>
+</section>
+
+<!-- Panel 2 — What it does -->
+<section class="panel whatitdoes">
+ <p class="mono kicker">What it does</p>
+ <h2 class="panel-title">Four things, one app</h2>
+ <p class="panel-lede">Same calm layout, same family — nothing new to teach anyone.</p>
+ <ul class="what-list">
+  <li><b>Family chat</b><span>"Can someone bring my goggles?" turns into a task with a tap — not a scroll-back hunt through five group chats.</span></li>
+  <li><b>Homework from school</b><span>Assignments and the timetable land in the app, grouped by due date — Fam ETC checks the school every eight hours, so nobody has to retype them.</span></li>
+  <li><b>The week</b><span>School events and family plans in one shared calendar, filtered per child.</span></li>
+  <li><b>Meals &amp; trips</b><span>Vote on dinner and the shopping list writes itself. Plan a holiday with the other adults coming along.</span></li>
+ </ul>
+ <div class="shots">
+  <figure class="shot phone"><img src="../../public/img/app-iphone-today.png" alt="Fam ETC Today screen on iPhone"><figcaption>iPhone</figcaption></figure>
+  <figure class="shot pad"><img src="../../public/img/app-ipad-today.png" alt="Fam ETC Today screen on iPad"><figcaption>iPad</figcaption></figure>
+  <p class="shots-note">Real screens from the app.<br>iPhone, iPad and web — same login, same family.</p>
+ </div>
+</section>
+
+<!-- Panel 3 — Set up in one evening -->
+<section class="panel setup">
+ <p class="mono kicker">Getting started</p>
+ <h2 class="panel-title">Set up in one evening</h2>
+ <p class="panel-lede">Three steps. The middle one takes the longest — that's normal.</p>
+ <div class="steps">
+  <div class="step"><div class="step-num">Step 01</div><h3>Create your family</h3><p>One passkey account, add each child. About a minute. Your kids can't sign up on their own — you create every child profile and approve every child device.</p></div>
+  <div class="step big"><div class="step-num">Step 02</div><h3>Connect the school</h3><p>In the app, go to <strong>Settings → School links</strong>. For each child, paste the homework link and the timetable link from the school system — the same links already in your browser or email from St Andrews. You paste your own links; Fam ETC only ever reads them, encrypted, and checks the school every eight hours from then on. Nothing to retype after that.</p><span class="where-tag">Look in: Settings → School links</span></div>
+  <div class="step"><div class="step-num">Step 03</div><h3>Open Today</h3><p>Homework, ECAs, the timetable and points are already there. Say hi in the family thread.</p></div>
+ </div>
+</section>
+
+<!-- Panel 4 — Privacy in plain words -->
+<section class="panel privacy">
+ <p class="mono kicker">Privacy &amp; safety</p>
+ <h2 class="panel-title">You're handing us your children's week. Here's the deal.</h2>
+ <p class="panel-lede">Plain commitments, not a policy summary.</p>
+ <ul class="priv-list">
+  <li><b>Encrypted at rest</b><span>Chat messages and every piece of children's data are encrypted on our servers.</span></li>
+  <li><b>School sync is read-only</b><span>The school link is encrypted and never shown again after you paste it. We read; we never write back. Checked every eight hours.</span></li>
+  <li><b>No ads, aggregate analytics</b><span>We count daily totals, not people. No per-person analytics profile for you or your kids.</span></li>
+  <li><b>Kids can't sign up alone</b><span>A parent creates every child profile and approves every child device.</span></li>
+  <li><b>Parents keep the keys</b><span>Any parent can delete any message in the family and remove any member.</span></li>
+ </ul>
+ <p class="priv-foot">Full policy at fametc.com/privacy.</p>
+</section>
+
+<!-- Panel 5 — Back cover -->
+<section class="panel back">
+ <div class="brand-row"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></div>
+ <div class="back-mid">
+  <div class="qr-box">QR →<br>fametc.com</div>
+  <div class="invite-row">Invite code: <b>INVITE-CODE-HERE</b></div>
+  <div class="back-list">
+   <p><strong>Questions?</strong> Email support@fametc.com — a person (the founder) replies.</p>
+   <p>We'll ask you three quick questions at half term.</p>
+  </div>
+ </div>
+ <p class="cover-foot">fametc.com · Free for St Andrews families while we're testing</p>
+</section>
+
+</body>
+</html>
