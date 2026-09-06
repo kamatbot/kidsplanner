@@ -38,10 +38,10 @@ fun BackupCodeSignInScreen(
             FamCard {
                 MicroLabel("Account Recovery")
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Enter an 8-character Backup Code", style = FamTheme.typography.cardTitle, color = FamTheme.colors.text)
+                Text("Enter Recovery Backup Code", style = FamTheme.typography.cardTitle, color = FamTheme.colors.text)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "If you lost access to your device or passkey, you can redeem one of your 10 one-time recovery codes.",
+                    text = "If you lost access to your device, passkey, or are signing in on a new device, you can redeem one of your 10 one-time recovery codes.",
                     style = FamTheme.typography.caption,
                     color = FamTheme.colors.textSecond
                 )
@@ -50,7 +50,7 @@ fun BackupCodeSignInScreen(
                 OutlinedTextField(
                     value = code,
                     onValueChange = { code = it.uppercase() },
-                    placeholder = { Text("e.g. 7K4P9X2M") },
+                    placeholder = { Text("e.g. ABCDE-FGHJK") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )

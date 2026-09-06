@@ -572,6 +572,11 @@ function applyRoleScopingToUI() {
   if (schoolApiParentOnly) schoolApiParentOnly.style.display = kid ? 'none' : '';
   if (schoolApiNotice) schoolApiNotice.style.display = kid ? '' : 'none';
 
+  const securityParentOnly = document.getElementById('settings-parent-only-security');
+  const securityNotice = document.getElementById('kid-security-notice');
+  if (securityParentOnly) securityParentOnly.style.display = kid ? 'none' : '';
+  if (securityNotice) securityNotice.style.display = kid ? '' : 'none';
+
   // Adding school calendars is a parent action — hide the sidebar shortcut for kids.
   const addSchoolCal = document.getElementById('sidebar-add-school-cal');
   if (addSchoolCal) addSchoolCal.style.display = kid ? 'none' : '';
@@ -932,6 +937,7 @@ function renderManageFamily() {
     return;
   }
   renderSchoolApiSettings(); // kid list may have changed (add/remove)
+  renderSecuritySettings();
 
   const parentsEl0 = document.getElementById('manage-family-parents');
   const inviteEl0  = document.getElementById('co-parent-invite');
@@ -5763,7 +5769,7 @@ function switchNavTab(tab) {
 
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
-  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); }
+  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); renderSecuritySettings(); }
   if (tab === 'homework') { const pending = loadHomework(); renderHomeworkHub(); pending.then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
@@ -5848,6 +5854,133 @@ async function handleInstallApp() {
     if (status) status.textContent = 'Chrome could not start installation. Try the install icon in the address bar.';
   } finally {
     renderInstallAppControl();
+  }
+}
+
+/* ============================================================
+   SECURITY & BACKUP CODES (Settings tab)
+============================================================ */
+let currentGeneratedBackupCodes = null;
+
+async function renderSecuritySettings() {
+  if (isKidSession()) return;
+  const credsList = document.getElementById('settings-credentials-list');
+  const countEl = document.getElementById('settings-backup-codes-count');
+  const regenBtn = document.getElementById('settings-regen-backup-btn');
+
+  // Backup codes count
+  if (countEl) {
+    if (sessionUser && typeof sessionUser.backupCodesRemaining === 'number') {
+      countEl.textContent = `${sessionUser.backupCodesRemaining} backup codes active`;
+      if (regenBtn) regenBtn.textContent = '🔄 Regenerate backup codes';
+    } else {
+      countEl.textContent = 'No backup codes generated yet';
+      if (regenBtn) regenBtn.textContent = '🔑 Generate backup codes';
+    }
+  }
+
+  // Passkeys list
+  if (credsList && window.auth && window.auth.getCredentials) {
+    try {
+      const creds = await window.auth.getCredentials();
+      if (!creds || !creds.length) {
+        credsList.innerHTML = '<p class="text-muted">No passkeys found for this browser/account.</p>';
+      } else {
+        credsList.innerHTML = creds.map((c) => `
+          <div class="upload-item" style="justify-content:space-between;padding:10px 14px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:18px">🔑</span>
+              <div>
+                <div style="font-weight:700;font-size:13px">${esc(c.name || 'Passkey')}</div>
+                ${c.lastUsed ? `<div class="text-muted" style="font-size:11px">Last used ${esc(new Date(c.lastUsed).toLocaleDateString())}</div>` : ''}
+              </div>
+            </div>
+            ${creds.length > 1 ? `<button type="button" class="upload-delete-btn" style="opacity:1" onclick="handleSettingsRemovePasskey('${c.id}')" title="Remove passkey">×</button>` : ''}
+          </div>
+        `).join('');
+      }
+    } catch (e) {
+      credsList.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+    }
+  }
+}
+
+async function handleSettingsRegenerateBackupCodes() {
+  const out = document.getElementById('settings-backup-codes-output');
+  const countEl = document.getElementById('settings-backup-codes-count');
+  const regenBtn = document.getElementById('settings-regen-backup-btn');
+  if (!out) return;
+  out.innerHTML = '<p class="text-muted">Generating recovery backup codes…</p>';
+  try {
+    const res = await window.auth.regenerateBackupCodes();
+    const codes = (res && res.backupCodes) || [];
+    currentGeneratedBackupCodes = codes;
+    if (sessionUser) sessionUser.backupCodesRemaining = codes.length;
+    if (countEl) countEl.textContent = `${codes.length} backup codes active`;
+    if (regenBtn) regenBtn.textContent = '🔄 Regenerate backup codes';
+
+    out.innerHTML = `
+      <div style="background:var(--card-bg, #ffffff);border:1.5px solid var(--accent, #5856D6);border-radius:var(--radius-md, 12px);padding:18px;margin-top:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:800;font-size:15px;color:var(--text, #1C1C1E)">Save these recovery codes</div>
+            <div class="text-muted" style="font-size:12px">These codes are shown only once. Use them to sign in on Android or if you lose your passkey.</div>
+          </div>
+          <button type="button" class="btn-primary" onclick="handleCopyBackupCodes()" style="font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px">
+            📋 Copy all codes
+          </button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:8px;background:var(--bg, #F2F2F7);padding:14px;border-radius:var(--radius-sm, 8px);font-family:monospace;font-weight:700;font-size:14px;letter-spacing:0.5px">
+          ${codes.map((c) => `<div style="background:var(--card-bg, #fff);padding:8px 10px;border-radius:6px;text-align:center;border:1px solid rgba(0,0,0,0.06)">${esc(c)}</div>`).join('')}
+        </div>
+      </div>
+    `;
+    toast('✅ 10 backup codes generated!');
+  } catch (err) {
+    out.innerHTML = `<p class="error-msg">${esc(err.message)}</p>`;
+  }
+}
+
+function handleCopyBackupCodes() {
+  if (!currentGeneratedBackupCodes || !currentGeneratedBackupCodes.length) return;
+  const text = currentGeneratedBackupCodes.join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('📋 10 backup codes copied to clipboard!');
+    }).catch(() => {
+      prompt('Copy your backup codes:', text);
+    });
+  } else {
+    prompt('Copy your backup codes:', text);
+  }
+}
+
+async function handleSettingsAddPasskey(event) {
+  if (event) event.preventDefault();
+  const input = document.getElementById('settings-new-passkey-label');
+  const errEl = document.getElementById('settings-passkey-error');
+  if (errEl) errEl.textContent = '';
+  const label = (input && input.value.trim()) || '';
+  try {
+    await window.auth.registerAdditionalPasskey(label);
+    if (input) input.value = '';
+    toast('✅ Passkey added!');
+    renderSecuritySettings();
+  } catch (err) {
+    if (errEl) errEl.textContent = err.message || 'Failed to add passkey';
+  }
+}
+
+async function handleSettingsRemovePasskey(id) {
+  if (!confirm('Are you sure you want to remove this passkey?')) return;
+  const errEl = document.getElementById('settings-passkey-error');
+  if (errEl) errEl.textContent = '';
+  try {
+    await window.auth.removeCredential(id);
+    toast('Passkey removed');
+    renderSecuritySettings();
+  } catch (err) {
+    if (errEl) errEl.textContent = err.message || 'Failed to remove passkey';
   }
 }
 

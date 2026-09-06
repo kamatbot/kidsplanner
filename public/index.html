@@ -718,6 +718,41 @@
             </form>
           </div>
         </section>
+
+        <!-- Security & Passkeys / Backup Codes -->
+        <section class="card" id="security-settings-card">
+          <h3>🔐 Security &amp; Backup Codes</h3>
+          <p id="kid-security-notice" class="text-muted" style="display:none">
+            Security settings and recovery codes are available to parents only.
+          </p>
+          <div id="settings-parent-only-security">
+            <h4 style="margin-bottom:8px">Passkeys</h4>
+            <p class="text-muted" style="margin-bottom:12px">Passkeys let you sign in securely with Touch ID, Face ID, or your device lock without passwords.</p>
+            <div id="settings-credentials-list" style="margin-bottom:14px"></div>
+            <form id="settings-add-passkey-form" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px" onsubmit="handleSettingsAddPasskey(event)">
+              <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                <label>Passkey label (optional)</label>
+                <input type="text" id="settings-new-passkey-label" placeholder="e.g. My Phone, Laptop">
+              </div>
+              <button type="submit" class="btn-secondary">+ Add passkey</button>
+            </form>
+            <div id="settings-passkey-error" class="error-msg" style="margin-bottom:12px"></div>
+
+            <hr class="card-divider" style="margin:20px 0">
+
+            <h4 style="margin-bottom:8px">Account Recovery &amp; Backup Codes</h4>
+            <p class="text-muted" style="margin-bottom:12px">
+              Backup codes let you sign in on new devices (like Android or Windows) or recover your account if you lose access to your passkeys. Each code is single-use.
+            </p>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn-primary" id="settings-regen-backup-btn" onclick="handleSettingsRegenerateBackupCodes()">
+                🔑 Generate backup codes
+              </button>
+              <span id="settings-backup-codes-count" class="text-muted" style="font-size:13px;font-weight:600"></span>
+            </div>
+            <div id="settings-backup-codes-output" style="margin-top:14px"></div>
+          </div>
+        </section>
       </div>
 
       </main>

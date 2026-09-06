@@ -38,9 +38,9 @@
     </section>
 
     <section class="card" style="margin:20px 0;padding:24px">
-      <h3 style="margin-bottom:14px">Backup codes</h3>
-      <p class="text-muted" style="margin-bottom:14px">Backup codes let you sign in if you lose access to all your passkeys. Regenerating replaces any existing codes.</p>
-      <button class="btn-secondary" id="regen-backup-btn" onclick="handleRegenerateBackupCodes()">Regenerate backup codes</button>
+      <h3 style="margin-bottom:14px">Account Recovery &amp; Backup Codes</h3>
+      <p class="text-muted" style="margin-bottom:14px">Backup codes let you sign in to Fam ETC on new devices (such as Android or Windows) or if you lose access to all your passkeys. Regenerating replaces any existing codes with 10 fresh single-use codes.</p>
+      <button class="btn-primary" id="regen-backup-btn" onclick="handleRegenerateBackupCodes()">🔑 Generate backup codes</button>
       <div id="backup-codes-output" style="margin-top:14px"></div>
     </section>
   </main>
@@ -94,15 +94,46 @@
       }
     });
 
+    let generatedCodes = [];
     async function handleRegenerateBackupCodes() {
       const out = document.getElementById('backup-codes-output');
+      const btn = document.getElementById('regen-backup-btn');
       try {
         const res = await window.auth.regenerateBackupCodes();
         const codes = (res && res.backupCodes) || [];
-        out.innerHTML = `<p style="font-weight:800;margin-bottom:8px">Save these codes somewhere safe — shown once:</p>
-          <pre style="background:var(--bg);padding:14px;border-radius:var(--radius-sm);font-weight:700">${codes.map(esc).join('\n')}</pre>`;
+        generatedCodes = codes;
+        btn.textContent = '🔄 Regenerate backup codes';
+        out.innerHTML = `
+          <div style="background:var(--card-bg, #ffffff);border:1.5px solid var(--accent, #5856D6);border-radius:var(--radius-md, 12px);padding:18px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-weight:800;font-size:15px">Save these recovery codes</div>
+                <div class="text-muted" style="font-size:12px">Shown only once. Use them to sign in on Android or if you lose your device.</div>
+              </div>
+              <button type="button" class="btn-primary" onclick="copyBackupCodes()" style="font-size:12px;padding:6px 14px">
+                📋 Copy all codes
+              </button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));gap:8px;background:var(--bg, #F2F2F7);padding:14px;border-radius:8px;font-family:monospace;font-weight:700;font-size:14px">
+              ${codes.map((c) => `<div style="background:var(--card-bg, #fff);padding:8px 10px;border-radius:6px;text-align:center;border:1px solid rgba(0,0,0,0.06)">${esc(c)}</div>`).join('')}
+            </div>
+          </div>`;
       } catch (err) {
         out.innerHTML = `<p class="error-msg">${esc(err.message)}</p>`;
+      }
+    }
+
+    function copyBackupCodes() {
+      if (!generatedCodes.length) return;
+      const text = generatedCodes.join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          alert('10 backup codes copied to clipboard!');
+        }).catch(() => {
+          prompt('Copy your backup codes:', text);
+        });
+      } else {
+        prompt('Copy your backup codes:', text);
       }
     }
 

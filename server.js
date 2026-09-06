@@ -385,7 +385,12 @@ function requireAuth(req, res, next) {
   const authorization = req.get("authorization") || "";
   const bearer = /^Bearer\s+(.+)$/i.exec(authorization);
   const watch = bearer && watchAuth.resolveToken(bearer[1]);
-  if (!watch) return res.status(401).json({ error: "Not authenticated" });
+  if (!watch) {
+    if (req.accepts("html") && !req.xhr && !req.path.startsWith("/api/")) {
+      return res.redirect("/login?next=" + encodeURIComponent(req.originalUrl || req.url));
+    }
+    return res.status(401).json({ error: "Not authenticated" });
+  }
   if (!watchAuth.allowedRequest(req.method, req.path)) {
     return res.status(403).json({ error: "This watch credential cannot access that surface." });
   }
