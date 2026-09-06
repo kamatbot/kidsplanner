@@ -6,6 +6,7 @@ import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
+@JvmSuppressWildcards
 interface FamEtcApi {
 
     // MARK: - User & Auth
@@ -141,14 +142,13 @@ interface FamEtcApi {
 
     @GET("/api/chat/messages")
     suspend fun chatMessages(
-        @Query("roomId") roomId: String? = null,
         @Query("afterId") afterId: String? = null,
         @Query("wait") wait: Int? = null,
         @Query("limit") limit: Int? = null
     ): MessagesResponse
 
     @POST("/api/chat/messages")
-    suspend fun postChatMessage(@Body body: Map<String, kotlinx.serialization.json.JsonElement>): MessageResponse
+    suspend fun postChatMessage(@Body body: PostChatMessageRequest): MessageResponse
 
     @DELETE("/api/chat/messages/{id}")
     suspend fun deleteChatMessage(@Path("id") id: String): OKResponse
@@ -158,6 +158,40 @@ interface FamEtcApi {
 
     @POST("/api/chat/buzz")
     suspend fun sendBuzz(@Body body: Map<String, String>): OKResponse
+
+    // Trip Chat endpoints
+    @GET("/api/trips/{tripId}/chat/messages")
+    suspend fun tripChatMessages(
+        @Path("tripId") tripId: String,
+        @Query("afterId") afterId: String? = null,
+        @Query("wait") wait: Int? = null,
+        @Query("limit") limit: Int? = null
+    ): MessagesResponse
+
+    @POST("/api/trips/{tripId}/chat/messages")
+    suspend fun postTripChatMessage(
+        @Path("tripId") tripId: String,
+        @Body body: PostChatMessageRequest
+    ): MessageResponse
+
+    @DELETE("/api/trips/{tripId}/chat/messages/{id}")
+    suspend fun deleteTripChatMessage(
+        @Path("tripId") tripId: String,
+        @Path("id") id: String
+    ): OKResponse
+
+    @POST("/api/trips/{tripId}/chat/messages/{id}/flag")
+    suspend fun flagTripChatMessage(
+        @Path("tripId") tripId: String,
+        @Path("id") id: String,
+        @Body body: Map<String, String>
+    ): OKResponse
+
+    @POST("/api/trips/{tripId}/chat/buzz")
+    suspend fun sendTripBuzz(
+        @Path("tripId") tripId: String,
+        @Body body: Map<String, String>
+    ): OKResponse
 
     @Multipart
     @POST("/api/chat/attachments")

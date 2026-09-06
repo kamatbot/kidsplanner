@@ -22,6 +22,7 @@ object ApiClient {
         isLenient = true
         encodeDefaults = true
         coerceInputValues = true
+        explicitNulls = false
     }
 
     lateinit var okHttpClient: OkHttpClient
@@ -39,7 +40,7 @@ object ApiClient {
         val cookieJar = PersistentCookieJar(prefs)
 
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
+            level = HttpLoggingInterceptor.Level.BODY
         }
 
         val headerInterceptor = Interceptor { chain ->

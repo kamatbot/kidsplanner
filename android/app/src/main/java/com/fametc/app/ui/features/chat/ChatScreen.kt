@@ -210,7 +210,11 @@ fun ChatScreen() {
                                 val textToSend = draftText.trim()
                                 draftText = ""
                                 scope.launch {
-                                    repository.postChatMessage(textToSend, currentRoomId)
+                                    try {
+                                        repository.postChatMessage(textToSend, currentRoomId)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("ChatScreen", "Failed to send chat message", e)
+                                    }
                                 }
                             }
                         },
@@ -241,7 +245,15 @@ fun ChatScreen() {
             confirmButton = {
                 Button(
                     onClick = {
-                        scope.launch { repository.sendBuzz(currentRoomId) }
+                        val buzzText = draftText.trim().ifBlank { "BUZZ!" }
+                        draftText = ""
+                        scope.launch {
+                            try {
+                                repository.sendBuzz(buzzText, currentRoomId)
+                            } catch (e: Exception) {
+                                android.util.Log.e("ChatScreen", "Failed to send buzz", e)
+                            }
+                        }
                         showBuzzConfirmation = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = HorizonColors.CoralLight)
@@ -259,7 +271,11 @@ fun ChatScreen() {
             onDismiss = { showGifPicker = false },
             onGifSelected = { gifUrl ->
                 scope.launch {
-                    repository.postChatMessage(gifUrl, currentRoomId)
+                    try {
+                        repository.postChatMessage(gifUrl, currentRoomId)
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatScreen", "Failed to send GIF", e)
+                    }
                     showGifPicker = false
                 }
             }

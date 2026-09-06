@@ -696,6 +696,14 @@ app.get("/sitemap.xml", (req, res) => {
   res.type("application/xml").setHeader("Cache-Control", "public, max-age=86400");
   res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
 });
+app.get("/fametc.apk", (req, res) => {
+  const apkPath = path.join(PUBLIC, "fametc.apk");
+  if (!fs.existsSync(apkPath)) return res.status(404).send("APK not found.");
+  res.setHeader("Content-Disposition", 'attachment; filename="fametc.apk"');
+  res.setHeader("Content-Type", "application/vnd.android.package-archive");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.sendFile(apkPath);
+});
 
 const pageCache = new Map();
 const sendPage = (req, res, file, opts = {}) => {

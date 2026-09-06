@@ -154,7 +154,7 @@ class AppRepository(
             if (currentFam != null) {
                 // Fetch domains concurrently
                 coroutineScope {
-                    val msgsDef = async { try { api.chatMessages(roomId = FAMILY_ROOM_ID, limit = 50).messages } catch (e: Exception) { emptyList() } }
+                    val msgsDef = async { try { api.chatMessages(limit = 50).messages } catch (e: Exception) { emptyList() } }
                     val kidsReqDef = async { try { api.kidAccessRequests().requests } catch (e: Exception) { emptyList() } }
                     val calSyncDef = async { try { api.syncCalendar(mapOf("force" to false)).events ?: emptyList() } catch (e: Exception) { emptyList() } }
                     val famEventsDef = async { try { api.familyEvents().events } catch (e: Exception) { emptyList() } }
@@ -251,7 +251,12 @@ class AppRepository(
                 try {
                     val currentList = _messagesByRoom.value[roomId] ?: emptyList()
                     val lastId = currentList.lastOrNull()?.id
-                    val resp = api.chatMessages(roomId = roomId, afterId = lastId, wait = 1)
+                    val resp = if (roomId.startsWith("trip:")) {
+                        val tripId = roomId.removePrefix("trip:")
+                        api.tripChatMessages(tripId = tripId, afterId = lastId, wait = 1)
+                    } else {
+                        api.chatMessages(afterId = lastId, wait = 1)
+                    }
                     if (resp.messages.isNotEmpty()) {
                         val merged = dedupeMessages(currentList + resp.messages)
                         val map = _messagesByRoom.value.toMutableMap()
@@ -274,7 +279,7 @@ class AppRepository(
                     try {
                         val current = _messagesByRoom.value[FAMILY_ROOM_ID] ?: emptyList()
                         val lastId = current.lastOrNull()?.id
-                        val resp = api.chatMessages(roomId = FAMILY_ROOM_ID, afterId = lastId, wait = 0)
+                        val resp = api.chatMessages(afterId = lastId, wait = 0)
                         if (resp.messages.isNotEmpty()) {
                             val merged = dedupeMessages(current + resp.messages)
                             val map = _messagesByRoom.value.toMutableMap()
@@ -290,31 +295,49 @@ class AppRepository(
     }
 
     suspend fun postChatMessage(text: String, roomId: String) = withContext(Dispatchers.IO) {
-        val payload = buildJsonObject {
-            put("text", JsonPrimitive(text))
-            put("roomId", JsonPrimitive(roomId))
+        val req = PostChatMessageRequest(text = text.trim())
+        val resp = if (roomId.startsWith("trip:")) {
+            val tripId = roomId.removePrefix("trip:")
+            api.postTripChatMessage(tripId, req)
+        } else {
+            api.postChatMessage(req)
         }
-        val resp = api.postChatMessage(payload)
         val current = _messagesByRoom.value[roomId] ?: emptyList()
         val map = _messagesByRoom.value.toMutableMap()
         map[roomId] = dedupeMessages(current + listOf(resp.message))
         _messagesByRoom.value = map
     }
 
-    suspend fun sendBuzz(roomId: String) = withContext(Dispatchers.IO) {
-        api.sendBuzz(mapOf("roomId" to roomId))
+    suspend fun sendBuzz(text: String = "BUZZ!", roomId: String) = withContext(Dispatchers.IO) {
+        val body = mapOf("text" to text.ifBlank { "BUZZ!" })
+        if (roomId.startsWith("trip:")) {
+            val tripId = roomId.removePrefix("trip:")
+            api.sendTripBuzz(tripId, body)
+        } else {
+            api.sendBuzz(body)
+        }
     }
 
     suspend fun deleteChatMessage(id: String, roomId: String) = withContext(Dispatchers.IO) {
-        api.deleteChatMessage(id)
+        if (roomId.startsWith("trip:")) {
+            val tripId = roomId.removePrefix("trip:")
+            api.deleteTripChatMessage(tripId, id)
+        } else {
+            api.deleteChatMessage(id)
+        }
         val current = _messagesByRoom.value[roomId] ?: emptyList()
         val map = _messagesByRoom.value.toMutableMap()
         map[roomId] = current.filter { it.id != id }
         _messagesByRoom.value = map
     }
 
-    suspend fun flagChatMessage(id: String, reason: String) = withContext(Dispatchers.IO) {
-        api.flagChatMessage(id, mapOf("reason" to reason))
+    suspend fun flagChatMessage(id: String, reason: String, roomId: String = FAMILY_ROOM_ID) = withContext(Dispatchers.IO) {
+        if (roomId.startsWith("trip:")) {
+            val tripId = roomId.removePrefix("trip:")
+            api.flagTripChatMessage(tripId, id, mapOf("reason" to reason))
+        } else {
+            api.flagChatMessage(id, mapOf("reason" to reason))
+        }
     }
 
     // MARK: - Homework Mutations

@@ -105,6 +105,11 @@ data class ChatMessage(
 }
 
 @Serializable
+data class PostChatMessageRequest(
+    val text: String
+)
+
+@Serializable
 data class GifResult(
     val id: String,
     val previewUrl: String,
