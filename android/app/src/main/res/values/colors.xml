@@ -1,0 +1,7 @@
+<resources>
+    <color name="horizon_bg_light">#F1EFEC</color>
+    <color name="horizon_bg_dark">#211F1D</color>
+    <color name="horizon_accent_light">#6F43D6</color>
+    <color name="horizon_accent_dark">#B98CFF</color>
+    <color name="horizon_coral">#F0704F</color>
+</resources>

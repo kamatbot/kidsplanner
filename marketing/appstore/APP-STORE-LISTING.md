@@ -151,6 +151,16 @@ Rendered by `ios/marketing/frame.sh` from real simulator captures (light mode, 9
 - `iphone-6.5-1242x2688/` — iPhone 6.5"
 - `ipad-13-2064x2752/` — iPad 13" — **required** because the build targets iPad (TARGETED_DEVICE_FAMILY 1,2)
 - `ipad-12.9-2048x2732/` — iPad 12.9"
+- `watch-s11-416x496/` — Apple Watch Series 10/11 46mm — **required** because the build ships a watch app
+- `watch-ultra3-410x502/` — Apple Watch Ultra
+
+**Apple Watch** (`shots/watch/`, one-line headlines):
+
+| # | File | Headline | Sells |
+|---|------|----------|-------|
+| 1 | `01-my-next.png` | "Next up, on your wrist" | My next + urgent family actions |
+| 2 | `02-homework.png` | "Homework, on time" | Homework due, per child |
+| 3 | `03-shopping.png` | "The list, in the shop" | Shared shopping list |
 
 Upload in order 1 → 5; the first three carry the pitch (today, homework, chat). Raw captures are kept in `ios/marketing/shots/{iphone,ipad}/`; re-run `./frame.sh` after any UI change.
 

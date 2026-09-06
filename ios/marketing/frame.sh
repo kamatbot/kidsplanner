@@ -19,6 +19,8 @@ SIZES=(
   "iphone:6.5-1242x2688"
   "ipad:13-2064x2752"
   "ipad:12.9-2048x2732"
+  "watch:s11-416x496"
+  "watch:ultra3-410x502"
 )
 
 for entry in "${SIZES[@]}"; do

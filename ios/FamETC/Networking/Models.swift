@@ -32,7 +32,10 @@ struct Kid: Codable, Identifiable {
 struct Family: Codable, Identifiable {
     let id: String
     var name: String
-    let inviteCode: String
+    // The server redacts this from kid-scoped family responses. Parents still
+    // receive it for family management, while kids must decode the same family
+    // shape without learning the reusable join code.
+    let inviteCode: String?
     var parentIds: [String]
     var parents: [Parent]? = nil   // id + display name for each parent (optional for cache back-compat)
     var kids: [Kid]

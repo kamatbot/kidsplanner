@@ -83,6 +83,7 @@ enum Tab: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(AppStore.self) private var store
+    @AppStorage("fam_onboarded") private var onboarded = false
     @State private var selection: Tab = .today
     @State private var planningSelection: PlanningDestination = .trips
 
@@ -204,7 +205,12 @@ struct RootView: View {
     /// selected screen owns the entire content region beside it.
     private var iPadLayout: some View {
         HStack(spacing: 0) {
-            NavRailList(selection: $selection, planningSelection: $planningSelection, tabs: roleTabs)
+            NavRailList(
+                selection: $selection,
+                planningSelection: $planningSelection,
+                tabs: roleTabs,
+                onSignOut: signOut
+            )
                 .frame(width: 90)
             Divider()
             TabView(selection: $selection) {
@@ -217,6 +223,16 @@ struct RootView: View {
                 planningDestinationScreen.toolbar(.hidden, for: .tabBar).tag(Tab.planning)
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func signOut() {
+        Task {
+            await APIClient.shared.logout()
+            await MainActor.run {
+                store.signedOut()
+                onboarded = false
+            }
         }
     }
 }
@@ -234,6 +250,7 @@ private struct NavRailList: View {
     @Binding var selection: Tab
     @Binding var planningSelection: PlanningDestination
     var tabs: [Tab] = Tab.allCases
+    let onSignOut: () -> Void
     @Environment(AppStore.self) private var store
 
     var body: some View {
@@ -247,6 +264,21 @@ private struct NavRailList: View {
                 }
             }
             Spacer()
+            Button(action: onSignOut) {
+                VStack(spacing: 4) {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Sign out")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(Palette.textSecond)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Space.sm)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sign out and choose another account")
+            .padding(.bottom, Space.sm)
         }
         .padding(.top, Space.md)
         .padding(.horizontal, Space.xs)

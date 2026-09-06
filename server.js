@@ -138,6 +138,37 @@ app.get("/.well-known/apple-app-site-association", (req, res) => {
   res.json({ webcredentials: { apps: IOS_APP_IDS } });
 });
 
+const ANDROID_PACKAGES = [...new Set([
+  ...(process.env.ANDROID_PACKAGES || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  "com.fametc.app",
+  "com.fametc.app.debug",
+])];
+const ANDROID_SHA256_FINGERPRINTS = [...new Set([
+  ...(process.env.ANDROID_SHA256_FINGERPRINTS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  "43:E0:5B:0C:54:96:63:73:23:F2:04:01:04:BA:EC:A4:32:AB:8B:82:C9:34:F0:CD:68:A9:47:17:93:6A:1F:12",
+])];
+app.get("/.well-known/assetlinks.json", (req, res) => {
+  res.type("application/json").setHeader("Cache-Control", "public, max-age=3600");
+  const statements = ANDROID_PACKAGES.map((pkg) => ({
+    relation: [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds",
+    ],
+    target: {
+      namespace: "android_app",
+      package_name: pkg,
+      sha256_cert_fingerprints: ANDROID_SHA256_FINGERPRINTS,
+    },
+  }));
+  res.json(statements);
+});
+
 // 301 non-www apex -> www.
 app.use((req, res, next) => {
   const host = (req.headers.host || "").toLowerCase();
@@ -400,23 +431,28 @@ function requireFamily(req, res, next) {
   next();
 }
 
-function isIOSClient(req) {
-  const secret = process.env.IOS_CLIENT_SECRET;
+function isMobileClient(req) {
+  const secret = process.env.IOS_CLIENT_SECRET || process.env.MOBILE_CLIENT_SECRET;
   if (secret) {
     const secretMatch = (presented, s) => typeof presented === "string" && presented.length === s.length && crypto.timingSafeEqual(Buffer.from(presented), Buffer.from(s));
     if (secretMatch(req.get("x-fametc-client-key") || "", secret)) return true;
-    const m = /FamETC-?iOS\/([A-Za-z0-9._-]+)/.exec(req.get("user-agent") || "");
-    return !!(m && secretMatch(m[1], secret));
+    const m = /FamETC-?(?:iOS|Android)\/([A-Za-z0-9._-]+)/.exec(req.get("user-agent") || "");
+    if (m && secretMatch(m[1], secret)) return true;
   }
-  if ((req.get("x-fametc-client") || "").toLowerCase() === "ios") return true;
-  return /FamETC-?iOS/i.test(req.get("user-agent") || "");
+  const client = (req.get("x-fametc-client") || "").toLowerCase();
+  if (client === "ios" || client === "android") return true;
+  return /FamETC-?(?:iOS|Android)/i.test(req.get("user-agent") || "");
+}
+
+function isIOSClient(req) {
+  return isMobileClient(req);
 }
 
 // A short, human-friendly device label for a kid access request, so the parent
-// sees "an iPad" / "an iPhone" rather than a raw user-agent string. Best-effort.
+// sees "an iPad" / "an iPhone" / "an Android device" rather than a raw user-agent string. Best-effort.
 function deviceLabelFromUA(req) {
   const ua = req.get("user-agent") || "";
-  if (/FamETC-?iOS/i.test(ua)) return "the Fam ETC app";
+  if (/FamETC-?(?:iOS|Android)/i.test(ua)) return "the Fam ETC app";
   if (/iPad/i.test(ua)) return "an iPad";
   if (/iPhone/i.test(ua)) return "an iPhone";
   if (/Android/i.test(ua)) return "an Android device";
@@ -468,7 +504,7 @@ app.get("/api/me", (req, res) => {
 });
 
 // ===================== HEALTH =====================
-app.get("/api/health", (req, res) => {
+app.get(["/api/health", "/healthz"], (req, res) => {
   res.set("Cache-Control", "no-store");
   const persistence = typeof db.persistenceStatus === "function" ? db.persistenceStatus() : null;
   res.json({

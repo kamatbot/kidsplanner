@@ -1,0 +1,28 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.fametc.app",
+      "sha256_cert_fingerprints": [
+        "43:E0:5B:0C:54:96:63:73:23:F2:04:01:04:BA:EC:A4:32:AB:8B:82:C9:34:F0:CD:68:A9:47:17:93:6A:1F:12"
+      ]
+    }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.fametc.app.debug",
+      "sha256_cert_fingerprints": [
+        "43:E0:5B:0C:54:96:63:73:23:F2:04:01:04:BA:EC:A4:32:AB:8B:82:C9:34:F0:CD:68:A9:47:17:93:6A:1F:12"
+      ]
+    }
+  }
+]

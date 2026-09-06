@@ -60,9 +60,9 @@ if [ -n "$APNS_P8" ] && [ -f "$APNS_P8" ]; then EXTRAS+=("$APNS_P8"); fi
 rm -f "$OUT"
 case "$OUT" in
   *.zip)
-    { git ls-files -- . ':(exclude)ios/**' ':(exclude).impeccable/**'; printf '%s\n' "${EXTRAS[@]}"; } | zip -q "$OUT" -@ ;;
+    { git ls-files -- . ':(exclude)ios/**' ':(exclude)android/**' ':(exclude).impeccable/**'; printf '%s\n' "${EXTRAS[@]}"; } | zip -q "$OUT" -@ ;;
   *.tar.gz|*.tgz)
-    { git ls-files -z -- . ':(exclude)ios/**' ':(exclude).impeccable/**'; printf '%s\0' "${EXTRAS[@]}"; } | tar --null -czf "$OUT" -T - ;;
+    { git ls-files -z -- . ':(exclude)ios/**' ':(exclude)android/**' ':(exclude).impeccable/**'; printf '%s\0' "${EXTRAS[@]}"; } | tar --null -czf "$OUT" -T - ;;
   *)
     echo "unsupported output extension: $OUT (use .zip or .tar.gz)" >&2; exit 1 ;;
 esac

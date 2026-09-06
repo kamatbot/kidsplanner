@@ -37,6 +37,12 @@ const SLIDES = {
     { id: "04-calendar", img: "04-calendar.png", l1: "The family week",   l2: "at a glance" },
     { id: "05-meals",    img: "05-meals.png",    l1: "Dinner decided,",   l2: "list written" },
   ],
+  // Apple Watch: one short line each (416x496 canvas leaves no room for two).
+  watch: [
+    { id: "01-my-next",  img: "01-my-next.png",  l1: "Next up,",   l2: "on your wrist" },
+    { id: "02-homework", img: "02-homework.png", l1: "Homework,",  l2: "on time" },
+    { id: "03-shopping", img: "03-shopping.png", l1: "The list,",  l2: "in the shop" },
+  ],
 };
 
 const CSS = `
@@ -63,10 +69,16 @@ html,body{width:100%;height:100%;overflow:hidden;}
   box-shadow:0 3vh 8vh rgba(20,16,24,.22), 0 .4vh 1.2vh rgba(20,16,24,.14);}
 `;
 
-// iPhone canvases are tall (≈1:2.16) → bigger type; iPad canvases (≈3:4) → smaller.
+// iPhone canvases are tall (≈1:2.16) → bigger type; iPad canvases (≈3:4) → smaller;
+// watch canvases are tiny (416x496) → both lines side by side, big corner radius.
+const TUNE = {
+  iphone: ":root{--fs:7.4vw;--radius:5.2%/2.4%;}",
+  ipad:   ":root{--fs:5.6vw;--radius:2.6%/1.95%;}",
+  watch:  ":root{--fs:8.6vw;--radius:22%;} .stage{padding-top:5vh;} .head{display:flex;gap:.35em;justify-content:center;} .deviceWrap{padding:3.5vh 0 4vh;} .device{max-width:78%;}",
+};
 const page = (s, kind) => `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>${CSS}
-:root{--fs:${kind === "ipad" ? "5.6vw" : "7.4vw"};--radius:${kind === "ipad" ? "2.6%/1.95%" : "5.2%/2.4%"};}
+${TUNE[kind]}
 </style></head>
 <body>
   <div class="stage">
