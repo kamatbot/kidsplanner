@@ -1,0 +1,9 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fam ETC app icon (tinted): grayscale mark on transparent; iOS supplies the tint + ground. -->
+  <g transform="translate(103.67 103.67) scale(7.2917)">
+    <rect x="8"  y="8"  width="44" height="44" rx="14" fill="#FFFFFF"/>
+    <rect x="60" y="8"  width="44" height="44" rx="14" fill="#CFCFCF"/>
+    <rect x="8"  y="60" width="44" height="44" rx="14" fill="#CFCFCF" opacity=".45"/>
+    <rect x="60" y="60" width="44" height="44" rx="22" fill="#CFCFCF"/>
+  </g>
+</svg>

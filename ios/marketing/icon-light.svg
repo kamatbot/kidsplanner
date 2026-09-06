@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fam ETC app icon (light). The web brand mark (public/icons/fametc-mark.svg)
+       at 68% of the canvas on the Horizon greige ground, one coral, one faded tile. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F8F6F3"/><stop offset="1" stop-color="#ECE8E2"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.85" cy="0.08" r="0.6"><stop offset="0" stop-color="#F0704F" stop-opacity=".14"/><stop offset="1" stop-color="#F0704F" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glowB" cx="0.1" cy="0.95" r="0.65"><stop offset="0" stop-color="#6F43D6" stop-opacity=".12"/><stop offset="1" stop-color="#6F43D6" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glowA)"/>
+  <rect width="1024" height="1024" fill="url(#glowB)"/>
+  <g transform="translate(103.67 103.67) scale(7.2917)">
+    <rect x="8"  y="8"  width="44" height="44" rx="14" fill="#F0704F"/>
+    <rect x="60" y="8"  width="44" height="44" rx="14" fill="#6F43D6"/>
+    <rect x="8"  y="60" width="44" height="44" rx="14" fill="#6F43D6" opacity=".45"/>
+    <rect x="60" y="60" width="44" height="44" rx="22" fill="#6F43D6"/>
+  </g>
+</svg>

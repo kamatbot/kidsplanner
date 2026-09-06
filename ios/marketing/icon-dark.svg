@@ -1,0 +1,15 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fam ETC app icon (dark): same mark, Horizon dark tokens (accent #B98CFF, coral #FF8A66). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26232F"/><stop offset="1" stop-color="#171513"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g transform="translate(103.67 103.67) scale(7.2917)">
+    <rect x="8"  y="8"  width="44" height="44" rx="14" fill="#FF8A66"/>
+    <rect x="60" y="8"  width="44" height="44" rx="14" fill="#B98CFF"/>
+    <rect x="8"  y="60" width="44" height="44" rx="14" fill="#B98CFF" opacity=".45"/>
+    <rect x="60" y="60" width="44" height="44" rx="22" fill="#B98CFF"/>
+  </g>
+</svg>
