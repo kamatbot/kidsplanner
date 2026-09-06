@@ -148,6 +148,49 @@ test("the kid/parent mode switch is gone", () => {
   assert.doesNotMatch(script, /mode-tab|selectTab/);
 });
 
+// Motion is decorative by contract: the page must be complete and legible
+// without it. These pin the two ways that can silently break.
+test("reveal motion cannot leave content hidden", () => {
+  // the hidden state is gated on html.js, so no-JS hides nothing
+  assert.match(styles, /html\.js \[data-reveal="stagger"\]:not\(\.is-in\) > \*\{opacity:0/);
+  // the transition lives on the REVEALED state only. On the base rule it also
+  // animates the entry INTO hidden, so every section paints visible and then
+  // fades itself out — a flash of content on load.
+  assert.match(styles, /\[data-reveal="stagger"\]\.is-in > \*\{[^}]*transition:opacity/);
+  assert.doesNotMatch(styles, /\[data-reveal="stagger"\] > \*\{transition:/);
+  // html.js is set before first paint, not by the deferred script (same reason)
+  const head = landing.slice(0, landing.indexOf('</head>'));
+  assert.match(head, /classList\.add\('js'\)/);
+  // and the script still sets it, for anything that renders after load
+  assert.match(script, /classList\.add\('js'\)/);
+  // every stagger group the markup declares must be one the script indexes
+  assert.ok((landing.match(/data-reveal="stagger"/g) || []).length >= 8);
+  assert.match(script, /\[data-reveal="stagger"\]/);
+  assert.match(script, /setProperty\('--i'/);
+});
+
+test("reduced motion resolves every animation to its final visible frame", () => {
+  const block = styles.match(/@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\n\}/)?.[0];
+  assert.ok(block, 'reduced-motion block exists');
+  // anything that hides or moves must be forced back to visible/none here
+  for (const needle of ['hero-copy', 'data-reveal="stagger"', 'day-timeline::before', 'poll i b', 'faq-answer']) {
+    assert.ok(block.includes(needle), `reduced-motion block covers ${needle}`);
+  }
+  assert.match(block, /opacity: 1 !important/);
+  assert.match(block, /\.momentum-fill, \.float \{ animation: none/);
+});
+
+test("hover motion is limited to real controls", () => {
+  // a content card that lifts under the cursor claims to be a link
+  for (const card of ['feature-card', 'step-card', 'moment-card', 'sync-item', 'device-frame']) {
+    assert.doesNotMatch(styles, new RegExp(`\\.${card}:hover\\{[^}]*transform:translateY`), `${card} must not lift on hover`);
+  }
+  // controls do get one
+  assert.match(styles, /\.button-primary:hover\{transform:translateY\(-1px\)/);
+  assert.match(styles, /\.site-nav a:hover::after/);
+  assert.match(styles, /\.faq-item summary:hover/);
+});
+
 test("landing FAQ uses native disclosure bars", () => {
   const faq = landing.match(/<section id="faq"[\s\S]*?<\/section>/)?.[0];
   assert.ok(faq);

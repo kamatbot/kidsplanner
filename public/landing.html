@@ -10,6 +10,10 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/fametc-mark.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <!-- Set before first paint: landing.js runs deferred at the end of body, so
+       adding html.js there flipped every reveal target from visible to hidden
+       AFTER the page had painted, animating each section out and back in. -->
+  <script>document.documentElement.classList.add('js');</script>
   <link rel="stylesheet" href="/fonts/fonts.css">
   <link rel="stylesheet" href="/css/horizon.css">
   <link rel="stylesheet" href="/css/landing.css">
@@ -17,6 +21,7 @@
 <body>
 <div class="landing-shell">
 <a class="skip-link" href="#main-content">Skip to main content</a>
+<div id="scroll-sentinel" aria-hidden="true"></div>
 <header class="site-header"><div class="header-inner"><a class="brand " href="/" aria-label="Fam ETC home"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></a>
 <nav class="site-nav" aria-label="Landing page navigation"><a href="#features">Features</a><a href="#chat">Family chat</a><a href="#school-sync">School sync</a><a href="#devices">iPhone &amp; iPad</a><a href="#faq">FAQ</a></nav>
 <div class="header-actions"><a class="button button-secondary header-signin" href="/login">Sign in</a><a class="button button-primary header-create" href="/signup">Create family</a></div></div></header><main id="main-content">
@@ -47,9 +52,9 @@
   <aside class="float float-sync" aria-label="School sync notice"><span class="dot"></span><span>2 items added from school</span><time>09:12</time></aside>
  </div>
 </section>
-<div class="trust-strip" role="list" aria-label="Trust commitments"><span role="listitem">Encrypted at rest</span><span role="listitem">Read-only school sync</span><span role="listitem">No ads, aggregate analytics</span><span role="listitem">Kids can't sign up alone</span></div>
+<div class="trust-strip" data-reveal="stagger" role="list" aria-label="Trust commitments"><span role="listitem">Encrypted at rest</span><span role="listitem">Read-only school sync</span><span role="listitem">No ads, aggregate analytics</span><span role="listitem">Kids can't sign up alone</span></div>
 <section class="section before-section" aria-labelledby="before-title">
- <div class="before-grid">
+ <div class="before-grid" data-reveal="stagger">
   <div class="before-fragments" aria-hidden="true">
    <div class="fragment"><strong>Year 4 Parents</strong>47 members · "does anyone know if…"<span class="unread">128</span></div>
    <div class="fragment"><strong>Swim squad parents</strong>Gala moved to Friday??<span class="unread">31</span></div>
@@ -66,7 +71,7 @@
 </section>
 <span id="moodle" class="legacy-anchor" aria-hidden="true"></span>
 <section id="school-sync" class="section" aria-labelledby="school-title">
- <div class="pillar-grid">
+ <div class="pillar-grid" data-reveal="stagger">
   <div class="pillar-copy">
    <p class="kicker">Stay on top</p>
    <h2 id="school-title">You never chase a due date again.</h2>
@@ -131,8 +136,20 @@
   <div><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg><span><strong>Parents keep the keys</strong>Any parent can delete any message or remove a member.</span></div>
  </div>
 </section>
+<section id="watch" class="section center" aria-labelledby="watch-title">
+ <p class="kicker">20 seconds</p>
+ <h2 id="watch-title">Watch a family week.</h2>
+ <p class="section-intro">The real app, no narration: a chat message becoming a shared shopping item, homework ticked off, and the weekend crossword solved.</p>
+ <div class="video-frame" data-reveal="stagger">
+  <video controls playsinline muted preload="none" poster="/video/fametc-demo-poster.jpg"
+         width="1600" height="1000" aria-label="A 20-second silent ad for Fam ETC: a family chat message becoming a shared shopping item, a homework assignment ticked off, and the weekend crossword solved.">
+   <source src="/video/fametc-demo.mp4" type="video/mp4">
+   <p>Your browser can&rsquo;t play this video. <a href="/video/fametc-demo.mp4">Download it instead</a>.</p>
+  </video>
+ </div>
+</section>
 <section id="day" class="section" aria-labelledby="day-title">
- <div class="day-grid">
+ <div class="day-grid" data-reveal="stagger">
   <div class="day-copy"><p class="kicker">One Wednesday</p><h2 id="day-title">A day in the family.</h2><p>Every moment below is a feature doing its job — for Priya, Mia and Leo, on a school day like any other. Nothing lands at 8pm that you should have known at 8am.</p></div>
   <ol class="day-timeline">
    
@@ -162,7 +179,7 @@
 <section id="features" class="section" aria-labelledby="features-title">
  <h2 id="features-title">Everything else a family week needs</h2>
  <p class="section-intro">Same app, same calm layout, same family — one place for the things that don't come from school.</p>
- <div class="bento">
+ <div class="bento" data-reveal="stagger">
   <article class="feature-card large"><div class="feature-title">Meals</div><p>Plan the week's dinners together. Pick a night, put it to a vote, and the shopping list writes itself.</p>
    <div class="feature-visual" role="img" aria-label="Friday dinner poll: Pad thai 3 votes, Pizza 1, Tacos 0"><span class="eyebrow" style="color:var(--text-2)">Friday dinner · 4 voted</span>
     <div class="poll" style="margin-top:10px"><div class="lead"><span>Pad thai</span><b class="num">3</b><i><b style="width:75%"></b></i></div><div><span>Pizza</span><b class="num">1</b><i><b style="width:25%"></b></i></div><div><span>Tacos</span><b class="num">0</b><i><b style="width:0"></b></i></div></div></div></article>
@@ -181,7 +198,7 @@
  <p class="kicker">iPhone · iPad · Web</p>
  <h2 id="devices-title">Every screen the family already uses.</h2>
  <p class="section-intro">One passkey login, one family, every device. The layout adapts instead of shrinking: a tab bar on iPhone, a navigation rail and a wider day on iPad, and the full app in any browser.</p>
- <div class="device-row">
+ <div class="device-row" data-reveal="stagger">
   <figure class="device-shot">
    <div class="device-frame frame-phone">
     <img src="/img/app-iphone-today.png" width="322" height="700" loading="lazy" decoding="async"
@@ -202,7 +219,7 @@
 <section id="privacy" class="privacy-band" aria-labelledby="privacy-title">
  <div class="section privacy-grid">
   <div><p class="kicker">Privacy &amp; safety</p><h2 id="privacy-title">You're handing us your children's week. Here's the deal.</h2><p>Plain commitments, not a policy summary. <a href="/privacy">Read the full privacy policy</a>.</p></div>
-  <ul class="privacy-list">
+  <ul class="privacy-list" data-reveal="stagger">
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span><strong>Encrypted at rest</strong>Chat messages and every piece of children's data are encrypted on our servers.</span></li>
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg><span><strong>School sync is read-only</strong>The school link is encrypted and never shown again after you paste it. We read; we never write back.</span></li>
    <li><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M5.5 5.5l13 13"></path></svg><span><strong>No ads, aggregate analytics</strong>We use a short-lived first-party cookie to count daily visitors, then store only aggregate daily totals — no per-person analytics profile for you or your kids.</span></li>
@@ -213,7 +230,7 @@
 </section>
 <section class="section" aria-labelledby="steps-title">
  <h2 id="steps-title">Up and running in one evening</h2>
- <div class="steps-grid">
+ <div class="steps-grid" data-reveal="stagger">
   <article class="step-card"><div class="step-label">Step 01</div><div class="step-title">Create your family</div><p>One passkey account, add each child. About a minute.</p></article>
   <article class="step-card"><div class="step-label">Step 02</div><div class="step-title">Connect the school</div><p>Paste each child’s private homework and timetable links once, in Settings. Fam ETC checks them every eight hours from then on.</p></article>
   <article class="step-card"><div class="step-label">Step 03</div><div class="step-title">Open Today</div><p>Homework, ECAs, the timetable and points are already there. Say hi in the family thread.</p></article>
@@ -221,7 +238,7 @@
 </section>
 <section id="faq" class="section" aria-labelledby="faq-title">
  <h2 id="faq-title">Questions parents ask first</h2>
- <div class="faq-list">
+ <div class="faq-list" data-reveal="stagger">
   <details class="faq-item"><summary>Is Fam ETC really free?</summary><div class="faq-answer"><p>Free for STA parents. Sign up with your STA invite code and there is nothing to pay. <a href="/pricing">See pricing</a>.</p></div></details>
   <details class="faq-item"><summary>Is this an official St Andrews app?</summary><div class="faq-answer"><p>No — Fam ETC is built by parents, for families. It reads the private school feeds you choose to connect, and nothing else.</p></div></details>
   <details class="faq-item"><summary>Who can see our data?</summary><div class="faq-answer"><p>Only your family. Parents control every connection, the school link is encrypted, and school sync is strictly read-only. <a href="/privacy">Read the privacy policy</a>.</p></div></details>
@@ -233,7 +250,7 @@
  </div>
 </section>
 <section class="section" aria-labelledby="cta-title">
- <div class="cta-panel">
+ <div class="cta-panel" data-reveal="stagger">
   <h2 id="cta-title">Start with this week.</h2>
   <p>Create your family tonight. By the school run, everyone knows what today looks like.</p>
   <div class="cta-actions"><a class="button button-primary button-large" href="/signup">Create your family</a></div>

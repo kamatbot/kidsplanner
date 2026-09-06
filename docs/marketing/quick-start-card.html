@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fam ETC — STA quick-start card (print)</title>
+<!-- Standalone print file: cannot load /css/horizon.css, so the tokens below are
+     copied literally from public/css/horizon.css :root (light palette only —
+     this is a print piece, no dark mode). See that file for the source of truth. -->
+<link rel="stylesheet" href="../../public/fonts/fonts.css">
+<style>
+:root{
+  --bg:#f1efec;
+  --muted:#6f6a63;      /* screen-only backdrop around the page; never printed */
+  --panel:#ffffff;
+  --border:#e7e3dd;
+  --text:#211e1b;
+  --text-2:#6a655f;
+  --accent:#6f43d6;   /* violet — the only accent for emphasis/interactive-style elements */
+  --accent-soft:rgba(111,67,214,.11);
+  --coral:#f0704f;    /* partner accent — decorative only (logo) */
+}
+*{box-sizing:border-box}
+@page{size:A6;margin:0}
+html,body{margin:0;padding:0;background:var(--muted);color:var(--text);font-family:'Space Grotesk',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif}
+.mono{font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;text-transform:uppercase;letter-spacing:.07em;font-size:11px}
+.card{width:105mm;height:148mm;margin:0 auto;padding:8mm 8mm 7mm;position:relative;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+@media print{html,body{background:var(--bg)}.card{box-shadow:none}}
+h1,h2,p,ul{margin:0}
+.brand-row{display:flex;align-items:center;gap:2.5mm;margin-bottom:3mm}
+.brand-mark{width:8mm;height:8mm;flex:none}
+.brand-name{font-weight:700;font-size:15px;letter-spacing:-.01em}
+.brand-etc{color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:11px;margin-left:1mm}
+.title{font-size:17px;font-weight:700;margin-bottom:5mm;line-height:1.2}
+.steps{display:flex;flex-direction:column;gap:3.5mm;margin-bottom:5mm}
+.step{border:1.2pt solid var(--border);border-radius:2mm;padding:3.5mm 4mm;display:flex;gap:3mm;align-items:flex-start}
+.step .n{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--text);flex:none;width:8mm}
+.step h2{font-size:13px;margin-bottom:1mm}
+.step p{font-size:11px;line-height:1.4;color:var(--text-2)}
+.step.mid{border:1.6pt solid var(--accent);background:var(--panel)}
+.bottom{margin-top:auto;display:flex;align-items:center;gap:5mm;border-top:1pt solid var(--border);padding-top:4mm}
+.qr-box{width:22mm;height:22mm;border:1.4pt dashed var(--text);border-radius:2mm;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:9.5px;text-align:center;line-height:1.4;flex:none;padding:2mm}
+.bottom-text{font-size:10.5px;color:var(--text-2);line-height:1.5}
+.bottom-text b{color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px}
+</style>
+</head>
+<body>
+
+<section class="card">
+ <div class="brand-row"><svg class="brand-mark" viewBox="0 0 112 112" aria-hidden="true"><rect x="8" y="8" width="44" height="44" rx="14" fill="var(--coral)"></rect><rect x="60" y="8" width="44" height="44" rx="14" fill="var(--accent)"></rect><rect x="8" y="60" width="44" height="44" rx="14" fill="var(--accent)" opacity="0.45"></rect><rect x="60" y="60" width="44" height="44" rx="22" fill="var(--accent)"></rect></svg><span class="brand-name">Fam<span class="brand-etc">ETC</span></span></div>
+ <p class="mono" style="color:var(--text);font-weight:700;margin-bottom:2mm">Quick start</p>
+ <h1 class="title">Up and running in one evening</h1>
+ <div class="steps">
+  <div class="step"><span class="n">01</span><div><h2>Create your family</h2><p>One passkey account, add each child.</p></div></div>
+  <div class="step mid"><span class="n">02</span><div><h2>Connect the school</h2><p>Settings → School links — paste each child's homework &amp; timetable link. Checked every eight hours.</p></div></div>
+  <div class="step"><span class="n">03</span><div><h2>Open Today</h2><p>Homework, timetable and chat are already there.</p></div></div>
+ </div>
+ <div class="bottom">
+  <div class="qr-box">QR →<br>fametc.com</div>
+  <div class="bottom-text">Invite code<br><b>INVITE-CODE-HERE</b><br>support@fametc.com</div>
+ </div>
+</section>
+
+</body>
+</html>
