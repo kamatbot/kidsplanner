@@ -5,7 +5,11 @@ import Foundation
 /// complication never needs a credential or a network request.
 struct FamETCWatchComplicationSnapshot: Codable, Equatable {
     static let appGroup = "group.com.fametc.watch"
-    static let storageKey = "fametc.watch.complication.snapshot"
+    static var storageKey: String { storageKey(for: Bundle.main.bundleIdentifier) }
+    static func storageKey(for bundleID: String?) -> String {
+        bundleID == "com.fametc.app.watch" || bundleID == "com.fametc.app.watch.widget"
+            ? "fametc.parentwatch.complication.snapshot" : "fametc.watch.complication.snapshot"
+    }
 
     let urgentCount: Int
     let homeworkCount: Int

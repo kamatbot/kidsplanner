@@ -60,3 +60,13 @@ final class WatchComplicationTests: XCTestCase {
         XCTAssertEqual(WatchComplicationSnapshotStore.load(defaults: defaults), snapshot)
     }
 }
+
+extension WatchComplicationTests {
+    func testCompanionAndStandaloneComplicationsHaveSeparateKeys() {
+        let key = FamETCWatchComplicationSnapshot.storageKey(for:)
+        XCTAssertEqual(key("com.fametc.watch"), "fametc.watch.complication.snapshot")
+        XCTAssertEqual(key("com.fametc.watch"), key("com.fametc.watch.widget"))
+        XCTAssertEqual(key("com.fametc.app.watch"), key("com.fametc.app.watch.widget"))
+        XCTAssertNotEqual(key("com.fametc.watch"), key("com.fametc.app.watch"))
+    }
+}

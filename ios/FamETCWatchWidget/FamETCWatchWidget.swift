@@ -74,7 +74,7 @@ private struct FamETCComplicationView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(entry.snapshot.isFocusActive(at: entry.date) ? "Focus" : "My next")
                         .font(.caption2)
-                    Text("\(entry.snapshot.urgentCount) urgent · \(entry.snapshot.homeworkCount) hw · \(entry.snapshot.shoppingCount) groceries")
+                    Text("\(entry.snapshot.urgentCount) tasks · \(entry.snapshot.homeworkCount) homework")
                         .font(.caption)
                         .lineLimit(2)
                 }
@@ -86,7 +86,7 @@ private struct FamETCComplicationView: View {
         if entry.snapshot.isFocusActive(at: entry.date) {
             return "Focus · \(entry.snapshot.urgentCount) urgent · \(entry.snapshot.homeworkCount) homework"
         }
-        "My next: \(entry.snapshot.urgentCount) urgent · \(entry.snapshot.homeworkCount) homework · \(entry.snapshot.shoppingCount) groceries"
+        return "Next: \(entry.snapshot.urgentCount) tasks · \(entry.snapshot.homeworkCount) homework"
     }
 }
 
