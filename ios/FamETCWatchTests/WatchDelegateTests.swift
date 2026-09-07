@@ -3,6 +3,11 @@ import WatchKit
 @testable import FamETCWatch
 
 final class WatchDelegateTests: XCTestCase {
+    func testBackgroundNotificationsUseSupportedPlistKey() {
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String], ["remote-notification"])
+        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "WKBackgroundModes"))
+    }
+
     func testSignedWatchCanSaveReplaceAndClearItsDeviceCredential() throws {
         let keychain = KeychainWatchCredentialStore(service: "com.fametc.watch.tests", account: UUID().uuidString)
         defer { try? keychain.clear() }
