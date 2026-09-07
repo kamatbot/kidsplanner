@@ -171,14 +171,16 @@ test("watch notifications use watch tokens and the watch APNs topic", async () =
   const freshNotifications = require("../lib/fam-notifications");
   freshNotifications.registerToken("watch-user", "watch-token", { kind: "watch", topic: "com.fametc.watch" });
   freshNotifications.registerToken("watch-user", "ios-token");
+  freshNotifications.registerToken("watch-user", "parent-watch-token", { kind: "watch", topic: "com.fametc.app.watch" });
   try {
     const result = await freshNotifications.notifyWatchAction({
       recipientUserIds: ["watch-user"],
       familyId: "family-watch",
       action: { id: "a_watch", title: "Pack homework", status: "open", dueDate: new Date().toISOString().slice(0, 10) },
     });
-    assert.deepEqual(result, { sent: 1, pruned: 0 });
-    assert.equal(sent.length, 1);
+    assert.deepEqual(result, { sent: 2, pruned: 0 });
+    assert.equal(sent.length, 2);
+    assert.equal(sent[1].topic, "com.fametc.app.watch");
     assert.equal(sent[0].deviceToken, "watch-token");
     assert.equal(sent[0].topic, "com.fametc.watch");
     assert.equal(sent[0].payload.famType, "watch_sync");
@@ -243,4 +245,11 @@ test("sendWebToUser: prunes a subscription the sender reports as gone (404/410)"
     delete process.env.VAPID_SUBJECT;
     delete require.cache[require.resolve("../lib/fam-notifications")];
   }
+});
+
+ test("watch APNs re-registration moves delivery to the current wearer", () => {
+  notifications.registerToken("former-wearer", "reassigned-watch", { kind: "watch" });
+  notifications.registerToken("current-wearer", "reassigned-watch", { kind: "watch", topic: "com.fametc.app.watch" });
+  assert.equal(notifications.tokenEntriesForUser("former-wearer", "watch").length, 0);
+  assert.equal(notifications.tokenEntriesForUser("current-wearer", "watch")[0].topic, "com.fametc.app.watch");
 });

@@ -67,8 +67,8 @@ function buildRoutes() {
   return routes;
 }
 
-function call(handlers, { user, body, params } = {}) {
-  const req = { user, body: body || {}, params: params || {} };
+function call(handlers, { user, body, params, watchAuth: device } = {}) {
+  const req = { user, body: body || {}, params: params || {}, watchAuth: device };
   const res = response();
   let index = 0;
   const next = () => {
@@ -199,4 +199,24 @@ test("watch push routes require a paired bearer and scope token registration to 
   assert.equal(res.statusCode, 200);
   assert.equal(db.load().deviceTokens[parent.id][0].kind, "watch");
   assert.equal(db.load().deviceTokens[parent.id][0].topic, "com.fametc.watch");
+  assert.equal(db.load().deviceTokens[parent.id][0].watchDeviceId, claimed.device.id);
+  assert.equal(notifications.tokenEntriesForUser(parent.id, "watch").length, 1);
+  watchAuth.revokeDevice(fam.id, claimed.device.id);
+  assert.equal(notifications.tokenEntriesForUser(parent.id, "watch").length, 0);
+});
+
+test("watch disconnect revokes only its authenticated device and rejects session cookies", () => {
+  const { parent, fam } = makeFamily("self-disconnect");
+  const connect = () => {
+    const pair = watchAuth.createPairing({familyId:fam.id,targetUserId:parent.id,targetType:"parent",createdBy:parent.id});
+    return watchAuth.claimPairing(pair.pairing.code, "Test watch");
+  };
+  const first = connect(), second = connect(), routes = buildRoutes();
+  const handlers = routes["POST /api/watch/disconnect"];
+  assert.equal(call(handlers, {user:parent}).statusCode,403);
+  const device = watchAuth.resolveToken(first.token);
+  assert.equal(call(routes["POST /api/watch/push/register"], {user:parent,watchAuth:device,body:{token:"a".repeat(64),topic:"com.other.app"}}).statusCode,400);
+  assert.equal(call(handlers, {user:parent,watchAuth:device,body:{id:second.device.id}}).statusCode,200);
+  assert.equal(watchAuth.resolveToken(first.token),null);
+  assert.ok(watchAuth.resolveToken(second.token));
 });
