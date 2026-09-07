@@ -23,12 +23,20 @@ final class WatchPushRegistrationService {
         self.credentialStore = credentialStore
     }
 
+    func registerIfAuthorized() {
+        guard hasCredential() else { return }
+        center.getNotificationSettings { [weak self] settings in
+            guard [.authorized, .provisional].contains(settings.authorizationStatus) else { return }
+            self?.registerWithAPNs()
+        }
+    }
+
     func requestAuthorizationAndRegister() {
         guard hasCredential() else { return }
         center.getNotificationSettings { [weak self] settings in
             guard let self else { return }
             switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
+            case .authorized, .provisional:
                 self.registerWithAPNs()
             case .notDetermined:
                 self.center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
@@ -80,22 +88,56 @@ final class WatchPushRegistrationService {
 }
 
 final class FamETCWatchExtensionDelegate: NSObject, WKApplicationDelegate {
+    func didReceiveRemoteNotification(_ userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (WKBackgroundFetchResult) -> Void) {
+        Task { @MainActor in
+            await WatchStore.shared.refresh(replayMutations: false)
+            completionHandler(WatchStore.shared.connection == .connected ? .newData : .failed)
+        }
+    }
+
+    func applicationDidEnterBackground() {
+        scheduleRefresh()
+    }
+
+    private func scheduleRefresh() {
+        WKApplication.shared().scheduleBackgroundRefresh(withPreferredDate: Date().addingTimeInterval(30 * 60), userInfo: nil) { _ in }
+    }
+
+    func handle(_ backgroundTasks: Set<WKRefreshBackgroundTask>) {
+        for task in backgroundTasks {
+            guard task is WKApplicationRefreshBackgroundTask else {
+                task.setTaskCompletedWithSnapshot(false)
+                continue
+            }
+            Task { @MainActor in
+                await WatchStore.shared.refresh(replayMutations: false)
+                scheduleRefresh()
+                task.setTaskCompletedWithSnapshot(false)
+            }
+        }
+    }
+
     func applicationDidFinishLaunching() {
         UNUserNotificationCenter.current().delegate = self
     }
 
-    func application(_ application: WKExtension,
-                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    func didRegisterForRemoteNotifications(withDeviceToken deviceToken: Data) {
         WatchPushRegistrationService.shared.didRegister(deviceToken: deviceToken)
     }
 
-    func application(_ application: WKExtension,
-                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    func didFailToRegisterForRemoteNotificationsWithError(_ error: Error) {
         WatchPushRegistrationService.shared.didFailToRegister(error: error)
     }
 }
 
 extension FamETCWatchExtensionDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        Task { @MainActor in
+            await WatchStore.shared.refresh()
+            completionHandler()
+        }
+    }
+
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
