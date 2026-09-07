@@ -1,6 +1,13 @@
 import SwiftUI
 
 enum WatchPairingInput {
+    static var initialCode: String {
+        #if DEBUG
+        normalize(ProcessInfo.processInfo.environment["FAM_WATCH_CODE"] ?? "")
+        #else
+        ""
+        #endif
+    }
     static let maxLength = 8
     static let alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
     static func normalize(_ value: String) -> String {
@@ -15,8 +22,9 @@ struct WatchPairingView: View {
     let client: WatchPairingClient
     let credentialStore: WatchCredentialStore
     let onPaired: () -> Void
+    @EnvironmentObject private var store: WatchStore
 
-    @State private var code = ""
+    @State private var code = WatchPairingInput.initialCode
     @State private var isPairing = false
     @State private var errorMessage: String?
 
@@ -34,7 +42,18 @@ struct WatchPairingView: View {
                 Image(systemName: "applewatch")
                     .font(.title2)
                     .foregroundStyle(.tint)
-                Text("Connect Fam ETC")
+                if Bundle.main.object(forInfoDictionaryKey: "WKCompanionAppBundleIdentifier") != nil {
+                    Button {
+                        Task { await connectParent() }
+                    } label: {
+                        Label("Connect with iPhone", systemImage: "iphone.and.arrow.forward")
+                    }
+                    .disabled(isPairing)
+                    Text("For your own watch. Keep Fam ETC open on your iPhone.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Divider()
+                }
+                Text("Use a FamETC code")
                     .font(.headline)
                 Text("Ask a parent to create a watch code in Fam ETC, then enter it here.")
                     .font(.caption)
@@ -79,10 +98,25 @@ struct WatchPairingView: View {
         defer { isPairing = false }
         do {
             let credential = try await client.claimPairing(code: code, deviceLabel: "Fam ETC watch")
+            store.resetLocalState()
             try credentialStore.save(credential)
             onPaired()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
+    @MainActor
+    private func connectParent() async {
+        guard !isPairing else { return }
+        isPairing = true
+        errorMessage = nil
+        defer { isPairing = false }
+        do {
+            let credential = try await WatchCompanion.shared.connect()
+            store.resetLocalState()
+            try credentialStore.save(credential)
+            onPaired()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
 }
