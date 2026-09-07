@@ -10,6 +10,7 @@ struct WatchSnapshot: Codable, Equatable {
     var homework: [WatchHomework]
     var shopping: [WatchShoppingItem]
     var updatedAt: Date?
+    var context: WatchContext? = nil
 
     init(actions: [WatchAction] = [],
          homework: [WatchHomework] = [],
@@ -27,10 +28,11 @@ struct WatchSnapshot: Codable, Equatable {
         homework = try container.decodeIfPresent([WatchHomework].self, forKey: .homework) ?? []
         shopping = try container.decodeIfPresent([WatchShoppingItem].self, forKey: .shopping) ?? []
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+        context = try container.decodeIfPresent(WatchContext.self, forKey: .context)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case actions, homework, shopping, updatedAt
+        case actions, homework, shopping, updatedAt, context
     }
 
     /// Open actions are ordered by the server's due date fields. The string
@@ -393,4 +395,33 @@ struct WatchPersistedState: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, snapshot, outbox, focusSession
     }
+}
+
+struct WatchProfile: Codable, Equatable {
+    var role: String
+    var userId: String
+    var familyId: String
+    var kidId: String?
+    var name: String
+    var color: String?
+    var photo: String?
+}
+
+struct WatchContext: Codable, Equatable {
+    var profile: WatchProfile
+    var events: [WatchEvent]
+}
+
+struct WatchEvent: Codable, Equatable, Identifiable {
+    var id: String
+    var title: String
+    var date: String
+    var start: String?
+    var time: String?
+    var end: String?
+    var endTime: String?
+    var allDay: Bool
+    var kidId: String?
+    var location: String?
+    var isTimetable: Bool
 }
