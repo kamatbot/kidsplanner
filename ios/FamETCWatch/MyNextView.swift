@@ -1,209 +1,314 @@
 import SwiftUI
 import WatchKit
 
+private let watchAccent = Color(red: 185 / 255, green: 140 / 255, blue: 1)
+private let watchCoral = Color(red: 240 / 255, green: 112 / 255, blue: 79 / 255)
+
 struct MyNextView: View {
     @EnvironmentObject private var store: WatchStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var completedAction: String?
+    var onDisconnect: () -> Void = {}
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
+            TabView {
+                nowPage
+                    .tag(0)
+                dayPage
+                    .tag(1)
+                morePage
+                    .tag(2)
+            }
+            .tabViewStyle(.verticalPage)
+            .navigationTitle("Fam ETC")
+            .fontDesign(.rounded)
+            .tint(watchAccent)
+        }
+    }
 
-                    if store.connection == .disconnected || store.connection == .offline {
-                        connectionBanner
+    private var nowPage: some View {
+        ScrollView {
+            TimelineView(.periodic(from: Date(), by: 60)) { clock in
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        WatchIdentity(profile: store.snapshot.context?.profile)
+                        Text(store.snapshot.isParent ? "Family next" : greeting)
+                            .font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    if let focusSession = store.focusSession {
-                        WatchSection(title: "Focus", systemImage: "timer") {
-                            FocusSessionCard(session: focusSession)
+                    if let session = store.focusSession {
+                        FocusSessionCard(session: session)
+                    } else if let moment = store.snapshot.moments(at: clock.date).first {
+                        momentGlance(moment, at: clock.date)
+                    } else if store.connection == .refreshing {
+                        ProgressView("Finding your next thing…")
+                    } else {
+                        Image(systemName: "sun.max.fill")
+                            .font(.largeTitle)
+                            .foregroundStyle(watchCoral)
+                            .accessibilityHidden(true)
+                        Text(store.snapshot.updatedAt == nil ? "Your day is on its way" : "Room to breathe")
+                            .font(.title3.bold())
+                        Text(store.snapshot.updatedAt == nil ? "Refresh to load your schedule and work." : "Nothing needs your attention right now. Enjoy the pause.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    completionAcknowledgment
+                    if store.reminderStatus == "Turn on gentle reminders" || store.reminderStatus == "Enable reminders to get a nudge" {
+                        Button("Turn on reminders", systemImage: "bell.badge") {
+                            Task { await store.enableReminders() }
                         }
+                        .buttonStyle(.bordered)
                     }
-
-                    focusHomeworkSection
-                    schoolSection
-                    shoppingSection
+                    NavigationLink {
+                        WatchConnectionView(onDisconnect: onDisconnect)
+                    } label: {
+                        Label(connectionSummary, systemImage: store.connection == .offline || store.connection == .disconnected ? "wifi.slash" : "arrow.triangle.2.circlepath")
+                            .font(.footnote)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .buttonStyle(.bordered)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-            }
-            .navigationTitle("My next")
-            .refreshable {
-                await store.refresh()
+                .padding(.bottom, 20)
             }
         }
+        .refreshable { await store.refresh() }
+        .accessibilityLabel("Now")
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("My next")
-                .font(.headline)
-            Text(store.connection.label)
+    @ViewBuilder private var completionAcknowledgment: some View {
+        if let completedAction {
+            Label("Saved on watch: \(completedAction)", systemImage: "checkmark.circle.fill")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Connection")
-                .accessibilityValue(store.connection.label)
+                .foregroundStyle(watchAccent)
+                .fixedSize(horizontal: false, vertical: true)
+                .transition(.opacity)
+                .task(id: completedAction) {
+                    do { try await Task.sleep(for: .seconds(4)) } catch { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { self.completedAction = nil }
+                }
         }
     }
 
-    private var connectionBanner: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: store.connection == .disconnected ? "wifi.slash" : "arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
+    private func completeAction(_ action: WatchAction) async {
+        await store.completeAction(action)
+        guard store.snapshot.actions.first(where: { $0.id == action.id })?.isDone == true else { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { completedAction = action.title }
+        WKInterfaceDevice.current().play(.success)
+    }
+
+    private var greeting: String {
+        guard let name = store.snapshot.context?.profile.name.split(separator: " ").first else { return "Your next thing" }
+        return "Hey, \(name)"
+    }
+
+    private var connectionSummary: String {
+        if store.pendingMutationCount > 0 { return "\(store.pendingMutationCount) changes waiting to sync" }
+        if store.lastError != nil { return "Sync needs attention" }
+        return store.connection.label
+    }
+
+    @ViewBuilder private func momentGlance(_ moment: WatchMoment, at now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: moment.symbol)
+                .font(.largeTitle)
+                .foregroundStyle(watchCoral)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(store.connection == .disconnected ? "Not connected" : "Working offline")
-                    .font(.subheadline.weight(.semibold))
-                Text(store.lastError ?? "Your saved work stays available on this watch.")
-                    .font(.footnote)
+            Text(moment.title)
+                .font(.title3.bold())
+                .fixedSize(horizontal: false, vertical: true)
+            Text(moment.caption(at: now))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(watchAccent)
+            if !moment.detail.isEmpty {
+                Text(moment.detail)
+                    .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            switch moment {
+            case .homework(let item):
+                NavigationLink("Open assignment") { HomeworkDetailView(item: item) }
+                    .buttonStyle(.borderedProminent)
+            case .action(let action):
+                Button("Mark done", systemImage: "checkmark") {
+                    Task { await completeAction(action) }
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Mark \(action.title) done")
+            case .event(let event):
+                NavigationLink("See details") { WatchEventDetail(event: event) }
+                    .buttonStyle(.borderedProminent)
+            }
         }
-        .padding(9)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(store.connection == .disconnected ? "Not connected" : "Working offline")
-        .accessibilityValue(store.lastError ?? "Saved changes stay available on this watch.")
     }
 
-    private var focusHomeworkSection: some View {
-        WatchSection(title: "Focus next", systemImage: "arrow.right.circle.fill") {
-            if let item = store.focusHomework {
+    private var dayPage: some View {
+        List {
+            Text("Your day").font(.title3.bold())
+            TimelineView(.periodic(from: Date(), by: 60)) { clock in
+                let events = store.snapshot.dayEvents(at: clock.date)
+                if events.isEmpty {
+                    EmptyWatchRow(text: "No calendar events today. Your work is in More.")
+                } else {
+                    ForEach(events) { event in
+                        NavigationLink { WatchEventDetail(event: event) } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(event.allDay ? "All day" : event.startsAt?.formatted(date: .omitted, time: .shortened) ?? "Time unavailable")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(watchAccent)
+                                Text(event.title).fixedSize(horizontal: false, vertical: true)
+                                if WatchMoment.event(event).isHappening(at: clock.date) {
+                                    Text("Happening now").font(.caption).foregroundStyle(watchCoral)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityLabel("Day")
+    }
+
+    private var morePage: some View {
+        List {
+            Text("More").font(.title3.bold())
+            NavigationLink {
+                List {
+                    if store.openHomework.isEmpty { EmptyWatchRow(text: "All caught up. Nice work!") }
+                    ForEach(store.openHomework) { item in
+                        NavigationLink { HomeworkDetailView(item: item) } label: { HomeworkRow(item: item) }
+                    }
+                }.navigationTitle("School work")
+            } label: { Label("School work · \(store.openHomework.count)", systemImage: "book.closed") }
+            NavigationLink {
+                List {
+                    completionAcknowledgment
+                    if importantActions.isEmpty { EmptyWatchRow(text: "Nothing waiting here") }
+                    ForEach(importantActions) { action in
+                        ActionRow(action: action) { Task { await completeAction(action) } }
+                    }
+                }.navigationTitle("To do")
+            } label: { Label("To do · \(importantActions.count)", systemImage: "checklist") }
+            if store.snapshot.isParent {
                 NavigationLink {
-                    HomeworkDetailView(item: item)
-                } label: {
-                    HomeworkHero(item: item)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Focus next: \(item.title)")
-                .accessibilityValue(homeworkAccessibilityValue(item))
-                .accessibilityHint("Opens the assignment and its next step.")
-            } else if store.connection == .refreshing && store.snapshot.updatedAt == nil {
-                EmptyWatchRow(text: "Checking your work…")
-            } else {
-                EmptyWatchRow(text: "Homework is caught up")
+                    List {
+                        if store.openShopping.isEmpty { EmptyWatchRow(text: "Shopping is caught up") }
+                        ForEach(store.openShopping) { item in
+                            ShoppingRow(item: item) { Task { await store.toggleShopping(item) } }
+                        }
+                    }.navigationTitle("Shopping")
+                } label: { Label("Shopping · \(store.openShopping.count)", systemImage: "cart") }
+            }
+            NavigationLink { WatchConnectionView(onDisconnect: onDisconnect) } label: {
+                Label("Settings & sync", systemImage: "gearshape")
             }
         }
-    }
-
-    private var schoolSection: some View {
-        let actions = importantActions
-        let remainingHomework = Array(store.openHomework.dropFirst())
-
-        return WatchSection(title: "School & important", systemImage: "book.closed.fill") {
-            if actions.isEmpty && remainingHomework.isEmpty {
-                EmptyWatchRow(text: "Nothing else needs your attention")
-            } else {
-                if !actions.isEmpty {
-                    ForEach(actions) { action in
-                        ActionRow(action: action) {
-                            Task { await store.completeAction(action) }
-                        }
-                    }
-                }
-                if !remainingHomework.isEmpty {
-                    Text("More school work")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, actions.isEmpty ? 0 : 5)
-                    ForEach(remainingHomework) { item in
-                        NavigationLink {
-                            HomeworkDetailView(item: item)
-                        } label: {
-                            HomeworkRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(item.title)
-                        .accessibilityValue(homeworkAccessibilityValue(item))
-                        .accessibilityHint("Opens the assignment details.")
-                    }
-                }
-            }
-        }
+        .accessibilityLabel("More")
     }
 
     private var importantActions: [WatchAction] {
         store.urgentActions.filter { action in
-            guard action.sourceType == "homework", let sourceID = action.sourceId else { return true }
-            // A homework-derived action is already represented by the hero or
-            // the secondary homework list. Keep it out of the important queue.
-            return !store.openHomework.contains { $0.id == sourceID }
-        }
-    }
-
-    private var shoppingSection: some View {
-        WatchSection(title: "Shopping", systemImage: "cart.fill") {
-            if store.openShopping.isEmpty {
-                EmptyWatchRow(text: "Shopping is caught up")
-            } else {
-                ForEach(store.openShopping) { item in
-                    ShoppingRow(item: item) {
-                        Task { await store.toggleShopping(item) }
-                    }
-                }
-            }
+            !(action.sourceType == "homework" && store.openHomework.contains { $0.id == action.sourceId })
         }
     }
 }
 
-private struct HomeworkHero: View {
-    let item: WatchHomework
+private struct WatchIdentity: View {
+    let profile: WatchProfile?
+
+    private var color: Color {
+        guard let value = profile?.color, value.count == 7, value.hasPrefix("#"),
+              let hex = UInt32(value.dropFirst(), radix: 16) else { return watchAccent }
+        return Color(red: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255, blue: Double(hex & 255) / 255)
+    }
+
+    private var photo: UIImage? {
+        guard let value = profile?.photo, value.hasPrefix("data:image/jpeg;base64,"), value.count <= 200_000,
+              let data = Data(base64Encoded: String(value.dropFirst("data:image/jpeg;base64,".count))) else { return nil }
+        return UIImage(data: data)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(item.title)
-                .font(.headline)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(homeworkContext(item))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if item.checklist.isEmpty {
-                Text("No steps yet. Start with 20 minutes on the assignment.")
-                    .font(.body)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("\(item.completedChecklistCount) of \(item.checklist.count) steps complete")
-                    .font(.subheadline.weight(.semibold))
-                    .accessibilityLabel("Checklist progress")
-                    .accessibilityValue("\(item.completedChecklistCount) of \(item.checklist.count) steps complete")
-
-                if let step = item.firstIncompleteChecklistItem {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Next step")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(step.text)
-                            .font(.body)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                } else {
-                    Text("All listed steps are done. Choose when to finish the assignment.")
-                        .font(.body)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        Group {
+            if let photo { Image(uiImage: photo).resizable().scaledToFill() }
+            else {
+                Text(String(profile?.name.prefix(1) ?? "F").uppercased())
+                    .font(.headline.bold())
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.6))
             }
-
-            HStack(spacing: 5) {
-                Text("Open assignment")
-                    .font(.subheadline.weight(.semibold))
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .accessibilityHidden(true)
-            }
-            .foregroundStyle(.tint)
         }
-        .padding(11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .frame(width: 34, height: 34)
+        .background(color)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(color, lineWidth: 2))
+        .accessibilityHidden(true)
+    }
+}
+
+private struct WatchEventDetail: View {
+    let event: WatchEvent
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Image(systemName: event.isTimetable ? "backpack.fill" : "calendar")
+                    .font(.largeTitle).foregroundStyle(watchCoral).accessibilityHidden(true)
+                Text(event.title).font(.title3.bold())
+                if let start = event.startsAt {
+                    Text(start.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened))
+                    if event.allDay { Text("All day").foregroundStyle(.secondary) }
+                    else { Text("Until \(event.endsAt.formatted(date: .omitted, time: .shortened))").foregroundStyle(.secondary) }
+                }
+                if let location = event.location, !location.isEmpty { Label(location, systemImage: "mappin") }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+        }.navigationTitle("On your calendar")
+    }
+}
+
+private struct WatchConnectionView: View {
+    @EnvironmentObject private var store: WatchStore
+    @State private var confirmDisconnect = false
+    let onDisconnect: () -> Void
+
+    var body: some View {
+        List {
+            Section("Sync") {
+                Text(store.connection.label)
+                if let error = store.lastError { Text(error).font(.footnote).foregroundStyle(.secondary) }
+                if store.pendingMutationCount > 0 {
+                    Text("\(store.pendingMutationCount) saved changes are waiting to sync. Refresh when connected.")
+                        .font(.footnote)
+                }
+                if let updated = store.snapshot.updatedAt {
+                    Text("Last updated \(updated.formatted(date: .abbreviated, time: .shortened))").font(.footnote)
+                }
+                Button("Refresh now", systemImage: "arrow.clockwise") { Task { await store.refresh() } }
+                    .disabled(store.connection == .refreshing)
+            }
+            Section("Reminders") {
+                Text(store.reminderStatus).font(.footnote)
+                Button("Enable reminders", systemImage: "bell.badge") { Task { await store.enableReminders() } }
+            }
+            Section {
+                Button("Disconnect watch", role: .destructive) { confirmDisconnect = true }
+            }
+        }
+        .navigationTitle("Settings")
+        .confirmationDialog("Disconnect this watch?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+            Button("Disconnect", role: .destructive, action: onDisconnect)
+        } message: {
+            Text(store.pendingMutationCount > 0
+                 ? "You have \(store.pendingMutationCount) unsynced changes. Disconnecting removes saved data and these changes from this watch."
+                 : "Saved data will be removed from this watch. You can connect again from setup.")
+        }
     }
 }
 
@@ -272,7 +377,25 @@ private struct HomeworkDetailView: View {
                     }
                 }
 
-                if isFocused {
+                if !currentItem.checklist.isEmpty {
+                    ForEach(currentItem.checklist.indices, id: \.self) { index in
+                        let step = currentItem.checklist[index]
+                        Button {
+                            Task { await store.markHomeworkStepDone(currentItem, index: index) }
+                        } label: {
+                            Label(step.text, systemImage: step.done ? "checkmark.circle.fill" : "circle")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(minHeight: 44, alignment: .leading)
+                        }
+                        .disabled(step.done || currentItem.isDone)
+                        .accessibilityLabel("\(step.text), \(step.done ? "complete" : "mark step done")")
+                    }
+                }
+
+                if currentItem.isDone {
+                    Label("Assignment complete", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(watchAccent)
+                } else if isFocused {
                     Text("Focus is in progress")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.tint)
@@ -305,6 +428,7 @@ private struct HomeworkDetailView: View {
                 }
                 .buttonStyle(.bordered)
                 .frame(maxWidth: .infinity)
+                .disabled(currentItem.isDone)
                 .accessibilityLabel("Finish assignment")
                 .accessibilityHint("Marks this assignment done. It will not finish automatically.")
             }
@@ -317,6 +441,8 @@ private struct HomeworkDetailView: View {
 
 private struct FocusSessionCard: View {
     @EnvironmentObject private var store: WatchStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var celebration = false
     let session: WatchFocusSession
 
     private var currentStep: WatchChecklistItem? {
@@ -352,7 +478,11 @@ private struct FocusSessionCard: View {
                 }
 
                 if complete {
-                    Text("Nice work — pick up here when you’re ready.")
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.title2).foregroundStyle(watchCoral)
+                        .symbolEffect(.bounce, value: celebration)
+                        .accessibilityHidden(true)
+                    Text("Nice focus! Ready for the next step?")
                         .font(.subheadline.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
@@ -363,7 +493,7 @@ private struct FocusSessionCard: View {
                         .accessibilityValue(timerAccessibilityValue(session, at: context.date))
                 }
 
-                if session.checklistIndex != nil {
+                if currentStep != nil {
                     Button("Step done") {
                         Task { await store.markSelectedStepDone() }
                     }
@@ -373,6 +503,12 @@ private struct FocusSessionCard: View {
                     .accessibilityHint(currentStep?.done == true ? "This step is already marked done." : "Marks the selected step done and saves it for sync.")
                 }
 
+                if let homework = store.snapshot.homework.first(where: { $0.id == session.homeworkID }) {
+                    Button("Finish assignment") { Task { await store.finishAssignment(homework) } }
+                        .buttonStyle(.bordered)
+                        .accessibilityHint("Marks the assignment done only when you choose.")
+                }
+
                 Button("End focus") {
                     store.endFocus()
                 }
@@ -380,9 +516,7 @@ private struct FocusSessionCard: View {
                 .accessibilityLabel("End focus")
                 .accessibilityHint("Ends this focus block without changing assignment status.")
             }
-            .padding(11)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .contain)
             .onAppear {
                 acknowledgeCompletionIfNeeded(at: context.date)
@@ -397,33 +531,8 @@ private struct FocusSessionCard: View {
 
     private func acknowledgeCompletionIfNeeded(at date: Date) {
         guard store.acknowledgeFocusCompletion(at: date) else { return }
+        if !reduceMotion { celebration.toggle() }
         WKInterfaceDevice.current().play(.success)
-    }
-}
-
-private struct WatchSection<Content: View>: View {
-    let title: String
-    let systemImage: String
-    let content: () -> Content
-
-    init(title: String,
-         systemImage: String,
-         @ViewBuilder content: @escaping () -> Content) {
-        self.title = title
-        self.systemImage = systemImage
-        self.content = content
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-            VStack(spacing: 5) {
-                content()
-            }
-        }
-        .accessibilityElement(children: .contain)
     }
 }
 
@@ -449,7 +558,7 @@ private struct ActionRow: View {
         Button(action: complete) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "circle")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(watchAccent)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(action.title)
@@ -464,6 +573,7 @@ private struct ActionRow: View {
                 }
                 Spacer(minLength: 0)
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -479,7 +589,7 @@ private struct HomeworkRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "book.closed")
-                .foregroundStyle(.blue)
+                .foregroundStyle(watchAccent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
@@ -504,7 +614,7 @@ private struct ShoppingRow: View {
         Button(action: toggle) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "circle")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(watchAccent)
                     .accessibilityHidden(true)
                 Text(item.text)
                     .font(.body.weight(.medium))
@@ -512,6 +622,7 @@ private struct ShoppingRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -529,19 +640,6 @@ private func homeworkContext(_ item: WatchHomework) -> String {
         values.append(due)
     }
     return values.joined(separator: " · ")
-}
-
-private func homeworkAccessibilityValue(_ item: WatchHomework) -> String {
-    var values = [homeworkContext(item)]
-    if item.checklist.isEmpty {
-        values.append("No steps listed")
-    } else if let step = item.firstIncompleteChecklistItem {
-        values.append("\(item.completedChecklistCount) of \(item.checklist.count) steps complete")
-        values.append("Next step: \(step.text)")
-    } else {
-        values.append("All \(item.checklist.count) steps complete")
-    }
-    return values.filter { !$0.isEmpty }.joined(separator: ". ")
 }
 
 private func timerAccessibilityValue(_ session: WatchFocusSession, at date: Date) -> String {
