@@ -273,26 +273,16 @@ private struct ActivityCard: View {
         let variant = Daily.dayOfYear % 3
         switch variant {
         case 0:
-            // Pick the sentence that uses <word> correctly.
-            let correct = word.example
-            let distractors = Daily.words
-                .filter { $0.word != word.word }
-                .shuffled()
-                .prefix(2)
-                .map { correctSentence(for: $0.word, matching: word.word) }
-            var options = [correct] + distractors
-            options.shuffle()
-            let idx = options.firstIndex(of: correct) ?? 0
-            return DailyTask(
-                prompt: "Pick the sentence that uses **\(word.word)** correctly:",
-                options: options,
-                answerIndex: idx
-            )
+            let options = ([word.word] + Daily.words
+                .filter { $0.word != word.word && $0.pos == word.pos }
+                .shuffled().prefix(3).map { $0.word }).shuffled()
+            return DailyTask(prompt: "Which word means: \(word.def)", options: options,
+                             answerIndex: options.firstIndex(of: word.word) ?? 0)
         case 1:
             // Fill in the blank.
             let blanked = blank(word.example, word: word.word)
             let distractorWords = Daily.words
-                .filter { $0.word != word.word }
+                .filter { $0.word != word.word && $0.pos == word.pos }
                 .shuffled()
                 .prefix(3)
                 .map { $0.word }
@@ -308,7 +298,7 @@ private struct ActivityCard: View {
             // Which definition matches <word>?
             let correctDef = word.def
             let distractorDefs = Daily.words
-                .filter { $0.word != word.word }
+                .filter { $0.word != word.word && $0.pos == word.pos }
                 .shuffled()
                 .prefix(3)
                 .map { $0.def }
@@ -321,13 +311,6 @@ private struct ActivityCard: View {
                 answerIndex: idx
             )
         }
-    }
-
-    /// Builds a distractor sentence by swapping another word's example to reference
-    /// this widget's target word incorrectly (kept simple: reuse the other word's
-    /// own example so it's clearly about a different word/context).
-    private func correctSentence(for otherWord: String, matching target: String) -> String {
-        Daily.words.first(where: { $0.word == otherWord })?.example ?? "The word \(target) was used in a sentence."
     }
 
     private func blank(_ sentence: String, word: String) -> String {

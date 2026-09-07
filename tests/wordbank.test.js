@@ -19,8 +19,9 @@ function makeFamilyWithKid(label) {
   return { parent, fam, kid };
 }
 
-test("sat-words: exports exactly 30 words with the expected shape", () => {
-  assert.equal(WORDS.length, 30);
+test("sat-words: exports a complete same-part-of-speech pool with the expected shape", () => {
+  assert.ok(WORDS.length >= 30);
+  for (const pos of new Set(WORDS.map(w => w.pos))) assert.ok(WORDS.filter(w => w.pos === pos).length >= 4, pos);
   for (const w of WORDS) {
     assert.equal(typeof w.word, "string");
     assert.equal(typeof w.pos, "string");
@@ -145,4 +146,41 @@ test("kid-scope: each kid has an independent word bank", () => {
   const { words: wordsForKid2 } = wordbank.listWords(kid2.id);
   assert.equal(wordsForKid1.length, 1);
   assert.equal(wordsForKid2.length, 0);
+});
+
+test('every quiz option matches the answer part of speech with four unique choices', () => {
+  const { kid } = makeFamilyWithKid('parts');
+  wordbank.placement(kid.id, { known: WORDS.map(w => w.word) });
+  const byWord = new Map(WORDS.map(w => [w.word, w]));
+  for (let i = 0; i < 12; i++) {
+    for (const q of wordbank.quiz(kid.id, { n: 20 }).questions) {
+      assert.equal(new Set(q.options).size, 4);
+      assert.equal(q.options[q.answerIndex], q.word);
+      for (const option of q.options) assert.equal(byWord.get(option).pos, byWord.get(q.word).pos);
+    }
+  }
+});
+
+test('web and iOS vocabulary exactly match the server list', () => {
+  const vm = require('node:vm');
+  const web = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
+  const literal = web.match(/const SAT_WORDS = (\[[\s\S]*?\n\]);/)[1];
+  assert.deepEqual(JSON.parse(JSON.stringify(vm.runInNewContext(literal))), WORDS);
+  const swift = fs.readFileSync(path.join(__dirname, '../ios/FamETC/Domain/DailyContent.swift'), 'utf8');
+  const rows = [...swift.matchAll(/\.init\(word: ("(?:[^"\\]|\\.)*"), pos: ("[^"]*"), def: ("(?:[^"\\]|\\.)*"), example: ("(?:[^"\\]|\\.)*")\)/g)].map(m => Object.fromEntries(['word','pos','def','example'].map((k,i) => [k,JSON.parse(m[i+1])])));
+  assert.deepEqual(rows, WORDS);
+});
+
+test('web daily activities use same-type options for every word and variant', () => {
+  const vm = require('node:vm');
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/sat.js'), 'utf8');
+  const fn = source.slice(source.indexOf('function renderSatActivity'), source.indexOf('function submitSatPlacement'));
+  for (const word of WORDS) for (let variant = 0; variant < 3; variant++) {
+    const container = { innerHTML: '' };
+    vm.runInNewContext(fn + ';renderSatActivity()', { currentSatWord: word, SAT_WORDS: WORDS, document: { getElementById: id => id === 'sat-activity' ? container : null, querySelector: () => null }, loadPathOddsQuestWidget() {}, dayOfYear: () => variant, esc: s => s });
+    const options = [...container.innerHTML.matchAll(/class="fam-sat-opt"[^>]*>(.*?)<\/button>/g)].map(m => m[1]);
+    assert.equal(new Set(options).size, 4);
+    const field = variant === 2 ? 'def' : 'word';
+    for (const option of options) assert.equal(WORDS.find(w => w[field] === option).pos, word.pos);
+  }
 });

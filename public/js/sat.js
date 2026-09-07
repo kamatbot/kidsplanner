@@ -36,18 +36,16 @@ function renderSatActivity() {
   // Rotate today's activity by day-of-year % 3.
   const task = dayOfYear(new Date()) % 3;
   if (task === 0) {
-    const wrongWord = SAT_WORDS[(SAT_WORDS.indexOf(w) + 5) % SAT_WORDS.length];
-    const correctSentence = w.example;
-    const wrongSentence = wrongWord.example.replace(new RegExp(wrongWord.word, 'i'), w.word);
-    const options = Math.random() < 0.5 ? [correctSentence, wrongSentence] : [wrongSentence, correctSentence];
+    const others = SAT_WORDS.filter((s) => s.word !== w.word && s.pos === w.pos).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.word);
+    const options = [w.word, ...others].sort(() => Math.random() - 0.5);
     container.innerHTML = `
-      <div class="fam-sat-task-title">Which sentence uses "${esc(w.word)}" correctly?</div>
+      <div class="fam-sat-task-title">Which word means: ${esc(w.def)}</div>
       <div class="fam-sat-options">
-        ${options.map((s) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${s === correctSentence})">${esc(s)}</button>`).join('')}
+        ${options.map((s) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${s === w.word})">${esc(s)}</button>`).join('')}
       </div>
       <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
   } else if (task === 1) {
-    const others = SAT_WORDS.filter((s) => s.word !== w.word).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.word);
+    const others = SAT_WORDS.filter((s) => s.word !== w.word && s.pos === w.pos).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.word);
     const options = [w.word, ...others].sort(() => Math.random() - 0.5);
     const blanked = w.example.replace(new RegExp(w.word, 'i'), '_____');
     container.innerHTML = `
@@ -57,7 +55,7 @@ function renderSatActivity() {
       </div>
       <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
   } else {
-    const others = SAT_WORDS.filter((s) => s.word !== w.word).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.def);
+    const others = SAT_WORDS.filter((s) => s.word !== w.word && s.pos === w.pos).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.def);
     const options = [w.def, ...others].sort(() => Math.random() - 0.5);
     container.innerHTML = `
       <div class="fam-sat-task-title">Which is the definition of "${esc(w.word)}"?</div>

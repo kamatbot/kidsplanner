@@ -96,6 +96,11 @@ enum Daily {
         .init(word: "Placid", pos: "adjective", def: "Not easily upset or excited; calm and peaceful.", example: "The placid lake reflected the mountains perfectly on the windless morning."),
         .init(word: "Credible", pos: "adjective", def: "Able to be believed; convincing.", example: "Use credible sources like encyclopedias and textbooks for your research paper."),
         .init(word: "Wary", pos: "adjective", def: "Feeling or showing caution about possible dangers or problems.", example: "Be wary of anyone who promises easy success without hard work."),
+        .init(word: "Analyze", pos: "verb", def: "Examine something carefully by studying its parts.", example: "We analyze the survey results to understand what students need."),
+        .init(word: "Anticipate", pos: "verb", def: "Expect something to happen and prepare for it.", example: "We anticipate heavy rain and pack our waterproof jackets."),
+        .init(word: "Integrity", pos: "noun", def: "The quality of being honest and following strong moral principles.", example: "Her integrity kept her from cheating even when nobody was watching."),
+        .init(word: "Paradox", pos: "noun", def: "A statement or situation that seems contradictory but may be true.", example: "It is a paradox that having more choices can make a decision harder."),
+        .init(word: "Consensus", pos: "noun", def: "A general agreement reached by a group.", example: "The class reached a consensus that the trip should be on Friday."),
     ]
 
     static let facts: [FunFact] = [
