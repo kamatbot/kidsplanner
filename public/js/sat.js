@@ -3,10 +3,25 @@ function satPlacementKey() {
 }
 
 /* ---------- SAT word widget: vocabulary warm-up + word bank + pop quiz ---------- */
-function renderSatActivity() {
-  const w = currentSatWord;
+let dailyVocabulary = null;
+let vocabularyRequestToken = 0;
+let vocabularyScope = '';
+let vocabularyAnswered = false;
+
+async function renderSatActivity() {
   const container = document.getElementById('sat-activity');
-  if (!w || !container) return;
+  if (!container) return;
+  const token = ++vocabularyRequestToken;
+  const scope = daily5DoneKey();
+  dailyVocabulary = null;
+  currentSatWord = null;
+  vocabularyAnswered = false;
+  vocabularyScope = scope;
+  ['sat-word', 'sat-pos', 'sat-def', 'sat-example'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = id === 'sat-word' ? 'Loading today’s word…' : '';
+  });
+  container.innerHTML = '<p role="status">Loading today’s vocabulary challenge…</p>';
 
   // PathOdds owns the real SAT Daily Quest. This local word activity is a
   // lightweight warm-up only and deliberately does not complete the SAT Daily 5
@@ -33,36 +48,33 @@ function renderSatActivity() {
     placementEl.hidden = true;
   }
 
-  // Rotate today's activity by day-of-year % 3.
-  const task = dayOfYear(new Date()) % 3;
-  if (task === 0) {
-    const others = SAT_WORDS.filter((s) => s.word !== w.word && s.pos === w.pos).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.word);
-    const options = [w.word, ...others].sort(() => Math.random() - 0.5);
+  try {
+    const requestedDate = isoDate(new Date());
+    const data = await window.auth.getDailyVocabulary(requestedDate);
+    if (token !== vocabularyRequestToken || scope !== daily5DoneKey()) return;
+    if (!data || data.date !== requestedDate) throw new Error('Vocabulary edition unavailable');
+    const challenge = data && data.challenge;
+    if (!data.word || !Array.isArray(data.weekWords) || data.weekWords.length !== 7 || !challenge || !Array.isArray(challenge.options) || challenge.options.length !== 3 || !Number.isInteger(challenge.answerIndex) || challenge.answerIndex < 0 || challenge.answerIndex > 2 || challenge.options.some((option) => !option.text || !option.explanation)) throw new Error('Invalid vocabulary challenge');
+    dailyVocabulary = data;
+    currentSatWord = data.word;
+    const w = data.word;
+    [['sat-word', w.word], ['sat-pos', w.pos], ['sat-def', w.def], ['sat-example', w.example]].forEach(([id, value]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    });
     container.innerHTML = `
-      <div class="fam-sat-task-title">Which word means: ${esc(w.def)}</div>
+      <div class="fam-sat-task-title">Two truths and a lie</div>
+      <p>${esc(challenge.prompt)}</p>
       <div class="fam-sat-options">
-        ${options.map((s) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${s === w.word})">${esc(s)}</button>`).join('')}
+        ${challenge.options.map((option, index) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${index})">${esc(option.text)}</button>`).join('')}
       </div>
-      <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
-  } else if (task === 1) {
-    const others = SAT_WORDS.filter((s) => s.word !== w.word && s.pos === w.pos).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.word);
-    const options = [w.word, ...others].sort(() => Math.random() - 0.5);
-    const blanked = w.example.replace(new RegExp(w.word, 'i'), '_____');
-    container.innerHTML = `
-      <div class="fam-sat-task-title">Fill in the blank: ${esc(blanked)}</div>
-      <div class="fam-sat-options">
-        ${options.map((opt) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${opt === w.word})">${esc(opt)}</button>`).join('')}
-      </div>
-      <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
-  } else {
-    const others = SAT_WORDS.filter((s) => s.word !== w.word && s.pos === w.pos).sort(() => Math.random() - 0.5).slice(0, 3).map((s) => s.def);
-    const options = [w.def, ...others].sort(() => Math.random() - 0.5);
-    container.innerHTML = `
-      <div class="fam-sat-task-title">Which is the definition of "${esc(w.word)}"?</div>
-      <div class="fam-sat-options">
-        ${options.map((opt) => `<button type="button" class="fam-sat-opt" onclick="answerSatActivity(${opt === w.def})">${esc(opt)}</button>`).join('')}
-      </div>
-      <div class="fam-sat-feedback" id="sat-activity-feedback"></div>`;
+      <div class="fam-sat-feedback" id="sat-activity-feedback" aria-live="polite"></div>
+      <details><summary class="fam-sat-placement-summary">This week’s shared vocabulary</summary><dl>${data.weekWords.map((word) => `<dt>${esc(word.word)} (${esc(word.pos)})</dt><dd>${esc(word.def)}</dd>`).join('')}</dl></details>`;
+  } catch (error) {
+    if (token !== vocabularyRequestToken || scope !== daily5DoneKey()) return;
+    const word = document.getElementById('sat-word');
+    if (word) word.textContent = 'Vocabulary unavailable';
+    container.innerHTML = '<p role="status">Could not load today’s shared word. Please try again.</p><button type="button" class="btn-secondary" onclick="renderSatActivity()">Retry</button>';
   }
 }
 
@@ -76,18 +88,23 @@ function submitSatPlacement() {
   }
 }
 
-async function answerSatActivity(correct) {
+async function answerSatActivity(chosenIndex) {
+  if (!dailyVocabulary || vocabularyAnswered || vocabularyScope !== daily5DoneKey() || !Number.isInteger(chosenIndex) || chosenIndex < 0 || chosenIndex > 2) return;
+  vocabularyAnswered = true;
+  const { challenge, word } = dailyVocabulary;
+  const scope = vocabularyScope;
+  const correct = chosenIndex === challenge.answerIndex;
   const btns = document.querySelectorAll('#sat-activity .fam-sat-opt');
   btns.forEach((b) => { b.disabled = true; });
   const fb = document.getElementById('sat-activity-feedback');
   if (fb) {
-    fb.textContent = correct ? '✅ Warm-up complete!' : '❌ Not quite — keep it in your word bank.';
+    fb.innerHTML = `<p>${correct ? 'You found the misuse.' : 'Not quite. Here is how each sentence uses the word.'}</p>${challenge.options.map((option, index) => `<p><strong>${index + 1}. ${index === challenge.answerIndex ? 'Misuse' : 'Correct use'}:</strong> ${esc(option.explanation)}</p>`).join('')}`;
     fb.className = 'fam-sat-feedback ' + (correct ? 'correct' : 'wrong');
   }
   if (currentSatWord) {
     try {
-      const res = await window.auth.wordBankInteract(currentSatWord.word, correct);
-      if (res && res.entry) mergeWordBankEntry(res.entry);
+      const res = await window.auth.wordBankInteract(word.word, correct);
+      if (scope === daily5DoneKey() && res && res.entry) mergeWordBankEntry(res.entry);
     } catch (e) { /* best effort */ }
   }
 }

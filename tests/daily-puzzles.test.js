@@ -17,13 +17,13 @@ test("Wednesday serves one stable solvable Sudoku", () => {
   }
 });
 
-test("Saturday and Sunday serve deterministic crosswords containing exactly ten valid entries", () => {
+test("Saturday and Sunday serve deterministic crosswords containing exactly seven valid entries", () => {
   for (const date of ["2026-08-15", "2026-08-16"]) {
     const result = puzzles.getDailyPuzzle(date);
     assert.equal(result.type, "crossword");
     assert.match(result.instructions, /type the whole answer/i);
-    assert.equal(result.crossword.entries.length, 10);
-    assert.equal(new Set(result.crossword.entries.map((entry) => entry.answer)).size, 10);
+    assert.equal(result.crossword.entries.length, 7);
+    assert.equal(new Set(result.crossword.entries.map((entry) => entry.answer)).size, 7);
     for (const entry of result.crossword.entries) {
       const dr = entry.direction === "down" ? 1 : 0;
       const dc = entry.direction === "across" ? 1 : 0;
@@ -50,27 +50,11 @@ test("the weekend crossword uses the seven consecutive day-of-year SAT words", (
   assert.deepEqual(puzzles.weeklySatWords(new Date("2026-08-15T00:00:00.000Z")), expected.map((word) => [word, WORDS.find((item) => item.word.toUpperCase() === word).def]));
 });
 
-test("a buildable same-week news fixture supplies three masked, attributed entries on both weekend days", () => {
-  const items = [
-    { id: "health", headline: "Healing Coral", answer: "HEALING", publishedAt: "2026-08-10T12:00:00Z" },
-    { id: "tech", headline: "Robot Builders", answer: "ROBOT", publishedAt: "2026-08-11T12:00:00Z" },
-    { id: "nature", headline: "Ocean Tides", answer: "OCEAN", publishedAt: "2026-08-12T12:00:00Z" },
-    { id: "later", headline: "Outside Week", answer: "OUTSIDE", publishedAt: "2026-08-17T12:00:00Z" },
-  ].map((item) => ({ ...item, source: item.id === 'health' ? 'WHO' : 'BBC', url: `https://www.bbc.com/news/${item.id}` }));
-  const saturday = puzzles.getDailyPuzzle("2026-08-15", items);
-  const sunday = puzzles.getDailyPuzzle("2026-08-16", items);
-  assert.equal(sunday.crossword.entries.length, 10);
-  assert.notDeepEqual(sunday.crossword, saturday.crossword);
-  for (const answer of ["HEALING", "ROBOT", "OCEAN"]) {
-    const entry = saturday.crossword.entries.find((candidate) => candidate.answer === answer);
-    assert.ok(entry);
-    assert.match(entry.clue, /WHO|BBC/);
-    assert.equal(entry.source, answer === 'HEALING' ? 'WHO' : 'BBC');
-    assert.match(entry.url, /^https:\/\//);
-    assert.ok(entry.publishedAt);
-    assert.equal(entry.clue.includes(answer), false);
+test("weekend crossword ignores news content", () => {
+  for (const date of ["2026-08-15", "2026-08-16"]) {
+    const items = [{ headline: "Healing Coral", answer: "HEALING", source: "WHO", url: "https://www.who.int/news/story", publishedAt: "2026-08-12T12:00:00Z" }];
+    assert.deepEqual(puzzles.getDailyPuzzle(date, items), puzzles.getDailyPuzzle(date));
   }
-  assert.equal(saturday.crossword.entries.some((entry) => entry.answer === "OUTSIDE"), false);
 });
 
 test('Tuesday can include a story from the previous week within the rolling seven days', () => {
@@ -89,11 +73,11 @@ test("the current weekend crossword stays compact and identifies SAT word clues"
   const crossword = first.crossword;
 
   assert.deepEqual(second, first);
-  assert.equal(crossword.entries.length, 10);
+  assert.equal(crossword.entries.length, 7);
   assert.ok(Math.max(crossword.rows, crossword.cols) <= 14);
   assert.deepEqual(new Set(crossword.entries.map((entry) => entry.answer)), new Set([
-    "TRANSIENT", "CYCLOPS", "ELOQUENT", "COSMIC", "PLACID",
-    "CREDIBLE", "MEET", "WARY", "ENIGMATIC", "PERSEVERE",
+    "TRANSIENT", "ELOQUENT", "PLACID",
+    "CREDIBLE", "WARY", "ENIGMATIC", "PERSEVERE",
   ]));
   const occupied = new Set();
   crossword.solution.forEach((row, rowIndex) => [...row].forEach((cell, colIndex) => {
@@ -124,12 +108,12 @@ test("the current weekend crossword stays compact and identifies SAT word clues"
     }).join("");
     assert.equal(answer, entry.answer);
   }
-  assert.ok([...coverage.values()].filter((count) => count > 1).length >= crossword.entries.length + 1);
+  assert.ok([...coverage.values()].filter((count) => count > 1).length >= crossword.entries.length - 1);
 
   for (const [answer] of puzzles.weeklySatWords(new Date("2026-08-30T00:00:00Z"))) {
     const entry = crossword.entries.find((candidate) => candidate.answer === answer);
     assert.ok(entry);
-    assert.match(entry.clue, /This week's SAT word \(\d+ letters\):/);
+    assert.equal(entry.clue, WORDS.find((word) => word.word.toUpperCase() === answer).def);
     assert.equal(entry.clue.includes(answer), false);
   }
 });
@@ -139,7 +123,7 @@ test("invalid or unbuildable news candidates never displace the weekly SAT fallb
     { id: "bad", headline: "Qzxwv", answer: "QZXWV", publishedAt: "2026-08-12T12:00:00Z" },
     { id: "stop", headline: "This Week", answer: "THIS", publishedAt: "2026-08-12T12:00:00Z" },
   ]);
-  assert.equal(result.crossword.entries.length, 10);
+  assert.equal(result.crossword.entries.length, 7);
   assert.equal(result.crossword.entries.some((entry) => entry.answer === "QZXWV"), false);
   assert.equal(result.crossword.entries.filter((entry) => WORDS.some((word) => word.word.toUpperCase() === entry.answer)).length, 7);
 });
@@ -157,7 +141,7 @@ test('every day has a stable puzzle and fourteen Sudoku days have different vali
     assert.equal(first.available, true);
     assert.deepEqual(puzzles.getDailyPuzzle(date), first);
     if (first.type !== 'sudoku') {
-      assert.equal(first.crossword.entries.length, 10);
+      assert.equal(first.crossword.entries.length, [0, 6].includes(new Date(`${date}T00:00:00Z`).getUTCDay()) ? 7 : 10);
       continue;
     }
     const { puzzle, solution } = first.sudoku;
@@ -189,5 +173,20 @@ test('stale, future, unsafe and unattributed news use the honest static fallback
 test("all crossword themes build with ten words", () => {
   for (const theme of puzzles.CROSSWORD_SETS) {
     assert.equal(puzzles.buildCrossword(theme).entries.length, 10);
+  }
+});
+
+test("all weekend pools remain complete and definition-only across leap and year boundaries", () => {
+  const { getDailyVocabulary } = require("../lib/vocabulary-challenges");
+  for (let offset = 0; offset < 800; offset++) {
+    const day = new Date(Date.UTC(2024, 0, 1 + offset));
+    if (![0, 6].includes(day.getUTCDay())) continue;
+    const date = day.toISOString().slice(0, 10);
+    const result = puzzles.getDailyPuzzle(date);
+    assert.equal(result.available, true, date);
+    const expected = getDailyVocabulary(date).weekWords;
+    assert.equal(result.crossword.entries.length, 7);
+    assert.deepEqual(new Set(result.crossword.entries.map((entry) => entry.answer)), new Set(expected.map((word) => word.word.toUpperCase())));
+    for (const entry of result.crossword.entries) assert.equal(entry.clue, expected.find((word) => word.word.toUpperCase() === entry.answer).def);
   }
 });

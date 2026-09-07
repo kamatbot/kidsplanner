@@ -153,7 +153,10 @@ struct DailyFiveCard: View {
     @State private var activeSheet: DailySheet? = nil
     @State private var puzzle: DailyPuzzleResponse?
     @State private var news: RecentNewsItem?
-    @State private var newsItems: [RecentNewsItem] = []
+    @State private var newsChoices: [DailyNewsChoice] = []
+    @State private var vocabulary: DailyVocabularyResponse?
+    @State private var reflections: [String: String] = [:]
+    @State private var extrasScope = ""
     @State private var puzzleStatus = ""
     @State private var ideaSaved = false
     @State private var extrasLoading = true
@@ -182,9 +185,11 @@ struct DailyFiveCard: View {
                     MicroLabel(text: "Word")
                     Button { Haptics.selection(); activeSheet = .word } label: {
                         HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                            Text(Daily.word.word).font(Typography.body.weight(.bold)).foregroundStyle(Palette.accent)
-                            Text(Daily.word.def).font(Typography.caption).foregroundStyle(Palette.textSecond).lineLimit(1)
+                            Text(vocabulary?.word.word ?? "Today's word challenge").font(Typography.body.weight(.bold)).foregroundStyle(Palette.accent)
+                            Image(systemName: "chevron.right").foregroundStyle(Palette.textSecond)
                         }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -244,48 +249,45 @@ struct DailyFiveCard: View {
                         .frame(minHeight: 44)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.sm) {
                     MicroLabel(text: "Interesting news")
-                    HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                        if let news, let url = URL(string: news.url) {
-                            Link(destination: url) {
-                                Text(news.headline)
-                                    .font(Typography.body.weight(.semibold))
-                                    .foregroundStyle(Palette.text)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Read any or all of today's three stories.")
+                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    if extrasLoading {
+                        ProgressView("Finding today's stories…").font(Typography.caption)
+                    }
+                    ForEach(newsChoices) { choice in
+                        Button {
+                            guard let article = choice.article else { return }
+                            Haptics.selection()
+                            news = article
+                            activeSheet = .news
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(choice.label).font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.accent)
+                                Text(choice.article?.headline ?? "No fresh story is available in this category.")
+                                    .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                                if let article = choice.article {
+                                    Text(DailyNewsSelection.publisherLine(article))
+                                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                                }
                             }
-                        } else {
-                            Text(extrasLoading ? "Finding a fresh story…" : "No recent story is available right now.")
-                                .font(Typography.body.weight(.semibold))
-                                .foregroundStyle(Palette.textSecond)
-                                .multilineTextAlignment(.leading)
-                        }
-                        Spacer(minLength: Space.sm)
-                        Button { Haptics.selection(); activeSheet = .news } label: {
-                            Image(systemName: "chevron.down")
-                                .font(Typography.caption)
-                                .foregroundStyle(Palette.textSecond)
-                                .frame(width: 44, height: 44)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.vertical, Space.xs)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .disabled(news == nil)
-                        .accessibilityLabel("Open news details")
+                        .disabled(choice.article == nil)
                     }
-                    if let news {
-                        Text(DailyNewsSelection.publisherLine(news))
-                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    if !extrasLoading && newsChoices.contains(where: { $0.article == nil }) {
+                        Button("Retry news") { Task { await loadDailyExtras() } }
+                            .buttonStyle(.plain).foregroundStyle(Palette.accent).frame(minHeight: 44)
                     }
                     if ideaSaved {
                         Label("Idea saved", systemImage: "checkmark.circle")
                             .font(Typography.caption).foregroundStyle(Palette.green)
-                    }
-                    if newsItems.count > 1 {
-                        Button("Another story") {
-                            let index = newsItems.firstIndex(where: { $0.id == news?.id }) ?? 0
-                            news = newsItems[(index + 1) % newsItems.count]
-                        }
-                        .buttonStyle(.plain).foregroundStyle(Palette.accent).frame(minHeight: 44)
                     }
                 }
             }
@@ -311,7 +313,13 @@ struct DailyFiveCard: View {
         case .teaser: QuizWidget()
         case .puzzle:
             if let puzzle, let userID = store.me?.id { DailyPuzzleView(puzzle: puzzle, userID: userID) }
-        case .news: NewsWidget(news: news)
+        case .news:
+            if let news {
+                NewsWidget(news: news, reflection: Binding(
+                    get: { reflections[news.id] ?? "" },
+                    set: { reflections[news.id] = $0 }
+                )).id("\(extrasScope)|\(news.id)")
+            }
         }
     }
     private func sheetTitle(_ sheet: DailySheet) -> String {
@@ -326,20 +334,29 @@ struct DailyFiveCard: View {
 
     private func loadDailyExtras() async {
         let userID = store.me?.id
+        let day = Agenda.todayKey()
+        let scope = "\(userID ?? "")|\(day)"
+        if extrasScope != scope {
+            reflections = [:]
+            extrasScope = scope
+        }
         activeSheet = nil
         extrasLoading = true
         puzzle = nil
         news = nil
-        newsItems = []
+        newsChoices = DailyNewsSelection.choices(nil, day: day)
+        vocabulary = nil
         refreshEngagement()
         async let puzzleRequest = try? APIClient.shared.dailyPuzzle(date: Agenda.todayKey())
-        async let newsRequest = try? APIClient.shared.recentNews()
+        async let newsRequest = try? APIClient.shared.recentNews(date: day)
+        async let wordRequest = try? APIClient.shared.dailyVocabulary(date: day)
         let loadedPuzzle = await puzzleRequest
         let loadedNews = await newsRequest
-        guard !Task.isCancelled, store.me?.id == userID else { return }
+        let loadedWord = await wordRequest
+        guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
         puzzle = loadedPuzzle
-        newsItems = DailyNewsSelection.recent(loadedNews?.items ?? [])
-        news = newsItems.first
+        newsChoices = DailyNewsSelection.choices(loadedNews, day: day)
+        vocabulary = loadedWord?.date == day ? loadedWord : nil
         extrasLoading = false
         refreshEngagement()
     }
@@ -368,7 +385,7 @@ struct DailyFiveCard: View {
 struct NewsWidget: View {
     let news: RecentNewsItem?
     @Environment(AppStore.self) private var store
-    @State private var reflection = ""
+    @Binding var reflection: String
     @State private var saved = false
     @State private var saving = false
     @State private var saveFailed = false
@@ -395,6 +412,7 @@ struct NewsWidget: View {
                         Label("Read the full story", systemImage: "arrow.up.right.square")
                             .font(Typography.caption.weight(.bold))
                             .foregroundStyle(Palette.accent)
+                            .frame(minHeight: 44)
                     }
                 }
                 if let news {
@@ -430,9 +448,9 @@ struct NewsWidget: View {
                                 Task {
                                     let note = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": news.id, "context": "\(news.headline)\n\n\(news.summary)\n\n\(news.url)"])
                                     saving = false
-                                    guard store.me?.id == userID else { return }
+                                    guard store.me?.id == userID, Agenda.todayKey() == day else { return }
                                     if note != nil {
-                                        reflection = ""
+                                        if reflection == text { reflection = "" }
                                         saved = true
                                         UserDefaults.standard.set(true, forKey: DailyNewsSelection.ideaKey(userID: userID, day: day))
                                     } else {

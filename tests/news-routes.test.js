@@ -65,7 +65,7 @@ test("recent news requires authentication and returns the service DTO without st
     maxAgeDays: 14,
   };
   let calls = 0;
-  const route = buildHarness({ async getRecentNews() { calls += 1; return dto; } });
+  const route = buildHarness({ async getDailyNews() { calls += 1; return dto; } });
 
   const anonymous = await call(route, null);
   assert.equal(anonymous.statusCode, 401);
@@ -79,7 +79,7 @@ test("recent news requires authentication and returns the service DTO without st
 });
 
 test("recent news fails closed to an empty fresh response", async () => {
-  const route = buildHarness({ async getRecentNews() { throw new Error("upstream unavailable"); } });
+  const route = buildHarness({ async getDailyNews() { throw new Error("upstream unavailable"); } });
   const response = await call(route, { id: "user_1" });
 
   assert.equal(response.statusCode, 200);

@@ -138,18 +138,16 @@ test("a configured production feed filters fresh stories across varied domains",
   assert.equal(result.items.some((news) => news.headline === "Crossword solution"), false);
 });
 
-test("production feed registry covers trusted world, tech, health, environment, and science publishers", () => {
+test("production registry uses verified requested publishers, not adult-source substitutes", () => {
   const news = freshNews();
   const expected = [
     ["https://www.snexplores.org/feed/", "Science News Explores", "🔬 Science"],
-    ["https://news.un.org/feed/subscribe/en/news/all/rss.xml", "UN News", "🌍 World"],
-    ["https://feeds.bbci.co.uk/news/world/rss.xml", "BBC World", "🌍 World"],
-    ["https://feeds.bbci.co.uk/news/technology/rss.xml", "BBC Technology", "💡 Tech"],
-    ["https://feeds.bbci.co.uk/news/health/rss.xml", "BBC Health", "🩺 Health"],
-    ["https://www.technologyreview.com/feed/", "MIT Technology Review", "💡 Tech"],
-    ["https://www.who.int/rss-feeds/news-english.xml", "WHO News", "🩺 Health"],
-    ["https://www.noaa.gov/rss.xml", "NOAA", "🌿 Environment"],
-    ["https://www.smithsonianmag.com/rss/science-nature/", "Smithsonian Magazine", "🔬 Science"],
+    ["https://www.dogonews.com/category/science.rss", "DOGO News", "🔬 Science"],
+    ["https://www.dogonews.com/category/sports.rss", "DOGO News", "Sports"],
+    ["https://www.dogonews.com/category/fun.rss", "DOGO News", "Culture"],
+    ["https://live.firstnews.co.uk/feed/", "First News", "Culture"],
+    ["https://www.eco-business.com/feeds/news/", "Eco-Business", "🌿 Environment"],
+    ["https://www.bangkokpost.com/rss/data/learning.xml", "Bangkok Post Learning", "Local/Regional"],
   ];
 
   assert.deepEqual(news.FEEDS.map((feed) => [feed.url, feed.source, feed.defaultCategory]), expected);
@@ -160,9 +158,8 @@ test("production feed registry covers trusted world, tech, health, environment, 
     assert.ok(feed.hosts.length > 0);
     assert.ok(feed.hosts.some((host) => hostname === host || hostname.endsWith(`.${host}`)));
   }
-  assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🌍 World"));
-  assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "💡 Tech"));
-  assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🩺 Health"));
+  assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "Local/Regional"));
+  assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "Culture"));
   assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🌿 Environment"));
   assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🔬 Science"));
 });

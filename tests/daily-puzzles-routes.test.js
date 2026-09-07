@@ -71,7 +71,7 @@ test("daily puzzle route requires an authenticated family and uses the client lo
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.date, "2026-08-15");
   assert.equal(response.body.type, "crossword");
-  assert.equal(response.body.crossword.entries.length, 10);
+  assert.equal(response.body.crossword.entries.length, 7);
   assert.equal(response.headers["Cache-Control"], "no-store");
 });
 
@@ -85,7 +85,7 @@ test("daily puzzle route rejects malformed dates without producing a puzzle", as
   assert.deepEqual(response.body, { error: "Use a real date in YYYY-MM-DD format." });
 });
 
-test("crossword days fetch news and Sudoku days do not", async () => {
+test("weekday crosswords fetch news; weekend shared SAT and Sudoku do not", async () => {
   let calls = 0;
   const route = buildRoute({
     getRecentNews: async () => {
@@ -104,24 +104,24 @@ test("crossword days fetch news and Sudoku days do not", async () => {
     user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-15",
   });
   assert.equal(weekend.statusCode, 200);
-  assert.equal(calls, 1);
+  assert.equal(calls, 0);
   const weekendAnswers = weekend.body.crossword.entries.map((entry) => entry.answer);
-  assert.ok(weekendAnswers.includes("HEALING"));
-  assert.ok(weekendAnswers.includes("ROBOT"));
-  assert.ok(weekendAnswers.includes("OCEAN"));
+  assert.equal(weekendAnswers.includes("HEALING"), false);
+  assert.equal(weekendAnswers.includes("ROBOT"), false);
+  assert.equal(weekendAnswers.includes("OCEAN"), false);
   assert.equal(weekendAnswers.includes("OUTSIDE"), false);
-  assert.equal(weekend.body.crossword.entries.length, 10);
+  assert.equal(weekend.body.crossword.entries.length, 7);
 
   const weekday = await call(route, {
     user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-13",
   });
   assert.equal(weekday.body.type, 'crossword');
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   for (const date of ['2026-08-10', '2026-08-12', '2026-08-14']) {
     const response = await call(route, { user: { id: 'user_1' }, family: { id: 'family_1' }, date });
     assert.equal(response.body.type, 'sudoku');
   }
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
 });
 
 test("news failure returns the deterministic SAT/static fallback", async () => {
@@ -130,6 +130,6 @@ test("news failure returns the deterministic SAT/static fallback", async () => {
     user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-16",
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(response.body.crossword.entries.length, 10);
-  assert.equal(new Set(response.body.crossword.entries.map((entry) => entry.answer)).size, 10);
+  assert.equal(response.body.crossword.entries.length, 7);
+  assert.equal(new Set(response.body.crossword.entries.map((entry) => entry.answer)).size, 7);
 });

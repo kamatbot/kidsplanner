@@ -73,6 +73,7 @@ class FakeElement {
 function newsDom() {
   const ids = [
     "news-badge",
+    "news-choices",
     "news-headline",
     "news-summary",
     "news-link",
@@ -92,6 +93,8 @@ function newsHelpers({ auth } = {}) {
   const sandbox = {
     URL,
     Date,
+    esc: (s) => String(s),
+    isoDate: (date) => date.toISOString().slice(0, 10),
     document: { getElementById: (id) => elements[id] || null },
     window: { auth: auth || { getRecentNews: async () => ({ items: [] }) } },
     dailyPick: (items) => items[0],
@@ -116,7 +119,9 @@ function newsHelpers({ auth } = {}) {
     extractFunction(appSource, "renderNewsUnavailable"),
     extractFunction(appSource, "renderNewsItem"),
     extractFunction(appSource, "loadRecentNews"),
-    extractFunction(appSource, "nextNewsStory"),
+    extractFunction(appSource, "rememberNewsDraft"),
+    extractFunction(appSource, "renderNewsChoices"),
+    extractFunction(appSource, "selectNewsStory"),
     extractFunction(appSource, "saveNewsReflection"),
     "const NEWS_MAX_AGE_DAYS = 14;",
     "const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;",
@@ -124,6 +129,7 @@ function newsHelpers({ auth } = {}) {
     "const NEWS_EMPTY_STATE = 'No recent stories right now.';",
     "let currentNews = null;",
     "let recentNewsItems = [];",
+    "let newsChoices = []; let newsDrafts = new Map(); let newsScope = '';",
     "let newsRequestToken = 0;",
     "this.news = { newsUrlIsHttps, newsPublishedAtIsFresh, isRecentNewsItem, newsFreshnessLabel, newsArticleLink, renderNewsLoading, renderNewsUnavailable, renderNewsItem, loadRecentNews, saveNewsReflection, currentNews: () => currentNews, setToken: (value) => { newsRequestToken = value; } };",
   ];
@@ -186,7 +192,8 @@ test("client accepts only fresh HTTPS stories and renders the source/freshness c
   helpers.setToken(1);
   await helpers.loadRecentNews(1, now);
 
-  assert.equal(helpers.currentNews(), fresh);
+  assert.equal(helpers.currentNews(), null);
+  helpers.renderNewsItem(fresh, now);
   assert.equal(helpers.newsPublishedAtIsFresh(fresh.publishedAt, now), true);
   assert.equal(helpers.isRecentNewsItem(item(now, 15 * 24), now), false);
   assert.equal(helpers.isRecentNewsItem(item(now, 2, { url: "http://example.com/story" }), now), false);
@@ -202,7 +209,7 @@ test("client accepts only fresh HTTPS stories and renders the source/freshness c
   assert.equal(helpers.elements["news-reflect-prompt"].textContent, fresh.question);
 });
 
-test("client selects the newest eligible story even when the API puts older stories first", async () => {
+test("client keeps categories visible and does not force a story selection", async () => {
   const now = new Date("2026-08-10T12:00:00.000Z");
   const second = item(now, 24, {
     id: "stem",
@@ -210,23 +217,32 @@ test("client selects the newest eligible story even when the API puts older stor
     source: "Science News Explores",
   });
   const helpers = newsHelpers({ auth: {
-    getRecentNews: async () => ({ items: [second, item(now, 1)], maxAgeDays: 14 }),
+    getRecentNews: async (editionDate) => ({ editionDate, items: [second], choices: [{ category: 'science', article: second }], maxAgeDays: 14 }),
   } });
 
   helpers.setToken(1);
   await helpers.loadRecentNews(1, now);
 
-  assert.equal(helpers.currentNews().source, "UN News");
-  assert.match(helpers.elements["news-badge"].textContent, /UN News/);
+  assert.equal(helpers.currentNews(), null);
+  assert.match(helpers.elements['news-choices'].innerHTML, /Local\/Regional/);
+  assert.match(helpers.elements['news-choices'].innerHTML, /Global Science & Discovery/);
+  assert.match(helpers.elements['news-choices'].innerHTML, /Culture, Sports & Human Interest/);
+  assert.equal((helpers.elements['news-choices'].innerHTML.match(/disabled/g) || []).length, 2);
 });
 
-test('Another story preserves an unsaved draft and cycles recent stories after saving', async () => {
+test('all three choices preserve separate drafts and failed saves earn no credit', async () => {
   const now = new Date();
-  const helpers = newsHelpers({ auth: { getRecentNews: async () => ({ items: [item(now, 3, { id: 'older', headline: 'Older story' }), item(now, 1)] }) } });
+  const choices = ['regional', 'science', 'culture'].map((category, i) => ({ category, article: item(now, i + 1, { headline: category, url: `https://example.com/${category}` }) }));
+  const helpers = newsHelpers({ auth: { getRecentNews: async (editionDate) => ({ editionDate, choices }) } });
   await helpers.loadRecentNews(0, now);
+  helpers.sandbox.selectNewsStory(0);
   helpers.elements['news-reflect-text'].value = 'My draft';
-  helpers.sandbox.nextNewsStory();
-  assert.equal(helpers.currentNews().headline, 'Fresh discovery');
+  helpers.sandbox.selectNewsStory(1);
+  helpers.elements['news-reflect-text'].value = 'Science draft';
+  helpers.sandbox.selectNewsStory(2);
+  assert.equal(helpers.currentNews().headline, 'culture');
+  assert.equal(helpers.elements['news-reflect-text'].value, '');
+  helpers.sandbox.selectNewsStory(0);
   assert.equal(helpers.elements['news-reflect-text'].value, 'My draft');
   let credit = 0;
   helpers.sandbox.markDaily5Done = () => credit++;
@@ -237,8 +253,12 @@ test('Another story preserves an unsaved draft and cycles recent stories after s
   helpers.sandbox.saveNoteFromWidget = async () => ({ id: 'saved' });
   await helpers.saveNewsReflection();
   assert.equal(credit, 1);
-  helpers.sandbox.nextNewsStory();
-  assert.equal(helpers.currentNews().headline, 'Older story');
+  helpers.sandbox.selectNewsStory(1);
+  assert.equal(helpers.elements['news-reflect-text'].value, 'Science draft');
+  helpers.sandbox.daily5DoneKey = () => 'other-account';
+  helpers.sandbox.selectNewsStory(0);
+  assert.equal(helpers.currentNews(), null);
+  assert.equal(helpers.elements['news-reflect-text'].value, '');
 });
 
 test("empty and error states remove stale story state and disable reflection actions", async () => {
@@ -287,15 +307,15 @@ test("stale news responses cannot overwrite a later render", async () => {
   const second = helpers.loadRecentNews(2, now);
 
   const secondStory = item(now, 1, { id: "second", headline: "Second response" });
-  resolvers[1]({ items: [secondStory], maxAgeDays: 14 });
+  resolvers[1]({ editionDate: now.toISOString().slice(0, 10), items: [secondStory], choices: [{ category: 'science', article: secondStory }], maxAgeDays: 14 });
   await second;
-  assert.equal(helpers.currentNews(), secondStory);
+  assert.match(helpers.elements['news-choices'].innerHTML, /Second response/);
 
   const firstStory = item(now, 1, { id: "first", headline: "Stale response" });
   resolvers[0]({ items: [firstStory], maxAgeDays: 14 });
   await first;
-  assert.equal(helpers.currentNews(), secondStory);
-  assert.equal(helpers.elements["news-headline"].textContent, "Second response");
+  assert.equal(helpers.currentNews(), null);
+  assert.match(helpers.elements['news-choices'].innerHTML, /Second response/);
 });
 
 test("valid stories still save reflections with the explicit article URL", async () => {
@@ -314,12 +334,31 @@ test("valid stories still save reflections with the explicit article URL", async
   assert.equal(helpers.elements["news-reflect-text"].value, "");
 });
 
+test('wrong-date, missing-date, and failed refresh clear old choices without requiring a loading render', async () => {
+  const now = new Date();
+  let mode = 'valid';
+  const helpers = newsHelpers({ auth: { getRecentNews: async (editionDate) => {
+    if (mode === 'error') throw Error('offline');
+    return { editionDate: mode === 'wrong' ? '2000-01-01' : mode === 'missing' ? undefined : editionDate,
+      choices: [{ category: 'science', article: item(now, 1) }] };
+  } } });
+  for (const failure of ['wrong', 'missing', 'error']) {
+    mode = 'valid';
+    await helpers.loadRecentNews(0, now);
+    helpers.sandbox.selectNewsStory(1);
+    assert.equal(helpers.currentNews().headline, 'Fresh discovery');
+    mode = failure;
+    await helpers.loadRecentNews(0, now);
+    assert.equal(helpers.currentNews(), null);
+    assert.doesNotMatch(helpers.elements['news-choices'].innerHTML, /Fresh discovery/);
+    assert.equal((helpers.elements['news-choices'].innerHTML.match(/disabled/g) || []).length, 3);
+  }
+});
+
 test("the dashboard no longer contains a static news rotation", () => {
   assert.doesNotMatch(appSource, /\bNEWS_ITEMS\b/);
-  assert.match(appSource, /window\.auth\.getRecentNews\(\)/);
+  assert.match(appSource, /window\.auth\.getRecentNews\(/);
   assert.match(appSource, /const requestToken = \+\+newsRequestToken/);
   assert.doesNotMatch(appSource, /NASA STEM|NASA Kids/);
   assert.doesNotMatch(iosDashboardSource, /NASA STEM|NASA Kids/);
-  assert.match(iosDashboardSource, /newsItems = DailyNewsSelection\.recent\(loadedNews\?\.items \?\? \[\]\)/);
-  assert.match(iosDashboardSource, /news = newsItems\.first/);
 });

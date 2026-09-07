@@ -443,16 +443,25 @@
                     <span class="widget-label">Interesting news</span>
                     <span class="news-badge" id="news-badge"></span>
                   </div>
+                  <p class="text-muted">Choose any or all of today’s stories.</p>
+                  <div id="news-choices" class="news-choices" aria-label="Today’s news choices"></div>
+                  <style>
+                    .news-choices { display: grid; gap: 8px; margin-block: 12px; }
+                    .news-choice { display: grid; gap: 5px; min-height: 44px; text-align: left; white-space: normal; width: 100%; }
+                    .news-choice[aria-pressed="true"] { border-color: var(--accent, #6f43d6); }
+                    .news-choice small { font-weight: normal; }
+                    #sat-activity .fam-sat-opt { min-height: 44px; white-space: normal; text-align: left; }
+                  </style>
                   <div class="news-headline-row">
                     <a class="news-headline" id="news-headline" href="#" target="_blank" rel="noopener noreferrer"></a>
                     <button type="button" class="news-more-btn" id="news-more-btn" onclick="toggleNewsDetails()" aria-label="Show summary">▾</button>
                   </div>
-                  <button type="button" class="btn-secondary" id="news-next-btn" onclick="nextNewsStory()" title="Save or clear your reflection before switching stories" hidden>Another story</button>
+                  <button type="button" class="btn-secondary" onclick="renderNewsLoading(); loadRecentNews(++newsRequestToken, new Date())">Refresh stories</button>
                   <div id="news-details">
                     <div class="news-summary" id="news-summary"></div>
                     <a class="news-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Read the full story</a>
                     <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
-                    <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…" aria-label="Your news reflection" oninput="document.getElementById('news-next-btn').disabled=!!this.value.trim()"></textarea>
+                    <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…" aria-label="Your news reflection" oninput="rememberNewsDraft()"></textarea>
                     <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>
                   </div>
                 </div>

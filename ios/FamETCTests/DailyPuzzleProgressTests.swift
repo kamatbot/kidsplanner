@@ -88,6 +88,26 @@ final class DailyPuzzleProgressTests: XCTestCase {
         XCTAssertTrue(DailyNewsSelection.recent([items[1], items[2], items[3], items[4]], now: now).isEmpty)
     }
 
+    func testNewsChoicesPreserveServerSelectionAndLeaveMissingCategoriesEmpty() {
+        let now = ISO8601DateFormatter().date(from: "2026-09-07T12:00:00Z")!
+        let selected = RecentNewsItem(id: "selected", cat: "science", headline: "Selected", summary: "Summary",
+            url: "https://example.org/selected", publishedAt: "2026-09-06T12:00:00Z", source: "Publisher", question: "Why?")
+        var newer = selected
+        newer = RecentNewsItem(id: "newer", cat: "science", headline: "Newer", summary: newer.summary,
+            url: "https://example.org/newer", publishedAt: "2026-09-07T11:00:00Z", source: newer.source, question: newer.question)
+        let response = RecentNewsResponse(items: [newer, selected], maxAgeDays: 14,
+            choices: [DailyNewsChoice(category: "science", label: "Science", article: selected)], editionDate: "2026-09-07")
+        let choices = DailyNewsSelection.choices(response, day: "2026-09-07", now: now)
+        XCTAssertEqual(choices.map(\.category), ["regional", "science", "culture"])
+        XCTAssertNil(choices[0].article)
+        XCTAssertEqual(choices[1].article?.id, "selected")
+        XCTAssertNil(choices[2].article)
+        XCTAssertTrue(DailyNewsSelection.choices(response, day: "2026-09-08", now: now).allSatisfy { $0.article == nil })
+        XCTAssertTrue(DailyNewsSelection.choices(RecentNewsResponse(items: [selected], maxAgeDays: 14),
+            day: "2026-09-07", now: now).allSatisfy { $0.article == nil })
+        XCTAssertEqual(DailyNewsSelection.choices(nil, day: "2026-09-07", now: now).count, 3)
+    }
+
     func testRestoreAndClearProgress() {
         let puzzle = crossword()
         let identity = DailyPuzzleProgressIdentity(puzzle: puzzle)

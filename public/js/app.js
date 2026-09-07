@@ -273,7 +273,9 @@ const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 const NEWS_FUTURE_SKEW_MS = 60 * 60 * 1000;
 const NEWS_EMPTY_STATE = 'No recent stories right now.';
 let newsRequestToken = 0;
-let recentNewsItems = [];
+let newsChoices = [];
+let newsDrafts = new Map();
+let newsScope = '';
 let currentDailyPuzzle = null;
 let puzzleRequestToken = 0;
 let currentPuzzleProgressKey = null;
@@ -361,11 +363,6 @@ function setNewsLinkState(link, url) {
 }
 
 function setNewsReflectionAvailability(enabled) {
-  const nextButton = document.getElementById('news-next-btn');
-  if (nextButton) {
-    nextButton.hidden = !enabled || recentNewsItems.length < 2;
-    nextButton.disabled = !enabled;
-  }
   const details = document.getElementById('news-details');
   if (details) {
     details.hidden = !enabled;
@@ -417,6 +414,11 @@ function clearNewsState(message) {
 }
 
 function renderNewsLoading() {
+  rememberNewsDraft();
+  const scope = daily5DoneKey();
+  if (scope !== newsScope) { newsDrafts.clear(); newsScope = scope; }
+  newsChoices = [];
+  renderNewsChoices();
   clearNewsState('Loading recent stories…');
   const badge = document.getElementById('news-badge');
   if (badge) badge.textContent = 'Loading…';
@@ -424,6 +426,7 @@ function renderNewsLoading() {
 
 function renderNewsUnavailable() {
   clearNewsState(NEWS_EMPTY_STATE);
+  renderNewsChoices();
 }
 
 function renderNewsItem(n, now) {
@@ -457,39 +460,59 @@ function renderNewsItem(n, now) {
       : 'Why do you think this matters, and what question would you ask next?';
   }
   const text = document.getElementById('news-reflect-text');
-  if (text) text.value = '';
+  if (text) text.value = newsDrafts.get(newsArticleLink(n)) || '';
   setNewsReflectionAvailability(true);
 }
 
+function rememberNewsDraft() {
+  const text = document.getElementById('news-reflect-text');
+  if (currentNews && text && newsScope === daily5DoneKey()) newsDrafts.set(newsArticleLink(currentNews), text.value);
+}
+
+function renderNewsChoices() {
+  const container = document.getElementById('news-choices');
+  if (!container) return;
+  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="btn-secondary news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}><strong>${esc(choice.label)}</strong><span>${esc(choice.article ? choice.article.headline : 'No recent story available in this category.')}</span>${choice.article ? `<small>${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</small>` : ''}</button>`).join('');
+}
+
+function selectNewsStory(index) {
+  if (newsScope !== daily5DoneKey()) { renderNewsLoading(); return; }
+  const article = newsChoices[index] && newsChoices[index].article;
+  if (!article || !isRecentNewsItem(article, new Date())) return;
+  rememberNewsDraft();
+  renderNewsItem(article, new Date());
+  renderNewsChoices();
+  const details = document.getElementById('news-details');
+  if (details) details.classList.add('news-open');
+}
+
 async function loadRecentNews(requestToken, now) {
+  const scope = daily5DoneKey();
+  const requestedDate = isoDate(now || new Date());
+  const categories = [['regional', 'Local/Regional'], ['science', 'Global Science & Discovery'], ['culture', 'Culture, Sports & Human Interest']];
   try {
-    const data = await window.auth.getRecentNews();
-    if (requestToken !== newsRequestToken) return;
+    const data = await window.auth.getRecentNews(requestedDate);
+    if (requestToken !== newsRequestToken || scope !== daily5DoneKey()) return;
+    if (!data || data.editionDate !== requestedDate) throw new Error('News edition unavailable');
+    if (newsScope !== scope) { newsDrafts.clear(); newsScope = scope; }
     const currentTime = now || new Date();
-    const items = data && Array.isArray(data.items)
-      ? data.items.filter((item) => isRecentNewsItem(item, currentTime))
-      : [];
-    if (!items.length) {
-      renderNewsUnavailable();
-      return;
-    }
-    recentNewsItems = items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
-    renderNewsItem(recentNewsItems[0], currentTime);
+    newsChoices = categories.map(([category, label]) => {
+      const choice = data && Array.isArray(data.choices) && data.choices.find((item) => item.category === category);
+      return { category, label, article: choice && isRecentNewsItem(choice.article, currentTime) ? choice.article : null };
+    });
+    clearNewsState(newsChoices.some((choice) => choice.article) ? 'Choose a story above. Read any or all three.' : NEWS_EMPTY_STATE);
+    renderNewsChoices();
   } catch (e) {
-    if (requestToken === newsRequestToken) renderNewsUnavailable();
+    if (requestToken === newsRequestToken && scope === daily5DoneKey()) {
+      rememberNewsDraft();
+      newsChoices = categories.map(([category, label]) => ({ category, label, article: null }));
+      renderNewsUnavailable();
+    }
   }
 }
 
-function nextNewsStory() {
-  const text = document.getElementById('news-reflect-text');
-  if (text && text.value.trim()) { toast('Save your reflection or clear it before choosing another story.'); return; }
-  const index = recentNewsItems.indexOf(currentNews);
-  recentNewsItems = recentNewsItems.filter((item) => isRecentNewsItem(item, new Date()));
-  if (!recentNewsItems.length) { renderNewsUnavailable(); return; }
-  renderNewsItem(recentNewsItems[(index + 1) % recentNewsItems.length], new Date());
-}
-
 async function saveNewsReflection() {
+  if (newsScope && newsScope !== daily5DoneKey()) return;
   if (!currentNews || !isRecentNewsItem(currentNews, new Date())) return;
   const textEl = document.getElementById('news-reflect-text');
   const body = textEl ? textEl.value.trim() : '';
@@ -497,11 +520,11 @@ async function saveNewsReflection() {
   const link = newsArticleLink(currentNews);
   const newsFull = currentNews ? `${currentNews.headline}\n\n${currentNews.summary}\n\n${link}` : '';
   const completionKey = daily5DoneKey();
+  const savedArticle = currentNews;
   const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: newsFull });
   if (note && completionKey === daily5DoneKey()) {
-    textEl.value = '';
-    const nextButton = document.getElementById('news-next-btn');
-    if (nextButton) nextButton.disabled = false;
+    if (currentNews === savedArticle && textEl.value.trim() === body) textEl.value = '';
+    if (newsDrafts.get(link)?.trim() === body) newsDrafts.delete(link);
     markDaily5Done('news');
   }
 }
@@ -2279,14 +2302,7 @@ function applyDaily5Done() {
     quest.textContent = `Optional daily quest · ${parts.filter(([key]) => s[key]).length} of 3 complete. ` +
       parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
   }
-  if (s.sat) {
-    ['sat-placement', 'sat-activity', 'sat-wordbank-panel', 'sat-quiz-panel'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.hidden = true;
-    });
-    const footer = document.querySelector('#widget-word .fam-sat-footer');
-    if (footer) footer.hidden = true;
-  }
+  // PathOdds SAT completion does not hide the separate vocabulary challenge.
   const bt = document.getElementById('widget-quiz');
   if (bt) bt.hidden = !!s.bt;
 }
@@ -2306,13 +2322,6 @@ function renderWidgets() {
   document.getElementById('quote-reflect-text').value = '';
 
   // SAT Word
-  // Keep the original daily calendar stable; extra words are quiz distractors.
-  const w = dailyPick(SAT_WORDS.slice(0, 30), now);
-  currentSatWord = w;
-  document.getElementById('sat-word').textContent    = w.word;
-  document.getElementById('sat-pos').textContent     = w.pos;
-  document.getElementById('sat-def').textContent     = w.def;
-  document.getElementById('sat-example').textContent = `"${w.example}"`;
   renderSatActivity();
   loadWordBank();
 

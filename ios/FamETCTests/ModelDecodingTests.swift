@@ -5,6 +5,24 @@ import XCTest
 /// response shapes (lib/family.js publicFamily, lib/chat.js sendMessage/listMessages).
 final class ModelDecodingTests: XCTestCase {
 
+    func testDailyNewsEditionDecodesMissingCategoryAndLegacyResponse() throws {
+        let current = Data(#"{"items":[],"maxAgeDays":14,"editionDate":"2026-09-07","choices":[{"category":"regional","label":"Local/Regional","article":null}]}"#.utf8)
+        let news = try JSONDecoder().decode(RecentNewsResponse.self, from: current)
+        XCTAssertEqual(news.editionDate, "2026-09-07")
+        XCTAssertEqual(news.choices?.first?.category, "regional")
+        XCTAssertNil(news.choices?.first?.article)
+        let legacy = try JSONDecoder().decode(RecentNewsResponse.self, from: Data(#"{"items":[],"maxAgeDays":14}"#.utf8))
+        XCTAssertNil(legacy.choices)
+    }
+
+    func testSharedVocabularyContextContractDecodesRationales() throws {
+        let payload = #"{"date":"2026-09-07","weekStart":"2026-09-07","word":{"word":"Pragmatic","pos":"adjective","def":"Practical.","example":"A pragmatic plan."},"weekWords":[],"challenge":{"id":"vocabulary-v1-2026-09-07","prompt":"Pick the misuse.","options":[{"text":"First context","explanation":"Practical choice"},{"text":"Second context","explanation":"Practical response"},{"text":"Third context","explanation":"Dogmatic, not practical"}],"answerIndex":2}}"#
+        let value = try JSONDecoder().decode(DailyVocabularyResponse.self, from: Data(payload.utf8))
+        XCTAssertEqual(value.word.word, "Pragmatic")
+        XCTAssertEqual(value.challenge.options.count, 3)
+        XCTAssertEqual(value.challenge.options[value.challenge.answerIndex].explanation, "Dogmatic, not practical")
+    }
+
     func testKidPhotoRemainsCompatibleWithLegacyProfiles() throws {
         let data = ##"{"id":"k1","name":"Maya","grade":"6","color":"#123456","createdAt":"2026-09-07"}"##.data(using: .utf8)!
         var kid = try JSONDecoder().decode(Kid.self, from: data)

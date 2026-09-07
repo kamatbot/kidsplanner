@@ -299,6 +299,42 @@ struct RecentNewsItem: Codable, Identifiable {
 struct RecentNewsResponse: Codable {
     var items: [RecentNewsItem]
     var maxAgeDays: Int
+    var choices: [DailyNewsChoice]? = nil
+    var editionDate: String? = nil
+}
+
+struct DailyNewsChoice: Codable, Identifiable {
+    var category: String
+    var label: String
+    var article: RecentNewsItem?
+    var id: String { category }
+}
+
+struct VocabularyWord: Codable {
+    var word: String
+    var pos: String
+    var def: String
+    var example: String
+}
+
+struct VocabularyContextOption: Codable {
+    var text: String
+    var explanation: String
+}
+
+struct VocabularyChallenge: Codable {
+    var id: String
+    var prompt: String
+    var options: [VocabularyContextOption]
+    var answerIndex: Int
+}
+
+struct DailyVocabularyResponse: Codable {
+    var date: String
+    var weekStart: String
+    var word: VocabularyWord
+    var weekWords: [VocabularyWord]
+    var challenge: VocabularyChallenge
 }
 
 /// A single word bank entry (`/api/wordbank`). Mirrors `lib/wordbank.js`.

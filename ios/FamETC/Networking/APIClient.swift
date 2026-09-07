@@ -237,8 +237,14 @@ final class APIClient: FamilyActionService {
         let _: OKResponse = try await request("/api/notes/\(id)", method: "DELETE")
     }
 
-    func recentNews() async throws -> RecentNewsResponse {
-        try await request("/api/news/recent")
+    func recentNews(date: String? = nil) async throws -> RecentNewsResponse {
+        let query = date.map { "?date=\($0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" } ?? ""
+        return try await request("/api/news/recent\(query)")
+    }
+
+    func dailyVocabulary(date: String) async throws -> DailyVocabularyResponse {
+        let encoded = date.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return try await request("/api/enrichment/vocabulary/today?date=\(encoded)")
     }
 
     func dailyPuzzle(date: String) async throws -> DailyPuzzleResponse {

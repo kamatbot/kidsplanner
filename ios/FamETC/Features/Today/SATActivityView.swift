@@ -1,165 +1,145 @@
 import SwiftUI
 
-/// The interactive SAT-word mastery experience shown inside the dashboard's SAT
-/// card. Replaces the static `WordWidget` body. Rotates the daily activity by
-/// `Daily.dayOfYear % 3`, tracks mastery via `/api/wordbank`, and offers a word
-/// bank browser + pop quiz + one-time placement step. Self-contained — talks to
-/// `APIClient.shared` directly (no `AppStore` dependency).
+/// Server-selected daily context challenge, with the existing word-bank tools.
 struct SATActivityView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("fam_sat_placement_done") private var placementDone = false
-    @AppStorage(Daily5Done.wordKey) private var wordDoneStamp = ""
-
-    @State private var entry: WordBankEntry? = nil
+    @State private var response: DailyVocabularyResponse?
+    @State private var loading = true
     @State private var showWordBank = false
     @State private var showQuiz = false
     @State private var showPlacement = false
     @State private var savedToNotes = false
+    @State private var noteFailed = false
+    @State private var picked: Int?
+    @State private var showWeek = false
 
-    private let word = Daily.word
-
-    private var wordDone: Bool { Daily5Done.isToday(wordDoneStamp) }
+    private var scope: String { "\(store.me?.id ?? "")|\(Agenda.todayKey())" }
 
     var body: some View {
-        // The enclosing WordWidget provides the DashCard chrome + homework-gating
-        // overlay, so this view renders just its content.
         VStack(alignment: .leading, spacing: Space.md) {
-            header
-            if wordDone {
-                wordDoneBlock
-            } else {
-                ActivityCard(word: word, onAnswered: handleAnswered)
-                masteryRow
+            if loading {
+                ProgressView("Loading today's word…")
+            } else if let response {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(response.word.word).font(Typography.title).foregroundStyle(Palette.text)
+                    Text(response.word.pos).font(Typography.caption.italic()).foregroundStyle(Palette.textSecond)
+                    Text(response.challenge.prompt).font(Typography.body.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(response.challenge.options.indices, id: \.self) { index in
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        OptionButton(text: response.challenge.options[index].text, state: optionState(index, response)) {
+                            guard picked == nil else { return }
+                            Haptics.selection()
+                            picked = index
+                            let userID = store.me?.id
+                            Task {
+                                guard store.me?.id == userID else { return }
+                                _ = try? await APIClient.shared.wordInteract(
+                                    word: response.word.word, correct: index == response.challenge.answerIndex)
+                            }
+                        }
+                        if picked != nil {
+                            Text(index == response.challenge.answerIndex ? "Misapplication" : "Correct usage")
+                                .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.text)
+                            Text(response.challenge.options[index].explanation)
+                                .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                if let picked {
+                    Text(picked == response.challenge.answerIndex ? "You found the impostor." : "The marked misapplication is the impostor.")
+                        .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                    Text(response.word.def).font(Typography.body).fixedSize(horizontal: false, vertical: true)
+                    Text("“\(response.word.example)”").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                DisclosureGroup("This week's seven words", isExpanded: $showWeek) {
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        ForEach(response.weekWords, id: \.word) { word in
+                            Text("\(word.word) (\(word.pos)) — \(word.def)")
+                                .font(Typography.caption).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.padding(.top, Space.sm)
+                }
+                .frame(minHeight: 44)
+                Button {
+                    let userID = store.me?.id
+                    let body = "\(response.word.word) (\(response.word.pos)) — \(response.word.def)\n\nExample: \(response.word.example)"
+                    Task {
+                        let note = await store.addNote(body: body, source: "sat",
+                            ref: ["kind": "sat", "id": response.word.word, "context": body])
+                        guard store.me?.id == userID else { return }
+                        savedToNotes = note != nil
+                        noteFailed = note == nil
+                    }
+                } label: {
+                    Label(savedToNotes ? "Word saved" : "Save word to Notes", systemImage: savedToNotes ? "checkmark.circle" : "pin")
+                        .font(Typography.caption.weight(.semibold)).frame(minHeight: 44)
+                }
+                .disabled(savedToNotes)
+                if noteFailed { Text("Couldn't save the word. Try again.").font(Typography.caption).foregroundStyle(Palette.red) }
                 actionRow
+            } else {
+                Text("Today's word challenge is unavailable.").font(Typography.body)
+                Button("Retry") { Task { await loadChallenge() } }.frame(minHeight: 44)
             }
         }
-        .task { await loadEntry() }
+        .task(id: scope) { await loadChallenge() }
         .sheet(isPresented: $showWordBank) { WordBankSheet() }
         .sheet(isPresented: $showQuiz) { WordQuizSheet() }
         .sheet(isPresented: $showPlacement) {
-            PlacementSheet(onDone: {
-                placementDone = true
-                showPlacement = false
-                Task { await loadEntry() }
-            })
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(word.word).font(Typography.title).foregroundStyle(Palette.text)
-            Text(word.pos).font(Typography.caption.italic()).foregroundStyle(Palette.textSecond)
-            Spacer()
-            if entry?.state == "mastered" {
-                Image(systemName: "checkmark.seal.fill").foregroundStyle(Palette.green)
-            }
-            Button {
-                Haptics.selection()
-                let body = "\(word.word) (\(word.pos)) — \(word.def)\n\nExample: \(word.example)"
-                Task {
-                    _ = await store.addNote(body: body, source: "sat",
-                                            ref: ["kind": "sat", "id": word.word, "context": body])
-                    savedToNotes = true
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
-                    savedToNotes = false
-                }
-            } label: {
-                Image(systemName: savedToNotes ? "checkmark.circle.fill" : "pin")
-                    .foregroundStyle(savedToNotes ? Palette.green : Palette.teal)
-            }
-            .accessibilityLabel("Save word to Notes")
-        }
-    }
-
-    @ViewBuilder
-    private var masteryRow: some View {
-        let correct = entry?.correctCount ?? 0
-        let target = 3
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Mastery").font(Typography.caption).foregroundStyle(Palette.textSecond)
-                Spacer()
-                Text(entry?.state == "mastered" ? "Mastered ✓" : "\(min(correct, target))/\(target)")
-                    .font(Typography.caption.weight(.semibold))
-                    .foregroundStyle(entry?.state == "mastered" ? Palette.green : Palette.textSecond)
-            }
-            ProgressView(value: Double(min(correct, target)), total: Double(target))
-                .tint(Palette.teal)
+            PlacementSheet(onDone: { placementDone = true; showPlacement = false })
         }
     }
 
     private var actionRow: some View {
-        HStack(spacing: Space.sm) {
-            Button {
-                Haptics.selection()
-                showWordBank = true
-            } label: {
-                Label("Word bank", systemImage: "books.vertical.fill")
-                    .font(Typography.caption.weight(.semibold))
-            }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Space.sm) { actionButtons }
+            VStack(alignment: .leading, spacing: Space.sm) { actionButtons }
+        }
+    }
+
+    @ViewBuilder private var actionButtons: some View {
+        Button { showWordBank = true } label: { Label("Word bank", systemImage: "books.vertical.fill").font(Typography.caption.weight(.semibold)) }
             .buttonStyle(PillButtonStyle(tint: Palette.teal))
-
-            Button {
-                Haptics.selection()
-                showQuiz = true
-            } label: {
-                Label("Pop quiz", systemImage: "bolt.fill")
-                    .font(Typography.caption.weight(.semibold))
-            }
+        Button { showQuiz = true } label: { Label("Pop quiz", systemImage: "bolt.fill").font(Typography.caption.weight(.semibold)) }
             .buttonStyle(PillButtonStyle(tint: Palette.violet))
-
-            // Opt-in placement — shown inline in the SAT card (not auto-presented
-            // globally on launch, which would cover other tabs).
-            if !placementDone {
-                Button {
-                    Haptics.selection()
-                    showPlacement = true
-                } label: {
-                    Label("Words I know", systemImage: "sparkles")
-                        .font(Typography.caption.weight(.semibold))
-                }
+        if !placementDone {
+            Button { showPlacement = true } label: { Label("Words I know", systemImage: "sparkles").font(Typography.caption.weight(.semibold)) }
                 .buttonStyle(PillButtonStyle(tint: Palette.amber))
-            }
         }
     }
 
-    private var wordDoneBlock: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(word.def)
-                .font(Typography.body)
-                .foregroundStyle(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("“\(word.example)”")
-                .font(Typography.caption)
-                .foregroundStyle(Palette.textSecond)
-                .fixedSize(horizontal: false, vertical: true)
-            Label("Done for today", systemImage: "checkmark.circle.fill")
-                .font(Typography.caption.weight(.semibold))
-                .foregroundStyle(Palette.green)
-        }
+    private func optionState(_ index: Int, _ response: DailyVocabularyResponse) -> OptionButton.OptionState {
+        guard let picked else { return .idle }
+        if index == response.challenge.answerIndex { return .correct }
+        return index == picked ? .wrong : .dimmed
     }
 
-    private func loadEntry() async {
-        guard let bank = try? await APIClient.shared.wordBank() else { return }
-        entry = bank.words.first { $0.word.caseInsensitiveCompare(word.word) == .orderedSame }
-    }
-
-    private func handleAnswered(_ correct: Bool) {
-        Task {
-            if let updated = try? await APIClient.shared.wordInteract(word: word.word, correct: correct) {
-                await MainActor.run { entry = updated }
-            }
+    private func loadChallenge() async {
+        let requestedScope = scope
+        let day = Agenda.todayKey()
+        loading = true
+        response = nil
+        picked = nil
+        savedToNotes = false
+        noteFailed = false
+        showWeek = false
+        showWordBank = false
+        showQuiz = false
+        showPlacement = false
+        let loaded = try? await APIClient.shared.dailyVocabulary(date: day)
+        guard !Task.isCancelled, scope == requestedScope else { return }
+        if let loaded, loaded.date == day, loaded.challenge.options.count == 3,
+           loaded.challenge.options.indices.contains(loaded.challenge.answerIndex) {
+            response = loaded
         }
-        // Let ActivityCard's correct/wrong feedback + definition show first, then
-        // collapse to the static done block (mirrors the web's 1.5s delay).
-        Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            await MainActor.run { wordDoneStamp = Daily5Done.todayStamp }
-        }
+        loading = false
     }
 }
-
-// MARK: - Shared small pieces
 
 private struct PillButtonStyle: ButtonStyle {
     let tint: Color
@@ -168,7 +148,7 @@ private struct PillButtonStyle: ButtonStyle {
             .foregroundStyle(tint)
             .padding(.horizontal, Space.md)
             .padding(.vertical, Space.sm)
-            .frame(minHeight: 36)
+            .frame(minHeight: 44)
             .background(tint.opacity(configuration.isPressed ? 0.24 : 0.15), in: Capsule())
     }
 }
@@ -177,13 +157,13 @@ private struct OptionButton: View {
     let text: String
     let state: OptionState
     let action: () -> Void
-
     enum OptionState { case idle, correct, wrong, dimmed }
 
     var body: some View {
         Button(action: action) {
             HStack {
                 Text(text).font(Typography.body).foregroundStyle(Palette.text)
+                    .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: Space.sm)
                 switch state {
                 case .correct: Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.green)
@@ -192,7 +172,7 @@ private struct OptionButton: View {
                 }
             }
             .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(background, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -209,115 +189,6 @@ private struct OptionButton: View {
     }
 }
 
-// MARK: - Daily rotating activity
-
-/// One of three interactive tasks, chosen by `Daily.dayOfYear % 3`, regenerated
-/// (with fresh distractors/shuffle) whenever `word` changes.
-private struct ActivityCard: View {
-    let word: SATWord
-    let onAnswered: (Bool) -> Void
-
-    @State private var picked: Int? = nil
-    @State private var task: DailyTask? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            if let task {
-                Text(task.prompt).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                ForEach(task.options.indices, id: \.self) { i in
-                    OptionButton(text: task.options[i], state: optionState(i)) {
-                        guard picked == nil else { return }
-                        Haptics.selection()
-                        withAnimation(.easeOut(duration: 0.2)) { picked = i }
-                        onAnswered(i == task.answerIndex)
-                    }
-                }
-
-                if picked != nil {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(picked == task.answerIndex ? "Correct! 🎉" : "Not quite.")
-                            .font(Typography.caption.weight(.bold))
-                            .foregroundStyle(picked == task.answerIndex ? Palette.green : Palette.red)
-                        Text(word.def).font(Typography.caption).foregroundStyle(Palette.text)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("“\(word.example)”").font(Typography.caption).foregroundStyle(Palette.textSecond)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-        }
-        .onAppear { task = makeTask() }
-        .onChange(of: word.word) { _, _ in
-            picked = nil
-            task = makeTask()
-        }
-    }
-
-    private func optionState(_ i: Int) -> OptionButton.OptionState {
-        guard let picked else { return .idle }
-        guard let task else { return .idle }
-        if i == task.answerIndex { return .correct }
-        if i == picked { return .wrong }
-        return .dimmed
-    }
-
-    private struct DailyTask {
-        let prompt: String
-        let options: [String]
-        let answerIndex: Int
-    }
-
-    private func makeTask() -> DailyTask {
-        let variant = Daily.dayOfYear % 3
-        switch variant {
-        case 0:
-            let options = ([word.word] + Daily.words
-                .filter { $0.word != word.word && $0.pos == word.pos }
-                .shuffled().prefix(3).map { $0.word }).shuffled()
-            return DailyTask(prompt: "Which word means: \(word.def)", options: options,
-                             answerIndex: options.firstIndex(of: word.word) ?? 0)
-        case 1:
-            // Fill in the blank.
-            let blanked = blank(word.example, word: word.word)
-            let distractorWords = Daily.words
-                .filter { $0.word != word.word && $0.pos == word.pos }
-                .shuffled()
-                .prefix(3)
-                .map { $0.word }
-            var options = [word.word] + distractorWords
-            options.shuffle()
-            let idx = options.firstIndex(of: word.word) ?? 0
-            return DailyTask(
-                prompt: "Fill in the blank:\n\(blanked)",
-                options: options,
-                answerIndex: idx
-            )
-        default:
-            // Which definition matches <word>?
-            let correctDef = word.def
-            let distractorDefs = Daily.words
-                .filter { $0.word != word.word && $0.pos == word.pos }
-                .shuffled()
-                .prefix(3)
-                .map { $0.def }
-            var options = [correctDef] + distractorDefs
-            options.shuffle()
-            let idx = options.firstIndex(of: correctDef) ?? 0
-            return DailyTask(
-                prompt: "Which definition matches **\(word.word)**?",
-                options: options,
-                answerIndex: idx
-            )
-        }
-    }
-
-    private func blank(_ sentence: String, word: String) -> String {
-        guard let range = sentence.range(of: word, options: .caseInsensitive) else { return sentence }
-        return sentence.replacingCharacters(in: range, with: "_____")
-    }
-}
 
 // MARK: - Word bank sheet
 

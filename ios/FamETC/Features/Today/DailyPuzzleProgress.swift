@@ -152,6 +152,21 @@ struct DailyPuzzleProgressStore {
 }
 
 enum DailyNewsSelection {
+    static let categories = [
+        (id: "regional", label: "Local / Regional"),
+        (id: "science", label: "Global Science & Discovery"),
+        (id: "culture", label: "Culture, Sports & Human Interest")
+    ]
+
+    static func choices(_ response: RecentNewsResponse?, day: String, now: Date = Date()) -> [DailyNewsChoice] {
+        categories.map { category in
+            let selected = response?.editionDate == day
+                ? response?.choices?.first(where: { $0.category == category.id })?.article : nil
+            return DailyNewsChoice(category: category.id, label: category.label,
+                article: selected.flatMap { recent([$0], now: now).first })
+        }
+    }
+
     static func publishedDate(_ value: String) -> Date? {
         let formatter = ISO8601DateFormatter()
         if let date = formatter.date(from: value) { return date }

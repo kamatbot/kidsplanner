@@ -619,8 +619,12 @@
   }
 
   /* ---------- notes (enrichment) ---------- */
-  async function getRecentNews() {
-    return api("/api/news/recent", { method: "GET" });
+  async function getRecentNews(date) {
+    return api("/api/news/recent" + (date ? "?date=" + encodeURIComponent(date) : ""), { method: "GET" });
+  }
+
+  async function getDailyVocabulary(date) {
+    return api("/api/enrichment/vocabulary/today?date=" + encodeURIComponent(date || ""), { method: "GET" });
   }
 
   async function getNotes(opts) {
@@ -1160,6 +1164,7 @@
     getBrainTeaserToday,
     answerBrainTeaser,
     getDailyPuzzle,
+    getDailyVocabulary,
     parseWithAI,
     getTrips,
     createTrip,
