@@ -320,5 +320,6 @@ test("the dashboard no longer contains a static news rotation", () => {
   assert.match(appSource, /const requestToken = \+\+newsRequestToken/);
   assert.doesNotMatch(appSource, /NASA STEM|NASA Kids/);
   assert.doesNotMatch(iosDashboardSource, /NASA STEM|NASA Kids/);
-  assert.match(iosDashboardSource, /news = items\[Daily\.index\(items\.count\)\]/);
+  assert.match(iosDashboardSource, /newsItems = DailyNewsSelection\.recent\(loadedNews\?\.items \?\? \[\]\)/);
+  assert.match(iosDashboardSource, /news = newsItems\.first/);
 });
