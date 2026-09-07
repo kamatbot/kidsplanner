@@ -33,3 +33,5 @@ profile previews. No changes to authentication, school connection behavior, or a
 - Mechanical design detector ran once in degraded regex mode; no findings, but computed contrast was not evaluated by that tool. Browser inspection supplied the layout evidence.
 
 Complexity-only review: Theme.swift — delete — unused legacy Palette.kidColor(index:) can be removed after callers migrated — 7 lines. net: -7 lines possible. Not applied automatically.
+
+Full-CI attempt 1: 34081316857, push of 617691c, failed one crossword regression. Root cause: expanding the quiz pool also shifted the shared day-of-year calendar. Rework preserves the original 30-word daily rotation across server/web/iOS and uses all 35 only for quiz choices. Existing crossword fixture now passes unchanged; focused crossword/vocabulary checks passed before a new frozen source attempt.

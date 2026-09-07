@@ -28,7 +28,8 @@ enum Daily {
     static func index(_ count: Int) -> Int { count > 0 ? ((dayOfYear - 1) % count + count) % count : 0 }
 
     static var quote: DailyQuote { quotes[index(quotes.count)] }
-    static var word: SATWord { words[index(words.count)] }
+    // Keep the original daily calendar stable; extra words are quiz distractors.
+    static var word: SATWord { words[index(30)] }
     static var fact: FunFact { facts[index(facts.count)] }
     static var quizStartIndex: Int { index(quiz.count) }
 

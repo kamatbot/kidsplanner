@@ -184,3 +184,13 @@ test('web daily activities use same-type options for every word and variant', ()
     for (const option of options) assert.equal(WORDS.find(w => w[field] === option).pos, word.pos);
   }
 });
+
+
+test('extra distractors do not shift the established daily word and crossword calendar', () => {
+  const { DAILY_WORDS } = require('../lib/sat-words');
+  assert.equal(DAILY_WORDS.length, 30);
+  assert.equal(DAILY_WORDS[0].word, 'Eloquent');
+  assert.equal(DAILY_WORDS.at(-1).word, 'Wary');
+  assert.match(fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8'), /dailyPick\(SAT_WORDS.slice\(0, 30\), now\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, '../ios/FamETC/Domain/DailyContent.swift'), 'utf8'), /static var word: SATWord \{ words\[index\(30\)\] \}/);
+});

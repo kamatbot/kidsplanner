@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const puzzles = require("../lib/daily-puzzles");
-const { WORDS } = require("../lib/sat-words");
+const { DAILY_WORDS: WORDS } = require("../lib/sat-words");
 
 test("Wednesday serves one stable solvable Sudoku", () => {
   const first = puzzles.getDailyPuzzle("2026-08-12");

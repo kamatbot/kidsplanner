@@ -2271,7 +2271,8 @@ function renderWidgets() {
   document.getElementById('quote-reflect-text').value = '';
 
   // SAT Word
-  const w = dailyPick(SAT_WORDS, now);
+  // Keep the original daily calendar stable; extra words are quiz distractors.
+  const w = dailyPick(SAT_WORDS.slice(0, 30), now);
   currentSatWord = w;
   document.getElementById('sat-word').textContent    = w.word;
   document.getElementById('sat-pos').textContent     = w.pos;
