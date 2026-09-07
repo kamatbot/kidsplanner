@@ -44,11 +44,16 @@ private func captureWatchSection<Value>(
 ///    foreground refresh.
 @MainActor
 final class WatchStore: ObservableObject {
+    static let shared = WatchStore()
     @Published private(set) var snapshot: WatchSnapshot
     @Published private(set) var focusSession: WatchFocusSession?
     @Published private(set) var connection: WatchConnectionState
     @Published private(set) var lastError: String?
     @Published private(set) var pendingMutationCount: Int
+
+    @Published private(set) var reminderStatus = "Turn on gentle reminders"
+    @Published private(set) var needsConnection = false
+    private var connectionEpoch = 0
 
     private let api: WatchAPIClient
     private let credentials: WatchCredentialStore
@@ -106,22 +111,53 @@ final class WatchStore: ObservableObject {
     }
 
     /// Pull-to-refresh and a foreground activation share this one bounded path.
-    func refresh() async {
+    func refresh(replayMutations: Bool = true) async {
         guard !isRefreshing else { return }
         isRefreshing = true
+        let epoch = connectionEpoch
         connection = .refreshing
         lastError = nil
-        defer { isRefreshing = false }
+        defer { if epoch == connectionEpoch { isRefreshing = false } }
 
         guard credentialIsAvailable() else {
             connection = .disconnected
             return
         }
 
+        var contextFresh = !(api is WatchContextClient)
+        if let contextClient = api as? WatchContextClient {
+            do {
+                let context = try await withWatchTimeout(seconds: 8) { try await contextClient.fetchContext() }
+                guard epoch == connectionEpoch else { return }
+                if let previous = snapshot.context?.profile,
+                   previous.userId != context.profile.userId || previous.familyId != context.profile.familyId {
+                    resetLocalState()
+                    needsConnection = true
+                    lastError = "The watch account changed. Please reconnect."
+                    return
+                }
+                snapshot.context = context
+                contextFresh = true
+            } catch {
+                guard epoch == connectionEpoch else { return }
+                if case WatchAPIError.unauthenticated = error {
+                    resetLocalState()
+                    needsConnection = true
+                    lastError = "Reconnect this watch with a new FamETC code."
+                    return
+                }
+                // Keep the last role-scoped context when offline; never replace
+                // it with empty data or claim that stale lessons are fresh.
+                lastError = error.localizedDescription
+            }
+        }
+        guard epoch == connectionEpoch else { return }
+
         // Mutations are sent in creation order before the read. If a request
         // fails, the entry remains durable and is reapplied below to any
         // successfully fetched section.
-        _ = await drainOutbox()
+        if replayMutations { _ = await drainOutbox() }
+        guard epoch == connectionEpoch else { return }
 
         do {
             let sections = try await withWatchTimeout(seconds: 8) { [api] in
@@ -131,9 +167,15 @@ final class WatchStore: ObservableObject {
                 return await (actions, homework, shopping)
             }
 
+            guard epoch == connectionEpoch else { return }
             let actionResult = sections.0
             let homeworkResult = sections.1
             let shoppingResult = sections.2
+            // Revocation wins over a concurrently successful section.
+            if [actionResult.error, homeworkResult.error, shoppingResult.error].contains(where: {
+                if case WatchAPIError.unauthenticated? = $0 { return true }
+                return false
+            }) { throw WatchAPIError.unauthenticated }
             var successfulSections = 0
             var errors: [Error] = []
 
@@ -164,11 +206,13 @@ final class WatchStore: ObservableObject {
             }
 
             snapshot = applyingPendingMutations(to: snapshot)
-            snapshot.updatedAt = Date()
+            if contextFresh { snapshot.updatedAt = Date() }
             persist()
 
             if let error = errors.first {
                 lastError = error.localizedDescription
+                connection = .offline
+            } else if lastError != nil {
                 connection = .offline
             } else if outbox.isEmpty {
                 connection = .connected
@@ -176,10 +220,12 @@ final class WatchStore: ObservableObject {
                 connection = .offline
             }
         } catch is CancellationError {
+            guard epoch == connectionEpoch else { return }
             // A cancelled foreground task is not an error and the durable
             // cache/outbox remain exactly as they were.
             if outbox.isEmpty { connection = .cached }
         } catch {
+            guard epoch == connectionEpoch else { return }
             handleNetworkError(error)
         }
     }
@@ -349,7 +395,8 @@ final class WatchStore: ObservableObject {
         }
 
         isDraining = true
-        defer { isDraining = false }
+        let epoch = connectionEpoch
+        defer { if epoch == connectionEpoch { isDraining = false } }
 
         // Always operate on the head entry. A later mutation must not overtake
         // an earlier one if the watch was offline between two taps.
@@ -361,18 +408,21 @@ final class WatchStore: ObservableObject {
                     let updated = try await withWatchTimeout(seconds: 8) { [api] in
                         try await api.updateActionStatus(entry.resourceID, status: status)
                     }
+                    guard epoch == connectionEpoch else { return false }
                     replace(updated)
                 case .homeworkStatus:
                     let status = entry.stringValue ?? "done"
                     let updated = try await withWatchTimeout(seconds: 8) { [api] in
                         try await api.updateHomeworkStatus(entry.resourceID, status: status)
                     }
+                    guard epoch == connectionEpoch else { return false }
                     replace(updated)
                 case .shoppingDone:
                     let done = entry.boolValue ?? true
                     let updated = try await withWatchTimeout(seconds: 8) { [api] in
                         try await api.updateShoppingDone(entry.resourceID, done: done)
                     }
+                    guard epoch == connectionEpoch else { return false }
                     replace(updated)
                 case .homeworkChecklistStep:
                     guard let index = entry.index else { throw WatchAPIError.decoding("Checklist mutation has no index.") }
@@ -380,6 +430,7 @@ final class WatchStore: ObservableObject {
                     let updated = try await withWatchTimeout(seconds: 8) { [api] in
                         try await api.updateHomeworkChecklistStep(entry.resourceID, index: index, done: done)
                     }
+                    guard epoch == connectionEpoch else { return false }
                     replace(updated)
                 }
 
@@ -389,6 +440,7 @@ final class WatchStore: ObservableObject {
             } catch is CancellationError {
                 return false
             } catch {
+                guard epoch == connectionEpoch else { return false }
                 handleNetworkError(error)
                 return false
             }
@@ -455,7 +507,40 @@ final class WatchStore: ObservableObject {
         snapshot.shopping[index] = shopping
     }
 
+    func resetLocalState() {
+        connectionEpoch += 1
+        isRefreshing = false
+        isDraining = false
+        foregroundRefreshUsed = false
+        snapshot = WatchSnapshot()
+        outbox = []
+        focusSession = nil
+        pendingMutationCount = 0
+        connection = .disconnected
+        needsConnection = false
+        lastError = nil
+        persistence.clear()
+        WatchComplicationSnapshotStore.save(.empty)
+        WidgetCenter.shared.reloadAllTimelines()
+        Task { await WatchReminders.shared.clear() }
+    }
+
+    func enableReminders() async {
+        let granted = await WatchReminders.shared.authorize()
+        if granted { WatchPushRegistrationService.shared.requestAuthorizationAndRegister() }
+        reminderStatus = await WatchReminders.shared.refresh(snapshot: snapshot, focus: focusSession)
+    }
+
     private func persist() {
+        let savedSnapshot = snapshot
+        let savedFocus = focusSession
+        let epoch = connectionEpoch
+        Task {
+            guard epoch == connectionEpoch else { return }
+            let status = await WatchReminders.shared.refresh(snapshot: savedSnapshot, focus: savedFocus)
+            guard epoch == connectionEpoch else { return }
+            reminderStatus = status
+        }
         persistence.save(WatchPersistedState(
             snapshot: snapshot,
             outbox: outbox,
@@ -479,6 +564,8 @@ final class WatchStore: ObservableObject {
 
     private func handleNetworkError(_ error: Error) {
         if case WatchAPIError.unauthenticated = error {
+            resetLocalState()
+            needsConnection = true
             connection = .disconnected
         } else if case WatchAPIError.disconnected = error {
             connection = .disconnected

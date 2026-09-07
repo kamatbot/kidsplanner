@@ -427,3 +427,42 @@ final class WatchStoreTests: XCTestCase {
         XCTAssertEqual(store.snapshot.homework.first(where: { $0.id == second.id })?.status, "todo")
     }
 }
+
+extension WatchStoreTests {
+    func testDisconnectClearsCachedIdentityOutboxFocusAndPersistence() async {
+        let api = TestAPI()
+        api.mutationError = WatchAPIError.transport("offline")
+        let work = WatchHomework(id: "private-work", kidId: "kid-a", title: "Private assignment", dueDate: "2026-09-07", status: "todo")
+        var snapshot = WatchSnapshot(homework: [work])
+        snapshot.context = WatchContext(profile: WatchProfile(role: "kid", userId: "user-a", familyId: "family-a", kidId: "kid-a", name: "Maya"), events: [])
+        let persistence = TestPersistence()
+        let store = WatchStore(api: api, credentials: TestCredentials(), persistence: persistence, initialState: WatchPersistedState(snapshot: snapshot))
+        await store.startFocus(on: work)
+        XCTAssertNotNil(store.focusSession)
+        XCTAssertGreaterThan(store.pendingMutationCount, 0)
+        store.resetLocalState()
+        XCTAssertNil(store.snapshot.context)
+        XCTAssertTrue(store.snapshot.homework.isEmpty)
+        XCTAssertNil(store.focusSession)
+        XCTAssertEqual(store.pendingMutationCount, 0)
+        XCTAssertNil(persistence.state)
+        XCTAssertEqual(store.connection, .disconnected)
+    }
+}
+
+extension WatchStoreTests {
+    func testRevokedSectionClearsPrivateCacheDespiteOtherSuccessfulSections() async {
+        let api = TestAPI()
+        api.homeworkError = WatchAPIError.unauthenticated
+        api.actions = [WatchAction(id: "fresh", familyId: "f", title: "A successful section", status: "todo")]
+        var snapshot = WatchSnapshot()
+        snapshot.context = WatchContext(profile: WatchProfile(role: "kid", userId: "u", familyId: "f", kidId: "k", name: "Maya"), events: [])
+        let persistence = TestPersistence()
+        let store = WatchStore(api: api, credentials: TestCredentials(), persistence: persistence, initialState: WatchPersistedState(snapshot: snapshot))
+        await store.refresh()
+        XCTAssertTrue(store.needsConnection)
+        XCTAssertNil(store.snapshot.context)
+        XCTAssertTrue(store.snapshot.actions.isEmpty)
+        XCTAssertNil(persistence.state)
+    }
+}
