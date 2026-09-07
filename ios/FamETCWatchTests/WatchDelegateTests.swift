@@ -3,6 +3,20 @@ import WatchKit
 @testable import FamETCWatch
 
 final class WatchDelegateTests: XCTestCase {
+    func testSignedWatchCanSaveReplaceAndClearItsDeviceCredential() throws {
+        let keychain = KeychainWatchCredentialStore(service: "com.fametc.watch.tests", account: UUID().uuidString)
+        defer { try? keychain.clear() }
+        XCTAssertNil(try keychain.credential())
+        let kid = WatchCredential(kind: .bearerToken, value: "synthetic-kid", role: "kid", userId: "kid", familyId: "family")
+        try keychain.save(kid)
+        XCTAssertEqual(try keychain.credential(), kid)
+        let parent = WatchCredential(kind: .bearerToken, value: "synthetic-parent", role: "parent", userId: "parent", familyId: "family")
+        try keychain.save(parent)
+        XCTAssertEqual(try keychain.credential(), parent)
+        try keychain.clear()
+        XCTAssertNil(try keychain.credential())
+    }
+
     func testWatchPushCallbacksUseActualWatchDelegateSelectors() {
         let delegate = FamETCWatchExtensionDelegate()
         XCTAssertTrue(delegate.responds(to: #selector(WKApplicationDelegate.didRegisterForRemoteNotifications(withDeviceToken:))))
