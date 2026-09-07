@@ -56,17 +56,26 @@ test("a buildable same-week news fixture supplies three masked, attributed entri
     { id: "tech", headline: "Robot Builders", answer: "ROBOT", publishedAt: "2026-08-11T12:00:00Z" },
     { id: "nature", headline: "Ocean Tides", answer: "OCEAN", publishedAt: "2026-08-12T12:00:00Z" },
     { id: "later", headline: "Outside Week", answer: "OUTSIDE", publishedAt: "2026-08-17T12:00:00Z" },
-  ];
+  ].map((item) => ({ ...item, source: item.id === 'health' ? 'WHO' : 'BBC', url: `https://www.bbc.com/news/${item.id}` }));
   const saturday = puzzles.getDailyPuzzle("2026-08-15", items);
   const sunday = puzzles.getDailyPuzzle("2026-08-16", items);
-  assert.deepEqual(sunday.crossword, saturday.crossword);
+  assert.equal(sunday.crossword.entries.length, 10);
+  assert.notDeepEqual(sunday.crossword, saturday.crossword);
   for (const answer of ["HEALING", "ROBOT", "OCEAN"]) {
     const entry = saturday.crossword.entries.find((candidate) => candidate.answer === answer);
     assert.ok(entry);
-    assert.match(entry.clue, /Science News Explores/);
+    assert.match(entry.clue, /WHO|BBC/);
+    assert.equal(entry.source, answer === 'HEALING' ? 'WHO' : 'BBC');
+    assert.match(entry.url, /^https:\/\//);
+    assert.ok(entry.publishedAt);
     assert.equal(entry.clue.includes(answer), false);
   }
   assert.equal(saturday.crossword.entries.some((entry) => entry.answer === "OUTSIDE"), false);
+});
+
+test('Tuesday can include a story from the previous week within the rolling seven days', () => {
+  const result = puzzles.getDailyPuzzle('2026-08-11', [{ headline: 'Healing Coral', answer: 'HEALING', source: 'WHO', url: 'https://www.who.int/news/story', publishedAt: '2026-08-09T12:00:00Z' }]);
+  assert.ok(result.crossword.entries.some((entry) => entry.source === 'WHO'));
 });
 
 test("the current weekend crossword stays compact and identifies SAT word clues", () => {
@@ -74,7 +83,7 @@ test("the current weekend crossword stays compact and identifies SAT word clues"
     { id: "cyclops", headline: "The Cyclops may be an ancient myth, but one-eyed creatures are real", answer: "CYCLOPS", publishedAt: "2026-08-24T12:00:00Z" },
     { id: "cosmic", headline: "This cosmic oddity blurs the line between planet and moon", answer: "COSMIC", publishedAt: "2026-08-25T12:00:00Z" },
     { id: "meet", headline: "Meet the world’s biggest waves — and the mysteries behind them", answer: "MEET", publishedAt: "2026-08-26T12:00:00Z" },
-  ];
+  ].map((item) => ({ ...item, source: 'BBC', url: `https://www.bbc.com/news/${item.id}` }));
   const first = puzzles.getDailyPuzzle("2026-08-30", newsItems);
   const second = puzzles.getDailyPuzzle("2026-08-30", newsItems);
   const crossword = first.crossword;
@@ -135,10 +144,46 @@ test("invalid or unbuildable news candidates never displace the weekly SAT fallb
   assert.equal(result.crossword.entries.filter((entry) => WORDS.some((word) => word.word.toUpperCase() === entry.answer)).length, 7);
 });
 
-test("other weekdays have no puzzle and malformed dates are rejected", () => {
-  assert.deepEqual(puzzles.getDailyPuzzle("2026-08-13"), { date: "2026-08-13", available: false, type: null });
+test("malformed dates are rejected", () => {
   assert.deepEqual(puzzles.getDailyPuzzle("2026-02-30"), { error: "Use a real date in YYYY-MM-DD format." });
   assert.deepEqual(puzzles.getDailyPuzzle("not-a-date"), { error: "Use a real date in YYYY-MM-DD format." });
+});
+
+test('every day has a stable puzzle and fourteen Sudoku days have different valid boards', () => {
+  const boards = new Set();
+  for (let offset = 0; boards.size < 14 && offset < 33; offset++) {
+    const date = new Date(Date.UTC(2026, 8, 7 + offset)).toISOString().slice(0, 10);
+    const first = puzzles.getDailyPuzzle(date);
+    assert.equal(first.available, true);
+    assert.deepEqual(puzzles.getDailyPuzzle(date), first);
+    if (first.type !== 'sudoku') {
+      assert.equal(first.crossword.entries.length, 10);
+      continue;
+    }
+    const { puzzle, solution } = first.sudoku;
+    assert.ok(!boards.has(puzzle));
+    boards.add(puzzle);
+    for (let i = 0; i < 9; i++) {
+      const row = [], col = [], box = [];
+      for (let j = 0; j < 9; j++) {
+        row.push(solution[i * 9 + j]);
+        col.push(solution[j * 9 + i]);
+        box.push(solution[(Math.floor(i / 3) * 3 + Math.floor(j / 3)) * 9 + (i % 3) * 3 + j % 3]);
+      }
+      for (const unit of [row, col, box]) assert.equal(unit.sort().join(''), '123456789');
+    }
+    for (let i = 0; i < 81; i++) if (puzzle[i] !== '0') assert.equal(puzzle[i], solution[i]);
+  }
+  assert.equal(boards.size, 14);
+});
+
+test('stale, future, unsafe and unattributed news use the honest static fallback', () => {
+  const date = '2026-08-15';
+  const base = { headline: 'Healing Coral', answer: 'HEALING', source: 'WHO', url: 'https://www.who.int/news/story', publishedAt: '2026-08-12T12:00:00Z' };
+  for (const change of [{ publishedAt: '2026-08-08T23:59:59Z' }, { publishedAt: '2026-08-16T00:00:00Z' }, { url: 'http://www.who.int/story' }, { source: '' }]) {
+    assert.deepEqual(puzzles.getDailyPuzzle(date, [{ ...base, ...change }]), puzzles.getDailyPuzzle(date));
+  }
+  assert.ok(puzzles.getDailyPuzzle(date).crossword.entries.every((entry) => !entry.source && !/recent story/.test(entry.clue)));
 });
 
 test("all crossword themes build with ten words", () => {

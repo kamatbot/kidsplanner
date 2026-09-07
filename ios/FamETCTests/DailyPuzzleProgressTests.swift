@@ -38,6 +38,56 @@ final class DailyPuzzleProgressTests: XCTestCase {
         XCTAssertTrue(DailyPuzzleProgressStore.load(for: identity, allowedKeys: keys, defaults: defaults).isEmpty)
     }
 
+    func testAccountsAndLegacyUnscopedProgressStayIsolated() {
+        let puzzle = crossword()
+        let keys = DailyPuzzleProgressStore.allowedKeys(for: puzzle)
+        let first = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: "kid/one")
+        let sibling = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: "kid_one")
+        let unscoped = DailyPuzzleProgressIdentity(puzzle: puzzle)
+        XCTAssertNotEqual(first.storageKey, sibling.storageKey)
+        DailyPuzzleProgressStore.save(["c-0-0": "P"], for: first, allowedKeys: keys, defaults: defaults)
+        DailyPuzzleProgressStore.save(["c-0-1": "E"], for: unscoped, allowedKeys: keys, defaults: defaults)
+        XCTAssertTrue(DailyPuzzleProgressStore.load(for: sibling, allowedKeys: keys, defaults: defaults).isEmpty)
+        XCTAssertEqual(DailyPuzzleProgressStore.load(for: first, allowedKeys: keys, defaults: defaults), ["c-0-0": "P"])
+    }
+
+    func testOnlySuccessfulNonemptyCheckAwardsSolvedAndClearOrEditResets() {
+        let puzzle = crossword()
+        let identity = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: "kid-1")
+        DailyPuzzleProgressStore.recordCheck(correct: 0, required: 0, for: identity, defaults: defaults)
+        XCTAssertFalse(DailyPuzzleProgressStore.isSolved(for: identity, defaults: defaults))
+        DailyPuzzleProgressStore.recordCheck(correct: 3, required: 4, for: identity, defaults: defaults)
+        XCTAssertFalse(DailyPuzzleProgressStore.isSolved(for: identity, defaults: defaults))
+        DailyPuzzleProgressStore.recordCheck(correct: 4, required: 4, for: identity, defaults: defaults)
+        XCTAssertTrue(DailyPuzzleProgressStore.isSolved(for: identity, defaults: defaults))
+        DailyPuzzleProgressStore.save(["c-0-0": "P"], for: identity, allowedKeys: DailyPuzzleProgressStore.allowedKeys(for: puzzle), defaults: defaults)
+        XCTAssertFalse(DailyPuzzleProgressStore.isSolved(for: identity, defaults: defaults))
+        DailyPuzzleProgressStore.recordCheck(correct: 4, required: 4, for: identity, defaults: defaults)
+        DailyPuzzleProgressStore.clear(for: identity, defaults: defaults)
+        XCTAssertFalse(DailyPuzzleProgressStore.isSolved(for: identity, defaults: defaults))
+        XCTAssertNotEqual(DailyNewsSelection.ideaKey(userID: "kid-1", day: "2026-09-07"), DailyNewsSelection.ideaKey(userID: "kid-2", day: "2026-09-07"))
+        XCTAssertNotEqual(DailyNewsSelection.ideaKey(userID: "kid-1", day: "2026-09-07"), DailyNewsSelection.ideaKey(userID: "kid-1", day: "2026-09-08"))
+    }
+
+    func testNewsSelectsNewestSafeRecentItemsAndRejectsStaleFutureOrInvalid() {
+        let now = ISO8601DateFormatter().date(from: "2026-09-07T12:00:00Z")!
+        func story(_ id: String, date: String, url: String = "https://example.org/story") -> RecentNewsItem {
+            RecentNewsItem(id: id, cat: "science", headline: id, summary: "Summary", url: url, publishedAt: date, source: "Publisher", question: "What do you think?")
+        }
+        let items = [
+            story("older", date: "2026-09-05T12:00:00Z"),
+            story("stale", date: "2026-08-20T12:00:00Z"),
+            story("future", date: "2026-09-07T14:00:00Z"),
+            story("invalid", date: "invalid"),
+            story("unsafe", date: "2026-09-07T12:00:00Z", url: "http://example.org/story"),
+            story("credentials", date: "2026-09-07T12:00:00Z", url: "https://user:password@example.org/story"),
+            story("newest", date: "2026-09-07T11:00:00.000Z")
+        ]
+        XCTAssertEqual(DailyNewsSelection.recent(items, now: now).map(\.id), ["newest", "older"])
+        XCTAssertTrue(DailyNewsSelection.recent([], now: now).isEmpty)
+        XCTAssertTrue(DailyNewsSelection.recent([items[1], items[2], items[3], items[4]], now: now).isEmpty)
+    }
+
     func testRestoreAndClearProgress() {
         let puzzle = crossword()
         let identity = DailyPuzzleProgressIdentity(puzzle: puzzle)

@@ -275,6 +275,33 @@ test("action routes: kid sees shared plus own, cannot mutate shared/sibling/deta
   assert.equal(call(routes["DELETE /api/family/actions/:id"], { user: kidAUser, params: { id: own.id } }).statusCode, 403);
 });
 
+test("homework action status belongs to the student, not a parent action checkbox", () => {
+  const { routes, tracked } = buildHarness();
+  const { fam, parent, parent2, kidA, kidAUser, kidBUser } = makeFamily("homework-owner");
+  const item = actions.createAction(fam.id, {
+    title: "Algebra practice", sourceType: "homework", sourceId: "hw_algebra",
+    assigneeType: "kid", assigneeId: kidA.id, createdBy: parent.id,
+  }).action;
+  for (const user of [parent, parent2]) {
+    for (const status of ["done", "open", "snoozed"]) {
+      const response = call(routes["PATCH /api/family/actions/:id"], {
+        user, params: { id: item.id }, body: status === "snoozed"
+          ? { status, snoozedUntil: "2026-09-08T09:00:00Z" } : { status },
+      });
+      assert.equal(response.statusCode, 403);
+      assert.match(response.body.error, /student/i);
+      assert.equal(actions.getAction(fam.id, item.id).status, "open");
+    }
+  }
+  assert.deepEqual(tracked, []);
+  assert.equal(call(routes["PATCH /api/family/actions/:id"], {
+    user: kidBUser, params: { id: item.id }, body: { status: "done" },
+  }).statusCode, 403);
+  assert.equal(call(routes["PATCH /api/family/actions/:id"], {
+    user: kidAUser, params: { id: item.id }, body: { status: "done" },
+  }).statusCode, 200);
+});
+
 test("analytics: action events are allowlisted and summary remains aggregate-only", () => {
   assert.equal(analytics.recordEvent("action_created"), true);
   assert.equal(analytics.recordEvent("action_completed"), true);

@@ -273,7 +273,11 @@ const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 const NEWS_FUTURE_SKEW_MS = 60 * 60 * 1000;
 const NEWS_EMPTY_STATE = 'No recent stories right now.';
 let newsRequestToken = 0;
+let recentNewsItems = [];
 let currentDailyPuzzle = null;
+let puzzleRequestToken = 0;
+let currentPuzzleProgressKey = null;
+let currentPuzzleCompletionKey = null;
 
 /* ---------- Quote widget: flip + reflection ---------- */
 function flipQuoteCard(showBack) {
@@ -357,6 +361,11 @@ function setNewsLinkState(link, url) {
 }
 
 function setNewsReflectionAvailability(enabled) {
+  const nextButton = document.getElementById('news-next-btn');
+  if (nextButton) {
+    nextButton.hidden = !enabled || recentNewsItems.length < 2;
+    nextButton.disabled = !enabled;
+  }
   const details = document.getElementById('news-details');
   if (details) {
     details.hidden = !enabled;
@@ -464,21 +473,37 @@ async function loadRecentNews(requestToken, now) {
       renderNewsUnavailable();
       return;
     }
-    renderNewsItem(dailyPick(items, currentTime), currentTime);
+    recentNewsItems = items.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+    renderNewsItem(recentNewsItems[0], currentTime);
   } catch (e) {
     if (requestToken === newsRequestToken) renderNewsUnavailable();
   }
 }
 
+function nextNewsStory() {
+  const text = document.getElementById('news-reflect-text');
+  if (text && text.value.trim()) { toast('Save your reflection or clear it before choosing another story.'); return; }
+  const index = recentNewsItems.indexOf(currentNews);
+  recentNewsItems = recentNewsItems.filter((item) => isRecentNewsItem(item, new Date()));
+  if (!recentNewsItems.length) { renderNewsUnavailable(); return; }
+  renderNewsItem(recentNewsItems[(index + 1) % recentNewsItems.length], new Date());
+}
+
 async function saveNewsReflection() {
-  if (!currentNews || !newsArticleLink(currentNews)) return;
+  if (!currentNews || !isRecentNewsItem(currentNews, new Date())) return;
   const textEl = document.getElementById('news-reflect-text');
   const body = textEl ? textEl.value.trim() : '';
   if (!body) { toast('Write a few words first 🙂'); return; }
   const link = newsArticleLink(currentNews);
   const newsFull = currentNews ? `${currentNews.headline}\n\n${currentNews.summary}\n\n${link}` : '';
+  const completionKey = daily5DoneKey();
   const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: newsFull });
-  if (note) textEl.value = '';
+  if (note && completionKey === daily5DoneKey()) {
+    textEl.value = '';
+    const nextButton = document.getElementById('news-next-btn');
+    if (nextButton) nextButton.disabled = false;
+    markDaily5Done('news');
+  }
 }
 
 /* ---------- chat: pin a message to notes ---------- */
@@ -2248,6 +2273,12 @@ function markDaily5Done(part) {
 }
 function applyDaily5Done() {
   const s = load(daily5DoneKey()) || {};
+  const quest = document.getElementById('daily-quest-summary');
+  if (quest) {
+    const parts = [['news', 'News reflection'], ['bt', 'Brain teaser'], ['puzzle', 'Puzzle']];
+    quest.textContent = `Optional daily quest · ${parts.filter(([key]) => s[key]).length} of 3 complete. ` +
+      parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
+  }
   if (s.sat) {
     ['sat-placement', 'sat-activity', 'sat-wordbank-panel', 'sat-quiz-panel'].forEach((id) => {
       const el = document.getElementById(id);
@@ -2256,10 +2287,8 @@ function applyDaily5Done() {
     const footer = document.querySelector('#widget-word .fam-sat-footer');
     if (footer) footer.hidden = true;
   }
-  if (s.bt) {
-    const bt = document.getElementById('widget-quiz');
-    if (bt) bt.hidden = true;
-  }
+  const bt = document.getElementById('widget-quiz');
+  if (bt) bt.hidden = !!s.bt;
 }
 
 function renderWidgets() {
@@ -2296,17 +2325,29 @@ function renderWidgets() {
 }
 
 /* ============================================================
-   DATE-BASED PUZZLE — Wednesday Sudoku, weekend 10-word crossword
+   DATE-BASED PUZZLE — daily Sudoku or crossword
 ============================================================ */
 async function loadDailyPuzzle(now) {
   const card = document.getElementById('widget-puzzle');
   if (!card) return;
+  const requestToken = ++puzzleRequestToken;
+  const userId = sessionUser && sessionUser.id;
   currentDailyPuzzle = null;
-  card.hidden = true;
+  currentPuzzleProgressKey = null;
+  currentPuzzleCompletionKey = daily5DoneKey();
+  card.hidden = false;
+  document.getElementById('puzzle-grid-wrap').innerHTML = '';
+  document.getElementById('puzzle-clues').innerHTML = '';
+  document.getElementById('puzzle-status').textContent = 'Loading today’s puzzle…';
+  const retry = document.getElementById('puzzle-retry-btn');
+  if (retry) retry.hidden = true;
   try {
     const result = await window.auth.getDailyPuzzle(isoDate(now || new Date()));
-    if (!result || !result.available) return;
+    if (requestToken !== puzzleRequestToken || userId !== (sessionUser && sessionUser.id)) return;
+    if (!result || !result.available) throw new Error('Puzzle unavailable');
     currentDailyPuzzle = result;
+    // The complete board identity prevents restoring answers into a changed puzzle.
+    currentPuzzleProgressKey = `fam_puzzle_${userId || 'anon'}_${result.date || isoDate(now || new Date())}_${JSON.stringify([result.type, result.sudoku, result.crossword])}`;
     card.hidden = false;
     const title = document.getElementById('puzzle-title');
     const icon = document.getElementById('puzzle-icon');
@@ -2315,9 +2356,37 @@ async function loadDailyPuzzle(now) {
     if (icon) icon.textContent = result.type === 'sudoku' ? '🔢' : '🧩';
     if (instructions) instructions.textContent = result.instructions || '';
     renderDailyPuzzle(result);
+    const progress = load(currentPuzzleProgressKey);
+    const inputs = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]'));
+    if (progress && Array.isArray(progress.values) && progress.values.length === inputs.length) {
+      inputs.forEach((input, index) => { input.value = String(progress.values[index] || '').slice(0, 1); });
+      if (progress.solved) document.getElementById('puzzle-status').textContent = 'Puzzle complete — your answers are saved on this device.';
+    }
+    const grid = document.getElementById('puzzle-grid-wrap');
+    grid.oninput = saveDailyPuzzleProgress;
+    grid.onkeyup = saveDailyPuzzleProgress;
   } catch (e) {
-    card.hidden = true;
+    if (requestToken !== puzzleRequestToken || userId !== (sessionUser && sessionUser.id)) return;
+    document.getElementById('puzzle-status').textContent = 'Could not load today’s puzzle. Try again.';
+    if (retry) retry.hidden = false;
   }
+}
+
+function saveDailyPuzzleProgress(solved = false) {
+  if (!currentPuzzleProgressKey || !currentDailyPuzzle || currentPuzzleCompletionKey !== daily5DoneKey()) return;
+  const previous = load(currentPuzzleProgressKey) || {};
+  const values = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]')).map((input) => input.value);
+  const changed = JSON.stringify(values) !== JSON.stringify(previous.values || []);
+  if (changed && solved !== true) {
+    document.getElementById('puzzle-status').textContent = '';
+    const done = load(daily5DoneKey()) || {};
+    if (done.puzzle) {
+      delete done.puzzle;
+      save(daily5DoneKey(), done);
+      applyDaily5Done();
+    }
+  }
+  save(currentPuzzleProgressKey, { values, solved: solved === true || (!changed && !!previous.solved) });
 }
 
 function renderDailyPuzzle(result) {
@@ -2343,7 +2412,7 @@ function renderDailyPuzzle(result) {
     grid.innerHTML = `<div class="crossword-grid" style="--puzzle-cols:${Number(crossword.cols) || 1}">${cells.join('')}</div>`;
     clues.innerHTML = ['across', 'down'].map((direction) => {
       const entries = (crossword.entries || []).filter((entry) => entry.direction === direction);
-      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<button type="button" class="crossword-clue" data-entry-id="${Number(entry.number)}-${direction}" aria-label="${Number(entry.number)} ${direction}: ${esc(entry.clue)}"><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</button>`).join('')}</section>` : '';
+      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<button type="button" class="crossword-clue" data-entry-id="${Number(entry.number)}-${direction}" aria-label="${Number(entry.number)} ${direction}: ${esc(entry.clue)}"><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</button>${newsUrlIsHttps(entry.url) ? `<a class="news-link" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer">${esc(entry.source || 'Clue source')}</a>` : ''}`).join('')}</section>` : '';
     }).join('');
     wireCrosswordTyping(crossword, grid, clues);
   } else if (result.type === 'sudoku' && result.sudoku) {
@@ -2452,13 +2521,20 @@ function wireCrosswordTyping(crossword, grid, clues) {
 }
 
 function clearDailyPuzzle() {
+  if (!currentDailyPuzzle || currentPuzzleCompletionKey !== daily5DoneKey()) return;
   document.querySelectorAll('#puzzle-grid-wrap input').forEach((input) => { input.value = ''; input.classList.remove('right', 'wrong'); });
   const status = document.getElementById('puzzle-status');
-  if (status) status.textContent = '';
+  if (status) status.textContent = 'Board and today’s puzzle credit reset. Ready for a fresh try.';
+  save(currentPuzzleProgressKey, { values: [], solved: false });
+  const done = load(daily5DoneKey()) || {};
+  delete done.puzzle;
+  save(daily5DoneKey(), done);
+  applyDaily5Done();
 }
 
 function checkDailyPuzzle() {
   const inputs = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]'));
+  if (!currentDailyPuzzle || currentPuzzleCompletionKey !== daily5DoneKey() || !inputs.length) return;
   let correct = 0;
   let unanswered = 0;
   inputs.forEach((input) => {
@@ -2471,6 +2547,7 @@ function checkDailyPuzzle() {
   });
   const status = document.getElementById('puzzle-status');
   if (!status) return;
+  if (correct === inputs.length) { markDaily5Done('puzzle'); saveDailyPuzzleProgress(true); }
   status.textContent = correct === inputs.length
     ? 'You did it — every answer is correct! 🎉'
     : unanswered
@@ -4448,7 +4525,7 @@ function todayActionDueLabel(action, now) {
 // affordance only; the API remains authoritative for every write.
 function todayActionCanManageForViewer(action, kidSession, ownKidId) {
   if (!action) return false;
-  if (!kidSession) return true;
+  if (!kidSession) return action.sourceType !== 'homework';
   if (!ownKidId) return false;
   return action.assigneeType === 'kid' &&
     (action.assigneeId === ownKidId || action.kidId === ownKidId);
@@ -4487,6 +4564,7 @@ function snoozeTodayAction(id, preset, button) {
 }
 
 function renderTodayActionRow(action, now, later) {
+  const reviewHomework = !isKidSession() && action.sourceType === 'homework';
   const canManage = todayActionCanManage(action);
   const canDelete = todayActionCanDeleteForViewer(isKidSession());
   const id = todayActionIdArg(action.id);
@@ -4498,11 +4576,14 @@ function renderTodayActionRow(action, now, later) {
   const check = canManage
     ? `<button type="button" class="today-action-check" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete" title="Mark complete">○</button>`
     : '<span class="today-action-check" aria-hidden="true">·</span>';
-  const controls = canManage ? todayActionSnoozeOptions(action) : '';
+  const controls = reviewHomework
+    ? `<button type="button" class="btn-secondary" onclick="reviewTodayHomework('${todayActionIdArg(action.sourceId || '')}')">Review homework</button>`
+    : canManage ? todayActionSnoozeOptions(action) : '';
   return `<article class="today-action-row${later ? ' later' : ''}">
     ${check}
     <div class="today-action-body">
       <div class="today-action-main">
+        ${reviewHomework ? `<span class="today-action-title">Homework due for ${esc(kidNameFor(action.kidId || action.assigneeId) || 'your child')}</span></div><div class="today-action-main">` : ''}
         <span class="today-action-title">${title}</span>
       </div>
       <div class="today-action-meta">
@@ -4515,6 +4596,13 @@ function renderTodayActionRow(action, now, later) {
     </div>
     ${controls ? `<div class="today-action-controls">${controls}</div>` : ''}
   </article>`;
+}
+
+async function reviewTodayHomework(id) {
+  switchNavTab('homework');
+  if (!homeworkItems.some((item) => item.id === id)) await loadHomework();
+  if (homeworkItems.some((item) => item.id === id)) openHomeworkDetail(id);
+  else toast('This assignment could not be loaded. Try refreshing Homework.');
 }
 
 function renderTodayActionSection(title, entries, now, id, laterCount) {

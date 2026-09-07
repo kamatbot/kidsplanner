@@ -2,18 +2,21 @@ import CryptoKit
 import Foundation
 
 struct DailyPuzzleProgressIdentity: Hashable {
+    let userID: String
     let date: String
     let type: String
     let fingerprint: String
 
-    init(puzzle: DailyPuzzleResponse) {
+    init(puzzle: DailyPuzzleResponse, userID: String = "") {
+        self.userID = userID
         date = puzzle.date
         type = puzzle.type ?? Self.inferredType(for: puzzle)
         fingerprint = Self.fingerprint(for: puzzle)
     }
 
     var storageKey: String {
-        "fametc.dailyPuzzleProgress.v1.\(Self.keyPart(date)).\(Self.keyPart(type)).\(fingerprint)"
+        let account = SHA256.hash(data: Data(userID.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "fametc.dailyPuzzleProgress.v2.\(account).\(Self.keyPart(date)).\(Self.keyPart(type)).\(fingerprint)"
     }
 
     private static func inferredType(for puzzle: DailyPuzzleResponse) -> String {
@@ -28,7 +31,7 @@ struct DailyPuzzleProgressIdentity: Hashable {
             let entries = crossword.entries
                 .sorted { $0.id < $1.id }
                 .map { entry in
-                    "\(entry.number)|\(entry.direction)|\(entry.row)|\(entry.col)|\(entry.answer.count)|\(entry.clue)"
+                    "\(entry.number)|\(entry.direction)|\(entry.row)|\(entry.col)|\(entry.answer)|\(entry.clue)"
                 }
                 .joined(separator: "\n")
             material = "crossword|\(crossword.rows)|\(crossword.cols)|\(entries)"
@@ -94,6 +97,7 @@ struct DailyPuzzleProgressStore {
         allowedKeys: Set<String>,
         defaults: UserDefaults = .standard
     ) {
+        defaults.removeObject(forKey: identity.storageKey + ".solved")
         let sanitized = answers.reduce(into: [String: String]()) { result, item in
             guard allowedKeys.contains(item.key), let value = normalizedValue(item.value, for: item.key) else { return }
             result[item.key] = value
@@ -111,6 +115,15 @@ struct DailyPuzzleProgressStore {
         defaults: UserDefaults = .standard
     ) {
         defaults.removeObject(forKey: identity.storageKey)
+        defaults.removeObject(forKey: identity.storageKey + ".solved")
+    }
+
+    static func isSolved(for identity: DailyPuzzleProgressIdentity, defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: identity.storageKey + ".solved")
+    }
+
+    static func recordCheck(correct: Int, required: Int, for identity: DailyPuzzleProgressIdentity, defaults: UserDefaults = .standard) {
+        defaults.set(required > 0 && correct == required, forKey: identity.storageKey + ".solved")
     }
 
     private struct Payload: Codable {
@@ -135,6 +148,35 @@ struct DailyPuzzleProgressStore {
     private static func character(_ text: String, at index: Int) -> String {
         guard index >= 0, index < text.count else { return "" }
         return String(text[text.index(text.startIndex, offsetBy: index)])
+    }
+}
+
+enum DailyNewsSelection {
+    static func publishedDate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
+    }
+
+    static func recent(_ items: [RecentNewsItem], now: Date = Date()) -> [RecentNewsItem] {
+        items.compactMap { item -> (RecentNewsItem, Date)? in
+            guard let url = URL(string: item.url), url.scheme?.lowercased() == "https",
+                  let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
+                  let date = publishedDate(item.publishedAt),
+                  date >= now.addingTimeInterval(-14 * 86_400), date <= now.addingTimeInterval(3_600) else { return nil }
+            return (item, date)
+        }.sorted { $0.1 > $1.1 }.map { $0.0 }
+    }
+
+    static func ideaKey(userID: String, day: String) -> String {
+        let account = SHA256.hash(data: Data(userID.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "fam_daily_idea.\(account).\(day)"
+    }
+
+    static func publisherLine(_ item: RecentNewsItem) -> String {
+        guard let date = publishedDate(item.publishedAt) else { return item.source }
+        return "\(item.source) · \(date.formatted(date: .abbreviated, time: .omitted))"
     }
 }
 

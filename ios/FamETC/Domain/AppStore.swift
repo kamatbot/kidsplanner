@@ -880,6 +880,7 @@ final class AppStore {
     /// field this operation owned.
     @discardableResult
     func setHomeworkStatus(_ item: HomeworkItem, status: String) async -> Bool {
+        guard canChangeHomeworkProgress(item) else { return false }
         guard let idx = homework.firstIndex(where: { $0.id == item.id }) else { return false }
         let previousStatus = homework[idx].status
         guard previousStatus != status, beginHomeworkMutation(item.id) else { return false }
@@ -956,6 +957,13 @@ final class AppStore {
         }
     }
 
+    /// Parent review never changes a student's progress, including through
+    /// chat/Today detail sheets rather than the main Homework screen.
+    func canChangeHomeworkProgress(_ item: HomeworkItem) -> Bool {
+        guard me?.role == "kid", let ownKidId = me?.kidId else { return false }
+        return item.kidId == ownKidId
+    }
+
     /// Toggle a homework item done/undone (optimistic, reverts on failure).
     func toggleHomeworkDone(_ item: HomeworkItem) async {
         await setHomeworkStatus(item, status: item.isDone ? "todo" : "done")
@@ -989,9 +997,10 @@ final class AppStore {
     }
 
     /// Shared and sibling rows are intentionally read-only for kids. Parents
-    /// may complete any non-completed action; the server remains authoritative.
+    /// may complete ordinary actions, but only review student homework.
     func canCompleteAction(_ action: FamilyAction) -> Bool {
         guard canViewAction(action), !action.isDone else { return false }
+        if isParent && action.sourceType == "homework" { return false }
         return isParent || (me?.kidId.map { canManageOwnKidAction(action, ownKidId: $0) } ?? false)
     }
 
@@ -999,6 +1008,7 @@ final class AppStore {
     /// same three presets and the server validates the resulting timestamp.
     func canSnoozeAction(_ action: FamilyAction) -> Bool {
         guard canViewAction(action), !action.isDone else { return false }
+        if isParent && action.sourceType == "homework" { return false }
         return isParent || (me?.kidId.map { canManageOwnKidAction(action, ownKidId: $0) } ?? false)
     }
 

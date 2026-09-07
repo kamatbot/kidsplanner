@@ -95,6 +95,8 @@ function newsHelpers({ auth } = {}) {
     document: { getElementById: (id) => elements[id] || null },
     window: { auth: auth || { getRecentNews: async () => ({ items: [] }) } },
     dailyPick: (items) => items[0],
+    daily5DoneKey: () => 'daily-test',
+    markDaily5Done: () => {},
     saveNoteFromWidget: async (...args) => {
       notes.push(args);
       return { id: "note_1" };
@@ -114,12 +116,14 @@ function newsHelpers({ auth } = {}) {
     extractFunction(appSource, "renderNewsUnavailable"),
     extractFunction(appSource, "renderNewsItem"),
     extractFunction(appSource, "loadRecentNews"),
+    extractFunction(appSource, "nextNewsStory"),
     extractFunction(appSource, "saveNewsReflection"),
     "const NEWS_MAX_AGE_DAYS = 14;",
     "const NEWS_MAX_AGE_MS = NEWS_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;",
     "const NEWS_FUTURE_SKEW_MS = 60 * 60 * 1000;",
     "const NEWS_EMPTY_STATE = 'No recent stories right now.';",
     "let currentNews = null;",
+    "let recentNewsItems = [];",
     "let newsRequestToken = 0;",
     "this.news = { newsUrlIsHttps, newsPublishedAtIsFresh, isRecentNewsItem, newsFreshnessLabel, newsArticleLink, renderNewsLoading, renderNewsUnavailable, renderNewsItem, loadRecentNews, saveNewsReflection, currentNews: () => currentNews, setToken: (value) => { newsRequestToken = value; } };",
   ];
@@ -198,7 +202,7 @@ test("client accepts only fresh HTTPS stories and renders the source/freshness c
   assert.equal(helpers.elements["news-reflect-prompt"].textContent, fresh.question);
 });
 
-test("client selects deterministically from the already-diversified API list", async () => {
+test("client selects the newest eligible story even when the API puts older stories first", async () => {
   const now = new Date("2026-08-10T12:00:00.000Z");
   const second = item(now, 24, {
     id: "stem",
@@ -206,7 +210,7 @@ test("client selects deterministically from the already-diversified API list", a
     source: "Science News Explores",
   });
   const helpers = newsHelpers({ auth: {
-    getRecentNews: async () => ({ items: [item(now, 1), second], maxAgeDays: 14 }),
+    getRecentNews: async () => ({ items: [second, item(now, 1)], maxAgeDays: 14 }),
   } });
 
   helpers.setToken(1);
@@ -214,6 +218,27 @@ test("client selects deterministically from the already-diversified API list", a
 
   assert.equal(helpers.currentNews().source, "UN News");
   assert.match(helpers.elements["news-badge"].textContent, /UN News/);
+});
+
+test('Another story preserves an unsaved draft and cycles recent stories after saving', async () => {
+  const now = new Date();
+  const helpers = newsHelpers({ auth: { getRecentNews: async () => ({ items: [item(now, 3, { id: 'older', headline: 'Older story' }), item(now, 1)] }) } });
+  await helpers.loadRecentNews(0, now);
+  helpers.elements['news-reflect-text'].value = 'My draft';
+  helpers.sandbox.nextNewsStory();
+  assert.equal(helpers.currentNews().headline, 'Fresh discovery');
+  assert.equal(helpers.elements['news-reflect-text'].value, 'My draft');
+  let credit = 0;
+  helpers.sandbox.markDaily5Done = () => credit++;
+  helpers.sandbox.saveNoteFromWidget = async () => null;
+  await helpers.saveNewsReflection();
+  assert.equal(credit, 0);
+  assert.equal(helpers.elements['news-reflect-text'].value, 'My draft');
+  helpers.sandbox.saveNoteFromWidget = async () => ({ id: 'saved' });
+  await helpers.saveNewsReflection();
+  assert.equal(credit, 1);
+  helpers.sandbox.nextNewsStory();
+  assert.equal(helpers.currentNews().headline, 'Older story');
 });
 
 test("empty and error states remove stale story state and disable reflection actions", async () => {
@@ -274,7 +299,7 @@ test("stale news responses cannot overwrite a later render", async () => {
 });
 
 test("valid stories still save reflections with the explicit article URL", async () => {
-  const now = new Date("2026-08-10T12:00:00.000Z");
+  const now = new Date();
   const story = item(now, 2);
   const helpers = newsHelpers();
   helpers.renderNewsItem(story, now);

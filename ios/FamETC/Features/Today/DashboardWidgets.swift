@@ -153,6 +153,9 @@ struct DailyFiveCard: View {
     @State private var activeSheet: DailySheet? = nil
     @State private var puzzle: DailyPuzzleResponse?
     @State private var news: RecentNewsItem?
+    @State private var newsItems: [RecentNewsItem] = []
+    @State private var puzzleStatus = ""
+    @State private var ideaSaved = false
     @State private var extrasLoading = true
     @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
 
@@ -210,7 +213,10 @@ struct DailyFiveCard: View {
 
                 if let puzzle, puzzle.available {
                     VStack(alignment: .leading, spacing: Space.xs) {
-                        MicroLabel(text: puzzle.type == "crossword" ? "Weekend puzzle" : "Wednesday puzzle")
+                        MicroLabel(text: "Today's puzzle")
+                        if !puzzleStatus.isEmpty {
+                            Text(puzzleStatus).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        }
                         Button { Haptics.selection(); activeSheet = .puzzle } label: {
                             HStack(spacing: Space.sm) {
                                 Text(puzzle.type == "crossword" ? "🧩" : "🔢")
@@ -228,6 +234,14 @@ struct DailyFiveCard: View {
                         .buttonStyle(.plain)
                         .accessibilityHint("Opens today's interactive puzzle")
                     }
+                } else if extrasLoading {
+                    ProgressView("Loading today's puzzle…").font(Typography.caption)
+                } else {
+                    Text("Today's puzzle is unavailable right now.")
+                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    Button("Retry puzzle") { Task { await loadDailyExtras() } }
+                        .buttonStyle(.plain).foregroundStyle(Palette.accent)
+                        .frame(minHeight: 44)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -252,17 +266,33 @@ struct DailyFiveCard: View {
                             Image(systemName: "chevron.down")
                                 .font(Typography.caption)
                                 .foregroundStyle(Palette.textSecond)
+                                .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
                         .disabled(news == nil)
                         .accessibilityLabel("Open news details")
                     }
+                    if let news {
+                        Text(DailyNewsSelection.publisherLine(news))
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                    if ideaSaved {
+                        Label("Idea saved", systemImage: "checkmark.circle")
+                            .font(Typography.caption).foregroundStyle(Palette.green)
+                    }
+                    if newsItems.count > 1 {
+                        Button("Another story") {
+                            let index = newsItems.firstIndex(where: { $0.id == news?.id }) ?? 0
+                            news = newsItems[(index + 1) % newsItems.count]
+                        }
+                        .buttonStyle(.plain).foregroundStyle(Palette.accent).frame(minHeight: 44)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .task { await loadDailyExtras() }
-        .sheet(item: $activeSheet) { sheet in
+        .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") { await loadDailyExtras() }
+        .sheet(item: $activeSheet, onDismiss: refreshEngagement) { sheet in
             NavigationStack {
                 ScrollView { sheetContent(sheet).padding(Space.lg) }
                     .background(ScreenBackground())
@@ -280,7 +310,7 @@ struct DailyFiveCard: View {
         case .word: WordWidget()
         case .teaser: QuizWidget()
         case .puzzle:
-            if let puzzle { DailyPuzzleView(puzzle: puzzle) }
+            if let puzzle, let userID = store.me?.id { DailyPuzzleView(puzzle: puzzle, userID: userID) }
         case .news: NewsWidget(news: news)
         }
     }
@@ -295,16 +325,38 @@ struct DailyFiveCard: View {
     }
 
     private func loadDailyExtras() async {
+        let userID = store.me?.id
+        activeSheet = nil
         extrasLoading = true
+        puzzle = nil
+        news = nil
+        newsItems = []
+        refreshEngagement()
         async let puzzleRequest = try? APIClient.shared.dailyPuzzle(date: Agenda.todayKey())
         async let newsRequest = try? APIClient.shared.recentNews()
-        puzzle = await puzzleRequest
-        if let items = await newsRequest?.items, !items.isEmpty {
-            news = items[Daily.index(items.count)]
-        } else {
-            news = nil
-        }
+        let loadedPuzzle = await puzzleRequest
+        let loadedNews = await newsRequest
+        guard !Task.isCancelled, store.me?.id == userID else { return }
+        puzzle = loadedPuzzle
+        newsItems = DailyNewsSelection.recent(loadedNews?.items ?? [])
+        news = newsItems.first
         extrasLoading = false
+        refreshEngagement()
+    }
+
+    private func refreshEngagement() {
+        puzzleStatus = ""
+        ideaSaved = false
+        guard let userID = store.me?.id else { return }
+        ideaSaved = UserDefaults.standard.bool(forKey: DailyNewsSelection.ideaKey(userID: userID, day: Agenda.todayKey()))
+        if let puzzle {
+            let identity = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: userID)
+            if DailyPuzzleProgressStore.isSolved(for: identity) {
+                puzzleStatus = "Puzzle solved"
+            } else if !DailyPuzzleProgressStore.load(for: identity, allowedKeys: DailyPuzzleProgressStore.allowedKeys(for: puzzle)).isEmpty {
+                puzzleStatus = "Resume your puzzle"
+            }
+        }
     }
 }
 
@@ -318,13 +370,15 @@ struct NewsWidget: View {
     @Environment(AppStore.self) private var store
     @State private var reflection = ""
     @State private var saved = false
+    @State private var saving = false
+    @State private var saveFailed = false
 
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: Space.sm) {
                 MicroLabel(text: "Interesting news")
                 if let news {
-                    Text("\(news.source) · \(freshness(news.publishedAt))")
+                    Text(DailyNewsSelection.publisherLine(news))
                         .font(Typography.caption.weight(.semibold))
                         .foregroundStyle(Palette.textSecond)
                     Text(news.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
@@ -354,24 +408,39 @@ struct NewsWidget: View {
                         .font(Typography.body)
                         .padding(Space.sm)
                         .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                        .disabled(saving)
+                        .onChange(of: reflection) { _, value in if !value.isEmpty { saved = false } }
+                    if saveFailed {
+                        Text("Your idea wasn't saved. Your response is still here; try again.")
+                            .font(Typography.caption).foregroundStyle(Palette.red)
+                    }
                     HStack {
                         Spacer()
                         if saved {
-                            Label("Saved", systemImage: "checkmark.circle.fill")
+                            Label("Idea saved", systemImage: "checkmark.circle.fill")
                                 .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.green)
                         } else {
                             Button {
                                 Haptics.selection()
                                 let text = reflection
+                                guard let userID = store.me?.id else { return }
+                                let day = Agenda.todayKey()
+                                saving = true
+                                saveFailed = false
                                 Task {
-                                    _ = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": news.id, "context": "\(news.headline)\n\n\(news.summary)\n\n\(news.url)"])
-                                    saved = true
-                                    try? await Task.sleep(nanoseconds: 900_000_000)
-                                    saved = false
-                                    reflection = ""
+                                    let note = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": news.id, "context": "\(news.headline)\n\n\(news.summary)\n\n\(news.url)"])
+                                    saving = false
+                                    guard store.me?.id == userID else { return }
+                                    if note != nil {
+                                        reflection = ""
+                                        saved = true
+                                        UserDefaults.standard.set(true, forKey: DailyNewsSelection.ideaKey(userID: userID, day: day))
+                                    } else {
+                                        saveFailed = true
+                                    }
                                 }
                             } label: {
-                                Text("Save response")
+                                Text(saving ? "Saving…" : saveFailed ? "Retry save" : "Save response")
                                     .font(Typography.caption.weight(.bold))
                                     .foregroundStyle(Palette.onAccent)
                                     .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
@@ -379,7 +448,7 @@ struct NewsWidget: View {
                             }
                             .buttonStyle(.plain)
                             .frame(minHeight: 44)
-                            .disabled(reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(saving || reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
                 }
@@ -388,14 +457,9 @@ struct NewsWidget: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func freshness(_ publishedAt: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: publishedAt) else { return "Recent" }
-        let days = max(0, Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: date), to: Calendar.current.startOfDay(for: Date())).day ?? 0)
-        return days == 0 ? "Today" : "\(days) day\(days == 1 ? "" : "s") ago"
-    }
 }
 
-// MARK: - Wednesday / weekend puzzle
+// MARK: - Daily puzzle
 
 private final class CrosswordUITextField: UITextField {
     var onDeleteBackward: (() -> Void)?
@@ -474,15 +538,16 @@ private struct DailyPuzzleView: View {
     @State private var activeCrosswordEntryID: String?
     @State private var focusedCrosswordCell: String?
 
-    init(puzzle: DailyPuzzleResponse) {
+    init(puzzle: DailyPuzzleResponse, userID: String) {
         self.puzzle = puzzle
-        let identity = DailyPuzzleProgressIdentity(puzzle: puzzle)
+        let identity = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: userID)
         progressIdentity = identity
         progressKeys = DailyPuzzleProgressStore.allowedKeys(for: puzzle)
         _answers = State(initialValue: DailyPuzzleProgressStore.load(
             for: identity,
             allowedKeys: progressKeys
         ))
+        _resultMessage = State(initialValue: DailyPuzzleProgressStore.isSolved(for: identity) ? "Puzzle solved" : nil)
     }
 
     var body: some View {
@@ -497,7 +562,7 @@ private struct DailyPuzzleView: View {
             } else if let sudoku = puzzle.sudoku {
                 sudokuView(sudoku)
             } else {
-                Text("No puzzle today — come back Wednesday or this weekend.")
+                Text("This puzzle is unavailable. Close this sheet and retry from Today.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
             }
@@ -663,6 +728,7 @@ private struct DailyPuzzleView: View {
                     return
                 }
                 activeCrosswordEntryID = entry.id
+                resultMessage = nil
                 if letters.isEmpty {
                     answers.removeValue(forKey: cellKey)
                 } else if letters.count > 1 {
@@ -737,6 +803,7 @@ private struct DailyPuzzleView: View {
         return Binding(
             get: { answers[cellKey] ?? "" },
             set: {
+                resultMessage = nil
                 answers[cellKey] = String($0.filter { ("1"..."9").contains(String($0)) }.suffix(1))
                 DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
             }
@@ -759,7 +826,8 @@ private struct DailyPuzzleView: View {
             return
         }
         let correct = required.filter { answers[$0.0]?.uppercased() == $0.1 }.count
-        if correct == required.count {
+        DailyPuzzleProgressStore.recordCheck(correct: correct, required: required.count, for: progressIdentity)
+        if !required.isEmpty && correct == required.count {
             resultMessage = "You did it — every answer is correct! 🎉"
             Haptics.notify(.success)
         } else {

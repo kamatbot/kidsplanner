@@ -39,6 +39,23 @@ function executeApproved(f, service, actionType, action) {
   return { current, approval, decided, claimed, run };
 }
 
+test("parent-approved Operator cannot change student homework action progress", () => {
+  const f = fixture("Homework ownership");
+  const item = actions.createAction(f.fam.id, {
+    title: "Read chapter two", sourceType: "homework", sourceId: "hw_reading",
+    assigneeType: "kid", assigneeId: f.kid.id, createdBy: f.parent.id,
+  }).action;
+  for (const status of ["done", "open", "snoozed"]) {
+    assert.throws(() => executionModule.validateAction(f.fam.id, "action.update", {
+      actionId: item.id, patch: { status },
+    }), (error) => error.code === "EXECUTION_ACTION_INVALID" && /student/i.test(error.message));
+    assert.equal(actions.getById(f.fam.id, item.id).status, "open");
+  }
+  assert.doesNotThrow(() => executionModule.validateAction(f.fam.id, "action.update", {
+    actionId: item.id, patch: { notes: "Check whether help is needed" },
+  }));
+});
+
 test("M3 exposes only reversible FamETC-native write drivers", (t) => {
   let Database;
   try { Database = require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 unavailable"); return; }

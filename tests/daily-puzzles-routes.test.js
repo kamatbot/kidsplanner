@@ -85,7 +85,7 @@ test("daily puzzle route rejects malformed dates without producing a puzzle", as
   assert.deepEqual(response.body, { error: "Use a real date in YYYY-MM-DD format." });
 });
 
-test("weekend route awaits same-week news, while weekdays do not fetch it", async () => {
+test("crossword days fetch news and Sudoku days do not", async () => {
   let calls = 0;
   const route = buildRoute({
     getRecentNews: async () => {
@@ -96,7 +96,7 @@ test("weekend route awaits same-week news, while weekdays do not fetch it", asyn
           { id: "story-2", headline: "Robot Builders", answer: "ROBOT", publishedAt: "2026-08-11T12:00:00Z" },
           { id: "story-3", headline: "Ocean Tides", answer: "OCEAN", publishedAt: "2026-08-12T12:00:00Z" },
           { id: "out-of-week", headline: "Outside Week", answer: "OUTSIDE", publishedAt: "2026-08-17T12:00:00Z" },
-        ],
+        ].map((item) => ({ ...item, source: 'BBC', url: `https://www.bbc.com/news/${item.id}` })),
       };
     },
   });
@@ -115,8 +115,13 @@ test("weekend route awaits same-week news, while weekdays do not fetch it", asyn
   const weekday = await call(route, {
     user: { id: "user_1" }, family: { id: "family_1" }, date: "2026-08-13",
   });
-  assert.deepEqual(weekday.body, { date: "2026-08-13", available: false, type: null });
-  assert.equal(calls, 1);
+  assert.equal(weekday.body.type, 'crossword');
+  assert.equal(calls, 2);
+  for (const date of ['2026-08-10', '2026-08-12', '2026-08-14']) {
+    const response = await call(route, { user: { id: 'user_1' }, family: { id: 'family_1' }, date });
+    assert.equal(response.body.type, 'sudoku');
+  }
+  assert.equal(calls, 2);
 });
 
 test("news failure returns the deterministic SAT/static fallback", async () => {

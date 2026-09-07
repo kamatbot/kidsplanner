@@ -47,3 +47,44 @@ test("parent action affordances and single Family Actions heading remain explici
   assert.match(html, /id="today-actions-title">Family Actions<\/h2>/);
   assert.doesNotMatch(html, /What matters next|Small next steps, together/);
 });
+
+test('parent homework rows review Ryshi’s assignment while child and manual actions keep controls', () => {
+  const context = {
+    isKidSession: () => false,
+    todayActionCanManage: (action) => sandbox.helpers.todayActionCanManageForViewer(action, false, null),
+    todayActionCanDeleteForViewer: () => true,
+    todayActionIdArg: (id) => id,
+    esc: (text) => text,
+    todayActionDueLabel: () => ({ text: 'Tomorrow · 9:00 am', className: '' }),
+    todayActionSourceLabel: () => 'Homework',
+    todayActionAssigneeLabel: () => 'Ryshi',
+    kidNameFor: (id) => id === 'ryshi' ? 'Ryshi' : '',
+    todayActionSnoozeOptions: () => '<button>Snooze</button>',
+  };
+  vm.runInNewContext(extractFunction('renderTodayActionRow'), context);
+  const action = { id: 'action1', title: 'Fractions worksheet', kidId: 'ryshi', assigneeId: 'ryshi', assigneeType: 'kid', sourceType: 'homework', sourceId: 'hw1' };
+  const html = context.renderTodayActionRow(action, new Date(), false);
+  assert.match(html, /Homework due for Ryshi/);
+  assert.match(html, /Fractions worksheet/);
+  assert.match(html, /Tomorrow · 9:00 am/);
+  assert.match(html, /reviewTodayHomework\('hw1'\)/);
+  assert.match(html, /Review homework/);
+  assert.doesNotMatch(html, /completeTodayAction|Snooze/);
+  assert.equal(sandbox.helpers.todayActionCanManageForViewer(action, false, null), false);
+  assert.equal(sandbox.helpers.todayActionCanManageForViewer(action, true, 'ryshi'), true);
+  assert.match(context.renderTodayActionRow({ ...action, sourceType: 'manual' }, new Date(), false), /completeTodayAction/);
+});
+
+test('Review homework waits for an uncached assignment before opening its existing detail', async () => {
+  const opened = [];
+  const context = {
+    homeworkItems: [], switchNavTab: (tab) => opened.push(tab),
+    openHomeworkDetail: (id) => opened.push(id), toast: (message) => opened.push(message),
+    loadHomework: async () => { context.homeworkItems = [{ id: 'hw1' }]; },
+  };
+  vm.runInNewContext('async ' + extractFunction('reviewTodayHomework'), context);
+  await context.reviewTodayHomework('hw1');
+  assert.deepEqual(opened, ['homework', 'hw1']);
+  await context.reviewTodayHomework('missing');
+  assert.match(opened.at(-1), /could not be loaded/);
+});

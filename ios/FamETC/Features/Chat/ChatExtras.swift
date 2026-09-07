@@ -244,18 +244,25 @@ struct HomeworkDetailSheet: View {
                         detailRow("Subject", (hw.subject?.isEmpty == false) ? hw.subject! : "—")
                         detailRow("Due", Agenda.dayLabel(hw.dueDate) + (hw.dueTime.map { " · \($0)" } ?? ""))
                         detailRow("Status", hw.isDone ? "Done ✅" : "To do")
-                        Button {
-                            Haptics.selection()
-                            Task { await store.toggleHomeworkDone(hw) }
-                        } label: {
-                            Text(hw.isDone ? "Mark not done" : "Mark as done")
-                                .font(Typography.body.weight(.bold))
-                                .foregroundStyle(Palette.onAccent)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, Space.md)
-                                .background(hw.isDone ? Palette.textSecond : Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                        if store.canChangeHomeworkProgress(hw) {
+                            Button {
+                                Haptics.selection()
+                                Task { await store.toggleHomeworkDone(hw) }
+                            } label: {
+                                Text(hw.isDone ? "Mark not done" : "Mark as done")
+                                    .font(Typography.body.weight(.bold))
+                                    .foregroundStyle(Palette.onAccent)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, Space.md)
+                                    .background(hw.isDone ? Palette.textSecond : Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("The student updates their own progress. You can review the assignment together.")
+                                .font(Typography.body)
+                                .foregroundStyle(Palette.textSecond)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .buttonStyle(.plain)
                         Spacer()
                     }
                     .padding(Space.xl)

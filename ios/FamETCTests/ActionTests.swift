@@ -165,6 +165,35 @@ final class ActionStoreTests: XCTestCase {
         XCTAssertNil(store.actionError)
     }
 
+    func testParentHomeworkReviewCannotCompleteOrSnooze() async {
+        var item = action("homework", assigneeType: "kid", kidId: "k1")
+        item.sourceType = "homework"
+        let service = FakeActionService(items: [item])
+        let store = AppStore(actionService: service)
+        store.family = family()
+        store.me = User(id: "p1", email: "parent@example.com", name: "Parent", role: "parent", kidId: nil)
+        await store.loadFamilyActions()
+        XCTAssertFalse(store.canCompleteAction(item))
+        XCTAssertFalse(store.canSnoozeAction(item))
+        await store.completeAction(item)
+        await store.snoozeAction(item, preset: .tomorrow)
+        XCTAssertTrue(service.updatedIDs.isEmpty)
+        XCTAssertEqual(store.actions.first?.status, "open")
+    }
+
+    func testHomeworkProgressPermissionIsStudentOnlyAndOwnChildOnly() {
+        let store = AppStore()
+        let item = HomeworkItem(id: "hw1", kidId: "k1", title: "Algebra", subject: "Maths",
+                                dueDate: "2026-09-08", dueTime: nil, status: "todo", effortMin: nil)
+        XCTAssertFalse(store.canChangeHomeworkProgress(item))
+        store.me = User(id: "p1", email: "parent@example.com", name: "Parent", role: "parent", kidId: nil)
+        XCTAssertFalse(store.canChangeHomeworkProgress(item))
+        store.me = User(id: "u2", email: "", name: "Sibling", role: "kid", kidId: "k2")
+        XCTAssertFalse(store.canChangeHomeworkProgress(item))
+        store.me = User(id: "u1", email: "", name: "Student", role: "kid", kidId: "k1")
+        XCTAssertTrue(store.canChangeHomeworkProgress(item))
+    }
+
     func testCompletionRestoresPreviousActionOnFailure() async {
         let item = action("a1")
         let service = FakeActionService(items: [item])

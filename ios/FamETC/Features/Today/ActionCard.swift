@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The native Today action surface. It reads the same server queue as web and
 /// keeps mutation controls role-scoped: shared/sibling rows are read-only for
-/// kids, while parents retain completion and snooze controls.
+/// kids, while parents review homework and manage other family actions.
 struct ActionCard: View {
     @Environment(AppStore.self) private var store
 
@@ -111,10 +111,21 @@ private struct ActionCardMessage: View {
 
 private struct ActionRow: View {
     @Environment(AppStore.self) private var store
+    @State private var homeworkRef: HWRef?
     let action: FamilyAction
 
-    private var canComplete: Bool { store.canCompleteAction(action) }
-    private var canSnooze: Bool { store.canSnoozeAction(action) }
+    private var isParentHomework: Bool { store.isParent && action.sourceType == "homework" }
+    private var canComplete: Bool { !isParentHomework && store.canCompleteAction(action) }
+    private var canSnooze: Bool { !isParentHomework && store.canSnoozeAction(action) }
+    private var homeworkSourceId: String? {
+        guard let id = action.sourceId, !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return id
+    }
+    private var homeworkHeading: String {
+        let kidId = action.kidId ?? (action.assigneeType == "kid" ? action.assigneeId : nil)
+        let name = store.kids.first(where: { $0.id == kidId })?.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "Homework due for \(name.flatMap { $0.isEmpty ? nil : $0 } ?? "your child")"
+    }
     private var isMutating: Bool { store.completingActionIDs.contains(action.id) }
     private var dueColor: Color {
         guard let due = ActionQueue.effectiveDue(action) else { return Palette.textSecond }
@@ -126,10 +137,16 @@ private struct ActionRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: Space.sm) {
-            completionControl
-                .frame(width: 44, height: 44)
+            if !isParentHomework {
+                completionControl
+                    .frame(width: 44, height: 44)
+            }
 
-            rowContent
+            if isParentHomework {
+                parentHomeworkContent
+            } else {
+                rowContent
+            }
 
             if canSnooze {
                 snoozeMenu
@@ -138,6 +155,41 @@ private struct ActionRow: View {
         .padding(.vertical, Space.sm + 2)
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
+        .sheet(item: $homeworkRef) { ref in
+            HomeworkDetailSheet(homeworkId: ref.id)
+        }
+    }
+
+    private var parentHomeworkContent: some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text(homeworkHeading)
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.text)
+            Text(action.title)
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+            Text(ActionQueue.dueLabel(for: action))
+                .font(Typography.caption)
+                .foregroundStyle(dueColor)
+            if let sourceId = homeworkSourceId {
+                Button {
+                    homeworkRef = HWRef(id: sourceId)
+                } label: {
+                    Text("Review homework")
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("Assignment details are unavailable. Check the Homework tab.")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private var completionControl: some View {
