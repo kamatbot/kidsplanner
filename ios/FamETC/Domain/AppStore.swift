@@ -92,7 +92,7 @@ final class AppStore {
             guard let scope = kidScope else { return [] }
             return events.filter { $0.kidId == nil || $0.kidId == scope }
         }
-        return events
+        return events.filter { !$0.isImportedTimetable }
     }
 
     // MARK: Chat identity helpers
