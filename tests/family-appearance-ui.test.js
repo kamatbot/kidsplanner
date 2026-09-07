@@ -22,10 +22,11 @@ test('profile rendering rejects external or injected images and colors',()=>{
  kid.name='<bad>'; assert.doesNotMatch(c.renderKidProfileEditor(kid), /<bad>/);
 });
 test('settings sections keep only one panel visible and relocated connections remain parent-only',()=>{
- const panels=['family','school','preferences','connections'].map(section=>({dataset:{settingsSection:section},hidden:false}));
+ const panels=['family','school','preferences','connections','security'].map(section=>({dataset:{settingsSection:section},hidden:false}));
  const controls=panels.map(p=>({dataset:{settingsNav:p.dataset.settingsSection},setAttribute(){},removeAttribute(){}}));
  const parent={hidden:false},notice={hidden:true}; const c=harness();
  c.document={querySelectorAll:s=>s==='[data-settings-section]'?panels:controls,getElementById:id=>id==='connections-parent-only'?parent:notice};
  c.showSettingsSection('school');assert.deepEqual(panels.filter(p=>!p.hidden).map(p=>p.dataset.settingsSection),['school']);assert.equal(parent.hidden,true);assert.equal(notice.hidden,false);
+ c.showSettingsSection('security');assert.deepEqual(panels.filter(p=>!p.hidden).map(p=>p.dataset.settingsSection),['security']);
  c.showSettingsSection('unknown');assert.equal(panels[0].hidden,false);
 });

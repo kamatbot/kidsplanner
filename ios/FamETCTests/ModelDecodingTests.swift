@@ -168,6 +168,29 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(r.family.inviteCode, "ABC123")
     }
 
+    func testDecodesKidFamilyResponseWithRedactedInviteCode() throws {
+        let payload = """
+        {
+          "families": [{
+            "id": "f_1",
+            "name": "The Smiths",
+            "parentIds": ["u_parent"],
+            "parents": [{ "id": "u_parent", "name": "Mona" }],
+            "kids": [
+              { "id": "k_9", "name": "Arya", "grade": "7", "color": "#6C63FF", "createdAt": "2026-07-01T00:00:00.000Z" }
+            ],
+            "createdAt": "2026-07-01T00:00:00.000Z"
+          }]
+        }
+        """
+
+        let response = try JSONDecoder().decode(FamiliesResponse.self, from: Data(payload.utf8))
+
+        XCTAssertEqual(response.families.first?.id, "f_1")
+        XCTAssertEqual(response.families.first?.kids.first?.id, "k_9")
+        XCTAssertNil(response.families.first?.inviteCode)
+    }
+
     /// Mirrors an expanded occurrence from lib/events.js `expandRecurring`: the
     /// `repeat` JSON key (a Swift keyword) maps to `repeatRule`, and the
     /// recurrence-only fields (seriesId/recurring/occurrenceDate/endDate) decode.

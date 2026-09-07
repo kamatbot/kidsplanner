@@ -26,9 +26,13 @@ npm-debug.log*
 build-info.json
 ios/build/
 ios/DerivedData/
+android/.gradle/
+android/build/
+android/app/build/
 
 *.tar.gz
 .serena/
+.impeccable/
 
 # Generated design canvas bundle (regenerate: node docs/design/landing-2026/build-artboards.mjs)
 docs/design/landing-2026/fametc-landing-2026.html

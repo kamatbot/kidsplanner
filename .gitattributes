@@ -1,0 +1,8 @@
+# Git archive export exclusions for web deployments
+ios export-ignore
+ios/** export-ignore
+android export-ignore
+android/** export-ignore
+.impeccable export-ignore
+.impeccable/** export-ignore
+scripts/run-android-simulator.sh export-ignore

@@ -16,3 +16,8 @@ test("web deployment archive excludes local design-tool configuration", () => {
   const exclusions = script.match(/git ls-files[^\n]*':\(exclude\)\.impeccable\/\*\*'/g) || [];
   assert.equal(exclusions.length, 2, "zip and tar packaging must both exclude .impeccable/**");
 });
+
+test("web deployment archive excludes native Android sources in every format", () => {
+  const exclusions = script.match(/git ls-files[^\n]*':\(exclude\)android\/\*\*'/g) || [];
+  assert.equal(exclusions.length, 2, "zip and tar packaging must both exclude android/**");
+});

@@ -1,7 +1,7 @@
 let settingsSection = 'family';
 
 function showSettingsSection(section) {
-  if (!['family', 'school', 'preferences', 'connections'].includes(section)) section = 'family';
+  if (!['family', 'school', 'preferences', 'connections', 'security'].includes(section)) section = 'family';
   settingsSection = section;
   document.querySelectorAll('[data-settings-section]').forEach(el => { el.hidden = el.dataset.settingsSection !== section; });
   document.querySelectorAll('[data-settings-nav]').forEach(el => {
