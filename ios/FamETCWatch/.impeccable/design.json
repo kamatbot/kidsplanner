@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-07T04:48:05.768880+00:00",
+  "title": "Design System: Fam ETC Watch",
+  "extensions": {
+    "colorMeta": {
+      "watch-accent": {
+        "role": "primary",
+        "displayName": "Watch violet"
+      },
+      "watch-coral": {
+        "role": "secondary",
+        "displayName": "Watch coral"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Native headline",
+        "purpose": "SwiftUI semantic headline with inherited rounded system design; size follows Dynamic Type."
+      },
+      "body": {
+        "displayName": "Native body",
+        "purpose": "SwiftUI semantic body with inherited rounded system design; size follows Dynamic Type."
+      }
+    },
+    "motion": [
+      {
+        "name": "action-acknowledgment",
+        "value": "SwiftUI easeOut, 0.2 seconds; disabled with Reduce Motion",
+        "purpose": "Fade the temporary local-save acknowledgment."
+      },
+      {
+        "name": "focus-acknowledgment",
+        "value": "Native SF Symbol bounce; triggered only when Reduce Motion is off",
+        "purpose": "Celebrate an explicitly started focus interval finishing."
+      }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "One next thing at a glance",
+    "overview": "Fam ETC on watchOS is a small, reassuring companion for family logistics. Native watch navigation and controls carry the interaction; family identity, violet, coral, and rounded system type supply the personality. The watch answers what matters next without asking the wearer to interpret a dashboard.\n\nThis records the integrated source, principally `MyNextView.swift`, rather than a verified production release. Simulator layout and hardware interaction acceptance remain pending. The scope is the signed-in watch surface; setup retains its native system styling.",
+    "keyCharacteristics": [
+      "One relevant moment with a clear action.",
+      "Native vertical pages and navigation depth.",
+      "Playfulness through identity, symbols, and restrained acknowledgment.",
+      "Honest local-save and sync states."
+    ],
+    "rules": [
+      {
+        "name": "The One Interactive Voice Rule",
+        "body": "Violet identifies controls; a profile color identifies a person, not a second button theme.",
+        "section": "colors"
+      },
+      {
+        "name": "The Readable Task Rule",
+        "body": "Critical task titles and step text wrap vertically; scrolling carries overflow instead of shrinking the meaning.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "**Do** keep the current action explicit and native.",
+      "**Do** preserve wrapping, scrolling, semantic text, and named accessibility controls.",
+      "**Do** distinguish a local save from successful sync."
+    ],
+    "donts": [
+      "**Don't** treat timer expiry as permission to finish an assignment.",
+      "**Don't** expose parent shopping in the child navigation.",
+      "**Don't** replace native watch navigation with a web-shaped dashboard."
+    ]
+  }
+}
