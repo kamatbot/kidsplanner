@@ -31,6 +31,7 @@
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/web-experience.css">
   <link rel="stylesheet" href="/css/chat-media.css">
+  <link rel="stylesheet" href="/css/settings.css">
   <!-- PDF.js for rendering PDF uploads to images for AI parsing. Self-hosted
        (not cdnjs) so it loads under CSP script-src 'self'. -->
   <script src="/js/vendor/pdfjs/pdf.min.js"></script>
@@ -572,89 +573,17 @@
 
         <!-- Settings Tab: Manage Family -->
         <div class="tab-panel" id="tab-settings">
-        <section class="card" id="install-app-card" hidden>
-          <h3>📲 Install Fam ETC</h3>
-          <p class="text-muted" style="margin-bottom:12px">
-            Open Fam ETC from your desktop or shelf in its own app window.
-          </p>
-          <button type="button" class="btn-primary" id="install-app-btn" onclick="handleInstallApp()">
-            Install Fam ETC
-          </button>
-          <p id="install-app-status" class="text-muted" role="status" aria-live="polite" style="margin-top:8px"></p>
-        </section>
-
-        <section class="card" id="appearance-settings-card">
-          <h3>🎨 Appearance</h3>
-          <p class="text-muted" style="margin-bottom:12px">Match your device, or pick a theme.</p>
-          <div class="cal-view-btns" id="theme-toggle" style="display:inline-flex">
-            <button type="button" class="view-btn" data-theme-choice="system" onclick="setTheme('system')">Auto</button>
-            <button type="button" class="view-btn" data-theme-choice="light" onclick="setTheme('light')">Light</button>
-            <button type="button" class="view-btn" data-theme-choice="dark" onclick="setTheme('dark')">Dark</button>
-          </div>
-        </section>
-
-        <section class="card" id="notifications-settings-card">
-          <h3>🔔 Notifications</h3>
-          <p class="text-muted" style="margin-bottom:12px">
-            Get a browser notification when a new family chat message arrives while this app isn't open.
-          </p>
-          <div id="notifications-control">
-            <button type="button" class="btn-primary" id="notifications-toggle-btn" onclick="handleToggleNotifications()">
-              Turn on notifications
-            </button>
-            <p id="notifications-status-text" class="text-muted" style="margin-top:8px"></p>
-          </div>
-        </section>
-
-        <!-- Private per-child capability feeds. The server stores only the
-             encrypted access code and never returns it to the browser. -->
-        <section class="card" id="school-api-feeds-card">
-          <h3>School timetable &amp; homework</h3>
-          <p id="kid-school-api-notice" class="text-muted" style="display:none">
-            A parent manages the private school links. Connected homework and timetable entries sync automatically.
-          </p>
-          <div id="settings-parent-only-school-api">
-            <div class="school-api-intro">
-              <div>
-                <p>Connect each child once. Fam ETC checks both private feeds every eight hours and keeps homework, lessons, and timetable activities current.</p>
-                <p class="text-muted">These links work like passwords. They are encrypted, never shown again, and should not be shared.</p>
-                <p class="text-muted">The first successful homework sync replaces that child's existing homework list with the feed.</p>
-              </div>
-              <a class="btn-secondary school-api-source-link" href="https://bangkok.learn.nae.school/local/sta/pages/childfeed.php" target="_blank" rel="noopener noreferrer">Get private links</a>
-            </div>
-            <div id="school-api-feeds-list" aria-live="polite"></div>
-          </div>
-        </section>
-
-        <!-- School calendars (Phase 2) — per-kid feed subscriptions + custom
-             iCal import. Parent-only mutation (subscribe/unsubscribe), same
-             scoping as Manage Family below. -->
-        <section class="card" id="school-calendars-card">
-          <h3>🎓 School calendars</h3>
-          <p id="kid-school-notice" class="text-muted" style="display:none">
-            Your school calendar is synced automatically — ask a parent to add or change subscriptions here.
-          </p>
-          <div id="settings-parent-only-school">
-            <p class="text-muted" style="margin-bottom:12px">
-              Subscribe each kid to their school calendars. Events sync automatically and show up
-              on the calendar with a 🎓 badge — read-only, since they come straight from the school.
-            </p>
-            <div class="school-sync-row">
-              <button type="button" class="btn-primary" id="school-sync-now-btn" onclick="handleSyncNowClick()">Sync now 🔄</button>
-              <span id="school-last-synced" class="text-muted">Never synced yet</span>
-            </div>
-            <p id="school-sync-errors" class="error-msg" style="display:none;margin-top:8px"></p>
-
-            <div id="school-calendars-list" style="margin:16px 0"></div>
-
-            <button type="button" class="btn-secondary" onclick="openAddSchoolCalendarModal()">
-              ➕ Add your school's calendar
-            </button>
-          </div>
-        </section>
-
-        <section class="card">
-          <h3>⚙️ Manage Family</h3>
+        <header class="settings-header"><h1>Settings</h1><p>Make Fam ETC work for your family.</p></header>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="Settings sections">
+            <button type="button" data-settings-nav="family" aria-controls="settings-family" onclick="showSettingsSection('family')">Family</button>
+            <button type="button" data-settings-nav="school" aria-controls="settings-school" onclick="showSettingsSection('school')">School</button>
+            <button type="button" data-settings-nav="preferences" aria-controls="settings-preferences" onclick="showSettingsSection('preferences')">Preferences</button>
+            <button type="button" data-settings-nav="connections" aria-controls="settings-connections" onclick="showSettingsSection('connections')">Connections</button>
+          </nav>
+          <div class="settings-content">
+            <div id="settings-family" data-settings-section="family">        <section class="card">
+          <h2>Family</h2><p class="settings-description">A familiar face and color for everyone, wherever you plan or chat.</p>
           <!-- Kid sessions are role-scoped: family management (parents, invite,
                kid add/remove) is parent-only — see APP-BRIEF.md "Kid sign-in". -->
           <p id="kid-settings-notice" class="text-muted" style="display:none">
@@ -662,30 +591,12 @@
           </p>
 
           <div id="settings-parent-only">
-            <h4 style="margin-bottom:10px">Parents</h4>
-            <div id="manage-family-parents" style="margin-bottom:12px"></div>
-            <div id="co-parent-invite" tabindex="-1" style="margin-bottom:28px"></div>
-
             <h4 style="margin-bottom:10px">Kids</h4>
             <div id="manage-family-kids" style="margin-bottom:24px"></div>
 
-            <section class="settings-subcard" id="watch-devices-card" aria-labelledby="watch-devices-heading">
-              <h4 id="watch-devices-heading" style="margin-bottom:6px">⌚ Apple Watches</h4>
-              <p class="text-muted" style="margin:0 0 12px">
-                Pair a standalone watch for yourself or a kid. The watch can then show My next over Wi‑Fi or cellular.
-              </p>
-              <div class="form-row" style="align-items:end">
-                <div class="form-group" style="margin-bottom:0;flex:1">
-                  <label for="watch-pair-target">Pair watch for</label>
-                  <select id="watch-pair-target"></select>
-                </div>
-                <button type="button" class="btn-primary" onclick="handleStartWatchPairing()">Create watch code</button>
-              </div>
-              <div id="watch-pairing-result" role="status" aria-live="polite" style="margin-top:12px"></div>
-              <div id="watch-devices-list" style="margin-top:12px"></div>
-            </section>
 
-            <h4 style="margin-bottom:10px">Add a kid profile</h4>
+
+            <details class="settings-disclosure"><summary>Add a kid profile</summary>
             <form id="add-kid-form" onsubmit="handleAddKid(event)">
               <div class="form-group">
                 <label>Name</label>
@@ -716,8 +627,114 @@
               <div id="kid-form-error" class="error-msg"></div>
               <button type="submit" class="btn-primary">Add kid 👋</button>
             </form>
+            </details>
+            <h4 style="margin-bottom:10px">Parents</h4>
+            <div id="manage-family-parents" style="margin-bottom:12px"></div>
+            <div id="co-parent-invite" tabindex="-1" style="margin-bottom:28px"></div>
+
+
+          </div>
+        </section></div>
+            <div id="settings-school" data-settings-section="school" hidden>        <!-- Private per-child capability feeds. The server stores only the
+             encrypted access code and never returns it to the browser. -->
+        <section class="card" id="school-api-feeds-card">
+          <h3>School timetable &amp; homework</h3>
+          <p id="kid-school-api-notice" class="text-muted" style="display:none">
+            A parent manages the private school links. Connected homework and timetable entries sync automatically.
+          </p>
+          <div id="settings-parent-only-school-api">
+            <div class="school-api-intro">
+              <div>
+                <p>Connect each child once. Fam ETC checks both private feeds every eight hours and keeps homework, lessons, and timetable activities current.</p>
+                <p class="text-muted">These links work like passwords. They are encrypted, never shown again, and should not be shared.</p>
+                <p class="text-muted">The first successful homework sync replaces that child's existing homework list with the feed.</p>
+              </div>
+              <a class="btn-secondary school-api-source-link" href="https://bangkok.learn.nae.school/local/sta/pages/childfeed.php" target="_blank" rel="noopener noreferrer">Get private links</a>
+            </div>
+            <div id="school-api-feeds-list" aria-live="polite"></div>
           </div>
         </section>
+
+        <!-- School calendars (Phase 2) — per-kid feed subscriptions + custom
+             iCal import. Parent-only mutation (subscribe/unsubscribe), same
+             scoping as Manage Family below. -->
+        <section class="card" id="school-calendars-card">
+          <h3>School calendars</h3>
+          <p id="kid-school-notice" class="text-muted" style="display:none">
+            Your school calendar is synced automatically — ask a parent to add or change subscriptions here.
+          </p>
+          <div id="settings-parent-only-school">
+            <p class="text-muted" style="margin-bottom:12px">
+              Subscribe each kid to their school calendars. Events sync automatically and show up
+              on the calendar with a badge — read-only, since they come straight from the school.
+            </p>
+            <div class="school-sync-row">
+              <button type="button" class="btn-primary" id="school-sync-now-btn" onclick="handleSyncNowClick()">Sync now 🔄</button>
+              <span id="school-last-synced" class="text-muted">Never synced yet</span>
+            </div>
+            <p id="school-sync-errors" class="error-msg" style="display:none;margin-top:8px"></p>
+
+            <div id="school-calendars-list" style="margin:16px 0"></div>
+
+            <button type="button" class="btn-secondary" onclick="openAddSchoolCalendarModal()">
+              ➕ Add your school's calendar
+            </button>
+          </div>
+        </section>
+
+</div>
+            <div id="settings-preferences" data-settings-section="preferences" hidden>        <section class="card" id="install-app-card" hidden>
+          <h3>Install Fam ETC</h3>
+          <p class="text-muted" style="margin-bottom:12px">
+            Open Fam ETC from your desktop or shelf in its own app window.
+          </p>
+          <button type="button" class="btn-primary" id="install-app-btn" onclick="handleInstallApp()">
+            Install Fam ETC
+          </button>
+          <p id="install-app-status" class="text-muted" role="status" aria-live="polite" style="margin-top:8px"></p>
+        </section>
+
+        <section class="card" id="appearance-settings-card">
+          <h3>Appearance</h3>
+          <p class="text-muted" style="margin-bottom:12px">Match your device, or pick a theme.</p>
+          <div class="cal-view-btns" id="theme-toggle" style="display:inline-flex">
+            <button type="button" class="view-btn" data-theme-choice="system" onclick="setTheme('system')">Auto</button>
+            <button type="button" class="view-btn" data-theme-choice="light" onclick="setTheme('light')">Light</button>
+            <button type="button" class="view-btn" data-theme-choice="dark" onclick="setTheme('dark')">Dark</button>
+          </div>
+        </section>
+
+        <section class="card" id="notifications-settings-card">
+          <h3>Notifications</h3>
+          <p class="text-muted" style="margin-bottom:12px">
+            Get a browser notification when a new family chat message arrives while this app isn't open.
+          </p>
+          <div id="notifications-control">
+            <button type="button" class="btn-primary" id="notifications-toggle-btn" onclick="handleToggleNotifications()">
+              Turn on notifications
+            </button>
+            <p id="notifications-status-text" class="text-muted" style="margin-top:8px"></p>
+          </div>
+        </section>
+
+</div>
+            <div id="settings-connections" data-settings-section="connections" hidden><h2>Connections</h2><p class="settings-description">Manage paired watches and your assistant connection.</p><p id="kid-connections-notice" hidden>A parent manages your family’s connections.</p><div id="connections-parent-only">            <section class="settings-subcard" id="watch-devices-card" aria-labelledby="watch-devices-heading">
+              <h4 id="watch-devices-heading" style="margin-bottom:6px">Apple Watches</h4>
+              <p class="text-muted" style="margin:0 0 12px">
+                Pair a standalone watch for yourself or a kid. The watch can then show My next over Wi‑Fi or cellular.
+              </p>
+              <div class="form-row" style="align-items:end">
+                <div class="form-group" style="margin-bottom:0;flex:1">
+                  <label for="watch-pair-target">Pair watch for</label>
+                  <select id="watch-pair-target"></select>
+                </div>
+                <button type="button" class="btn-primary" onclick="handleStartWatchPairing()">Create watch code</button>
+              </div>
+              <div id="watch-pairing-result" role="status" aria-live="polite" style="margin-top:12px"></div>
+              <div id="watch-devices-list" style="margin-top:12px"></div>
+            </section></div></div>
+          </div>
+        </div>
       </div>
 
       </main>
@@ -1436,6 +1453,7 @@
 <script src="/js/media-compression.js"></script>
 <script src="/js/chat-media.js"></script>
 <script src="/js/onboarding.js"></script>
+<script src="/js/settings.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

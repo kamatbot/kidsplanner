@@ -120,3 +120,24 @@ test("publicFamily: lists parents with resolved names and the parent cap", () =>
   // resolver is optional — names fall back to null without one
   assert.equal(family.publicFamily(fam).parents[0].name, null);
 });
+
+test('child appearance saves atomically, is shared, and remains parent-only', () => {
+  const parent = store.createUser('appearance@example.com', 'Parent');
+  const outsider = store.createUser('outsider@example.com', 'Outsider');
+  const fam = family.createFamily(parent.id, 'Appearance');
+  const { kid } = family.addKid(fam.id, parent.id, { name: 'Maya' });
+  const photo = 'data:image/jpeg;base64,' + Buffer.from([0xff,0xd8,0xff,0xc0,0,11,8,0,160,0,160,1,1,0x11,0,0xff,0xd9]).toString('base64');
+  assert.ok(!family.updateKid(fam.id, parent.id, kid.id, { color: '#123456', photo }).error);
+  assert.equal(family.publicFamily(fam).kids[0].photo, photo);
+  assert.equal(family.publicFamily(fam).kids[0].color, '#123456');
+  assert.ok(family.updateKid(fam.id, outsider.id, kid.id, { color: '#ffffff' }).error);
+  for (const bad of ['https://tracker.example/photo.jpg', 'data:image/svg+xml;base64,PHN2Zz4=', 'data:image/jpeg;base64,AAAA', photo + 'A'.repeat(90000)]) {
+    assert.ok(family.updateKid(fam.id, parent.id, kid.id, { name: 'Changed', photo: bad }).error);
+    assert.equal(kid.name, 'Maya');
+    assert.equal(kid.photo, photo);
+  }
+  assert.ok(family.updateKid(fam.id, parent.id, kid.id, { color: 'red;display:none' }).error);
+  assert.equal(kid.color, '#123456');
+  assert.ok(!family.updateKid(fam.id, parent.id, kid.id, { photo: '' }).error);
+  assert.equal(kid.photo, '');
+});

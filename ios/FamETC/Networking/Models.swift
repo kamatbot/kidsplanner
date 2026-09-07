@@ -25,6 +25,7 @@ struct Kid: Codable, Identifiable {
     var name: String
     var grade: String
     var color: String
+    var photo: String? = nil
     let createdAt: String
     // NOTE: no `email` field — kids never get one, per privacy requirement.
 }

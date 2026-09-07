@@ -245,7 +245,8 @@ function mealMemberFor(id) {
 
 function mealAvatarHtml(m, size) {
   const s = size || 26;
-  return `<span class="meal-avatar" style="width:${s}px;height:${s}px;font-size:${Math.round(s * 0.42)}px;background:${esc(m.color || 'var(--accent)')}" title="${esc(m.name || '?')}">${esc(m.initial || (m.name || '?')[0].toUpperCase())}</span>`;
+  const photo = m.kind === 'kid' && typeof m.photo === 'string' && m.photo.length <= 90000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(m.photo) ? m.photo : '';
+  return `<span class="meal-avatar" style="width:${s}px;height:${s}px;font-size:${Math.round(s * 0.42)}px;background:var(--panel);color:var(--text);border:2px solid ${esc(m.color || 'var(--accent)')};overflow:hidden" title="${esc(m.name || '?')}">${photo ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover">` : esc(m.initial || (m.name || '?')[0].toUpperCase())}</span>`;
 }
 
 // Merge one or more menu entries into local state by id, else by

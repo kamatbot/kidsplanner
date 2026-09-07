@@ -151,13 +151,10 @@ enum Agenda {
             .sorted { $0.dueDate < $1.dueDate }
     }
 
-    /// Resolves a kid's Horizon identity color from their position in the family's
-    /// kid list (Palette.kidColor cycles teal/amber/blue/… by kid order) — the same
-    /// mapping the web app uses. Returns nil when `kidId` doesn't match a kid
-    /// (family/school-feed events with no specific kid).
+    /// Shared saved identity for Today, calendar rows, and event markers.
     static func kidColor(_ kidId: String?, kids: [Kid]) -> Color? {
-        guard let kidId, let idx = kids.firstIndex(where: { $0.id == kidId }) else { return nil }
-        return Palette.kidColor(index: idx)
+        guard let kidId else { return nil }
+        return kids.first { $0.id == kidId }?.profileColor
     }
     static func kidName(_ kidId: String?, kids: [Kid]) -> String? {
         guard let kidId else { return nil }

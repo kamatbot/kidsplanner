@@ -47,9 +47,7 @@ struct AddEventSheet: View {
     private var audienceKids: [Kid] {
         store.isParent ? store.kids : store.kids.filter { $0.id == store.me?.kidId }
     }
-    private func kidColor(_ kid: Kid) -> Color {
-        store.kids.firstIndex(where: { $0.id == kid.id }).map { Palette.kidColor(index: $0) } ?? Palette.accent
-    }
+
 
     var body: some View {
         NavigationStack {
@@ -88,7 +86,7 @@ struct AddEventSheet: View {
                         Text("Whole family").tag(String?.none)
                         ForEach(audienceKids) { kid in
                             HStack {
-                                Circle().fill(kidColor(kid)).frame(width: 10, height: 10)
+                                KidProfileAvatar(kid: kid, size: 24)
                                 Text(kid.name)
                             }
                             .tag(Optional(kid.id))

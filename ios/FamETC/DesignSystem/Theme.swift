@@ -218,3 +218,41 @@ enum Haptics {
         UINotificationFeedbackGenerator().notificationOccurred(type)
     }
 }
+
+// Shared child identity. Saved family settings take precedence over ordering.
+extension Kid {
+    var profileColor: Color {
+        let hex = color.hasPrefix("#") ? String(color.dropFirst()) : ""
+        guard hex.count == 6, let value = UInt32(hex, radix: 16) else { return Palette.accent }
+        return Color(hex: value)
+    }
+}
+
+struct KidProfileAvatar: View {
+    let kid: Kid
+    var size: CGFloat = 28
+
+    private var image: UIImage? {
+        guard let photo = kid.photo, photo.count <= 90000,
+              photo.hasPrefix("data:image/jpeg;base64,"),
+              let data = Data(base64Encoded: String(photo.dropFirst(23))) else { return nil }
+        return UIImage(data: data)
+    }
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Text(String(kid.name.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(Palette.text)
+            }
+        }
+        .frame(width: size, height: size)
+        .background(Palette.panel)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(kid.profileColor, lineWidth: 2))
+        .accessibilityHidden(true)
+    }
+}

@@ -5,6 +5,17 @@ import XCTest
 /// response shapes (lib/family.js publicFamily, lib/chat.js sendMessage/listMessages).
 final class ModelDecodingTests: XCTestCase {
 
+    func testKidPhotoRemainsCompatibleWithLegacyProfiles() throws {
+        let data = ##"{"id":"k1","name":"Maya","grade":"6","color":"#123456","createdAt":"2026-09-07"}"##.data(using: .utf8)!
+        var kid = try JSONDecoder().decode(Kid.self, from: data)
+        XCTAssertNil(kid.photo)
+        kid.photo = "data:image/jpeg;base64,AAAA"
+        let restored = try JSONDecoder().decode(Kid.self, from: JSONEncoder().encode(kid))
+        XCTAssertEqual(restored.photo, kid.photo)
+        XCTAssertEqual(restored.color, "#123456")
+    }
+
+
     func testDecodesPrivateFeedTimetableMarker() throws {
         let payload = """
         {

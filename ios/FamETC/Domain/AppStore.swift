@@ -846,6 +846,10 @@ final class AppStore {
 
     /// Pull-to-refresh on the Today / Calendar screens — forces a fresh feed sync.
     func refreshDashboard() async {
+        if let families = try? await api.families(), let updated = families.first(where: { $0.id == family?.id }) {
+            family = updated
+            persist()
+        }
         async let calendar: Void = loadCalendarAndHomework(force: true)
         async let actionLoad: Void = loadFamilyActions()
         _ = await (calendar, actionLoad)

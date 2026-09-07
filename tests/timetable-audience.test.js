@@ -93,6 +93,7 @@ function switcherMarkup(kidSession) {
     activeKidId: null,
     calendarAudience: "all",
     isKidSession: () => kidSession,
+    kidAvatarMarkup: () => '<span class="kid-profile-avatar"></span>',
   };
   vm.runInNewContext([
     extractFunction("esc"),

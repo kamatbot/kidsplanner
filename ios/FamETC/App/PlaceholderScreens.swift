@@ -345,7 +345,7 @@ private struct HomeworkKidFilter: View {
                 HStack(spacing: Space.sm) {
                     HomeworkFilterChip(title: "All kids", isSelected: selectedKidID == nil) { selectedKidID = nil }
                     ForEach(kids) { kid in
-                        HomeworkFilterChip(title: kid.name, isSelected: selectedKidID == kid.id) {
+                        HomeworkFilterChip(title: kid.name, isSelected: selectedKidID == kid.id, kid: kid) {
                             selectedKidID = kid.id
                         }
                     }
@@ -361,11 +361,13 @@ private struct HomeworkKidFilter: View {
 private struct HomeworkFilterChip: View {
     let title: String
     let isSelected: Bool
+    var kid: Kid? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: Space.xs) {
+                if let kid { KidProfileAvatar(kid: kid, size: 24) }
                 if isSelected { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)) }
                 Text(title).lineLimit(1)
             }

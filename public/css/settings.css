@@ -1,0 +1,66 @@
+/* Settings uses the app's existing type and palette, with one section at a time. */
+.settings-header { margin-bottom: 20px; }
+.settings-header p { margin-bottom: 0; }
+.settings-header h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 8px; }
+.settings-description { color: var(--text-2); margin: 0 0 24px; max-width: 65ch; }
+.settings-layout { display: grid; grid-template-columns: 180px minmax(0, 760px); gap: 36px; align-items: start; }
+.settings-nav { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 20px; }
+.settings-nav button { border: 0; border-radius: 8px; padding: 12px 16px; min-height: 44px; text-align: left; background: transparent; color: var(--text-2); font: inherit; cursor: pointer; }
+.settings-nav button:hover { background: var(--panel-2); color: var(--text); }
+.settings-nav button[aria-current] { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.settings-content { min-width: 0; }
+.settings-content [hidden] { display: none !important; }
+.settings-content .card { padding: 0; background: transparent; border: 0; box-shadow: none; margin: 0 0 32px; }
+.settings-content h2, .settings-content h3 { font-size: 1.25rem; margin: 0 0 12px; }
+.settings-content .settings-subcard { border: 0; border-radius: 0; border-top: 1px solid var(--border); background: transparent; padding: 24px 0; margin: 24px 0 0; }
+.settings-content label { color: var(--text); }
+.settings-content input, .settings-content select { min-width: 0; max-width: 100%; }
+.settings-content .form-row { flex-wrap: wrap; }
+.settings-disclosure { border-block: 1px solid var(--border); margin: 20px 0 32px; }
+.settings-disclosure > summary { padding: 16px 0; min-height: 44px; cursor: pointer; font-weight: 600; }
+.settings-disclosure form { max-width: 440px; padding-bottom: 20px; }
+.kid-profile-editor { border-bottom: 1px solid var(--border); }
+.kid-profile-editor > summary { display: flex; align-items: center; gap: 12px; padding: 16px 0; cursor: pointer; list-style: none; min-height: 64px; }
+.kid-profile-editor > summary::-webkit-details-marker { display: none; }
+.kid-profile-name { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.kid-profile-name > span { color: var(--text-2); font-size: 0.8125rem; }
+.kid-profile-edit-label { color: var(--accent); font-size: 0.8125rem; flex-shrink: 0; }
+.kid-profile-editor form { padding: 0 0 20px; }
+.kid-appearance-fields { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 24px; margin: 20px 0; }
+.kid-appearance-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 0.875rem; font-weight: 600; }
+.kid-appearance-fields input { min-height: 44px; width: 100%; }
+.kid-appearance-fields input[type=color] { width: 72px; padding: 4px; cursor: pointer; }
+.kid-appearance-fields input[type=file] { font: inherit; font-weight: 400; }
+.kid-appearance-preview, .kid-profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; }
+.kid-appearance-preview > span:not(.kid-profile-avatar) { color: var(--text-2); font-size: 0.8125rem; }
+.kid-profile-actions button { min-height: 44px; }
+.kid-remove-button { margin-left: auto; background: none; border: 0; color: var(--c-red); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; font: inherit; }
+.kid-profile-status { color: var(--text-2); margin-top: 12px; min-height: 1.5em; }
+.kid-profile-avatar { display: inline-flex; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; align-items: center; justify-content: center; overflow: hidden; border: 2px solid var(--profile-color, var(--accent)); background: var(--panel); color: var(--text); font-size: 0.875rem; font-weight: 700; vertical-align: middle; }
+.kid-profile-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.kid-profile-editor .kid-profile-avatar { width: 44px; height: 44px; }
+.kid-chip .kid-profile-avatar { width: 24px; height: 24px; font-size: 0.75rem; }
+.kid-topbar-avatar > .kid-profile-avatar { width: 100%; height: 100%; }
+.chat-msg > .kid-profile-avatar { width: 28px; height: 28px; margin-bottom: 4px; }
+.chat-msg-kid .chat-msg-bubble { background: color-mix(in srgb, var(--sender-color) 10%, var(--panel)); border-color: var(--sender-color); }
+.chat-msg-kid .chat-msg-text, .chat-msg-kid .chat-msg-sender, .chat-msg-kid .chat-card-attribution, .chat-msg-kid .chat-msg-attachment-name { color: var(--text) !important; }
+.chat-msg-kid .chat-msg-attachment-open { color: var(--accent); }
+.settings-layout :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.settings-layout button:disabled { opacity: 0.55; cursor: wait; }
+@media (max-width: 700px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .settings-nav { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+  .settings-nav button { padding: 12px; }
+  .settings-header { margin-bottom: 20px; }
+  .kid-appearance-fields { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .kid-remove-button { margin-left: 0; }
+  .kid-profile-edit-label { max-width: 70px; }
+  .settings-content .school-api-intro { flex-direction: column; }
+}
+
+/* Keep arbitrary parent-selected colors as accents; names remain readable. */
+.kid-chip.active { background: color-mix(in srgb, var(--kid-color) 12%, var(--panel)); color: var(--text); }
+.kid-chip { gap: 6px; }
+.schedule-kid, .hw-kid-tag, .goals-recap-kid, .activity-card-kid { color: var(--text-2) !important; }
+.schedule-kid { display: inline-flex; align-items: center; gap: 6px; }
+.schedule-kid .kid-profile-avatar, .hw-kid-tag .kid-profile-avatar, .goals-recap-kid .kid-profile-avatar { width: 20px; height: 20px; font-size: 0.625rem; }

@@ -459,8 +459,8 @@ private struct CalendarAudienceBar: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Space.sm) {
                 audienceButton(.parents, label: "Parents")
-                ForEach(Array(kids.enumerated()), id: \.element.id) { index, kid in
-                    audienceButton(.kid(kid.id), label: kid.name, color: Palette.kidColor(index: index))
+                ForEach(kids) { kid in
+                    audienceButton(.kid(kid.id), label: kid.name, color: kid.profileColor, kid: kid)
                 }
                 audienceButton(.timetable, label: "Timetable", color: Palette.accent)
             }
@@ -470,14 +470,16 @@ private struct CalendarAudienceBar: View {
         .accessibilityLabel("Calendar audience")
     }
 
-    private func audienceButton(_ value: CalendarAudience, label: String, color: Color? = nil) -> some View {
+    private func audienceButton(_ value: CalendarAudience, label: String, color: Color? = nil, kid: Kid? = nil) -> some View {
         let selected = selection == value
         return Button {
             Haptics.selection()
             selection = value
         } label: {
             HStack(spacing: Space.sm) {
-                if let color {
+                if let kid {
+                    KidProfileAvatar(kid: kid, size: 24)
+                } else if let color {
                     Circle()
                         .fill(color)
                         .frame(width: 9, height: 9)

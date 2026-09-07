@@ -562,6 +562,8 @@ function applyRoleScopingToUI() {
   const tonightCard = document.getElementById('today-meals-card');
   if (tonightCard && kid) tonightCard.hidden = true;
 
+  const connectionsParentOnly = document.getElementById('connections-parent-only');
+  if (connectionsParentOnly) connectionsParentOnly.hidden = kid;
   const settingsParentOnly = document.getElementById('settings-parent-only');
   const settingsNotice = document.getElementById('kid-settings-notice');
   if (settingsParentOnly) settingsParentOnly.style.display = kid ? 'none' : '';
@@ -696,7 +698,7 @@ function renderKidSwitcher() {
     const mine = kids.find((k) => k.id === sessionUser.kidId);
     activeKidId = sessionUser.kidId || null;
     const html = mine
-      ? `<span class="kid-chip active" style="--kid-color:${kidColorFor(mine.id) || mine.color}">${esc(mine.name)}</span>`
+      ? `<span class="kid-chip active" style="--kid-color:${kidColorFor(mine.id) || mine.color}">${kidAvatarMarkup(mine.id)}${esc(mine.name)}</span>`
       : '';
     els.forEach((el) => { el.innerHTML = html; });
     return;
@@ -710,7 +712,7 @@ function renderKidSwitcher() {
     const allAriaLabel = isCalendar ? 'Show parent calendar' : "Show all kids' homework";
     const chips = [`<button type="button" class="kid-chip${allActive ? ' active' : ''}" aria-pressed="${allActive}" aria-label="${allAriaLabel}" onclick="setActiveKid(null,'${source}')">${allLabel}</button>`]
     .concat(kids.map((k) =>
-      `<button type="button" class="kid-chip${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable') ? ' active' : ''}" style="--kid-color:${kidColorFor(k.id) || k.color}" aria-pressed="${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable')}" aria-label="Show ${esc(k.name)}'s events" onclick="setActiveKid('${k.id}','${source}')"><span class="kid-chip-dot"></span>${esc(k.name)}</button>`
+      `<button type="button" class="kid-chip${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable') ? ' active' : ''}" style="--kid-color:${kidColorFor(k.id) || k.color}" aria-pressed="${activeKidId === k.id && (!isCalendar || calendarAudience !== 'timetable')}" aria-label="Show ${esc(k.name)}'s events" onclick="setActiveKid('${k.id}','${source}')">${kidAvatarMarkup(k.id)}${esc(k.name)}</button>`
     ));
     if (isCalendar) {
       const timetableActive = calendarAudience === 'timetable';
@@ -747,7 +749,7 @@ function removeHermesConnectionCard() {
 }
 
 function ensureHermesConnectionCard() {
-  const parentOnly = document.getElementById('settings-parent-only');
+  const parentOnly = document.getElementById('connections-parent-only');
   if (!parentOnly) return null;
 
   let card = document.getElementById('hermes-connection-card');
@@ -1001,14 +1003,7 @@ function renderManageFamily() {
   const el = document.getElementById('manage-family-kids');
   if (el) {
     const kids = currentFamily.kids || [];
-    el.innerHTML = kids.map((k) =>
-      `<div class="kid-row">
-        <span class="kid-row-swatch" style="background:${kidColorFor(k.id) || k.color}"></span>
-        <span class="kid-row-name">${esc(k.name)}</span>
-        <span class="kid-row-grade">${esc(k.grade || '')}</span>
-        <button class="kid-row-remove" onclick="handleRemoveKid('${k.id}')" title="Remove kid">×</button>
-      </div>`
-    ).join('') || '<p class="text-muted">No kids added yet.</p>';
+    el.innerHTML = kids.map(renderKidProfileEditor).join('') || '<p class="text-muted">No kids added yet. Add a profile below to get started.</p>';
   }
   renderWatchDevices();
 }
@@ -1134,7 +1129,7 @@ function showDashboard() {
   if (roleEl) roleEl.textContent = isKidSession() ? 'Kid' : 'Parent';
   const kidAvatarEl = document.getElementById('kid-topbar-avatar');
   if (kidAvatarEl) {
-    kidAvatarEl.textContent = (sessionUser.name || '?')[0].toUpperCase();
+    kidAvatarEl.innerHTML = kidAvatarMarkup(sessionUser.kidId);
     kidAvatarEl.style.background = kidColorFor(sessionUser.kidId) || 'var(--accent)';
   }
 
@@ -1637,7 +1632,7 @@ function renderMoodleIdsSettings() {
     const mapping = schoolKidMappings.find((m) => m.kidId === k.id);
     const value = mapping ? esc(mapping.moodleUserId) : '';
     return `<div class="kid-row" id="moodle-id-row-${k.id}">
-      <span class="kid-row-swatch" style="background:${kidColorFor(k.id) || k.color}"></span>
+      ${kidAvatarMarkup(k.id)}
       <span class="kid-row-name">${esc(k.name)}</span>
       <input type="text" inputmode="numeric" placeholder="Moodle id, e.g. 14197"
         id="moodle-id-input-${k.id}" value="${value}" style="width:140px;margin:0 8px">
@@ -2824,18 +2819,12 @@ function closeModalOnBg(e, id) {
    Parent-only controls (delete/flag) are still backend-enforced
    (requireParent) — the UI just doesn't offer delete to a kid session.
 ============================================================ */
-/* Horizon per-kid identity color: first kid in family order = teal, second =
-   amber, any further kid = violet — per the redesign's design language (this
-   replaces the arbitrary picker color from Settings > Add a kid profile for
-   every accent use — chat bubbles, schedule bars, kid avatars — the picker
-   color still seeds .kid-row-swatch in Manage Family, unrelated to this). */
 function kidColorFor(kidProfileId) {
   const kids = (currentFamily && currentFamily.kids) || [];
   const idx = kids.findIndex((k) => k.id === kidProfileId);
-  if (idx === 0) return 'var(--c-teal)';
-  if (idx === 1) return 'var(--c-amber)';
-  if (idx > 1) return 'var(--c-violet)';
-  return null;
+  if (idx < 0) return null;
+  if (/^#[0-9a-f]{6}$/i.test(kids[idx].color)) return kids[idx].color;
+  return ['var(--c-teal)', 'var(--c-amber)', 'var(--c-violet)'][Math.min(idx, 2)];
 }
 
 function chatSenderName(msg) {
@@ -2860,9 +2849,8 @@ function isOwnMessage(msg) {
 }
 
 function chatSenderColor(msg) {
-  if (isOwnMessage(msg)) return 'var(--c-blue)';
-  if (chatSenderName(msg).trim().toLowerCase() === 'arya') return 'var(--c-green)';
-  return msg.senderType === 'kid' ? (kidColorFor(msg.senderId) || 'var(--accent)') : 'var(--accent)';
+  if (msg.senderType === 'kid') return kidColorFor(msg.senderId) || 'var(--accent)';
+  return isOwnMessage(msg) ? 'var(--c-blue)' : 'var(--accent)';
 }
 
 function chatMessageIsFamilyRoom(msg) {
@@ -3426,9 +3414,10 @@ function renderChatMessages() {
       <div class="chat-msg-controls">
         ${pinBtn}
       </div>`;
-    return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
+    return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}${m.senderType === 'kid' ? ' chat-msg-kid' : ''}">
+      ${m.senderType === 'kid' ? kidAvatarMarkup(m.senderId) : ''}
       ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}</div>` : ''}
-      <div class="chat-msg-bubble" style="${own ? '' : `--sender-color:${color}`}">
+      <div class="chat-msg-bubble" style="--sender-color:${color}">
         ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
         ${renderChatMedia(m.media)}
         ${renderChatCard(m.card, chatSenderName(m))}
@@ -3572,6 +3561,7 @@ function renderChatDockAvatars() {
     color: 'var(--accent)',
   })).concat(kids.map((k) => ({
     initial: (k.name || 'K')[0].toUpperCase(),
+    kidId: k.id,
     isMe: sessionUser && k.id === sessionUser.kidId,
     color: kidColorFor(k.id) || 'var(--accent)',
   })));
@@ -3579,7 +3569,7 @@ function renderChatDockAvatars() {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerHTML = items.map((it) =>
-      `<span class="chat-avatar-dot${it.isMe ? ' is-me' : ''}" style="${it.isMe ? '' : `background:${it.color}`}">${esc(it.initial)}</span>`
+      it.kidId ? kidAvatarMarkup(it.kidId) : `<span class="chat-avatar-dot${it.isMe ? ' is-me' : ''}" style="${it.isMe ? '' : `background:${it.color}`}">${esc(it.initial)}</span>`
     ).join('');
   });
 }
@@ -4232,7 +4222,7 @@ function renderHomeworkRow(item) {
   const kidColor = item.kidId ? kidColorFor(item.kidId) : null;
   const kidTag = (!isKidSession() && item.kidId) ? `
     <span class="hw-kid-tag" style="color:${kidColor || 'var(--text-2)'}">
-      <span class="hw-kid-dot" style="background:${kidColor || 'var(--text-2)'}"></span>${esc(kidNameFor(item.kidId))}
+      ${kidAvatarMarkup(item.kidId)}${esc(kidNameFor(item.kidId))}
     </span>` : '';
   const progressControl = isKidSession()
     ? `<button class="hw-check${done ? ' checked' : ''}${overdue ? ' hw-check-overdue' : ''}" onclick="event.stopPropagation();toggleHomeworkDone('${item.id}')" title="${done ? 'Mark as not done' : 'Mark as done'}" aria-label="Toggle done">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}</button>`
@@ -4299,6 +4289,8 @@ function takeTodaySetupStep(stepId) {
     return;
   }
   switchNavTab('settings');
+  showSettingsSection(stepId === 'school' ? 'school' : 'family');
+  if (stepId === 'kid') document.getElementById('add-kid-form')?.closest('details')?.setAttribute('open', '');
   const target = {
     kid: '#add-kid-form',
     parent: '#co-parent-invite',
@@ -4934,7 +4926,7 @@ function renderTodayScheduleRow(ev) {
       <div class="schedule-title">${ev.recurring ? '<span class="evt-repeat-badge">↻</span>' : ''}${esc(ev.title)}${lock}</div>
       ${meta ? `<div class="schedule-meta">${esc(meta)}</div>` : ''}
     </span>
-    ${kidName ? `<span class="schedule-kid" style="color:${color}">${kidName}</span>` : ''}
+    ${kidName ? `<span class="schedule-kid" style="color:${color}">${kidAvatarMarkup(ev.kidId)}${kidName}</span>` : ''}
   </div>`;
 }
 
@@ -5436,7 +5428,7 @@ function renderGoalsRecap(habitGoals) {
     const checked = goalChecksThisWeek(g);
     const pct = Math.min(100, g.target ? Math.round((checked / g.target) * 100) : 0);
     return `<div class="goals-recap-row">
-      <span class="goals-recap-kid" style="color:${color}"><span class="goals-recap-dot" style="background:${color}"></span>${esc(kidNameFor(g.kidId))}</span>
+      <span class="goals-recap-kid" style="color:${color}">${kidAvatarMarkup(g.kidId)}${esc(kidNameFor(g.kidId))}</span>
       <div class="goals-recap-track"><div class="goals-recap-fill" style="width:${pct}%;background:${color}"></div></div>
       <span class="goals-recap-count">${checked}/${g.target} ${esc(g.title)}</span>
     </div>`;
@@ -5768,7 +5760,7 @@ function switchNavTab(tab) {
 
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
-  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); }
+  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); showSettingsSection(settingsSection); }
   if (tab === 'homework') { const pending = loadHomework(); renderHomeworkHub(); pending.then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }

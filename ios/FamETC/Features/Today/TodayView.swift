@@ -434,11 +434,13 @@ private struct ScheduleRow: View {
                 .foregroundStyle(Palette.text)
                 .lineLimit(1)
             Spacer(minLength: Space.sm)
-            if let name = Agenda.kidName(item.kidId, kids: store.kids) {
-                Text(name)
-                    .font(Typography.caption.weight(.semibold))
-                    .foregroundStyle(Agenda.kidColor(item.kidId, kids: store.kids) ?? Palette.textSecond)
-                    .fixedSize()
+            if let kid = store.kids.first(where: { $0.id == item.kidId }) {
+                HStack(spacing: Space.xs) {
+                    KidProfileAvatar(kid: kid, size: 24)
+                    Text(kid.name)
+                        .font(Typography.caption.weight(.semibold))
+                        .foregroundStyle(Palette.textSecond)
+                }
             }
         }
         .padding(.vertical, Space.sm + 2)
@@ -532,6 +534,7 @@ private struct KidHeader: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: Space.md) {
+            if let kid { KidProfileAvatar(kid: kid, size: 44) }
             VStack(alignment: .leading, spacing: 3) {
                 MicroLabel(text: dateLabel)
                 Text("Hi, \(kidName)")

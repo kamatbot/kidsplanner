@@ -27,9 +27,9 @@ struct AgendaRow: View {
                 }
                 if showKidLabel, let name = Agenda.kidName(item.kidId, kids: store.kids) {
                     HStack(spacing: Space.xs) {
-                        Circle()
-                            .fill(Agenda.kidColor(item.kidId, kids: store.kids) ?? Palette.accent)
-                            .frame(width: 7, height: 7)
+                        if let kid = store.kids.first(where: { $0.id == item.kidId }) {
+                            KidProfileAvatar(kid: kid, size: 24)
+                        }
                         Text(name)
                             .font(Typography.caption.weight(.semibold))
                             .foregroundStyle(Palette.textSecond)

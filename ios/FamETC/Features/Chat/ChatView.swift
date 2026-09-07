@@ -1699,6 +1699,7 @@ private struct ChatAddEventSheet: View {
 // MARK: - One message row (fun bubbles + avatar, or a system card)
 
 struct ChatMessageRow: View {
+    @Environment(AppStore.self) private var store
     let message: ChatMessage
     let isMine: Bool
     let senderName: String
@@ -1713,9 +1714,13 @@ struct ChatMessageRow: View {
     var canImportTripItinerary: Bool = false
     var onImportTripItinerary: (ChatMessage) -> Void = { _ in }
 
-    private var senderColor: Color {
-        famChatSenderColor(id: message.senderId, name: senderName, isMine: isMine)
+    private var senderKid: Kid? {
+        message.senderType == "kid" ? store.kids.first { $0.id == message.senderId } : nil
     }
+    private var senderColor: Color {
+        senderKid?.profileColor ?? famChatSenderColor(id: message.senderId, name: senderName, isMine: isMine)
+    }
+    private var senderTextColor: Color { senderKid == nil ? senderColor : Palette.text }
 
     var body: some View {
         if message.isBuzz {
@@ -1734,10 +1739,10 @@ struct ChatMessageRow: View {
     private var bubbleRow: some View {
         HStack(alignment: .bottom, spacing: Space.sm) {
             if isMine { Spacer(minLength: 52) }
-            if !isMine { avatar }
+            if !isMine || senderKid != nil { avatar }
             VStack(alignment: isMine ? .trailing : .leading, spacing: 3) {
                 if !isMine {
-                    Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderColor).padding(.horizontal, 6)
+                    Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderTextColor).padding(.horizontal, 6)
                 }
                 bubble
                 if canImportMealPlan {
@@ -1751,12 +1756,16 @@ struct ChatMessageRow: View {
         }
     }
 
-    private var avatar: some View {
+    @ViewBuilder private var avatar: some View {
+        if let kid = senderKid {
+            KidProfileAvatar(kid: kid, size: 38)
+        } else {
         Text(famAvatar(senderType: message.senderType, id: message.senderId))
             .font(.system(size: 22))
             .frame(width: 38, height: 38)
             .background(senderColor.opacity(0.22), in: Circle())
             .overlay(Circle().strokeBorder(senderColor.opacity(0.4), lineWidth: 1))
+        }
     }
 
     private var bubbleShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
@@ -1822,10 +1831,10 @@ struct ChatMessageRow: View {
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 Label("BUZZ", systemImage: "wave.3.right")
                     .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(senderColor)
+                    .foregroundStyle(senderTextColor)
                 Text(ChatLinkText.attributed(message.text))
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(senderColor)
+                    .foregroundStyle(senderTextColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16).padding(.vertical, 11)
@@ -1876,7 +1885,7 @@ struct ChatMessageRow: View {
             // identity cues so color is never the only signal.
             Text(ChatLinkText.attributed(message.text))
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(senderColor)
+                .foregroundStyle(senderTextColor)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))

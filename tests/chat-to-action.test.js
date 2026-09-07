@@ -87,8 +87,8 @@ test("render and handoff keep source state scoped to the family chat composer", 
 
 test("chat identity colors and event cards identify the speaker", () => {
   assert.match(appSource, /function chatSenderColor\(msg\)/);
-  assert.match(appSource, /if \(isOwnMessage\(msg\)\) return 'var\(--c-blue\)'/);
-  assert.match(appSource, /toLowerCase\(\) === 'arya'\) return 'var\(--c-green\)'/);
+  assert.match(appSource, /if \(msg.senderType === 'kid'\) return kidColorFor\(msg.senderId\)/);
+  assert.doesNotMatch(appSource, /toLowerCase\(\) === 'arya'/);
   assert.match(appSource, /renderChatCard\(m\.card, chatSenderName\(m\)\)/);
   assert.match(appSource, /chat-card-attribution/);
   assert.doesNotMatch(appSource, /Event · tap to view/);
