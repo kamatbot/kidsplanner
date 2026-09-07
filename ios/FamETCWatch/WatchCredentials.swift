@@ -9,17 +9,21 @@ enum WatchCredentialKind: String, Codable {
 struct WatchCredential: Codable, Equatable {
     let kind: WatchCredentialKind
     let value: String
+    var role: String? = nil
+    var userId: String? = nil
+    var familyId: String? = nil
 
-    init(kind: WatchCredentialKind = .cookieHeader, value: String) {
+    init(kind: WatchCredentialKind = .cookieHeader, value: String, role: String? = nil, userId: String? = nil, familyId: String? = nil) {
         self.kind = kind
         self.value = value
+        self.role = role
+        self.userId = userId
+        self.familyId = familyId
     }
 }
 
-/// The watch foundation has no login or pairing flow. It only asks this
-/// abstraction for a credential that a future approved provisioning surface
-/// may place in the watch keychain. Missing credentials are a normal,
-/// user-visible disconnected state rather than a reason to attempt auth.
+/// Both connection flows save a scoped watch credential locally. Missing
+/// credentials lead to setup, never an implicit iPhone session transfer.
 protocol WatchCredentialStore {
     func credential() throws -> WatchCredential?
     func save(_ credential: WatchCredential) throws
@@ -31,10 +35,9 @@ extension WatchCredentialStore {
     }
 }
 
-/// Read-only Keychain bridge for the standalone watch target. The value may be
-/// either a JSON-encoded WatchCredential or a legacy raw cookie header. Keeping
-/// the latter fallback makes the store useful to a provisioning tool without
-/// coupling this target to iPhone auth or WatchConnectivity.
+/// Device-local credentials, accessible after first unlock for background
+/// refresh. Preserve the existing service/account and legacy cookie decoding
+/// so installed standalone watches keep their connection.
 struct KeychainWatchCredentialStore: WatchCredentialStore {
     static let defaultService = "com.fametc.watch"
     static let defaultAccount = "session"
@@ -76,6 +79,17 @@ struct KeychainWatchCredentialStore: WatchCredentialStore {
         return WatchCredential(kind: .cookieHeader, value: raw)
     }
 
+    func clear() throws {
+        let status = SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ] as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw WatchCredentialError.keychainStatus(status)
+        }
+    }
+
     func save(_ credential: WatchCredential) throws {
         guard !credential.value.isEmpty else { throw WatchCredentialError.invalidValue }
         let data = try JSONEncoder().encode(credential)
@@ -84,11 +98,12 @@ struct KeychainWatchCredentialStore: WatchCredentialStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        let attributes: [String: Any] = [kSecValueData as String: data]
+        let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
             var item = query
             item[kSecValueData as String] = data
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             let addStatus = SecItemAdd(item as CFDictionary, nil)
             guard addStatus == errSecSuccess else { throw WatchCredentialError.keychainStatus(addStatus) }
         } else if status != errSecSuccess {

@@ -11,6 +11,10 @@ protocol WatchAPIClient {
     func updateShoppingDone(_ id: String, done: Bool) async throws -> WatchShoppingItem
 }
 
+protocol WatchContextClient {
+    func fetchContext() async throws -> WatchContext
+}
+
 protocol WatchPairingClient {
     func claimPairing(code: String, deviceLabel: String) async throws -> WatchCredential
 }
@@ -59,14 +63,15 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
     private struct ActionResponse: Decodable { let action: WatchAction }
     private struct HomeworkItemResponse: Decodable { let homework: WatchHomework }
     private struct ShoppingItemResponse: Decodable { let item: WatchShoppingItem }
-    private struct PairingResponse: Decodable { let token: String; let tokenKind: String }
+    private struct PairingDevice: Decodable { let targetType: String; let targetUserId: String; let familyId: String }
+    private struct PairingResponse: Decodable { let token: String; let tokenKind: String; let device: PairingDevice? }
     private struct EmptyResponse: Decodable {}
 
     private let baseURL: URL
@@ -88,6 +93,10 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         self.clientKey = clientKey
         self.decoder = decoder
         self.requestExecutor = requestExecutor
+    }
+
+    func fetchContext() async throws -> WatchContext {
+        try await request("/api/watch/context", response: WatchContext.self)
     }
 
     func fetchActions() async throws -> [WatchAction] {
@@ -153,14 +162,18 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         guard response.tokenKind == "bearer", !response.token.isEmpty else {
             throw WatchAPIError.decoding("Fam ETC did not return a watch credential.")
         }
-        return WatchCredential(kind: .bearerToken, value: response.token)
+        return WatchCredential(kind: .bearerToken, value: response.token, role: response.device?.targetType, userId: response.device?.targetUserId, familyId: response.device?.familyId)
+    }
+
+    func disconnectWatch() async throws {
+        _ = try await request("/api/watch/disconnect", method: "POST", response: EmptyResponse.self)
     }
 
     func registerWatchPushToken(_ token: String) async throws {
         _ = try await request(
             "/api/watch/push/register",
             method: "POST",
-            body: ["token": token],
+            body: ["token": token, "topic": Bundle.main.bundleIdentifier == "com.fametc.app.watch" ? "com.fametc.app.watch" : "com.fametc.watch"],
             response: EmptyResponse.self
         )
     }
