@@ -16,6 +16,7 @@ struct FamETCApp: App {
         #if DEBUG
         DebugLaunch.bootstrap()
         #endif
+        ParentWatchCompanion.shared.activate()
     }
 
     var body: some Scene {
@@ -33,6 +34,9 @@ struct FamETCApp: App {
             // First-party analytics: one app-open event per launch (anonymous,
             // best-effort). Native signups are tracked server-side at /api/...signup.
             .task { APIClient.shared.track("app_open") }
+            .onChange(of: store.me?.id) { _, _ in
+                ParentWatchCompanion.shared.updateIdentity(store.me)
+            }
         }
     }
 }
