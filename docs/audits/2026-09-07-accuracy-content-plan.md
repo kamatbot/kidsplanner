@@ -1,7 +1,8 @@
 # FamETC accuracy, content and engagement plan
 
-Date: 7 September 2026  
-Basis: [project audit](/Users/kamatbot/Documents/Claude/Planner/docs/audits/2026-09-07-project-audit.md) of `99b3d3e8e1221dfdcc2a99c5c9391fc1df239afa`.  
+Date: 7 September 2026
+
+Basis: [project audit](/Users/kamatbot/Documents/Claude/Planner/docs/audits/2026-09-07-project-audit.md) of `99b3d3e8e1221dfdcc2a99c5c9391fc1df239afa`.
 Status: proposed implementation plan; no application changes or release authorization implied.
 
 ## 1. Direction and success definition
@@ -423,4 +424,3 @@ Defer until evidence justifies them: broad TypeScript conversion, automatic DTO 
 Start with **family/session integrity**: reproduce the approved-child flow on the selected current branch, correct the false-empty/error states and complete account-scoped logout/reset. In parallel, an independently owned critical module can fix the Watch family-binding defect.
 
 Then repair destructive meal replacement and homework projection truth before expanding learning engagement. This yields a safer daily product while the catalog and calibration work proceeds as a separate, testable vertical.
-

@@ -1,7 +1,8 @@
 # FamETC project audit — accuracy, trust, content and engagement
 
-Date: 7 September 2026  
-Audited snapshot: `99b3d3e8e1221dfdcc2a99c5c9391fc1df239afa`, originally checked out on `feat/launch-polish-and-marketing`.  
+Date: 7 September 2026
+
+Audited snapshot: `99b3d3e8e1221dfdcc2a99c5c9391fc1df239afa`, originally checked out on `feat/launch-polish-and-marketing`.
 Repository: `kamatbot/kidsplanner`. Scope: audit and planning only.
 
 ## Executive conclusion
