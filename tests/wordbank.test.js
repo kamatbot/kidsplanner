@@ -171,26 +171,36 @@ test('web and iOS vocabulary exactly match the server list', () => {
   assert.deepEqual(rows, WORDS);
 });
 
-test('web daily activities use same-type options for every word and variant', () => {
+test('web daily activity renders the three authored contexts for each shared word', async () => {
   const vm = require('node:vm');
+  const { getDailyVocabulary } = require('../lib/vocabulary-challenges');
   const source = fs.readFileSync(path.join(__dirname, '../public/js/sat.js'), 'utf8');
-  const fn = source.slice(source.indexOf('function renderSatActivity'), source.indexOf('function submitSatPlacement'));
-  for (const word of WORDS) for (let variant = 0; variant < 3; variant++) {
+  const fn = source.slice(source.indexOf('let dailyVocabulary'), source.indexOf('function submitSatPlacement'));
+  for (let index = 0; index < 30; index++) {
+    const date = new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10);
+    const edition = getDailyVocabulary(date);
     const container = { innerHTML: '' };
-    vm.runInNewContext(fn + ';renderSatActivity()', { currentSatWord: word, SAT_WORDS: WORDS, document: { getElementById: id => id === 'sat-activity' ? container : null, querySelector: () => null }, loadPathOddsQuestWidget() {}, dayOfYear: () => variant, esc: s => s });
+    const context = { currentSatWord: null, SAT_WORDS: WORDS,
+      document: { getElementById: id => id === 'sat-activity' ? container : null, querySelector: () => null },
+      window: { auth: { getDailyVocabulary: async requested => { assert.equal(requested, date); return edition; } } },
+      daily5DoneKey: () => `child:${date}`, isoDate: () => date, loadPathOddsQuestWidget() {}, esc: s => s };
+    vm.runInNewContext(fn, context);
+    await context.renderSatActivity();
     const options = [...container.innerHTML.matchAll(/class="fam-sat-opt"[^>]*>(.*?)<\/button>/g)].map(m => m[1]);
-    assert.equal(new Set(options).size, 4);
-    const field = variant === 2 ? 'def' : 'word';
-    for (const option of options) assert.equal(WORDS.find(w => w[field] === option).pos, word.pos);
+    assert.equal(new Set(options).size, 3);
+    assert.deepEqual(options, edition.challenge.options.map(option => option.text));
+    assert.equal(context.currentSatWord.word, edition.word.word);
   }
 });
 
 
-test('extra distractors do not shift the established daily word and crossword calendar', () => {
+test('extra distractors do not expand the shared daily word pool', () => {
   const { DAILY_WORDS } = require('../lib/sat-words');
+  const { getDailyVocabulary } = require('../lib/vocabulary-challenges');
   assert.equal(DAILY_WORDS.length, 30);
   assert.equal(DAILY_WORDS[0].word, 'Eloquent');
   assert.equal(DAILY_WORDS.at(-1).word, 'Wary');
-  assert.match(fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8'), /dailyPick\(SAT_WORDS.slice\(0, 30\), now\)/);
+  const rotation = Array.from({ length: 30 }, (_, index) => getDailyVocabulary(new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10)).word);
+  assert.deepEqual(rotation, DAILY_WORDS);
   assert.match(fs.readFileSync(path.join(__dirname, '../ios/FamETC/Domain/DailyContent.swift'), 'utf8'), /static var word: SATWord \{ words\[index\(30\)\] \}/);
 });

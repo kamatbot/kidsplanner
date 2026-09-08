@@ -7,6 +7,8 @@ import SwiftUI
 /// weekend 3) and resurfaces previously-wrong questions with shuffled options —
 /// this view only renders + reports what `/api/brainteaser/today` returns.
 struct BrainTeaserView: View {
+    @Environment(AppStore.self) private var store
+    @State private var progressScope: Daily5Reporter.Scope?
     private enum LoadState {
         case loading
         case error(String)
@@ -23,7 +25,7 @@ struct BrainTeaserView: View {
         // The enclosing WordWidget/QuizWidget provides the DashCard chrome, so
         // this view renders just its content.
         content
-            .task {
+            .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") {
                 await load()
             }
     }
@@ -173,7 +175,10 @@ struct BrainTeaserView: View {
                 .font(Typography.caption)
                 .foregroundStyle(Palette.textSecond)
         }
-        .onAppear { teaserDoneStamp = Daily5Done.todayStamp }
+        .onAppear {
+            teaserDoneStamp = Daily5Done.todayStamp
+            Daily5Reporter.report("bt", "completed", store: store, scope: progressScope)
+        }
     }
 
     private var retryButton: some View {
@@ -192,14 +197,22 @@ struct BrainTeaserView: View {
     // MARK: Networking
 
     private func load() async {
+        let userID = store.me?.id
+        let day = Agenda.todayKey()
+        progressScope = Daily5Reporter.capture(store)
         state = .loading
         index = 0
         picked = nil
         answeredCount = 0
         do {
             let response = try await APIClient.shared.brainTeaserToday()
+            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
             state = .loaded(response)
+            if !response.questions.isEmpty {
+                Daily5Reporter.report("bt", "started", store: store, scope: progressScope)
+            }
         } catch {
+            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
             state = .error(error.localizedDescription)
         }
     }

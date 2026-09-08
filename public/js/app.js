@@ -139,6 +139,7 @@ function migrateLegacyStorage() {
 ============================================================ */
 let sessionUser     = null;   // { id, email, name, createdAt } from GET /api/me
 let currentFamily    = null;  // { id, name, inviteCode, parentIds, kids, createdAt }
+let activeChildViewId = null;
 let activeKidId      = null;  // currently selected kid filter ("" = all kids)
 let calendarAudience  = 'all'; // parent Calendar audience: all/selected kid/timetable
 let currentView     = 'week';
@@ -292,8 +293,11 @@ async function saveQuoteReflection() {
   const textEl = document.getElementById('quote-reflect-text');
   const body = textEl ? textEl.value.trim() : '';
   if (!body) { toast('Write a few words first 🙂'); return; }
+  const scope = daily5DoneKey();
+  window.famChildProgress?.report('quote', 'started');
   const note = await saveNoteFromWidget(body, 'quote', { kind: 'quote', id: '', context: currentQuote ? currentQuote.text : '' });
-  if (note) {
+  if (note && scope === daily5DoneKey()) {
+    window.famChildProgress?.report('quote', 'completed');
     textEl.value = '';
     flipQuoteCard(false);
   }
@@ -520,6 +524,7 @@ async function saveNewsReflection() {
   const link = newsArticleLink(currentNews);
   const newsFull = currentNews ? `${currentNews.headline}\n\n${currentNews.summary}\n\n${link}` : '';
   const completionKey = daily5DoneKey();
+  window.famChildProgress?.report('news', 'started');
   const savedArticle = currentNews;
   const note = await saveNoteFromWidget(body, 'news', { kind: 'news', id: '', context: newsFull });
   if (note && completionKey === daily5DoneKey()) {
@@ -540,6 +545,9 @@ async function handlePinChatMessage(id) {
    SESSION / FAMILY BOOTSTRAP (backend-sourced)
 ============================================================ */
 async function bootstrapSession() {
+  activeChildViewId = null;
+  window.famChildView?.clear();
+  window.famChildProgress?.clear();
   const me = await window.auth.getMe();
   if (!me || !me.user) {
     window.location.href = '/login';
@@ -599,6 +607,11 @@ function isKidSession() {
 
 function applyRoleScopingToUI() {
   const kid = isKidSession();
+  if (kid) {
+    activeChildViewId = null;
+    window.famChildView?.clear();
+    if (document.getElementById('tab-child')?.classList.contains('active')) switchNavTab('today');
+  }
 
   const billingLink = document.getElementById('nav-billing-link');
   if (billingLink) billingLink.style.display = kid ? 'none' : '';
@@ -741,6 +754,7 @@ async function handleRemoveKid(kidId) {
 // have their own header instance (canvas 1b/1c), sharing the one activeKidId
 // state, so both stay in sync no matter which one triggered the change.
 function renderKidSwitcher() {
+  window.famChildView?.renderNavigation();
   const els = document.querySelectorAll('.kid-switcher');
   if (!els.length || !currentFamily) return;
   const kids = currentFamily.kids || [];
@@ -2293,18 +2307,66 @@ function markDaily5Done(part) {
   s[part] = true;
   save(daily5DoneKey(), s);
   applyDaily5Done();
+  if (['news', 'puzzle', 'bt'].includes(part)) window.famChildProgress?.report(part, 'completed');
 }
 function applyDaily5Done() {
   const s = load(daily5DoneKey()) || {};
   const quest = document.getElementById('daily-quest-summary');
   if (quest) {
     const parts = [['news', 'News reflection'], ['bt', 'Brain teaser'], ['puzzle', 'Puzzle']];
-    quest.textContent = `Optional daily quest · ${parts.filter(([key]) => s[key]).length} of 3 complete. ` +
-      parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
+    quest.textContent = `News, brain teaser & puzzle · ${parts.filter(([key]) => s[key]).length} of 3 complete`;
+    quest.title = parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
   }
   // PathOdds SAT completion does not hide the separate vocabulary challenge.
   const bt = document.getElementById('widget-quiz');
   if (bt) bt.hidden = !!s.bt;
+  const completed = document.getElementById('daily5-quiz-done');
+  if (completed) completed.hidden = !s.bt;
+}
+
+// Tabs change visibility only: drafts, puzzle inputs and the PathOdds iframe
+// stay mounted. Selection is transient and resets on account/day changes.
+const DAILY5_ACTIVITIES = ['news', 'word', 'puzzle', 'quiz', 'quote'];
+let daily5ActivityScope = '';
+let daily5Activity = 'news';
+
+function selectDaily5Activity(activity, focusTab = false) {
+  if (!DAILY5_ACTIVITIES.includes(activity)) return;
+  daily5Activity = activity;
+  DAILY5_ACTIVITIES.forEach((key) => {
+    const tab = document.getElementById(`daily5-tab-${key}`);
+    const panel = document.getElementById(`daily5-panel-${key}`);
+    const selected = key === activity;
+    if (tab) {
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && focusTab) tab.focus();
+    }
+    if (panel) panel.hidden = !selected;
+  });
+}
+
+function initDaily5Tabs() {
+  const scope = daily5DoneKey();
+  if (daily5ActivityScope !== scope) {
+    daily5ActivityScope = scope;
+    daily5Activity = 'news';
+  }
+  selectDaily5Activity(daily5Activity);
+  const tabs = document.getElementById('daily5-tabs');
+  if (!tabs) return;
+  tabs.onkeydown = (event) => {
+    const index = DAILY5_ACTIVITIES.findIndex((key) => event.target.id === `daily5-tab-${key}`);
+    if (index < 0) return;
+    let next;
+    if (event.key === 'ArrowRight') next = (index + 1) % DAILY5_ACTIVITIES.length;
+    else if (event.key === 'ArrowLeft') next = (index + DAILY5_ACTIVITIES.length - 1) % DAILY5_ACTIVITIES.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = DAILY5_ACTIVITIES.length - 1;
+    else return;
+    event.preventDefault();
+    selectDaily5Activity(DAILY5_ACTIVITIES[next], true);
+  };
 }
 
 function renderWidgets() {
@@ -2387,6 +2449,7 @@ function saveDailyPuzzleProgress(solved = false) {
   const values = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]')).map((input) => input.value);
   const changed = JSON.stringify(values) !== JSON.stringify(previous.values || []);
   if (changed && solved !== true) {
+    window.famChildProgress?.report('puzzle', 'started', { reset: true });
     document.getElementById('puzzle-status').textContent = '';
     const done = load(daily5DoneKey()) || {};
     if (done.puzzle) {
@@ -2531,6 +2594,7 @@ function wireCrosswordTyping(crossword, grid, clues) {
 
 function clearDailyPuzzle() {
   if (!currentDailyPuzzle || currentPuzzleCompletionKey !== daily5DoneKey()) return;
+  window.famChildProgress?.report('puzzle', 'started', { reset: true });
   document.querySelectorAll('#puzzle-grid-wrap input').forEach((input) => { input.value = ''; input.classList.remove('right', 'wrong'); });
   const status = document.getElementById('puzzle-status');
   if (status) status.textContent = 'Board and today’s puzzle credit reset. Ready for a fresh try.';
@@ -2573,12 +2637,19 @@ function checkDailyPuzzle() {
 let brainTeaserQuestions = []; // [{qid,q,options,answerIndex,resurfaced}]
 let brainTeaserIndex     = 0;
 let brainTeaserAnswered  = false;
+let brainTeaserScope = null;
+let brainTeaserRequest = 0;
 
 async function loadBrainTeaser() {
+  const scope = daily5DoneKey();
+  const request = ++brainTeaserRequest;
+  brainTeaserScope = null;
   try {
     const res = await window.auth.getBrainTeaserToday();
+    if (request !== brainTeaserRequest || scope !== daily5DoneKey()) return;
     brainTeaserQuestions = (res && res.questions) || [];
   } catch (e) {
+    if (request !== brainTeaserRequest || scope !== daily5DoneKey()) return;
     // Contract mismatch / route not up yet — fall back to the local bank so
     // the widget still works, using the same weekday ramp.
     const now = new Date();
@@ -2591,6 +2662,7 @@ async function loadBrainTeaser() {
       brainTeaserQuestions.push({ qid: `local_${(baseIdx + i) % QUIZ.length}`, q: q.q, options: q.opts, answerIndex: q.ans, resurfaced: false, _exp: q.exp });
     }
   }
+  brainTeaserScope = scope;
   brainTeaserIndex = 0;
   renderBrainTeaser();
 }
@@ -2620,7 +2692,9 @@ function renderBrainTeaser() {
 }
 
 async function answerBrainTeaserQ(chosen) {
-  if (brainTeaserAnswered) return;
+  if (brainTeaserScope !== daily5DoneKey()) { loadBrainTeaser(); return; }
+  if (brainTeaserAnswered || !brainTeaserQuestions[brainTeaserIndex]) return;
+  window.famChildProgress?.report('bt', 'started');
   brainTeaserAnswered = true;
   const q = brainTeaserQuestions[brainTeaserIndex];
   const correct = chosen === q.answerIndex;
@@ -2649,6 +2723,8 @@ async function answerBrainTeaserQ(chosen) {
 }
 
 function nextQuestion() {
+  if (brainTeaserScope !== daily5DoneKey()) { loadBrainTeaser(); return; }
+  if (!brainTeaserAnswered || !brainTeaserQuestions.length) return;
   if (brainTeaserIndex < brainTeaserQuestions.length - 1) {
     brainTeaserIndex++;
     renderBrainTeaser();
@@ -2657,7 +2733,8 @@ function nextQuestion() {
     document.getElementById('quiz-options').innerHTML = '';
     document.getElementById('quiz-feedback').textContent = '';
     document.getElementById('btn-next-q').style.display = 'none';
-    setTimeout(() => markDaily5Done('bt'), 1500);
+    const scope = brainTeaserScope;
+    setTimeout(() => { if (scope === brainTeaserScope && scope === daily5DoneKey()) markDaily5Done('bt'); }, 1500);
   }
 }
 
@@ -3816,7 +3893,7 @@ function toggleKidChat() {
   if (open) markChatSeen();
 }
 
-const CHAT_DOCK_MODE = { today: 'open', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', notes: 'hidden', settings: 'hidden' };
+const CHAT_DOCK_MODE = { today: 'open', child: 'collapsed', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', notes: 'hidden', settings: 'hidden' };
 function applyChatDockState(tab) {
   const dock = document.getElementById('chat-dock');
   if (!dock) return;
@@ -4715,6 +4792,11 @@ function renderTodayActionQueue() {
   const now = new Date();
   const preview = window.famActionQueue.previewActions(todayActionItems, now);
   const canShowContents = todayActionQueueState === 'ready' || todayActionItems.length > 0;
+  const count = document.getElementById('today-actions-count');
+  if (count) {
+    count.textContent = `${preview.length} to do`;
+    count.hidden = !canShowContents;
+  }
   listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now, false)).join('') ||
     (canShowContents ? '<div class="today-actions-empty"><strong>Nothing waiting right now.</strong> Enjoy a little breathing room.</div>' : '');
   const footer = document.getElementById('today-actions-footer');
@@ -4938,6 +5020,7 @@ function renderTodayScreen() {
   }
 
   renderTodaySetupCard();
+  initDaily5Tabs();
   renderTodayActionQueue();
   renderTodaySchedule(todayIso);
   renderTodayHomework(todayIso);
@@ -5023,7 +5106,7 @@ function renderTodayScheduleRow(ev) {
   const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
   const lock = ev.source === 'school' ? ' 🔒' : '';
   const meta = todayScheduleMeta(ev);
-  return `<div class="schedule-row" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')">
+  return `<button type="button" class="schedule-row" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')">
     <span class="schedule-time">${ev.time ? esc(ev.time) : 'All day'}</span>
     <span class="schedule-bar" style="background:${color}"></span>
     <span class="schedule-main">
@@ -5031,7 +5114,7 @@ function renderTodayScheduleRow(ev) {
       ${meta ? `<div class="schedule-meta">${esc(meta)}</div>` : ''}
     </span>
     ${kidName ? `<span class="schedule-kid" style="color:${color}">${kidAvatarMarkup(ev.kidId)}${kidName}</span>` : ''}
-  </div>`;
+  </button>`;
 }
 
 // An event is "today" if today falls anywhere in its date..endDate span.
@@ -5056,7 +5139,7 @@ function renderTodaySchedule(todayIso) {
   const addEventHint = ' — <a href="#" class="btn-link" style="display:inline" onclick="openAddEventModal();return false">add one</a>';
   if (countEl) countEl.textContent = todays.length ? `${todays.length} event${todays.length === 1 ? '' : 's'}` : '';
   listEl.innerHTML = todays.length
-    ? todays.map(renderTodayScheduleRow).join('')
+    ? todays.slice(0, 3).map(renderTodayScheduleRow).join('')
     : `<div class="today-empty">Nothing on the calendar today${addEventHint}.</div>`;
 
   const tomorrowIso = isoDate(new Date(Date.now() + 86400000));
@@ -5086,31 +5169,30 @@ function renderTodayHomeworkRow(item, todayIso) {
   const rowAction = isKidSession()
     ? `event.stopPropagation();toggleHomeworkDone('${item.id}')`
     : `openHomeworkDetail('${item.id}')`;
-  const progressControl = isKidSession()
-    ? `<button type="button" class="homework-due-check ${checkCls}" aria-label="Toggle done">${checkMark}</button>`
-    : `<span class="homework-due-check ${checkCls}" aria-label="${done ? 'Completed' : 'Not completed'}">${checkMark}</span>`;
-  return `<div class="homework-due-row${done ? ' done' : ''}" onclick="${rowAction}">
+  const progressControl = `<span class="homework-due-check ${checkCls}" aria-hidden="true">${checkMark}</span>`;
+  return `<button type="button" class="homework-due-row${done ? ' done' : ''}" onclick="${rowAction}" aria-label="${isKidSession() ? (done ? 'Mark not done' : 'Mark done') : 'Review homework'}: ${esc(item.title)}">
     ${progressControl}
     <span class="homework-due-title">${esc(item.title)}</span>
     ${when ? `<span class="homework-due-when ${whenClass}">${esc(when)}</span>` : ''}
     <span class="homework-due-kid-dot" style="background:${dotColor}"></span>
-  </div>`;
+  </button>`;
 }
 
 function renderTodayHomework(todayIso) {
   const listEl = document.getElementById('today-homework-list');
   if (!listEl) return;
 
-  const groups = groupHomeworkByDueDate(homeworkItems);
+  const groups = groupHomeworkByDueDate(homeworkItems.filter((item) => item.status !== 'done'));
   const rows = groups.overdue.concat(groups.today, groups.thisWeek)
-    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))
-    .slice(0, 6);
+    .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+  const count = document.getElementById('today-homework-count');
+  if (count) count.textContent = rows.length ? `${rows.length} due` : 'All clear';
 
   if (!rows.length) {
     listEl.innerHTML = `<div class="today-empty">No homework due this week 🎉</div>`;
     return;
   }
-  listEl.innerHTML = rows.map((item) => renderTodayHomeworkRow(item, todayIso)).join('');
+  listEl.innerHTML = rows.slice(0, 2).map((item) => renderTodayHomeworkRow(item, todayIso)).join('');
 }
 
 function renderTodayHabitRow(goal) {
@@ -5133,7 +5215,7 @@ function renderTodayHabitsAndMomentum() {
     if (!habitGoals.length) {
       listEl.innerHTML = `<p class="today-empty-cta">Set a first goal — reading, practice, anything worth a streak. <a href="#" onclick="switchNavTab('goals');return false">Add one →</a></p>`;
     } else {
-      listEl.innerHTML = habitGoals.map(renderTodayHabitRow).join('');
+      listEl.innerHTML = habitGoals.slice(0, 2).map(renderTodayHabitRow).join('');
     }
   }
   const todayIso = isoDate(new Date());
@@ -5854,6 +5936,10 @@ function visibleHomeworkDueItems() {
    needlessly once hidden.
 ============================================================ */
 function switchNavTab(tab) {
+  if (tab === 'child' && (isKidSession() || !sessionUser || !currentFamily?.kids?.some(kid => kid.id === activeChildViewId))) tab = 'today';
+  if (tab !== 'child') { activeChildViewId = null; window.famChildView?.cancel(); }
+  const childPanel = document.getElementById('tab-child');
+  if (childPanel) childPanel.hidden = tab !== 'child';
   document.querySelectorAll('.sidebar-nav-item').forEach((t) => {
     t.classList.toggle('active', t.dataset.tab === tab);
   });
@@ -5861,6 +5947,7 @@ function switchNavTab(tab) {
     p.classList.toggle('active', p.id === `tab-${tab}`);
   });
   applyChatDockState(tab);
+  window.famChildView?.renderNavigation();
 
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
@@ -5880,6 +5967,30 @@ function switchNavTab(tab) {
   }
 }
 
+function openChildView(kidId) {
+  if (!sessionUser || isKidSession() || !currentFamily?.kids?.some(kid => kid.id === kidId)) return;
+  activeChildViewId = kidId;
+  switchNavTab('child');
+  window.famChildView?.render(kidId);
+}
+
+function refreshChildDate() {
+  if (document.hidden || !activeChildViewId || isKidSession()) return;
+  const displayedDate = document.querySelector('#tab-child time[datetime]')?.getAttribute('datetime');
+  if (displayedDate && displayedDate !== isoDate(new Date())) window.famChildView?.render(activeChildViewId);
+}
+window.addEventListener('focus', refreshChildDate);
+document.addEventListener('visibilitychange', refreshChildDate);
+
+async function openChildHomeworkReview(id) {
+  if (!sessionUser || isKidSession() || !activeChildViewId) return;
+  const scope = `${sessionUser.id}:${currentFamily?.id}:${activeChildViewId}`;
+  await loadHomework();
+  if (isKidSession() || scope !== `${sessionUser?.id}:${currentFamily?.id}:${activeChildViewId}`) return;
+  if (homeworkLoadState === 'error') { toast('Could not refresh homework. Please try again.'); return; }
+  if (homeworkItems.some(item => item.id === id && item.kidId === activeChildViewId)) openHomeworkDetail(id);
+}
+
 /* ============================================================
    TOAST
 ============================================================ */
@@ -5895,6 +6006,9 @@ function toast(msg) {
    LOGOUT
 ============================================================ */
 async function handleLogout() {
+  activeChildViewId = null;
+  window.famChildView?.clear();
+  window.famChildProgress?.clear();
   try { await window.auth.signOut(); } catch (e) { /* proceed regardless */ }
   window.location.href = '/login';
 }
@@ -6526,15 +6640,21 @@ window.famGetSchoolStats = famGetSchoolStats;
 // and (best-effort, fire-and-forget) a real web push via /api/notify/self
 // so it reaches the parent even if the tab is backgrounded.
 async function processSchoolStats(kids, statsList) {
-  if (!Array.isArray(statsList) || !statsList.length) return 0;
+  if (!sessionUser || isKidSession() || !currentFamily || !Array.isArray(statsList) || !statsList.length) return 0;
+  const importScope = `${sessionUser.id}:${currentFamily.id}`;
+  const stillCurrent = () => !isKidSession() && `${sessionUser?.id}:${currentFamily?.id}` === importScope;
   const stored = getSchoolStats();
   const now = Date.now();
   let matched = 0;
 
   for (const stat of statsList) {
+    if (!stillCurrent()) return matched;
     if (!stat) continue;
     const kid = matchKidByFirstName(kids, stat.name);
-    if (!kid) continue;
+    if (!kid || !currentFamily.kids.some(member => member.id === kid.id)) continue;
+    // The extension supplies first names; ambiguous names are not safe to
+    // attribute to a shared child profile. Never migrate old browser snapshots.
+    if (kids.filter(member => matchKidByFirstName([member], stat.name)).length !== 1) continue;
     matched++;
 
     const prev = stored[kid.id] || null;
@@ -6546,7 +6666,19 @@ async function processSchoolStats(kids, statsList) {
     }, now);
     stored[kid.id] = record;
 
+    try {
+      await window.auth.saveChildSchoolStats(kid.id, {
+        housePoints: record.housePoints, attendance: record.attendance,
+        punctual: record.punctual, canteenBalance: record.canteenBalance,
+        importedAt: new Date(now).toISOString(),
+      });
+    } catch (_) {
+      if (stillCurrent()) toast('School snapshot saved on this device; shared child view could not be updated. Import again when connected.');
+    }
+    if (!stillCurrent()) return matched;
+
     for (const n of fired) {
+      if (!stillCurrent()) return matched;
       toast(`🏫 ${n.title}: ${n.body}`);
       try {
         await window.auth.notifySelf(n.title, n.body, n.tag);
@@ -6557,7 +6689,7 @@ async function processSchoolStats(kids, statsList) {
     }
   }
 
-  if (matched) {
+  if (matched && stillCurrent()) {
     saveSchoolStats(stored);
     renderSchoolStatsWidget();
   }

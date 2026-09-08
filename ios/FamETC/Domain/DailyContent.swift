@@ -1,5 +1,63 @@
 import Foundation
 
+/// Captures the initiating child's session; queued work never borrows a later login.
+@MainActor
+enum Daily5Reporter {
+    struct Scope {
+        let userID: String
+        let date: String
+        let cookie: String
+    }
+    private static var pending: Task<Void, Never>?
+    private static var queueScope = ""
+    struct Event: Equatable {
+        let id = UUID()
+        let transition: String
+    }
+    private static var lastQueued: [String: Event] = [:]
+
+    static func clearFinished(_ event: Event, part: String, in queued: inout [String: Event]) {
+        if queued[part] == event { queued.removeValue(forKey: part) }
+    }
+
+    static func capture(_ store: AppStore, cookies: [HTTPCookie]? = HTTPCookieStorage.shared.cookies(for: Config.baseURL)) -> Scope? {
+        guard let user = store.me, user.role == "kid", user.kidId != nil,
+              let cookies,
+              cookies.contains(where: { $0.name == "fam_sess" }) else { return nil }
+        return Scope(userID: user.id, date: Agenda.todayKey(),
+                     cookie: HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] ?? "")
+    }
+
+    static func report(_ part: String, _ status: String, store: AppStore, scope: Scope?, retract: Bool = false) {
+        guard let scope, let current = capture(store), current.userID == scope.userID,
+              current.cookie == scope.cookie, current.date == scope.date else { return }
+        let identity = "\(scope.userID)|\(scope.date)|\(scope.cookie)"
+        if queueScope != identity {
+            pending?.cancel()
+            pending = nil
+            lastQueued = [:]
+            queueScope = identity
+        }
+        let transition = "\(status)|\(retract)"
+        guard lastQueued[part]?.transition != transition else { return }
+        let event = Event(transition: transition)
+        lastQueued[part] = event
+        let previous = pending
+        pending = Task { @MainActor in
+            await previous?.value
+            guard !Task.isCancelled, let current = capture(store), current.userID == scope.userID,
+                  current.cookie == scope.cookie, current.date == scope.date else { return }
+            // Best effort: offline or an older server must not interrupt the activity.
+            defer {
+                // Deduplicate pending work only: another device can change progress.
+                if queueScope == identity { clearFinished(event, part: part, in: &lastQueued) }
+            }
+            try? await APIClient.shared.reportDaily5(date: scope.date, part: part,
+                status: status, retract: retract, cookie: scope.cookie)
+        }
+    }
+}
+
 // Daily rotating evergreen content for the Today dashboard widgets. Current
 // news is intentionally server-backed so an old bundled story cannot surface.
 

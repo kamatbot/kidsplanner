@@ -17,6 +17,13 @@
 # git. Output format follows the extension (.zip or .tar.gz).
 set -euo pipefail
 
+# Packaging and its boot smoke test must use the project release runtime.
+export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
+case "$(node --version)" in
+  v24.*) ;;
+  *) echo "Node 24 is required before packaging." >&2; exit 1 ;;
+esac
+
 cd "$(dirname "$0")/.."
 
 OUT="${1:-fametc-deploy.zip}"

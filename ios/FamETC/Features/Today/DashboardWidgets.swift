@@ -194,7 +194,7 @@ struct DailyFiveCard: View {
                     .buttonStyle(.plain)
                 }
 
-                if !Daily5Done.isToday(teaserDoneStamp) {
+                if store.me?.role == "kid" || !Daily5Done.isToday(teaserDoneStamp) {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         MicroLabel(text: "Brain teaser")
                         if isKid {
@@ -319,6 +319,7 @@ struct DailyFiveCard: View {
                     get: { reflections[news.id] ?? "" },
                     set: { reflections[news.id] = $0 }
                 )).id("\(extrasScope)|\(news.id)")
+                    .onAppear { Daily5Reporter.report("news", "started", store: store, scope: Daily5Reporter.capture(store)) }
             }
         }
     }
@@ -443,6 +444,7 @@ struct NewsWidget: View {
                                 let text = reflection
                                 guard let userID = store.me?.id else { return }
                                 let day = Agenda.todayKey()
+                                let progressScope = Daily5Reporter.capture(store)
                                 saving = true
                                 saveFailed = false
                                 Task {
@@ -450,6 +452,7 @@ struct NewsWidget: View {
                                     saving = false
                                     guard store.me?.id == userID, Agenda.todayKey() == day else { return }
                                     if note != nil {
+                                        Daily5Reporter.report("news", "completed", store: store, scope: progressScope)
                                         if reflection == text { reflection = "" }
                                         saved = true
                                         UserDefaults.standard.set(true, forKey: DailyNewsSelection.ideaKey(userID: userID, day: day))
@@ -548,6 +551,7 @@ private struct CrosswordCellField: UIViewRepresentable {
 }
 
 private struct DailyPuzzleView: View {
+    @Environment(AppStore.self) private var store
     let puzzle: DailyPuzzleResponse
     private let progressIdentity: DailyPuzzleProgressIdentity
     private let progressKeys: Set<String>
@@ -595,6 +599,7 @@ private struct DailyPuzzleView: View {
                     answers = [:]
                     resultMessage = nil
                     DailyPuzzleProgressStore.clear(for: progressIdentity)
+                    reportProgress("started", retract: true)
                 }
                 .buttonStyle(.bordered)
                 .tint(Palette.textSecond)
@@ -606,6 +611,9 @@ private struct DailyPuzzleView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            if puzzle.crossword != nil || puzzle.sudoku != nil { reportProgress("started") }
+        }
     }
 
     private func crosswordView(_ crossword: CrosswordPuzzle) -> some View {
@@ -764,6 +772,7 @@ private struct DailyPuzzleView: View {
                     }
                 }
                 DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
+                reportProgress("started", retract: true)
             }
         )
     }
@@ -789,6 +798,7 @@ private struct DailyPuzzleView: View {
         )
         resultMessage = nil
         DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
+        reportProgress("started", retract: true)
     }
 
     private func activeEntry(containingRow row: Int, col: Int, in crossword: CrosswordPuzzle) -> CrosswordEntry? {
@@ -824,8 +834,16 @@ private struct DailyPuzzleView: View {
                 resultMessage = nil
                 answers[cellKey] = String($0.filter { ("1"..."9").contains(String($0)) }.suffix(1))
                 DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
+                reportProgress("started", retract: true)
             }
         )
+    }
+
+    private func reportProgress(_ status: String, retract: Bool = false) {
+        guard store.me?.id == progressIdentity.userID,
+              progressIdentity.date == Agenda.todayKey() else { return }
+        Daily5Reporter.report("puzzle", status, store: store,
+                              scope: Daily5Reporter.capture(store), retract: retract)
     }
 
     private func checkPuzzle() {
@@ -846,6 +864,7 @@ private struct DailyPuzzleView: View {
         let correct = required.filter { answers[$0.0]?.uppercased() == $0.1 }.count
         DailyPuzzleProgressStore.recordCheck(correct: correct, required: required.count, for: progressIdentity)
         if !required.isEmpty && correct == required.count {
+            reportProgress("completed")
             resultMessage = "You did it — every answer is correct! 🎉"
             Haptics.notify(.success)
         } else {

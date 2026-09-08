@@ -94,6 +94,7 @@ async function answerSatActivity(chosenIndex) {
   const { challenge, word } = dailyVocabulary;
   const scope = vocabularyScope;
   const correct = chosenIndex === challenge.answerIndex;
+  window.famChildProgress?.report('word', 'started');
   const btns = document.querySelectorAll('#sat-activity .fam-sat-opt');
   btns.forEach((b) => { b.disabled = true; });
   const fb = document.getElementById('sat-activity-feedback');
@@ -104,7 +105,10 @@ async function answerSatActivity(chosenIndex) {
   if (currentSatWord) {
     try {
       const res = await window.auth.wordBankInteract(word.word, correct);
-      if (scope === daily5DoneKey() && res && res.entry) mergeWordBankEntry(res.entry);
+      if (scope === daily5DoneKey() && res && res.entry) {
+        mergeWordBankEntry(res.entry);
+        window.famChildProgress?.report('word', 'completed');
+      }
     } catch (e) { /* best effort */ }
   }
 }

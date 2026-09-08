@@ -36,6 +36,16 @@ explicit confirmation first.
 
 ## Deploy pipeline (standing authorization granted 2026-07-03)
 Every web change: **test → commit → deploy → verify on live fametc.com.**
+- **Canonical packer:** use [`scripts/pack-deploy.sh`](scripts/pack-deploy.sh)
+  for the Hostinger artifact. It refreshes the approved `.env.hostinger`
+  fallback, stamps the commit, excludes `ios/`, includes only the named APNs
+  key, and boot-smokes the extracted archive under production settings.
+- [`scripts/deploy-hostinger.sh`](scripts/deploy-hostinger.sh) is a compatibility
+  wrapper for the canonical packer. It preserves the optional output path and
+  default `../Builds/` archive, enforces Node 24, prints a deprecation notice,
+  and contains no independent archive recipe. The older dual-script pointer in
+  [`docs/ARCHITECTURE-PLAN.md`](docs/ARCHITECTURE-PLAN.md) now means canonical
+  packer plus this compatibility wrapper.
 - **Artifact-only means no deployment:** if the user asks for a ZIP, build, or
   archive, package and provide that artifact only. Do not upload it, start a
   hosting build, or deploy it—even when an earlier deployment was planned or
@@ -48,6 +58,23 @@ Every web change: **test → commit → deploy → verify on live fametc.com.**
   live domain — a change is not "done" until confirmed where the user sees it
   (live fametc.com for web; the device/simulator for iOS), not just localhost.
 - iOS builds ship via **TestFlight** first, then App Store — never auto-shipped.
+- CI trigger and branch-protection observations are recorded in
+  [`docs/CI-RELEASE.md`](docs/CI-RELEASE.md); refresh the dated provider read
+  there before each release.
+
+## Client contract and recovery checks
+
+- Server response roles are represented by `User.role`/`kidId` in
+  `ios/FamETC/Networking/Models.swift` and `MeResponse`; chat responses use
+  `ChatMessage`/`MessagesResponse` and must keep optional `roomId`/`senderName`
+  backwards-compatible for old caches. Verify these with the existing native
+  model fixtures and the focused server role/privacy tests before changing a
+  boundary.
+- Sign-out is a server-side recovery boundary: native `APIClient.logout()`
+  posts to `/api/logout`, and `tests/session-revocation.test.js` proves a
+  copied signed cookie is rejected after the session generation is bumped.
+  Keep backup-code recovery (`ios/FamETC/Onboarding/BackupCodeSignInView.swift`)
+  and the shared cookie sync in scope when touching auth.
 
 ## Security & data
 - Encryption at rest for chat messages + kids' data (datacrypto.js pattern).
