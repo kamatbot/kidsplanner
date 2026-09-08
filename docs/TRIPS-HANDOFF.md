@@ -195,10 +195,18 @@ confirmed the test suites or a device run of multi-room chat end-to-end.
 ## 6. Operations runbook
 
 **Deploy (web)** — standing authorization: test → commit → deploy → verify
-LIVE. `node --test` (329 green expected) → deploy `main` via the Hostinger
-MCP / `scripts/deploy-hostinger.sh` → verify `/api/health` build label, then
-live-check /trips, an invite link in a logged-out browser, and chat between
-two browsers.
+LIVE. With Node 24 active (`/opt/homebrew/opt/node@24/bin/node --version`), run
+the focused checks first; the final release gate may run the full Node suite
+once. Build the artifact with the authoritative
+[`scripts/pack-deploy.sh`](../scripts/pack-deploy.sh), which carries the
+approved env fallback, commit build label, named APNs key, and production boot
+smoke. Deploy `main` via the Hostinger MCP, then verify `/api/health` against
+that build label and live-check /trips, an invite link in a logged-out browser,
+and chat between two browsers. The older
+[`scripts/deploy-hostinger.sh`](../scripts/deploy-hostinger.sh) is now a
+compatibility wrapper that delegates to `pack-deploy.sh`, preserving its
+optional output path and default `../Builds/` archive while enforcing Node 24
+and printing a deprecation notice. It contains no independent archive recipe.
 
 **Env vars (Hostinger panel)**: `SESSION_SECRET`, `DATA_ENCRYPTION_KEY`
 (loss = data loss; offline backup location must be recorded in APP-BRIEF
@@ -208,7 +216,14 @@ degrades gracefully; everything else works.
 
 **iOS ship**: Xcode build + test suites → TestFlight (never auto to App
 Store). Verify on device: room list appears once a trip exists, cross-post
-web↔native, trip push arrives and lands on Chat.
+web↔native, trip push arrives and lands on Chat. Before relying on the native
+client, confirm the live response contract: `/api/me` role/kid fields decode
+through `User`/`MeResponse`; trip messages decode through
+`ChatMessage`/`MessagesResponse` with optional `roomId`/`senderName`; and the
+existing copied-cookie logout regression still passes. The relevant fixtures
+are in `ios/FamETCTests/ModelDecodingTests.swift` and
+`ios/FamETCTests/ChatMergeTests.swift`; server logout evidence is
+`tests/session-revocation.test.js`.
 
 **Local dev / QA loop used throughout (works headless):**
 ```

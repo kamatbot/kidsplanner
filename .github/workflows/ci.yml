@@ -2,8 +2,8 @@ name: CI
 
 on:
   pull_request:
-    # Draft updates skip the job below. Once ready, every new head is checked;
-    # concurrency cancellation prevents superseded heads from consuming runners.
+    # Ready PRs receive lightweight checks; full CI runs on the final main commit.
+    # Draft updates skip the job and superseded runs are cancelled.
     types: [opened, reopened, ready_for_review, synchronize]
   push:
     branches:
@@ -24,12 +24,24 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Check PR whitespace and changed JavaScript syntax
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --check "$BASE_SHA" HEAD
+          git diff --name-only --diff-filter=ACMR -z "$BASE_SHA" HEAD -- '*.js' '*.mjs' '*.cjs' | xargs -0 -r -n1 node --check --
       - name: Install locked dependencies
+        if: github.event_name != 'pull_request'
         run: npm ci --no-audit --no-fund
       - name: Run tests
+        if: github.event_name != 'pull_request'
         run: npm test
