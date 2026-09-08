@@ -644,6 +644,7 @@ require("./lib/routes/meals")(app, routeDeps);
 require("./lib/routes/trips")(app, routeDeps);
 require("./lib/routes/activities")(app, routeDeps);
 require("./lib/routes/learning")(app, routeDeps);
+require("./lib/routes/child-insights")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
 require("./lib/routes/push")(app, routeDeps);
 require("./lib/routes/ai")(app, routeDeps);

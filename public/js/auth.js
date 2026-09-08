@@ -433,6 +433,21 @@
   }
 
   /* ---------- family calendar events (manual appointments, server-synced) ---------- */
+  async function getChildInsights(kidId, date) {
+    return api('/api/children/' + encodeURIComponent(kidId) + '/insights?date=' + encodeURIComponent(date), { method: 'GET' });
+  }
+  async function saveChildHomePlan(kidId, payload) {
+    return api('/api/children/' + encodeURIComponent(kidId) + '/home-plan', { method: 'PUT', body: JSON.stringify(payload) });
+  }
+  async function saveChildSchoolStats(kidId, payload) {
+    return api('/api/children/' + encodeURIComponent(kidId) + '/school-stats', { method: 'PUT', body: JSON.stringify(payload) });
+  }
+  async function getDaily5Progress(date) {
+    return api('/api/daily5/progress?date=' + encodeURIComponent(date), { method: 'GET' });
+  }
+  async function reportDaily5Progress(payload) {
+    return api('/api/daily5/progress', { method: 'POST', body: JSON.stringify(payload) });
+  }
   async function getCalendarEvents() {
     const data = await api("/api/calendar/events", { method: "GET" });
     return (data && data.events) || [];
@@ -1152,6 +1167,11 @@
     importSchoolData,
     confirmSchoolImport,
     disconnectSchoolAccount,
+    getChildInsights,
+    saveChildHomePlan,
+    saveChildSchoolStats,
+    getDaily5Progress,
+    reportDaily5Progress,
     getNotes,
     getRecentNews,
     addNote,

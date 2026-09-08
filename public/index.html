@@ -32,11 +32,20 @@
   <link rel="stylesheet" href="/css/web-experience.css">
   <link rel="stylesheet" href="/css/chat-media.css">
   <link rel="stylesheet" href="/css/settings.css">
+  <link rel="stylesheet" href="/css/today-home.css">
+  <link rel="stylesheet" href="/css/child-view.css">
   <!-- PDF.js for rendering PDF uploads to images for AI parsing. Self-hosted
        (not cdnjs) so it loads under CSP script-src 'self'. -->
   <script src="/js/vendor/pdfjs/pdf.min.js"></script>
 </head>
 <body>
+<!-- Today seed ea7660a1: the Daily Brief keeps mounted activity tabs and its accepted action/agenda layout.
+THESIS: The child page connects parental help with observed progress, without a timetable or sibling ranking.
+OWN-WORLD: Existing Horizon type, neutral panels, violet actions, circular child avatars and status marks.
+STORY: Choose a child, review the next homework task, see recorded progress, and set today's expected home plan.
+FIRST VIEWPORT: Identity above equal help/progress columns; a wide after-school journey below; primary homework review on the left; family chat collapsed to its 56px rail.
+FORM: Help & Progress, structure 4, seed f65d002f; approved comp with the user's Calendar-style chat adaptation.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance. -->
 
 <!-- ═══════════════════════════════════════════════════════════
      FIRST-RUN: CREATE OR JOIN A FAMILY (shown until a family exists)
@@ -148,6 +157,7 @@
             <span>Meals</span>
           </a>
         </nav>
+        <div id="child-nav" hidden></div>
         <div class="sidebar-spacer"></div>
         <div class="sidebar-bottom">
           <button class="sidebar-nav-item" data-tab="notes" onclick="switchNavTab('notes')" style="padding:9px 10px">
@@ -187,6 +197,7 @@
         <!-- Today Tab — the new landing screen. Schedule/homework/habits/momentum
              lists are rendered by renderTodayScreen() (app.js); the Daily 5 card
              below reuses the existing quote/word/news/quiz widgets verbatim. -->
+        <div id="tab-child" class="tab-panel" hidden></div>
         <div class="tab-panel active" id="tab-today">
           <div class="today-header">
             <div class="today-greeting-col">
@@ -218,10 +229,12 @@
           <!-- Today action queue — manual family commitments are the primary
                hierarchy. Supporting schedule/homework/habits cards remain
                below as context; see renderTodayActionQueue() in app.js. -->
+          <div class="today-brief-primary">
           <section class="card today-actions-card" id="today-actions-card" aria-labelledby="today-actions-title">
             <div class="today-actions-header">
               <div class="today-actions-heading">
                 <h2 id="today-actions-title">Family Actions</h2>
+                <span id="today-actions-count" class="today-brief-count"></span>
               </div>
               <div class="today-actions-header-actions">
                 <button type="button" class="btn-primary parent-only" id="today-action-add-btn"
@@ -279,11 +292,9 @@
             <div id="today-actions-footer" class="today-actions-footer"></div>
           </section>
 
-          <div class="today-grid">
-            <div class="today-left-col">
-            <section class="card today-schedule-card">
+            <section class="card today-schedule-card today-agenda-card" aria-labelledby="today-agenda-title">
               <div class="today-card-header">
-                <span class="micro-label">Today's schedule</span>
+                <h2 class="today-brief-section-title" id="today-agenda-title">Today's agenda</h2>
                 <span class="micro-label" id="today-schedule-count"></span>
               </div>
               <div id="today-schedule-list"></div>
@@ -291,8 +302,11 @@
                 <div class="micro-label" style="margin-bottom:10px">Tomorrow</div>
                 <div id="today-tomorrow-row"></div>
               </div>
+              <footer class="today-agenda-footer"><a href="#" class="btn-link" onclick="switchNavTab('calendar');return false">View full day →</a></footer>
             </section>
+          </div>
 
+          <div class="today-brief-support">
             <!-- Meals "Tonight" card (Meals §7 integration) — best-effort: a
                  fetch failure here must never break Today, see famRenderTodayMeals()
                  in app.js. Hidden until that fetch resolves successfully. -->
@@ -307,7 +321,7 @@
             <section class="card today-homework-card">
               <div class="today-card-header">
                 <span class="micro-label">Homework due</span>
-                <a href="#" class="btn-link" onclick="switchNavTab('homework');return false" style="font-size:12px">All →</a>
+                <span class="today-support-meta"><span class="micro-label" id="today-homework-count"></span><a href="#" class="btn-link" onclick="switchNavTab('homework');return false" style="font-size:12px">All →</a></span>
               </div>
               <div id="today-homework-list"></div>
             </section>
@@ -326,7 +340,7 @@
             <section class="card">
               <div class="today-card-header">
                 <span class="micro-label">Today's habits</span>
-                <span class="micro-label" id="today-habits-count"></span>
+                <span class="today-support-meta"><span class="micro-label" id="today-habits-count"></span><a href="#" class="btn-link" onclick="switchNavTab('goals');return false" style="font-size:12px">View habits →</a></span>
               </div>
               <div id="today-habits-list" class="habits-list"></div>
               <div class="momentum-block">
@@ -337,21 +351,30 @@
                 <div class="momentum-track"><div class="momentum-fill" id="today-momentum-fill" style="width:0%"></div></div>
               </div>
             </section>
-            </div>
+          </div>
 
-            <div class="today-right-col">
-              <section class="card daily5-card">
-                <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">Optional daily quest · Try a news reflection, brain teaser or puzzle.</p>
-                <div class="today-card-header">
-                  <span class="micro-label">Daily 5</span>
+              <section class="card daily5-card" aria-labelledby="daily5-title">
+                <div class="daily5-brief-header">
+                  <div>
+                    <h2 id="daily5-title">Daily 5</h2>
+                    <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">One small thing to explore.</p>
+                  </div>
                   <span class="daily5-streak">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>
                     <span id="daily5-streak-count">0</span>d streak
                   </span>
                 </div>
+                <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 5 activities">
+                  <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')">News</button>
+                  <button type="button" id="daily5-tab-word" role="tab" aria-controls="daily5-panel-word" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('word')">Word</button>
+                  <button type="button" id="daily5-tab-puzzle" role="tab" aria-controls="daily5-panel-puzzle" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('puzzle')">Puzzle</button>
+                  <button type="button" id="daily5-tab-quiz" role="tab" aria-controls="daily5-panel-quiz" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quiz')">Brain teaser</button>
+                  <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')">Quote</button>
+                </div>
 
                 <!-- Quote of the Day — flips to a reflection composer that saves
                      as a note (source:"quote"). See renderWidgets/flipQuoteCard. -->
+                <section class="daily5-panel" id="daily5-panel-quote" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-quote" hidden>
                 <div class="widget widget-quote fam-enrich-card" id="widget-quote">
                   <div class="fam-enrich-lock" id="lock-quote" hidden></div>
                   <div class="widget-flip-inner" id="quote-flip-inner">
@@ -377,8 +400,10 @@
                     </div>
                   </div>
                 </div>
+                </section>
 
                 <!-- SAT Word — interactive daily activity + word bank + pop quiz. -->
+                <section class="daily5-panel" id="daily5-panel-word" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-word" hidden>
                 <div class="widget widget-word fam-enrich-card" id="widget-word">
                   <div class="fam-enrich-lock" id="lock-sat" hidden></div>
                   <div class="widget-header">
@@ -399,10 +424,12 @@
                   <div id="sat-wordbank-panel" class="fam-sat-wordbank" hidden></div>
                   <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
                 </div>
+                </section>
 
                 <!-- Daily Brain Teaser — always visible in-card; day-ramped
                      question count from the brainteaser API, resurfacing
                      previously-wrong ones. -->
+                <section class="daily5-panel" id="daily5-panel-quiz" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-quiz" hidden>
                 <div class="widget widget-quiz fam-enrich-card" id="widget-quiz">
                   <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
                   <div class="widget-header">
@@ -415,7 +442,10 @@
                   <div class="quiz-feedback" id="quiz-feedback"></div>
                   <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
                 </div>
+                <p id="daily5-quiz-done" role="status" hidden>Brain teaser complete for today. Come back tomorrow for a new challenge.</p>
+                </section>
 
+                <section class="daily5-panel" id="daily5-panel-puzzle" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-puzzle" hidden>
                 <div class="widget widget-puzzle fam-enrich-card" id="widget-puzzle" hidden>
                   <div class="fam-enrich-lock" id="lock-puzzle" hidden></div>
                   <div class="widget-header">
@@ -432,10 +462,12 @@
                     <button type="button" class="btn-primary" onclick="checkDailyPuzzle()">Check puzzle</button>
                   </div>
                 </div>
+                </section>
 
                 <!-- Interesting News — headline is a real link straight to the
                      article; a separate chevron expands the summary +
                      reflection composer in place (toggleNewsDetails()). -->
+                <section class="daily5-panel" id="daily5-panel-news" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-news">
                 <div class="widget widget-news fam-enrich-card" id="widget-news">
                   <div class="fam-enrich-lock" id="lock-news" hidden></div>
                   <div class="widget-header">
@@ -465,10 +497,8 @@
                     <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>
                   </div>
                 </div>
+                </section>
               </section>
-
-            </div>
-          </div>
         </div>
 
         <!-- Calendar Tab (canvas 1b) — one calendar surface with the header
@@ -1501,6 +1531,8 @@
 <script src="/js/chat-media.js"></script>
 <script src="/js/onboarding.js"></script>
 <script src="/js/settings.js"></script>
+<script src="/js/child-progress.js"></script>
+<script src="/js/child-view.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

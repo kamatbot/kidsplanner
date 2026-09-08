@@ -34,10 +34,14 @@ struct SATActivityView: View {
                             Haptics.selection()
                             picked = index
                             let userID = store.me?.id
+                            let progressScope = Daily5Reporter.capture(store)
                             Task {
                                 guard store.me?.id == userID else { return }
-                                _ = try? await APIClient.shared.wordInteract(
+                                let saved = try? await APIClient.shared.wordInteract(
                                     word: response.word.word, correct: index == response.challenge.answerIndex)
+                                if saved != nil {
+                                    Daily5Reporter.report("word", "completed", store: store, scope: progressScope)
+                                }
                             }
                         }
                         if picked != nil {
@@ -136,6 +140,7 @@ struct SATActivityView: View {
         if let loaded, loaded.date == day, loaded.challenge.options.count == 3,
            loaded.challenge.options.indices.contains(loaded.challenge.answerIndex) {
             response = loaded
+            Daily5Reporter.report("word", "started", store: store, scope: Daily5Reporter.capture(store))
         }
         loading = false
     }

@@ -1,0 +1,158 @@
+/* Approved Daily Brief surface. The shell and chat dock intentionally remain outside this scope. */
+#tab-today {
+  --today-paper: var(--panel, #fff);
+  --today-wash: var(--panel-2, #f1efec);
+  --today-ink: var(--text, #211e1b);
+  --today-muted: var(--text-2, #6d6863);
+  --today-rule: var(--border, #dfdad4);
+  --today-violet: var(--accent, #6f43d6);
+  width: 100%;
+  min-width: 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding-bottom: 32px;
+  isolation: isolate;
+}
+#tab-today.active { display: block; }
+#tab-today:not(.active) { display: none; }
+.app-shell:has(#tab-today.active) .main-content { scrollbar-gutter: stable; }
+
+#tab-today .today-header {
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+#tab-today .today-greeting { font-size: 32px; line-height: 1.08; letter-spacing: -.035em; }
+#tab-today .today-sync-status { padding: 12px 0 0; }
+#tab-today #today-add-event-btn { min-height: 44px; margin-left: auto; }
+#tab-today .today-setup-card { margin: 0 0 20px; padding: 20px 22px; border-color: color-mix(in srgb, var(--today-violet) 34%, var(--today-rule)); box-shadow: none; }
+
+#tab-today .today-brief-primary { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 18px; align-items: stretch; margin-bottom: 0; }
+#tab-today .today-brief-primary > .card,
+#tab-today .today-brief-support > .card,
+#tab-today .daily5-card { border: 1px solid var(--today-rule); border-radius: 14px; background: var(--today-paper); box-shadow: none; }
+#tab-today .today-actions-card,
+#tab-today .today-agenda-card { padding: 20px 20px 14px; min-width: 0; }
+#tab-today .today-actions-card { margin-bottom: 0; }
+#tab-today .today-actions-header { align-items: center; min-height: 44px; }
+#tab-today .today-actions-heading h2,
+#tab-today .daily5-brief-header h2,
+#tab-today .today-brief-section-title { margin: 0; color: var(--today-ink); font-size: 18px; line-height: 1.2; letter-spacing: -.025em; }
+#tab-today .today-brief-section-title { font-weight: 700; }
+#tab-today .today-brief-count { display: inline-flex; align-items: center; vertical-align: middle; min-height: 22px; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--today-wash); color: var(--today-muted); font-size: 11px; font-weight: 600; letter-spacing: 0; }
+#tab-today .today-brief-count:empty { display: none; }
+#tab-today .today-actions-heading { display: flex; align-items: center; gap: 8px; }
+#tab-today .today-actions-heading .today-brief-count { margin-left: 0; }
+#tab-today .today-actions-list { margin-top: 8px; }
+#tab-today .today-actions-card .today-action-row { padding: 13px 0; }
+#tab-today .today-actions-card .today-action-row + .today-action-row { border-top-color: var(--today-rule); }
+#tab-today .today-actions-footer { margin-top: 4px; }
+#tab-today .today-agenda-card { display: flex; flex-direction: column; }
+#tab-today .today-agenda-card .today-card-header { align-items: center; margin-bottom: 6px; }
+#tab-today .today-agenda-card #today-schedule-list { flex: 1; }
+#tab-today .today-agenda-card .schedule-row { padding: 12px 0; gap: 10px; }
+#tab-today .today-agenda-card .schedule-time { width: 42px; font-size: 11px; }
+#tab-today .today-agenda-card .schedule-bar { width: 2px; }
+#tab-today .today-agenda-footer { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--today-rule); }
+#tab-today button.schedule-row,
+#tab-today button.homework-due-row { width: 100%; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+#tab-today button.schedule-row:hover,
+#tab-today button.homework-due-row:hover { background: color-mix(in srgb, var(--today-violet) 7%, transparent); }
+#tab-today button.schedule-row:focus-visible,
+#tab-today button.homework-due-row:focus-visible { outline: 3px solid color-mix(in srgb, var(--today-violet) 65%, transparent); outline-offset: 2px; }
+
+#tab-today .today-brief-support { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+#tab-today .today-brief-primary + .today-brief-support { margin-top: 16px; }
+#tab-today .today-brief-support > .card { min-width: 0; padding: 12px; }
+#tab-today .today-brief-support .today-homework-card { order: 1; }
+#tab-today .today-brief-support > section:last-child { order: 2; }
+#tab-today .today-brief-support .today-meals-card { order: 3; }
+#tab-today .today-brief-support .widget-school-stats { order: 4; }
+#tab-today .today-brief-support .today-card-header { gap: 8px; margin-bottom: 5px; }
+#tab-today .today-brief-support .micro-label { font-size: 10px; }
+#tab-today .today-support-meta { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+#tab-today .today-brief-support .homework-due-row,
+#tab-today .today-brief-support .habit-row { min-height: 44px; }
+#tab-today .today-brief-support .homework-due-title,
+#tab-today .today-brief-support .habit-title { font-size: 13px; }
+#tab-today .today-brief-support .momentum-block { display: none; }
+
+#tab-today .daily5-card { display: block; min-height: 0; margin: 0; padding: 22px; overflow: visible; }
+#tab-today .daily5-brief-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+#tab-today .daily5-brief-header h2 { font-size: 21px; }
+#tab-today .daily5-brief-header .puzzle-instructions { margin: 5px 0 0; max-width: 68ch; }
+#tab-today .daily5-streak { flex: none; padding-top: 3px; color: var(--today-violet); }
+#tab-today .daily5-tabs { display: flex; gap: 4px; margin: 18px 0 16px; border-bottom: 1px solid var(--today-rule); overflow-x: auto; scrollbar-width: thin; }
+#tab-today .daily5-tabs button { position: relative; flex: 0 0 auto; min-height: 44px; border: 0; border-radius: 0; padding: 9px 14px; background: transparent; color: var(--today-muted); font-family: inherit; font-size: 13px; font-weight: 650; line-height: 1.2; cursor: pointer; }
+#tab-today .daily5-tabs button::after { position: absolute; right: 10px; bottom: -1px; left: 10px; height: 2px; background: transparent; content: ''; }
+#tab-today .daily5-tabs button[aria-selected="true"] { color: var(--today-violet); }
+#tab-today .daily5-tabs button[aria-selected="true"]::after { background: var(--today-violet); }
+#tab-today .daily5-tabs button:hover { color: var(--today-ink); }
+#tab-today .daily5-tabs button:focus-visible,
+#tab-today .daily5-panel :focus-visible { outline: 3px solid color-mix(in srgb, var(--today-violet) 65%, transparent); outline-offset: 3px; }
+#tab-today .daily5-panel { min-width: 0; outline: none; }
+#tab-today .daily5-panel[hidden] { display: none; }
+#tab-today .daily5-card .widget { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+#tab-today .daily5-card .widget-word,
+#tab-today .daily5-card .widget-quiz,
+#tab-today .daily5-card .widget-puzzle,
+#tab-today .daily5-card .widget-news { border-top: 0; padding-top: 0; }
+#tab-today .daily5-card .widget-header { margin-bottom: 12px; }
+#tab-today .daily5-card .widget-icon { font-size: 17px; }
+#tab-today .daily5-card .sat-example { display: block; }
+#tab-today .daily5-card .quote-text { font-size: 17px; line-height: 1.45; }
+#tab-today .daily5-card .news-headline { white-space: normal; font-size: 15px; }
+#tab-today #daily5-panel-news .widget-header .widget-icon,
+#tab-today #daily5-panel-news .widget-header .widget-label,
+#tab-today #daily5-panel-news .text-muted { display: none; }
+#tab-today #daily5-panel-news .widget-header { min-height: 0; margin: 0; }
+#tab-today #daily5-panel-news .news-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-block: 0 14px; }
+#tab-today #daily5-panel-news .news-choice { min-width: 0; padding: 12px; border: 1px solid var(--today-rule); border-radius: 12px; }
+#tab-today #daily5-quiz-done { margin: 0; padding: 14px; border: 1px solid var(--today-rule); border-radius: 12px; color: var(--today-muted); background: var(--today-wash); }
+
+#tab-today button,
+#tab-today a,
+#tab-today input,
+#tab-today select,
+#tab-today textarea { -webkit-tap-highlight-color: transparent; }
+#tab-today ::selection { background: color-mix(in srgb, var(--today-violet) 24%, transparent); }
+
+@media (max-width: 1280px) {
+  #tab-today .today-brief-primary { grid-template-columns: minmax(0, 1.65fr) minmax(270px, 1fr); }
+  #tab-today .today-brief-support { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  #tab-today { padding-bottom: 20px; }
+  #tab-today .today-header { flex-wrap: wrap; margin-bottom: 18px; }
+  #tab-today #today-add-event-btn { margin-left: 0; }
+  #tab-today .today-brief-primary { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #tab-today .today-brief-support { grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 12px 0; }
+  #tab-today .today-brief-support > .card { padding: 15px; }
+  #tab-today .daily5-card { padding: 18px 16px; }
+  #tab-today #daily5-panel-news .news-choices { grid-template-columns: minmax(0, 1fr); }
+  #tab-today .today-actions-card .today-action-row { grid-template-columns: 34px minmax(0, 1fr); align-items: start; }
+  #tab-today .today-actions-card .today-action-controls { grid-column: 2; justify-content: flex-start; min-width: 0; width: 100%; }
+  #tab-today .today-actions-card .today-action-controls > * { max-width: 100%; }
+}
+@media (max-width: 420px) {
+  #tab-today .today-actions-card,
+  #tab-today .today-agenda-card { padding: 16px; }
+  #tab-today .daily5-brief-header { gap: 10px; }
+  #tab-today .daily5-streak { font-size: 10px; }
+  #tab-today .daily5-tabs button { padding-inline: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #tab-today *, #tab-today *::before, #tab-today *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+@media (min-width: 901px) {
+  .app-shell:has(#tab-today.active) .app-sidebar { width: 72px; align-items: center; padding: 16px 0; gap: 6px; }
+  .app-shell:has(#tab-today.active) .sidebar-brand { justify-content: center; padding: 0; margin-bottom: 14px; }
+  .app-shell:has(#tab-today.active) .sidebar-brand-name,
+  .app-shell:has(#tab-today.active) .sidebar-user-name,
+  .app-shell:has(#tab-today.active) .sidebar-user-role,
+  .app-shell:has(#tab-today.active) .sidebar-nav-item span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .app-shell:has(#tab-today.active) .sidebar-nav-item { width: 48px; height: 48px; justify-content: center; padding: 0; }
+  .app-shell:has(#tab-today.active) .sidebar-bottom,
+  .app-shell:has(#tab-today.active) .sidebar-user { align-items: center; justify-content: center; }
+}

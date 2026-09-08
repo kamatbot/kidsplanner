@@ -2,6 +2,56 @@ import XCTest
 @testable import FamETC
 
 final class DailyPuzzleProgressTests: XCTestCase {
+    @MainActor
+    func testFinishedReportAllowsRetryButPreservesNewerEventWithSameStatus() {
+        let failed = Daily5Reporter.Event(transition: "completed|false")
+        var queued = ["puzzle": failed]
+        Daily5Reporter.clearFinished(failed, part: "puzzle", in: &queued)
+        XCTAssertNil(queued["puzzle"])
+
+        let reset = Daily5Reporter.Event(transition: "started|true")
+        queued["puzzle"] = reset
+        Daily5Reporter.clearFinished(failed, part: "puzzle", in: &queued)
+        XCTAssertEqual(queued["puzzle"], reset)
+        let completedAgain = Daily5Reporter.Event(transition: "completed|false")
+        queued["puzzle"] = completedAgain
+        Daily5Reporter.clearFinished(failed, part: "puzzle", in: &queued)
+        XCTAssertEqual(queued["puzzle"], completedAgain)
+        Daily5Reporter.clearFinished(completedAgain, part: "puzzle", in: &queued)
+        XCTAssertNil(queued["puzzle"])
+    }
+
+    @MainActor
+    func testSuccessfulResetDoesNotSuppressLaterResetAfterAnotherDeviceCompletes() {
+        let firstReset = Daily5Reporter.Event(transition: "started|true")
+        var queued = ["puzzle": firstReset]
+        XCTAssertEqual(queued["puzzle"]?.transition, "started|true")
+        Daily5Reporter.clearFinished(firstReset, part: "puzzle", in: &queued)
+        XCTAssertNil(queued["puzzle"])
+        let secondReset = Daily5Reporter.Event(transition: "started|true")
+        queued["puzzle"] = secondReset
+        Daily5Reporter.clearFinished(firstReset, part: "puzzle", in: &queued)
+        XCTAssertEqual(queued["puzzle"], secondReset)
+    }
+
+    @MainActor
+    func testReporterRequiresChildIdentityAndCapturesOriginalSession() {
+        let store = AppStore()
+        let cookie = HTTPCookie(properties: [.domain: "fametc.com", .path: "/",
+            .name: "fam_sess", .value: "test-original-session", .secure: "TRUE"])!
+        store.me = User(id: "parent", email: "", role: "parent")
+        XCTAssertNil(Daily5Reporter.capture(store, cookies: [cookie]))
+        store.me = User(id: "child", email: "", role: "kid")
+        XCTAssertNil(Daily5Reporter.capture(store, cookies: [cookie]))
+        store.me = User(id: "child", email: "", role: "kid", kidId: "kid-1")
+        XCTAssertNil(Daily5Reporter.capture(store, cookies: []))
+        let scope = Daily5Reporter.capture(store, cookies: [cookie])
+        store.me = User(id: "sibling", email: "", role: "kid", kidId: "kid-2")
+        XCTAssertEqual(scope?.userID, "child")
+        XCTAssertEqual(scope?.cookie, "fam_sess=test-original-session")
+        XCTAssertEqual(scope?.date, Agenda.todayKey())
+    }
+
     private var defaults: UserDefaults!
 
     override func setUp() {

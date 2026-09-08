@@ -36,6 +36,16 @@ final class APIClient: FamilyActionService {
 
     private let base = Config.baseURL
     private let decoder = JSONDecoder()
+    private let progressSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.httpAdditionalHeaders = Config.clientHeaders
+        configuration.timeoutIntervalForRequest = 10
+        configuration.timeoutIntervalForResource = 15
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
+    }()
     private let session: URLSession = {
         let c = URLSessionConfiguration.default
         c.httpCookieStorage = .shared
@@ -598,10 +608,14 @@ final class APIClient: FamilyActionService {
     /// used by the chat long-poll, whose server-side hold (~25s) needs more
     /// headroom than a normal request.
     @discardableResult
-    private func rawSend(_ path: String, method: String, body: [String: Any]?, timeout: TimeInterval? = nil) async throws -> Data {
+    private func rawSend(_ path: String, method: String, body: [String: Any]?, timeout: TimeInterval? = nil, cookie: String? = nil) async throws -> Data {
         guard let url = URL(string: base.absoluteString + path) else { throw APIError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = method
+        if let cookie {
+            req.httpShouldHandleCookies = false
+            req.setValue(cookie, forHTTPHeaderField: "Cookie")
+        }
         if let timeout { req.timeoutInterval = timeout }
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
@@ -611,7 +625,7 @@ final class APIClient: FamilyActionService {
 
         let data: Data, resp: URLResponse
         do {
-            (data, resp) = try await session.data(for: req)
+            (data, resp) = try await (cookie == nil ? session : progressSession).data(for: req)
         } catch {
             throw APIError.transport(error)
         }
@@ -622,5 +636,17 @@ final class APIClient: FamilyActionService {
             throw APIError.http(http.statusCode, msg ?? "Request failed (\(http.statusCode)).")
         }
         return data
+    }
+
+    func reportDaily5(date: String, part: String, status: String, retract: Bool, cookie: String) async throws {
+        if status == "started", !retract {
+            let data = try await rawSend("/api/daily5/progress?date=\(date)", method: "GET", body: nil, cookie: cookie)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let parts = json?["parts"] as? [String: [String: String]]
+            if parts?[part]?["status"] == "completed" { return }
+        }
+        try Task.checkCancellation()
+        try await rawSend("/api/daily5/progress", method: "POST",
+                          body: ["date": date, "part": part, "status": status], cookie: cookie)
     }
 }
