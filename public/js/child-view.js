@@ -68,14 +68,18 @@
       <div class="cv-footer">${button('all-homework', `View all homework ${icon('arrow')}`)}${button('settings', 'School settings')}</div></section>`;
   }
   function progress(id, date, data, state, sources) {
-    const stats = data && data.schoolStats;
+    // Existing extension imports are already keyed to this family's child ID.
+    // Read them in place; do not upload or reattribute legacy device records.
+    const local = window.famGetSchoolStats?.()?.[id];
+    const imported = local && Number.isFinite(local.housePoints) && timestamp(local.updatedAt) ? { ...local, importedAt: local.updatedAt } : null;
+    const shared = data && data.schoolStats;
+    const stats = imported && (!shared || !timestamp(shared.importedAt) || new Date(imported.importedAt) > new Date(shared.importedAt)) ? imported : shared;
     const stamp = stats && timestamp(stats.importedAt);
     const habits = sources.goals.filter(g => g.kidId === id && g.type === 'habit');
     const days = datesEnding(date);
     const observed = data && data.daily5 && data.daily5.date === date ? data.daily5.parts || {} : {};
     const validPart = key => observed[key] && ['started', 'completed'].includes(observed[key].status) && timestamp(observed[key].updatedAt) ? observed[key] : null;
     const complete = parts.filter(([key]) => validPart(key)?.status === 'completed').length;
-    const reported = parts.filter(([key]) => validPart(key)).length;
     const latest = parts.map(([key]) => validPart(key)?.updatedAt).filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0];
     return `<section class="cv-panel cv-progress" aria-labelledby="cv-progress-title"><h2 id="cv-progress-title">Making progress</h2>
       <div class="cv-points"><h3>House points</h3>${stats && Number.isFinite(stats.housePoints) && stamp ? `<strong class="cv-point-value">${e(stats.housePoints)}</strong><p>Latest import · ${e(stamp)}</p>` : `<p>${state === 'loading' ? 'Loading school snapshot…' : 'No child-specific school snapshot available.'}</p>${button('settings', 'Connect school data')}`}</div>
@@ -83,7 +87,7 @@
         const known = Array.isArray(g.checks); const checks = new Set(known ? g.checks : []);
         return `<div class="cv-habit"><div><strong>${e(g.title)}</strong><span>${known ? `${days.filter(d => checks.has(d)).length} of 7 days recorded` : 'Check-ins unavailable'}</span></div><div class="cv-days">${days.map(d => `<span class="cv-day" title="${e(dateLabel(d))}: ${known ? checks.has(d) ? 'checked in' : 'no check-in recorded' : 'unknown'}"><span>${e(dateLabel(d, { weekday: 'narrow' }))}</span><i class="${checks.has(d) ? 'is-done' : ''}" aria-label="${e(d)}: ${known ? checks.has(d) ? 'checked in' : 'no check-in recorded' : 'unknown'}"></i></span>`).join('')}</div></div>`;
       }).join('') : `<p>${sources.loading ? 'Loading habits…' : sources.errors.includes('Habits') ? 'Habit check-ins could not be loaded.' : 'No habits recorded for this child.'} ${button('goals', 'Review goals')}</p>`}</div>
-      <div class="cv-daily"><h3>Daily 5 <span>${reported ? `${complete} completed · ${reported} of 5 reported` : 'Progress not reported'}</span></h3><div class="cv-parts">${parts.map(([key, label]) => { const part = validPart(key); const status = part ? part.status === 'completed' ? 'Completed' : 'Started' : 'Unknown'; return `<div class="cv-part"><span class="cv-symbol${part?.status === 'completed' ? ' is-complete' : ''}">${icon(key)}</span><strong>${label}</strong><span>${status}</span></div>`; }).join('')}</div><p class="cv-freshness">${latest ? `Last reported · ${e(timestamp(latest))}` : 'Updates appear when your child uses Daily 5 on a connected device.'}</p></div>
+      <div class="cv-daily"><h3>Daily 5 <span>${state === 'ready' ? `${complete} of 5 done` : state === 'loading' ? 'Loading…' : 'Couldn’t sync progress'}</span></h3><div class="cv-parts">${parts.map(([key, label]) => { const part = validPart(key); const status = state !== 'ready' ? '—' : part?.status === 'completed' ? 'Done' : 'Not done'; return `<div class="cv-part"><span class="cv-symbol${part?.status === 'completed' ? ' is-complete' : ''}">${icon(key)}</span><strong>${label}</strong><span>${status}</span></div>`; }).join('')}</div><p class="cv-freshness">${state === 'ready' ? `Today’s synced activity${latest ? ` · Updated ${e(timestamp(latest))}` : ' · No completions recorded yet'}` : 'Refresh to try again.'}</p></div>
       <div class="cv-footer">${button('goals', `View all goals ${icon('arrow')}`)}${button('retry', 'Refresh progress')}</div></section>`;
   }
   function journey(id, date, data, sources) {

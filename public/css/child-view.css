@@ -96,11 +96,6 @@
   .cv-progress .cv-freshness { margin-top: 4px; }
   .cv-progress .cv-point-value { margin-top: 6px; }
 }
-@media (min-width: 901px) and (max-width: 1280px) {
-  #child-nav { width: 48px; }
-  .cv-nav-label, .cv-child-link > span:last-child { display: none; }
-  .cv-child-link { justify-content: center; padding: 8px; }
-}
 @media (max-width: 900px) {
   .app-sidebar:has(#child-nav:not([hidden])) { flex-wrap: wrap; }
   .app-sidebar:has(#child-nav:not([hidden])) .sidebar-nav { flex: 1 1 0; min-width: 0; }

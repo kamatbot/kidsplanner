@@ -19,16 +19,34 @@ test('parent navigation scopes selected child and never renders for kid sessions
   assert.match(nodes['child-nav'].innerHTML, /One &lt;img>/); assert.equal((nodes['child-nav'].innerHTML.match(/aria-current="page"/g) || []).length, 1);
   context.sessionUser = { role: 'kid' }; await view.render('one'); assert.equal(nodes['tab-child'].innerHTML, ''); assert.equal(nodes['child-nav'].hidden, true);
 });
-test('missing observations stay unknown, failed sources identify recovery', async () => {
+test('synced Daily 5 without completions shows not done; failed sources identify recovery', async () => {
   const { nodes, view } = setup({ getGoals: async () => { throw new Error('offline'); } }); await view.render('one');
   const html = nodes['tab-child'].innerHTML;
-  assert.match(html, /Progress not reported/); assert.match(html, /Habits unavailable/); assert.match(html, /No child-specific school snapshot/);
+  assert.match(html, /0 of 5 done/); assert.equal((html.match(/>Not done</g) || []).length, 5); assert.match(html, /Habits unavailable/); assert.match(html, /No child-specific school snapshot/);
   assert.doesNotMatch(html, /0 completed|>0<|onclick=|mark.*done/i); assert.match(html, /Set home plan/);
 });
 test('habit counts use exactly the seven displayed local dates; Daily 5 ignores invalid timestamps', async () => {
   const { nodes, view } = setup({ getGoals: async () => [{ kidId: 'one', type: 'habit', title: 'Read', checks: ['2026-09-01', '2026-09-02', '2026-09-08', '2026-09-08', '2026-09-09'] }], getChildInsights: async () => ({ kidId: 'one', date: '2026-09-08', daily5: { date: '2026-09-08', parts: { news: { status: 'completed', updatedAt: '2026-09-08T08:00:00Z' }, word: { status: 'completed', updatedAt: 'invalid' }, quote: { status: 'started', updatedAt: '2026-09-08T09:00:00Z' } } } }) });
   await view.render('one'); const html = nodes['tab-child'].innerHTML;
-  assert.match(html, /2 of 7 days recorded/); assert.match(html, /1 completed · 2 of 5 reported/); assert.match(html, /2026-09-02: checked in/); assert.doesNotMatch(html, /2026-09-01: checked in/);
+  assert.match(html, /2 of 7 days recorded/); assert.match(html, /1 of 5 done/); assert.equal((html.match(/>Done</g) || []).length, 1); assert.equal((html.match(/>Not done</g) || []).length, 4); assert.match(html, /2026-09-02: checked in/); assert.doesNotMatch(html, /2026-09-01: checked in/);
+});
+test('house points use the newest valid extension import for the selected child only', async () => {
+  const { context, nodes, view } = setup({ getChildInsights: async id => ({ kidId: id, date: '2026-09-08', schoolStats: { housePoints: 12, importedAt: '2026-09-08T08:00:00Z' } }) });
+  const cache = { one: { housePoints: 0, updatedAt: Date.parse('2026-09-08T09:00:00Z') }, two: { housePoints: 999, updatedAt: Date.parse('2026-09-08T10:00:00Z') } };
+  context.famGetSchoolStats = () => cache;
+  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">0</); assert.doesNotMatch(nodes['tab-child'].innerHTML, /999/);
+  cache.one.updatedAt = Date.parse('2026-09-08T07:00:00Z');
+  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">12</);
+  cache.one.updatedAt = 'invalid';
+  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">12</);
+  delete cache.one;
+  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">12</);
+});
+test('desktop navigation never switches to Today-only or intermediate-width compression', () => {
+  const read = name => fs.readFileSync(require('node:path').join(__dirname, '../public/css', name), 'utf8');
+  assert.doesNotMatch(read('today-home.css'), /#tab-today\.active\) \.app-sidebar/);
+  assert.doesNotMatch(read('styles.css'), /@media \(max-width: 1280px\)/);
+  assert.doesNotMatch(read('child-view.css'), /min-width: 901px\) and \(max-width: 1280px/);
 });
 test('late child and account responses cannot replace current private content', async () => {
   let resolve; const deferred = new Promise(r => { resolve = r; });
@@ -65,6 +83,8 @@ test('failed insight load cannot expose a blank editor that replaces an existing
   await view.render('one');
   assert.match(nodes['tab-child'].innerHTML, /data-cv-action="edit-plan" disabled/);
   assert.match(nodes['tab-child'].innerHTML, />Unavailable<\/strong>/);
+  assert.match(nodes['tab-child'].innerHTML, /Couldn’t sync progress/);
+  assert.doesNotMatch(nodes['tab-child'].innerHTML, />Not done</);
   nodes['tab-child'].onclick({ target: { closest: () => ({ dataset: { cvAction: 'edit-plan' } }) } });
   assert.doesNotMatch(nodes['tab-child'].innerHTML, /class="cv-plan-form"/);
 });
