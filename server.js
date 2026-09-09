@@ -63,6 +63,7 @@ const schoolApi = require("./lib/school-api");
 const moodleClient = require("./lib/moodle-client");
 const notifications = require("./lib/fam-notifications");
 const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
+const reviewerAccount = require("./lib/reviewer-account");
 
 // One-time cleanup (2026-07-11): wipe all synced school-calendar
 // subscriptions + cached events so families start fresh; guarded by a
@@ -76,6 +77,14 @@ const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
     db.persist();
     console.log("[migrate] cleared all synced school calendars");
   }
+}
+
+// App Store review account: ensure the demo family, kids, calendar events,
+// and chat thread are active and valid backup recovery codes are available.
+try {
+  reviewerAccount.ensureReviewerAccount();
+} catch (e) {
+  console.error("[reviewer-account] Warning: failed to seed reviewer account:", e);
 }
 
 const app = express();

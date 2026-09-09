@@ -36,11 +36,19 @@ final class AuthService: NSObject {
     private var authContinuation: CheckedContinuation<ASAuthorization, Error>?
 
     /// Create a passwordless account with a passkey and establish a web session.
+    /// Requires a valid signup invite code enforced by the server.
     /// Recovery codes are NOT minted here — they're issued + shown later, once the
     /// account is worth protecting (after onboarding), via `issueBackupCodesIfNeeded`.
-    func signUpWithPasskey() async throws {
+    func signUpWithPasskey(inviteCode: String, name: String? = nil) async throws {
+        var body: [String: Any] = [
+            "inviteCode": inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        ]
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            body["name"] = name
+        }
+
         // 1) registration options
-        let options = try await postJSON("/api/webauthn/signup/options", body: [:])
+        let options = try await postJSON("/api/webauthn/signup/options", body: body)
         guard
             let challengeB64 = options["challenge"] as? String,
             let challenge = Data(base64URLEncoded: challengeB64),
@@ -58,7 +66,7 @@ final class AuthService: NSObject {
               let attestation = reg.rawAttestationObject else { throw AuthError.registration }
 
         // 3) verify → server creates the user and signs in (sets fam_sess.uid)
-        let body: [String: Any] = [
+        let verifyBody: [String: Any] = [
             "id": reg.credentialID.base64URLEncodedString(),
             "rawId": reg.credentialID.base64URLEncodedString(),
             "type": "public-key",
@@ -68,7 +76,7 @@ final class AuthService: NSObject {
             ],
             "clientExtensionResults": [String: Any](),
         ]
-        _ = try await postJSON("/api/webauthn/signup/verify", body: body)
+        _ = try await postJSON("/api/webauthn/signup/verify", body: verifyBody)
 
         // 4) hand the session cookie to the WebView so the shell is authenticated
         await syncCookiesToWebView()

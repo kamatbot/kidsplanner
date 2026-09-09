@@ -53,11 +53,16 @@ struct OnboardingView: View {
     @State private var signingUp = false
     @State private var authError: String?
     @State private var showBackupSignIn = false
-    @State private var recoveryCodes: [String] = []
-    @State private var showRecoveryCodes = false
+    private struct RecoveryCodesPayload: Identifiable {
+        let id = UUID()
+        let codes: [String]
+    }
+    @State private var recoveryPayload: RecoveryCodesPayload? = nil
 
+    @State private var signupInviteCode = ""
     @State private var familyName = ""
-    @State private var inviteCode = ""
+    @State private var joinInviteCode = ""
+    @State private var isJoiningExistingFamily = false
     @State private var familyBusy = false
     @State private var familyError: String?
 
@@ -76,9 +81,9 @@ struct OnboardingView: View {
             .padding(.horizontal, screen == .kid ? 0 : 24)
         }
         .foregroundColor(FamTokens.textPrimary)
-        .fullScreenCover(isPresented: $showRecoveryCodes) {
-            RecoveryCodesView(codes: recoveryCodes) {
-                showRecoveryCodes = false
+        .fullScreenCover(item: $recoveryPayload) { payload in
+            RecoveryCodesView(codes: payload.codes) {
+                recoveryPayload = nil
                 onFinish(nil)
             }
         }
@@ -166,88 +171,122 @@ struct OnboardingView: View {
     // MARK: 1 · Welcome + passkey signup (PARENT ONLY — kids use the kid flow)
 
     private var welcome: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Brand()
-                Spacer()
-                Button { withAnimation { screen = .role } } label: {
-                    Text("← Back").font(.system(size: 14, weight: .semibold)).foregroundColor(FamTokens.textSub)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                HStack {
+                    Brand()
+                    Spacer()
+                    Button { withAnimation { screen = .role } } label: {
+                        Text("← Back").font(.system(size: 14, weight: .semibold)).foregroundColor(FamTokens.textSub)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(signingUp)
                 }
-                .buttonStyle(.plain)
-                .disabled(signingUp)
-            }
-            .padding(.top, 8)
+                .padding(.top, 8)
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("The etcetera hub for your family.")
-                    .font(.system(size: 32, weight: .bold)).lineSpacing(2)
-                Text("School calendars, homework, activities, goals, and family chat in one place.")
-                    .font(.system(size: 15)).foregroundColor(FamTokens.textSub)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 30)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(isJoiningExistingFamily ? "Join your family" : "Create your family")
+                        .font(.system(size: 30, weight: .bold)).lineSpacing(2)
+                    Text("Fam ETC is invite-only for parents. Enter your invite code to get started.")
+                        .font(.system(size: 15)).foregroundColor(FamTokens.textSub)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 24)
 
-            Spacer()
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Invite code").font(.system(size: 13, weight: .medium)).foregroundColor(FamTokens.textSub)
+                        TextField("Enter your invite code", text: $signupInviteCode)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
 
-            Text("This account is for parents. You'll add kid profiles once you're in — kids never sign up themselves.")
-                .font(.system(size: 12.5)).foregroundColor(FamTokens.textSub)
-                .multilineTextAlignment(.center)
-                .padding(.bottom, 14)
-
-            PrimaryButton(title: signingUp ? "Creating account…" : "Create account with passkey") {
-                guard !signingUp else { return }
-                signingUp = true; authError = nil
-                Task {
-                    do {
-                        try await AuthService.shared.signUpWithPasskey()
-                        await MainActor.run { signingUp = false; withAnimation { screen = .family } }
-                    } catch {
-                        await MainActor.run {
-                            signingUp = false
-                            if let e = error as? AuthError, e.isCancellation { return }
-                            authError = friendlyError(error)
+                    if isJoiningExistingFamily {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Co-parent family code").font(.system(size: 13, weight: .medium)).foregroundColor(FamTokens.textSub)
+                            TextField("e.g. ABC123", text: $joinInviteCode)
+                                .textFieldStyle(.roundedBorder)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Family name").font(.system(size: 13, weight: .medium)).foregroundColor(FamTokens.textSub)
+                            TextField("e.g. The Smiths", text: $familyName)
+                                .textFieldStyle(.roundedBorder)
+                                .autocorrectionDisabled()
+                            Text("Optional — defaults to “Our Family” if left blank.")
+                                .font(.system(size: 11.5)).foregroundColor(FamTokens.textSub)
                         }
                     }
+
+                    PrimaryButton(
+                        title: signingUp
+                            ? (isJoiningExistingFamily ? "Joining family…" : "Creating family…")
+                            : (isJoiningExistingFamily ? "Join family with passkey 🎉" : "Create family with passkey 🎉")
+                    ) {
+                        createOrJoinFamilyWithPasskey()
+                    }
+                    .opacity(signingUp ? 0.7 : 1)
+                    .disabled(signingUp)
+
+                    if let authError {
+                        Text(authError).font(.system(size: 13)).foregroundColor(FamTokens.danger)
+                            .multilineTextAlignment(.leading)
+                    }
                 }
-            }
-            .opacity(signingUp ? 0.7 : 1)
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 16).fill(FamTokens.surface))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(FamTokens.cardBorder, lineWidth: 1))
+                .padding(.top, 20)
 
-            if let authError {
-                Text(authError).font(.system(size: 13)).foregroundColor(FamTokens.danger)
-                    .multilineTextAlignment(.center).padding(.top, 8)
-            }
+                Button {
+                    withAnimation {
+                        isJoiningExistingFamily.toggle()
+                        authError = nil
+                    }
+                } label: {
+                    Text(isJoiningExistingFamily ? "Want to create a new family instead? Tap here" : "Joining a co-parent's existing family? Tap here")
+                        .font(.system(size: 13)).foregroundColor(FamTokens.accent)
+                        .multilineTextAlignment(.center)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 10)
 
-            (Text("Already a parent here? ") + Text("Sign in").foregroundColor(FamTokens.accent).bold())
-                .font(.system(size: 14)).foregroundColor(FamTokens.textSub)
-                .padding(.top, 14)
-                .padding(.vertical, 10).padding(.horizontal, 28)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard !signingUp else { return }
-                    signingUp = true; authError = nil
-                    Task {
-                        do {
-                            try await AuthService.shared.signInWithPasskey()
-                            await MainActor.run { signingUp = false; onFinish(nil) }
-                        } catch {
-                            await MainActor.run {
-                                signingUp = false
-                                if let e = error as? AuthError, e.isCancellation { return }
-                                authError = friendlyError(error)
+                (Text("Already a parent here? ") + Text("Sign in").foregroundColor(FamTokens.accent).bold())
+                    .font(.system(size: 14)).foregroundColor(FamTokens.textSub)
+                    .padding(.top, 14)
+                    .padding(.vertical, 10).padding(.horizontal, 28)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard !signingUp else { return }
+                        signingUp = true; authError = nil
+                        Task {
+                            do {
+                                try await AuthService.shared.signInWithPasskey()
+                                await MainActor.run { signingUp = false; onFinish(nil) }
+                            } catch {
+                                await MainActor.run {
+                                    signingUp = false
+                                    if let e = error as? AuthError, e.isCancellation { return }
+                                    authError = friendlyError(error)
+                                }
                             }
                         }
                     }
-                }
 
-            Text("Use a backup code")
-                .font(.system(size: 12.5)).foregroundColor(FamTokens.textSub).underline()
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-                .onTapGesture { guard !signingUp else { return }; showBackupSignIn = true }
-                .padding(.top, 10)
-                .padding(.bottom, 24)
+                Text("Use a backup code")
+                    .font(.system(size: 12.5)).foregroundColor(FamTokens.textSub).underline()
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture { guard !signingUp else { return }; showBackupSignIn = true }
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+            }
+            .padding(.top, 20)
         }
-        .padding(.top, 34)
         .sheet(isPresented: $showBackupSignIn) {
             BackupCodeSignInView {
                 showBackupSignIn = false
@@ -257,7 +296,61 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: 2 · Create or join a family
+    private func createOrJoinFamilyWithPasskey() {
+        let code = signupInviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else {
+            authError = "Please enter your invite code to continue."
+            return
+        }
+
+        if isJoiningExistingFamily {
+            let famCode = joinInviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !famCode.isEmpty else {
+                authError = "Please enter the family code from your co-parent."
+                return
+            }
+        }
+
+        signingUp = true
+        authError = nil
+        let targetFamilyName = familyName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedFamilyName = targetFamilyName.isEmpty ? "Our Family" : targetFamilyName
+        let famCode = joinInviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let joining = isJoiningExistingFamily
+
+        Task {
+            do {
+                try await AuthService.shared.signUpWithPasskey(
+                    inviteCode: code,
+                    name: resolvedFamilyName
+                )
+
+                if joining {
+                    _ = try await AuthService.shared.joinFamily(code: famCode)
+                } else {
+                    _ = try await AuthService.shared.createFamily(name: resolvedFamilyName)
+                }
+
+                await MainActor.run {
+                    signingUp = false
+                    finishOnboarding()
+                }
+            } catch {
+                await MainActor.run {
+                    signingUp = false
+                    if let e = error as? AuthError, e.isCancellation { return }
+                    if (error as? AuthError) == nil {
+                        familyError = friendlyError(error)
+                        withAnimation { screen = .family }
+                    } else {
+                        authError = friendlyError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: 2 · Create or join a family (fallback after account creation)
 
     private var familySetup: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -287,7 +380,7 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Invite code").font(.system(size: 13)).foregroundColor(FamTokens.textSub)
-                TextField("ABC123", text: $inviteCode)
+                TextField("ABC123", text: $joinInviteCode)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.characters)
                 Button(action: joinFamily) {
@@ -330,7 +423,7 @@ struct OnboardingView: View {
         familyBusy = true; familyError = nil
         Task {
             do {
-                _ = try await AuthService.shared.joinFamily(code: inviteCode)
+                _ = try await AuthService.shared.joinFamily(code: joinInviteCode)
                 await MainActor.run { familyBusy = false; finishOnboarding() }
             } catch {
                 await MainActor.run { familyBusy = false; familyError = friendlyError(error) }
@@ -344,11 +437,13 @@ struct OnboardingView: View {
     private func finishOnboarding() {
         APIClient.shared.track("onboarding_complete")
         Task {
-            let codes = await AuthService.shared.issueBackupCodesIfNeeded()
+            var codes = await AuthService.shared.issueBackupCodesIfNeeded()
+            if codes == nil || codes?.isEmpty == true {
+                codes = try? await AuthService.shared.regenerateBackupCodes()
+            }
             await MainActor.run {
                 if let codes, !codes.isEmpty {
-                    recoveryCodes = codes
-                    showRecoveryCodes = true
+                    recoveryPayload = RecoveryCodesPayload(codes: codes)
                 } else {
                     onFinish(nil)
                 }

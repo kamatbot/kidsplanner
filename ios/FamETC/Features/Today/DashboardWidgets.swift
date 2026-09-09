@@ -149,10 +149,25 @@ struct DailyFiveCard: View {
     /// the parent's outline button.
     var isKid: Bool = false
 
-    private enum DailySheet: String, Identifiable { case quote, word, teaser, puzzle, news; var id: String { rawValue } }
+    private enum DailySheet: Identifiable {
+        case quote
+        case word
+        case teaser
+        case puzzle(DailyPuzzleResponse)
+        case news(RecentNewsItem)
+
+        var id: String {
+            switch self {
+            case .quote: return "quote"
+            case .word: return "word"
+            case .teaser: return "teaser"
+            case .puzzle(let puzzle): return "puzzle-\(puzzle.date)-\(puzzle.type ?? "")"
+            case .news(let article): return "news-\(article.id)"
+            }
+        }
+    }
     @State private var activeSheet: DailySheet? = nil
     @State private var puzzle: DailyPuzzleResponse?
-    @State private var news: RecentNewsItem?
     @State private var newsChoices: [DailyNewsChoice] = []
     @State private var vocabulary: DailyVocabularyResponse?
     @State private var reflections: [String: String] = [:]
@@ -222,7 +237,7 @@ struct DailyFiveCard: View {
                         if !puzzleStatus.isEmpty {
                             Text(puzzleStatus).font(Typography.caption).foregroundStyle(Palette.textSecond)
                         }
-                        Button { Haptics.selection(); activeSheet = .puzzle } label: {
+                        Button { Haptics.selection(); activeSheet = .puzzle(puzzle) } label: {
                             HStack(spacing: Space.sm) {
                                 Text(puzzle.type == "crossword" ? "🧩" : "🔢")
                                 Text(puzzle.title ?? "Today's puzzle")
@@ -260,8 +275,7 @@ struct DailyFiveCard: View {
                         Button {
                             guard let article = choice.article else { return }
                             Haptics.selection()
-                            news = article
-                            activeSheet = .news
+                            activeSheet = .news(article)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(choice.label).font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.accent)
@@ -311,16 +325,14 @@ struct DailyFiveCard: View {
         case .quote: QuoteWidget()
         case .word: WordWidget()
         case .teaser: QuizWidget()
-        case .puzzle:
-            if let puzzle, let userID = store.me?.id { DailyPuzzleView(puzzle: puzzle, userID: userID) }
-        case .news:
-            if let news {
-                NewsWidget(news: news, reflection: Binding(
-                    get: { reflections[news.id] ?? "" },
-                    set: { reflections[news.id] = $0 }
-                )).id("\(extrasScope)|\(news.id)")
-                    .onAppear { Daily5Reporter.report("news", "started", store: store, scope: Daily5Reporter.capture(store)) }
-            }
+        case .puzzle(let puzzle):
+            if let userID = store.me?.id { DailyPuzzleView(puzzle: puzzle, userID: userID) }
+        case .news(let article):
+            NewsWidget(news: article, reflection: Binding(
+                get: { reflections[article.id] ?? "" },
+                set: { reflections[article.id] = $0 }
+            )).id("\(extrasScope)|\(article.id)")
+                .onAppear { Daily5Reporter.report("news", "started", store: store, scope: Daily5Reporter.capture(store)) }
         }
     }
     private func sheetTitle(_ sheet: DailySheet) -> String {
@@ -328,7 +340,7 @@ struct DailyFiveCard: View {
         case .quote: return "Quote of the Day"
         case .word: return "SAT Word of the Day"
         case .teaser: return "Daily Brain Teaser"
-        case .puzzle: return puzzle?.title ?? "Today's Puzzle"
+        case .puzzle(let puzzle): return puzzle.title ?? "Today's Puzzle"
         case .news: return "Interesting News"
         }
     }
@@ -340,11 +352,10 @@ struct DailyFiveCard: View {
         if extrasScope != scope {
             reflections = [:]
             extrasScope = scope
+            activeSheet = nil
         }
-        activeSheet = nil
         extrasLoading = true
         puzzle = nil
-        news = nil
         newsChoices = DailyNewsSelection.choices(nil, day: day)
         vocabulary = nil
         refreshEngagement()
@@ -384,7 +395,7 @@ struct DailyFiveCard: View {
 /// moved here from TodayView's standalone `NewsCard` now that news lives
 /// inside the Daily 5 flow (matching the web app) instead of its own card.
 struct NewsWidget: View {
-    let news: RecentNewsItem?
+    let news: RecentNewsItem
     @Environment(AppStore.self) private var store
     @Binding var reflection: String
     @State private var saved = false
@@ -395,20 +406,14 @@ struct NewsWidget: View {
         Card {
             VStack(alignment: .leading, spacing: Space.sm) {
                 MicroLabel(text: "Interesting news")
-                if let news {
-                    Text(DailyNewsSelection.publisherLine(news))
-                        .font(Typography.caption.weight(.semibold))
-                        .foregroundStyle(Palette.textSecond)
-                    Text(news.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(news.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("No story published in the last 14 days is available right now.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.textSecond)
-                }
-                if let news, let url = URL(string: news.url) {
+                Text(DailyNewsSelection.publisherLine(news))
+                    .font(Typography.caption.weight(.semibold))
+                    .foregroundStyle(Palette.textSecond)
+                Text(news.headline).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(news.summary).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let url = URL(string: news.url) {
                     Link(destination: url) {
                         Label("Read the full story", systemImage: "arrow.up.right.square")
                             .font(Typography.caption.weight(.bold))
@@ -416,61 +421,59 @@ struct NewsWidget: View {
                             .frame(minHeight: 44)
                     }
                 }
-                if let news {
-                    Divider().overlay(Palette.border)
-                    Text(news.question)
-                        .font(Typography.body.weight(.semibold))
-                        .foregroundStyle(Palette.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                    TextField("Write what you think…", text: $reflection, axis: .vertical)
-                        .lineLimit(2...4)
-                        .font(Typography.body)
-                        .padding(Space.sm)
-                        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                        .disabled(saving)
-                        .onChange(of: reflection) { _, value in if !value.isEmpty { saved = false } }
-                    if saveFailed {
-                        Text("Your idea wasn't saved. Your response is still here; try again.")
-                            .font(Typography.caption).foregroundStyle(Palette.red)
-                    }
-                    HStack {
-                        Spacer()
-                        if saved {
-                            Label("Idea saved", systemImage: "checkmark.circle.fill")
-                                .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.green)
-                        } else {
-                            Button {
-                                Haptics.selection()
-                                let text = reflection
-                                guard let userID = store.me?.id else { return }
-                                let day = Agenda.todayKey()
-                                let progressScope = Daily5Reporter.capture(store)
-                                saving = true
-                                saveFailed = false
-                                Task {
-                                    let note = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": news.id, "context": "\(news.headline)\n\n\(news.summary)\n\n\(news.url)"])
-                                    saving = false
-                                    guard store.me?.id == userID, Agenda.todayKey() == day else { return }
-                                    if note != nil {
-                                        Daily5Reporter.report("news", "completed", store: store, scope: progressScope)
-                                        if reflection == text { reflection = "" }
-                                        saved = true
-                                        UserDefaults.standard.set(true, forKey: DailyNewsSelection.ideaKey(userID: userID, day: day))
-                                    } else {
-                                        saveFailed = true
-                                    }
+                Divider().overlay(Palette.border)
+                Text(news.question)
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Write what you think…", text: $reflection, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(Typography.body)
+                    .padding(Space.sm)
+                    .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    .disabled(saving)
+                    .onChange(of: reflection) { _, value in if !value.isEmpty { saved = false } }
+                if saveFailed {
+                    Text("Your idea wasn't saved. Your response is still here; try again.")
+                        .font(Typography.caption).foregroundStyle(Palette.red)
+                }
+                HStack {
+                    Spacer()
+                    if saved {
+                        Label("Idea saved", systemImage: "checkmark.circle.fill")
+                            .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.green)
+                    } else {
+                        Button {
+                            Haptics.selection()
+                            let text = reflection
+                            guard let userID = store.me?.id else { return }
+                            let day = Agenda.todayKey()
+                            let progressScope = Daily5Reporter.capture(store)
+                            saving = true
+                            saveFailed = false
+                            Task {
+                                let note = await store.addNote(body: text, source: "news", ref: ["kind": "news", "id": news.id, "context": "\(news.headline)\n\n\(news.summary)\n\n\(news.url)"])
+                                saving = false
+                                guard store.me?.id == userID, Agenda.todayKey() == day else { return }
+                                if note != nil {
+                                    Daily5Reporter.report("news", "completed", store: store, scope: progressScope)
+                                    if reflection == text { reflection = "" }
+                                    saved = true
+                                    UserDefaults.standard.set(true, forKey: DailyNewsSelection.ideaKey(userID: userID, day: day))
+                                } else {
+                                    saveFailed = true
                                 }
-                            } label: {
-                                Text(saving ? "Saving…" : saveFailed ? "Retry save" : "Save response")
-                                    .font(Typography.caption.weight(.bold))
-                                    .foregroundStyle(Palette.onAccent)
-                                    .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                                    .background(Palette.accent, in: Capsule())
                             }
-                            .buttonStyle(.plain)
-                            .frame(minHeight: 44)
-                            .disabled(saving || reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        } label: {
+                            Text(saving ? "Saving…" : saveFailed ? "Retry save" : "Save response")
+                                .font(Typography.caption.weight(.bold))
+                                .foregroundStyle(Palette.onAccent)
+                                .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+                                .background(Palette.accent, in: Capsule())
                         }
+                        .buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                        .disabled(saving || reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
             }

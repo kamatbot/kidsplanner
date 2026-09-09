@@ -754,7 +754,7 @@ async function handleRemoveKid(kidId) {
 // have their own header instance (canvas 1b/1c), sharing the one activeKidId
 // state, so both stay in sync no matter which one triggered the change.
 function renderKidSwitcher() {
-  window.famChildView?.renderNavigation();
+  if (typeof window !== 'undefined') window.famChildView?.renderNavigation();
   const els = document.querySelectorAll('.kid-switcher');
   if (!els.length || !currentFamily) return;
   const kids = currentFamily.kids || [];

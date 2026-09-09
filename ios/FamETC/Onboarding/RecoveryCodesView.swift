@@ -90,20 +90,28 @@ struct RecoveryCodesView: View {
 
     private var codeGrid: some View {
         Card(padding: Space.lg) {
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)],
-                alignment: .leading,
-                spacing: Space.sm
-            ) {
-                ForEach(Array(codes.enumerated()), id: \.offset) { _, code in
-                    Text(code)
-                        .font(Typography.mono(15, .medium))
-                        .foregroundStyle(Palette.text)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, Space.sm)
-                        .padding(.horizontal, Space.md)
-                        .background(Palette.bg, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+            if codes.isEmpty {
+                Text("No recovery codes available right now.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.textSecond)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, Space.md)
+            } else {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: Space.md), GridItem(.flexible(), spacing: Space.md)],
+                    alignment: .leading,
+                    spacing: Space.sm
+                ) {
+                    ForEach(Array(codes.enumerated()), id: \.offset) { _, code in
+                        Text(code)
+                            .font(Typography.mono(15, .medium))
+                            .foregroundStyle(Palette.text)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, Space.sm)
+                            .padding(.horizontal, Space.md)
+                            .background(Palette.bg, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+                    }
                 }
             }
         }
@@ -122,6 +130,7 @@ struct RecoveryCodesView: View {
                     .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
             }
             .buttonStyle(.plain)
+            .disabled(codes.isEmpty)
 
             ShareLink(item: joined) {
                 Label("Share", systemImage: "square.and.arrow.up")
@@ -132,6 +141,7 @@ struct RecoveryCodesView: View {
                     .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
             }
             .buttonStyle(.plain)
+            .disabled(codes.isEmpty)
         }
     }
 
