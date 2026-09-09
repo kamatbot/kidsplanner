@@ -87,6 +87,13 @@ struct OnboardingView: View {
                 onFinish(nil)
             }
         }
+        .sheet(isPresented: $showBackupSignIn) {
+            BackupCodeSignInView {
+                showBackupSignIn = false
+                onFinish(nil)
+            }
+            .presentationDetents([.large])
+        }
     }
 
     private func friendlyError(_ error: Error) -> String {
@@ -99,7 +106,11 @@ struct OnboardingView: View {
             case .cancelled: return "Cancelled."
             }
         }
-        return error.localizedDescription
+        let msg = error.localizedDescription
+        if msg.localizedCaseInsensitiveContains("webcredentials") || msg.localizedCaseInsensitiveContains("associated domain") {
+            return "Passkey sign-in isn't available on this build. Use a backup code below to sign in."
+        }
+        return msg
     }
 
     // MARK: 0 · Who's signing in — parent or kid
@@ -154,6 +165,13 @@ struct OnboardingView: View {
                         }
                     }
                 }
+
+            Text("Use a backup code")
+                .font(.system(size: 13)).foregroundColor(FamTokens.textSub).underline()
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .onTapGesture { guard !signingUp else { return }; showBackupSignIn = true }
+                .padding(.top, 4)
 
             if let authError {
                 Text(authError).font(.system(size: 13)).foregroundColor(FamTokens.danger)
@@ -286,13 +304,6 @@ struct OnboardingView: View {
                     .padding(.bottom, 24)
             }
             .padding(.top, 20)
-        }
-        .sheet(isPresented: $showBackupSignIn) {
-            BackupCodeSignInView {
-                showBackupSignIn = false
-                onFinish(nil)
-            }
-            .presentationDetents([.large])
         }
     }
 
