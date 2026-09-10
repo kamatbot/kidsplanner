@@ -4,7 +4,7 @@
 
 Web and iOS use `/api/news/recent?date=YYYY-MM-DD`. Three fixed slots are returned: Local/Regional, Global Science & Discovery, and Culture, Sports & Human Interest. A reader can open any or all; selecting a story does not itself earn reflection credit. Drafts are separate per article for the current account/day and are not durable across app/browser restarts.
 
-The registry uses Science News Explores, DOGO News (science/sports/fun feeds), First News Live, Bangkok Post Learning, and youth/technology-filtered Eco-Business news. Regional classification requires geographic evidence in the headline/preview, not merely a regional publisher. Classification is heuristic, not a human editorial or reading-level review.
+The registry uses Science News Explores, DOGO News (science/sports/fun/world/environment feeds), NewsForKids.net, CBC Kids News (JSON feed), BBC Newsround, and Bangkok Post Learning. Regional classification requires geographic evidence in the headline/preview, not merely a regional publisher. Classification is heuristic, not a human editorial or reading-level review.
 
 Only dated, trusted HTTPS items within the existing 14-day freshness ceiling qualify. Daily selection rotates among up to five recent eligible stories per category; it does not promise newly published stories every day or prevent repeats. Empty categories remain explicitly unavailable, never filled with stale or mislabelled stories. Filled editions are stable while the process/cache survives; restart-persistent editions need a future storage change.
 
@@ -14,11 +14,9 @@ The app displays attribution, publication date, a short feed preview (at most 25
 
 - Smithsonian TweenTribune: a current dedicated feed has not been verified; Smithsonian Magazine is not a substitute.
 - CNN10: dedicated feed not verified; no general CNN feed substituted.
-- The Week Junior: dedicated feed not verified; First News supplies the requested alternative.
+- The Week Junior: dedicated feed not verified.
 - CNA Explains: dedicated Explains feed/permission unresolved. [CNA RSS terms](https://www.channelnewsasia.com/rss/rssterms) restrict RSS use; the published feed offering is for personal, non-commercial use. Do not activate for a commercial app without suitable permission.
 - The Straits Times Mind Stretcher/Youth: dedicated feed and rights not verified; a general youth topic tag is not an educational feed.
-
-Review publisher permissions before commercial release, including active feeds. [Eco-Business feed directory](https://www.eco-business.com/feeds/) and [republishing guidelines](https://www.eco-business.com/about/republishing-guidelines/) are source references, not a blanket license determination.
 
 ## Shared vocabulary contract
 

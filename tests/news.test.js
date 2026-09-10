@@ -145,12 +145,26 @@ test("production registry uses verified requested publishers, not adult-source s
     ["https://www.dogonews.com/category/science.rss", "DOGO News", "🔬 Science"],
     ["https://www.dogonews.com/category/sports.rss", "DOGO News", "Sports"],
     ["https://www.dogonews.com/category/fun.rss", "DOGO News", "Culture"],
-    ["https://live.firstnews.co.uk/feed/", "First News", "Culture"],
-    ["https://www.eco-business.com/feeds/news/", "Eco-Business", "🌿 Environment"],
+    ["https://www.dogonews.com/category/world.rss", "DOGO News", "🌍 World"],
+    ["https://www.dogonews.com/category/environment.rss", "DOGO News", "🌿 Environment"],
+    ["https://newsforkids.net/feed/", "NewsForKids.net", "🌍 World"],
+    ["https://www.cbc.ca/kidsnews/ajax/news_feed", "CBC Kids News", "Culture"],
+    ["https://feeds.bbci.co.uk/newsround/rss.xml", "BBC Newsround", "🌍 World"],
     ["https://www.bangkokpost.com/rss/data/learning.xml", "Bangkok Post Learning", "Local/Regional"],
   ];
 
   assert.deepEqual(news.FEEDS.map((feed) => [feed.url, feed.source, feed.defaultCategory]), expected);
+  const approvedSources = new Set([
+    "DOGO News",
+    "NewsForKids.net",
+    "CBC Kids News",
+    "BBC Newsround",
+    "Bangkok Post Learning",
+    "Science News Explores",
+  ]);
+  assert.equal(news.FEEDS.every((feed) => approvedSources.has(feed.source)), true);
+  assert.equal(new Set(news.FEEDS.map((feed) => feed.source)).size, approvedSources.size);
+
   for (const feed of news.FEEDS) {
     const hostname = new URL(feed.url).hostname;
     assert.equal(new URL(feed.url).protocol, "https:");
@@ -162,6 +176,7 @@ test("production registry uses verified requested publishers, not adult-source s
   assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "Culture"));
   assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🌿 Environment"));
   assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🔬 Science"));
+  assert.ok(news.FEEDS.some((feed) => feed.defaultCategory === "🌍 World"));
 });
 
 test("custom injected feeds remain available to focused parser tests", async () => {
@@ -400,4 +415,93 @@ test("limits output to 20 newest unique items and bounds text fields", async () 
   assert.equal(result.items[0].summary.length, 800);
   assert.equal(result.items[19].headline, "Story 19");
   assert.deepEqual(new Set(result.items.map((item) => item.url)).size, 20);
+});
+
+test("parses JSON news feeds with varied entry structures and validates date formats", async () => {
+  const jsonFeed = {
+    url: "https://www.cbc.ca/kidsnews/ajax/news_feed",
+    source: "CBC Kids News",
+    hosts: ["cbc.ca"],
+    defaultCategory: "Culture",
+    production: true,
+  };
+  const jsonBody = JSON.stringify({
+    entries: [
+      {
+        title: "Too old JSON story",
+        publish_date: String(Math.floor((NOW - 15 * DAY) / 1000)),
+        permalink: "https://www.cbc.ca/kidsnews/post/old",
+        news_meta_description: "Old story.",
+      },
+      {
+        title: "Crossword puzzle fun",
+        publish_date: String(Math.floor((NOW - DAY) / 1000)),
+        permalink: "https://www.cbc.ca/kidsnews/post/crossword",
+        news_meta_description: "Puzzle.",
+      },
+      {
+        title: "Untrusted redirect target",
+        publish_date: String(Math.floor((NOW - DAY) / 1000)),
+        permalink: "https://evil.example/post/untrusted",
+        news_meta_description: "Not allowed.",
+      },
+      {
+        title: "Invalid date format",
+        publish_date: "not a date",
+        permalink: "https://www.cbc.ca/kidsnews/post/bad-date",
+      },
+      {
+        title: "Fresh Canadian Science Discovery",
+        publish_date: String(Math.floor((NOW - DAY) / 1000)),
+        permalink: "https://www.cbc.ca/kidsnews/post/science-discovery",
+        news_meta_description: "Researchers find new fossils in Alberta.",
+        categories: { editorial: [{ id: 1, name: "Science" }] },
+      },
+      {
+        title: "Youth Climate Action",
+        publish_date: String(Math.floor((NOW - 2 * DAY) / 1000)),
+        permalink: "https://www.cbc.ca/kidsnews/post/climate-action",
+        news_meta_description: "Students work on local tree planting and clean ocean water.",
+        categories: ["Environment", "Youth"],
+      },
+    ],
+  });
+
+  const result = await freshNews().getRecentNews({
+    now: NOW,
+    feeds: [jsonFeed],
+    fetch: async () => textResponse(jsonBody),
+  });
+
+  assert.equal(result.items.length, 2);
+  assert.equal(result.items[0].headline, "Fresh Canadian Science Discovery");
+  assert.equal(result.items[0].cat, "🔬 Science");
+  assert.equal(result.items[0].source, "CBC Kids News");
+  assert.equal(result.items[0].url, "https://www.cbc.ca/kidsnews/post/science-discovery");
+  assert.equal(result.items[1].headline, "Youth Climate Action");
+  assert.equal(result.items[1].cat, "🌿 Environment");
+});
+
+test("parses standard JSON Feed items format and handles malformed JSON safely", () => {
+  const news = freshNews();
+  const feedConfig = { source: "JSON Source", hosts: ["example.com"], defaultCategory: "Culture" };
+
+  const standardJson = JSON.stringify({
+    items: [
+      {
+        title: "Standard JSON Feed story",
+        date_published: "2026-08-09T10:00:00Z",
+        url: "https://example.com/story-1",
+        content_text: "A standard story summary.",
+      },
+    ],
+  });
+  const parsed = news.parseFeed(standardJson, feedConfig);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].headline, "Standard JSON Feed story");
+  assert.equal(parsed[0].url, "https://example.com/story-1");
+
+  const malformed = "{ not valid json";
+  const empty = news.parseFeed(malformed, feedConfig);
+  assert.deepEqual(empty, []);
 });
