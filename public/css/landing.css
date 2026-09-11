@@ -39,6 +39,9 @@ a{color:var(--accent);text-decoration:none}a:hover{color:var(--coral)}
 .button-primary{background:var(--accent);color:var(--on-accent)}
 .button-secondary{border-color:var(--border);background:var(--panel);color:var(--text)}
 .button-large{min-height:48px;padding:13px 22px;font-size:15px}
+.app-store-badge{display:inline-flex;align-items:center;justify-content:center;min-height:48px;border-radius:7px;line-height:0;transition:opacity .16s ease}
+.app-store-badge img{display:block;width:150px;height:auto}
+.app-store-badge:hover{opacity:.86}
 /* hero */
 .hero{display:grid;grid-template-columns:minmax(0,520px) minmax(0,1fr);gap:56px;align-items:center;padding-block:56px 32px}
 .hero-kicker{display:flex;align-items:center;gap:10px;color:var(--text-2);margin:0 0 20px}
@@ -231,7 +234,8 @@ html.js .chat-sequence:not(.is-in) .chat-beat{opacity:0;transform:translateY(14p
 .device-caption{margin-top:18px}
 .device-caption strong{display:block;font-size:16px}
 .device-caption span{font-size:14px;color:var(--text-2);line-height:1.45;display:block;margin-top:2px}
-.store-note{margin-top:36px;font-size:14px;color:var(--text-2);display:flex;align-items:center;gap:10px}
+.store-actions{margin-top:36px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.store-note{margin:0;flex:1 1 340px;min-width:min(100%,260px);font-size:14px;color:var(--text-2);display:flex;align-items:flex-start;gap:10px}
 .store-note svg{width:18px;height:18px;stroke:var(--text-2);flex:none}
 /* privacy (S9) */
 .privacy-band{background:var(--sidebar);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}

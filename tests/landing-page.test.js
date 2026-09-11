@@ -10,6 +10,7 @@ const landing = fs.readFileSync(path.join(root, "public/landing.html"), "utf8");
 const styles = fs.readFileSync(path.join(root, "public/css/landing.css"), "utf8");
 const script = fs.readFileSync(path.join(root, "public/js/landing.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "public/manifest.webmanifest"), "utf8"));
+const appStoreUrl = "https://apps.apple.com/us/app/fam-etc-family-planner-chat/id6787317215";
 
 function pngDimensions(file) {
   const data = fs.readFileSync(path.join(root, file));
@@ -104,13 +105,14 @@ test("devices section uses real product screenshots, not CSS mockups", () => {
   const devices = landing.match(/<section id="devices"[\s\S]*?<\/section>/)?.[0];
   assert.ok(devices);
   const imgs = devices.match(/<img[^>]+>/g) || [];
-  assert.equal(imgs.length, 2, "one real screenshot per device");
+  const screenshotImgs = imgs.filter((img) => /src="\/img\/app-(?:iphone|ipad)-today\.png"/.test(img));
+  assert.equal(screenshotImgs.length, 2, "one real screenshot per device");
   for (const src of ["/img/app-iphone-today.png", "/img/app-ipad-today.png"]) {
     assert.match(devices, new RegExp(src.replace(/[/.]/g, "\\$&")));
     assert.ok(fs.existsSync(path.join(root, "public", src.replace("/img/", "img/"))), `${src} exists on disk`);
   }
   // every screenshot needs real alt text and explicit dimensions (no layout shift)
-  for (const img of imgs) {
+  for (const img of screenshotImgs) {
     assert.match(img, /alt="[^"]{40,}"/, "screenshot has descriptive alt text");
     assert.match(img, /width="\d+"/);
     assert.match(img, /height="\d+"/);
@@ -124,6 +126,25 @@ test("devices section uses real product screenshots, not CSS mockups", () => {
   assert.match(server, /app\.use\("\/img", express\.static/);
   assert.match(server, /"public, max-age=3600, must-revalidate"/);
   assert.doesNotMatch(server, /app\.use\("\/img"[\s\S]{0,200}IMMUTABLE/);
+});
+
+test("landing links the official App Store badge from hero and devices", () => {
+  const exactHref = `href="${appStoreUrl}"`;
+  assert.equal(landing.split(exactHref).length - 1, 2, "hero and devices each link the App Store");
+  const hero = landing.match(/<section class="section hero"[\s\S]*?<\/section>/)?.[0];
+  const devices = landing.match(/<section id="devices"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(hero && devices);
+  for (const section of [hero, devices]) {
+    assert.match(section, /class="app-store-badge" href="https:\/\/apps\.apple\.com\/us\/app\/fam-etc-family-planner-chat\/id6787317215"/);
+    assert.match(section, /src="\/img\/download-on-the-app-store\.svg" alt="Download on the App Store"/);
+  }
+  const badge = fs.readFileSync(path.join(root, "public/img/download-on-the-app-store.svg"), "utf8");
+  assert.match(badge, /<svg[^>]+width="119\.66407"[^>]+height="40"[^>]+viewBox="0 0 119\.66407 40"/);
+  assert.match(styles, /\.app-store-badge\{[^}]*min-height:48px/);
+  assert.match(styles, /\.app-store-badge img\{[^}]*height:auto/);
+  assert.match(styles, /\.hero-actions\{[^}]*flex-wrap:wrap/);
+  assert.match(styles, /\.store-actions\{[^}]*flex-wrap:wrap/);
+  assert.doesNotMatch(landing, /coming to the App Store/i);
 });
 
 // The page wrapped body copy into narrow 3-line columns that ate vertical space.
