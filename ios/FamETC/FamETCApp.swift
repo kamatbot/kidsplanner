@@ -75,9 +75,13 @@ enum DebugLaunch {
     /// race (messages landing AFTER the chat surface has laid out).
     static var mockChatDelayMs: Int? { env["FAM_MOCK_CHAT_DELAY_MS"].flatMap(Int.init) }
 
+    /// UI-test hook: render the authenticated shell without network work so
+    /// iPad navigation latency and first-tap behavior are tested in isolation.
+    static var mockNavigation: Bool { env["FAM_MOCK_NAVIGATION"] == "1" }
+
     /// Suppress the push-permission prompt during seeded QA screenshots (a dev
     /// cookie is injected only in that flow), so it doesn't block the UI.
-    static var skipPush: Bool { env["FAM_DEV_COOKIE"] != nil }
+    static var skipPush: Bool { env["FAM_DEV_COOKIE"] != nil || mockNavigation }
 
     static func bootstrap() {
         let e = env

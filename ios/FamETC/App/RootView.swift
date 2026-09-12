@@ -216,11 +216,24 @@ struct RootView: View {
             TabView(selection: $selection) {
                 TodayScreen(onOpenHomework: { selection = .homework })
                     .toolbar(.hidden, for: .tabBar)
+                    .accessibilityIdentifier("screen-today")
                     .tag(Tab.today)
-                CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
-                HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-                ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
-                planningDestinationScreen.toolbar(.hidden, for: .tabBar).tag(Tab.planning)
+                CalendarScreen()
+                    .toolbar(.hidden, for: .tabBar)
+                    .accessibilityIdentifier("screen-calendar")
+                    .tag(Tab.calendar)
+                HomeworkScreen()
+                    .toolbar(.hidden, for: .tabBar)
+                    .accessibilityIdentifier("screen-homework")
+                    .tag(Tab.homework)
+                ChatTabHost()
+                    .toolbar(.hidden, for: .tabBar)
+                    .accessibilityIdentifier("screen-chat")
+                    .tag(Tab.chat)
+                planningDestinationScreen
+                    .toolbar(.hidden, for: .tabBar)
+                    .accessibilityIdentifier("screen-planning")
+                    .tag(Tab.planning)
             }
             .frame(maxWidth: .infinity)
         }
@@ -288,41 +301,50 @@ private struct NavRailList: View {
         let displayedPlanningDestination = planningDestination ?? self.planningSelection
         let isOn = tab == selection && (tab != .planning || self.planningSelection == displayedPlanningDestination)
         let label = tab.displayLabel(for: displayedPlanningDestination)
-        return VStack(spacing: 4) {
-            Image(systemName: tab.displayIcon(for: displayedPlanningDestination))
-                .font(.system(size: 18, weight: .semibold))
-                .overlay(alignment: .topTrailing) {
-                    if tab == .chat && store.unreadChatCount > 0 {
-                        unreadBadge(store.unreadChatCount)
-                    }
-                }
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .foregroundStyle(isOn ? Palette.text : Palette.textSecond)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Space.sm)
-        .background {
-            if isOn {
-                RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
-                    .fill(Palette.accentSoft)
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        let identifier = planningDestination?.rawValue ?? tab.rawValue
+        return Button {
             if let planningDestination {
                 choosePlanning(planningDestination)
-                return
+            } else {
+                chooseTab(tab)
             }
-            guard selection != tab else { return }
-            Haptics.selection()
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: tab.displayIcon(for: displayedPlanningDestination))
+                    .font(.system(size: 18, weight: .semibold))
+                    .overlay(alignment: .topTrailing) {
+                        if tab == .chat && store.unreadChatCount > 0 {
+                            unreadBadge(store.unreadChatCount)
+                        }
+                    }
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(isOn ? Palette.text : Palette.textSecond)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Space.sm)
+            .background {
+                if isOn {
+                    RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                        .fill(Palette.accentSoft)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("ipad-tab-\(identifier)")
+        .accessibilityLabel(planningDestination.map(\.label) ?? (tab == .planning ? "Planning, " + label : label))
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    private func chooseTab(_ tab: Tab) {
+        guard selection != tab else { return }
+        withTransaction(Transaction(animation: nil)) {
             selection = tab
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(planningDestination.map(\.label) ?? (tab == .planning ? "Planning, " + label : label))
-        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+        Haptics.selection()
     }
 
     private func choosePlanning(_ destination: PlanningDestination) {
@@ -330,9 +352,11 @@ private struct NavRailList: View {
         let selectionChanges = selection != .planning
         planningSelection = destination
         if selectionChanges {
-            Haptics.selection()
-            selection = .planning
-        } else if destinationChanges {
+            withTransaction(Transaction(animation: nil)) {
+                selection = .planning
+            }
+        }
+        if selectionChanges || destinationChanges {
             Haptics.selection()
         }
     }
