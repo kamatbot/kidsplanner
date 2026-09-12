@@ -161,14 +161,15 @@ test('every quiz option matches the answer part of speech with four unique choic
   }
 });
 
-test('web and iOS vocabulary exactly match the server list', () => {
+test('bundled web and iOS placement words remain valid entries in the expanded server bank', () => {
   const vm = require('node:vm');
   const web = fs.readFileSync(path.join(__dirname, '../public/js/app.js'), 'utf8');
   const literal = web.match(/const SAT_WORDS = (\[[\s\S]*?\n\]);/)[1];
-  assert.deepEqual(JSON.parse(JSON.stringify(vm.runInNewContext(literal))), WORDS);
+  const webWords = JSON.parse(JSON.stringify(vm.runInNewContext(literal)));
+  assert.deepEqual(webWords, WORDS.slice(0, 35));
   const swift = fs.readFileSync(path.join(__dirname, '../ios/FamETC/Domain/DailyContent.swift'), 'utf8');
   const rows = [...swift.matchAll(/\.init\(word: ("(?:[^"\\]|\\.)*"), pos: ("[^"]*"), def: ("(?:[^"\\]|\\.)*"), example: ("(?:[^"\\]|\\.)*")\)/g)].map(m => Object.fromEntries(['word','pos','def','example'].map((k,i) => [k,JSON.parse(m[i+1])])));
-  assert.deepEqual(rows, WORDS);
+  assert.deepEqual(rows, webWords);
 });
 
 test('web daily activity renders the three authored contexts for each shared word', async () => {
@@ -176,8 +177,8 @@ test('web daily activity renders the three authored contexts for each shared wor
   const { getDailyVocabulary } = require('../lib/vocabulary-challenges');
   const source = fs.readFileSync(path.join(__dirname, '../public/js/sat.js'), 'utf8');
   const fn = source.slice(source.indexOf('let dailyVocabulary'), source.indexOf('function submitSatPlacement'));
-  for (let index = 0; index < 30; index++) {
-    const date = new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10);
+  for (let index = 0; index < WORDS.length; index++) {
+    const date = new Date(Date.UTC(2026, 8, 13 + index)).toISOString().slice(0, 10);
     const edition = getDailyVocabulary(date);
     const container = { innerHTML: '' };
     const context = { currentSatWord: null, SAT_WORDS: WORDS,
@@ -194,13 +195,13 @@ test('web daily activity renders the three authored contexts for each shared wor
 });
 
 
-test('extra distractors do not expand the shared daily word pool', () => {
-  const { DAILY_WORDS } = require('../lib/sat-words');
+test('legacy dates preserve the old daily pool while new dates use the shared endpoint', () => {
+  const { LEGACY_DAILY_WORDS } = require('../lib/sat-words');
   const { getDailyVocabulary } = require('../lib/vocabulary-challenges');
-  assert.equal(DAILY_WORDS.length, 30);
-  assert.equal(DAILY_WORDS[0].word, 'Eloquent');
-  assert.equal(DAILY_WORDS.at(-1).word, 'Wary');
   const rotation = Array.from({ length: 30 }, (_, index) => getDailyVocabulary(new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10)).word);
-  assert.deepEqual(rotation, DAILY_WORDS);
-  assert.match(fs.readFileSync(path.join(__dirname, '../ios/FamETC/Domain/DailyContent.swift'), 'utf8'), /static var word: SATWord \{ words\[index\(30\)\] \}/);
+  assert.deepEqual(rotation, LEGACY_DAILY_WORDS);
+  const native = fs.readFileSync(path.join(__dirname, '../ios/FamETC/Networking/APIClient.swift'), 'utf8');
+  const web = fs.readFileSync(path.join(__dirname, '../public/js/auth.js'), 'utf8');
+  assert.ok(native.includes('/api/enrichment/vocabulary/today?date='));
+  assert.ok(web.includes('/api/enrichment/vocabulary/today?date='));
 });

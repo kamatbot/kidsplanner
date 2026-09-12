@@ -1,0 +1,66 @@
+/* Finance expands the existing Horizon standalone shell. */
+#fams-root { max-width: 1120px; margin: 0 auto; padding: 32px; }
+.fams-header { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 28px; }
+.fams-header h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.035em; line-height: 1.12; margin: 18px 0 12px; text-wrap: balance; }
+#fams-root p { line-height: 1.55; color: var(--text-2); max-width: 72ch; }
+.fams-back { color: var(--accent); text-underline-offset: 4px; }
+#fams-root h2 { font-size: 21px; letter-spacing: -.025em; margin: 0 0 12px; }
+#fams-root h3 { font-size: 16px; margin: 0 0 10px; }
+.fams-wallet { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; padding: 28px; background: var(--panel); border-radius: 16px; border: 1px solid var(--border); }
+#fams-root .fams-balance { font-family: 'JetBrains Mono', monospace; color: var(--text); font-size: clamp(36px, 6vw, 60px); letter-spacing: -.03em; margin: 12px 0; line-height: 1.1; overflow-wrap: anywhere; }
+.fams-balance span:last-child { font-family: 'Space Grotesk', sans-serif; font-size: 20px; }
+.fams-week { align-self: center; }
+.fams-week p { font-size: 14px; }
+#fams-root progress { width: 100%; height: 12px; appearance: none; border: 0; border-radius: 6px; background: var(--grid); overflow: hidden; }
+#fams-root progress::-webkit-progress-bar { background: var(--grid); border-radius: 6px; }
+#fams-root progress::-webkit-progress-value { background: var(--accent); border-radius: 6px; }
+#fams-root progress::-moz-progress-bar { background: var(--accent); }
+.fams-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+.fams-section { padding: 30px 0; border-bottom: 1px solid var(--border); min-width: 0; }
+#fams-root label { display: grid; gap: 8px; font-size: 14px; font-weight: 500; }
+#fams-root form { display: grid; gap: 16px; margin-top: 20px; }
+#fams-root input, #fams-root select { min-width: 0; width: 100%; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); padding: 12px; border-radius: 10px; min-height: 44px; caret-color: var(--accent); }
+#fams-root input::placeholder { color: var(--text-2); opacity: 1; }
+#fams-root button { font: inherit; font-weight: 600; min-height: 44px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 10px; padding: 12px 18px; cursor: pointer; justify-self: start; }
+#fams-root button:hover { filter: brightness(.94); }
+#fams-root button:disabled { opacity: .55; cursor: wait; }
+#fams-root :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+#fams-root ::selection { background: var(--accent); color: var(--on-accent); }
+#fams-root [hidden] { display: none !important; }
+#fams-status:not(:empty) { padding: 16px 0; color: var(--text); }
+.fams-list { list-style: none; padding: 0; margin: 16px 0 0; }
+.fams-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border); }
+.fams-list strong { font-size: 15px; overflow-wrap: anywhere; }
+.fams-list p { margin: 5px 0 0; font-size: 13px; }
+.fams-list button { flex-shrink: 0; font-size: 13px !important; }
+.fams-amount { font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: nowrap; }
+.fams-lesson { border-top: 1px solid var(--border); padding: 16px 0; }
+#fams-root summary { cursor: pointer; padding: 10px 0; min-height: 44px; color: var(--accent); font-weight: 600; }
+#fams-root fieldset { border: 0; padding: 0; margin: 0; }
+#fams-root legend { margin-bottom: 12px; font-weight: 600; }
+#fams-root .fams-answer { display: flex; align-items: center; gap: 12px; padding: 12px; margin: 8px 0; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+#fams-root .fams-answer input { min-height: 20px; width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+#fams-root .fams-projection-form { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fams-projection-form button { grid-column: 1 / -1; }
+#fams-root .fams-projection-summary { color: var(--text); font-size: 20px; margin-top: 24px; }
+#fams-root table { width: 100%; text-align: right; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#fams-root caption { text-align: left; padding: 12px 0; color: var(--text-2); }
+#fams-root td, #fams-root th { padding: 10px 6px; border-bottom: 1px solid var(--border); }
+#fams-root th:first-child, #fams-root td:first-child { text-align: left; }
+.fams-explainer { margin-top: 24px; }
+#fams-school-reset { margin-top: 24px; }
+@media (max-width: 760px) {
+  #fams-root { padding: 24px 18px; }
+  .fams-header { align-items: stretch; flex-direction: column; gap: 12px; }
+  .fams-wallet, .fams-columns { grid-template-columns: 1fr; gap: 20px; }
+  .fams-wallet { padding: 22px; }
+  .fams-columns { gap: 0; }
+  #fams-root .fams-projection-form { grid-template-columns: 1fr 1fr; }
+  .fams-list li { flex-wrap: wrap; }
+}
+@media (max-width: 380px) { #fams-root .fams-projection-form { grid-template-columns: 1fr; } }
+
+.fams-chart { display: block; width: 100%; max-height: 220px; margin-top: 22px; }
+.fams-chart-total { stroke: var(--accent); }
+.fams-chart-added { stroke: var(--text-2); stroke-dasharray: 6 5; }
+#fams-root .fams-chart-key { font-size: 13px; }

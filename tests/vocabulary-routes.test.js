@@ -19,3 +19,16 @@ test('daily vocabulary requires an authenticated family and honors the requested
   assert.equal(r.headers['Cache-Control'],'no-store');
   assert.equal(run({id:'kid'},{id:'family'},'2026-02-30').statusCode,400);
 });
+
+
+test('web and native requests receive the same new daily word on every date in the rotation', () => {
+  const { DAILY_WORDS } = require('../lib/sat-words');
+  for (let index = 0; index < DAILY_WORDS.length; index++) {
+    const date = new Date(Date.UTC(2026, 8, 13 + index)).toISOString().slice(0, 10);
+    const web = run({ id: 'parent' }, { id: 'family' }, date);
+    const native = run({ id: 'kid', role: 'kid' }, { id: 'family' }, date);
+    assert.equal(web.statusCode, 200);
+    assert.deepEqual(web.body, native.body);
+    assert.deepEqual(web.body.word, DAILY_WORDS[index]);
+  }
+});
