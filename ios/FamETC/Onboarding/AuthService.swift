@@ -61,6 +61,7 @@ final class AuthService: NSObject {
         // 2) platform passkey registration (Face ID / Touch ID)
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
         let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userID)
+        request.userVerificationPreference = .required
         let auth = try await perform(request)
         guard let reg = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = reg.rawAttestationObject else { throw AuthError.registration }
@@ -141,6 +142,7 @@ final class AuthService: NSObject {
         // 2) platform passkey assertion
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
+        request.userVerificationPreference = .required
         let auth = try await perform(request)
         guard let assertion = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw AuthError.registration
@@ -226,6 +228,7 @@ final class AuthService: NSObject {
         // 2) platform passkey registration (Face ID / Touch ID / device PIN)
         let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
         let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userID)
+        request.userVerificationPreference = .required
         let auth = try await perform(request)
         guard let reg = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = reg.rawAttestationObject else { throw AuthError.registration }
