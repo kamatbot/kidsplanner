@@ -313,6 +313,12 @@ class FamETCAdapter(BasePlatformAdapter):
         while self._running:
             try:
                 await self._reconcile_rooms(await self._list_rooms())
+                # Recover persisted approvals independently of incoming chat or
+                # a model turn. The server supplies authority from the approval.
+                try:
+                    await self._request("POST", "/continuations", payload={})
+                except _BridgeError:
+                    logger.warning("FamETC approval recovery is temporarily unavailable")
                 backoff = self.poll_seconds
                 await asyncio.sleep(self.poll_seconds)
             except asyncio.CancelledError:

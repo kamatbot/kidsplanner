@@ -51,6 +51,22 @@ prices, availability, ratings or schedules.
 
 ## Family Operator approval foundation
 
+Calendar and reminder creation now continue automatically after the parent
+approves. FamETC uses the stored approving parent and exact action hash, claims
+the existing single-use grant, applies the live beta gates, and reads back the
+saved record before completing the case. No new chat turn or renewed chat actor
+token is needed. Cases containing several proposals close only after every
+approved create is verified; rejected/expired/cancelled proposals are resolved
+without execution.
+
+The gateway's existing supervisor posts an empty request to
+`/api/hermes/continuations` to recover persisted ready grants or expired claims
+after a restart. This endpoint cannot accept actor, action, or family overrides.
+An uncertain interrupted write stops with visible case evidence, never an
+automatic replay. Policy blocks also stop for review. Update and trip actions
+retain their existing explicit Hermes claim/run path until they have equivalent
+automatic verification and recovery contracts.
+
 The Operator now has a first end-to-end approval/execution path in addition to
 the v1.1 actor-authority foundation:
 
@@ -61,7 +77,8 @@ the v1.1 actor-authority foundation:
    FamETC's authenticated parent case-card UI.
 4. FamETC binds that decision to the exact `actionHash`; Hermes has no tool that
    can record approval for its own proposal.
-5. An approved action gets one execution grant. Hermes must separately call
+5. An approved action gets one execution grant. For actions outside automatic
+   calendar/reminder creation, Hermes must separately call
    `fametc_execution_claim` to obtain a short-lived, single-use execution token.
 6. `fametc_execution_run` accepts the token + approved hash only. It cannot
    accept a replacement action body; FamETC reloads the approved payload from
