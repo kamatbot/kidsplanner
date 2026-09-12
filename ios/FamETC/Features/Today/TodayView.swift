@@ -8,7 +8,6 @@ struct TodayScreen: View {
     @Environment(AppStore.self) private var store
     @State private var showAddEvent = false
     @State private var showNotes = false
-    @State private var showFinance = false
     let onOpenHomework: () -> Void
 
     init(onOpenHomework: @escaping () -> Void = {}) {
@@ -41,22 +40,7 @@ struct TodayScreen: View {
                         KidHeader(dateLabel: dateLabel, onMore: { showNotes = true })
                         KidTodayStack(onOpenHomework: onOpenHomework)
                     }
-                    Button { showFinance = true } label: {
-                        HStack(spacing: Space.md) {
-                            Image(systemName: "banknote").font(.title2)
-                            VStack(alignment: .leading, spacing: Space.xs) {
-                                Text("Fams & finance").font(Typography.cardTitle)
-                                Text("Earn, save and learn how money grows.").font(Typography.caption)
-                                Text("1 fam = 1 THB").font(Typography.caption)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                        }
-                        .foregroundStyle(Palette.text)
-                        .padding(Space.lg)
-                        .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.card))
-                    }
-                    .buttonStyle(.plain)
+
                 }
                 .padding(Space.lg)
                 .padding(.bottom, bottomClearance)
@@ -77,13 +61,7 @@ struct TodayScreen: View {
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
-        .sheet(isPresented: $showFinance) {
-            NavigationStack {
-                HybridWebView(path: "/finance", isEmbedded: true)
-                    .navigationTitle("Fams & finance")
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showFinance = false } } }
-            }
-        }
+
     }
 }
 
@@ -138,15 +116,15 @@ private struct ParentTodayStack: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
+            ActionCard()
+            FamsHomeCard()
             if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
-                ActionCard()
                 ScheduleCard()
                 HomeworkDueCard(onOpenHomework: onOpenHomework)
             } else {
-                VStack(alignment: .leading, spacing: Space.lg) {
-                    ActionCard()
-                    ScheduleCard()
-                    HomeworkDueCard(onOpenHomework: onOpenHomework)
+                HStack(alignment: .top, spacing: Space.lg) {
+                    ScheduleCard().frame(maxWidth: .infinity)
+                    HomeworkDueCard(onOpenHomework: onOpenHomework).frame(maxWidth: .infinity)
                 }
             }
             PathOddsFamilySummaryCard()
@@ -617,12 +595,13 @@ private struct KidTodayStack: View {
         VStack(alignment: .leading, spacing: Space.lg) {
             if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
                 StudyStartCard()
+                FamsHomeCard()
                 ActionCard()
                 if let nextUp { KidNextUpCallout(item: nextUp) }
                 KidDayCard(items: todayItems)
             } else {
                 HStack(alignment: .top, spacing: Space.lg) {
-                    StudyStartCard()
+                    VStack(spacing: Space.lg) { StudyStartCard(); FamsHomeCard() }
                         .frame(maxWidth: .infinity, alignment: .top)
                     VStack(alignment: .leading, spacing: Space.lg) {
                         ActionCard()

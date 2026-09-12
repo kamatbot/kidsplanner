@@ -52,8 +52,13 @@ enum Daily5Reporter {
                 // Deduplicate pending work only: another device can change progress.
                 if queueScope == identity { clearFinished(event, part: part, in: &lastQueued) }
             }
-            try? await APIClient.shared.reportDaily5(date: scope.date, part: part,
-                status: status, retract: retract, cookie: scope.cookie)
+            do {
+                try await APIClient.shared.reportDaily5(date: scope.date, part: part,
+                    status: status, retract: retract, cookie: scope.cookie)
+                if capture(store)?.userID == scope.userID {
+                    NotificationCenter.default.post(name: .famsRewardsChanged, object: nil)
+                }
+            } catch { /* Activity remains usable offline; the next refresh retries the balance. */ }
         }
     }
 }

@@ -60,6 +60,24 @@ final class APIClient: FamilyActionService {
         return URLSession(configuration: c)
     }()
 
+    // MARK: Fams — server owns amounts, deduplication and approval rules.
+    func famsWallet(kidId: String) async throws -> FamsWallet {
+        try await request("/api/fams?kidId=\(pathComponent(kidId))")
+    }
+    func famsLessons(kidId: String) async throws -> [FamsLesson] {
+        let result: FamsLessonsResponse = try await request("/api/fams/lessons?kidId=\(pathComponent(kidId))")
+        return result.lessons
+    }
+    func answerFamsLesson(kidId: String, lessonId: String, answerId: String) async throws -> FamsAnswer {
+        try await request("/api/fams/lessons/\(pathComponent(lessonId))/complete", method: "POST", body: ["kidId": kidId, "answerId": answerId])
+    }
+    func submitFamsChore(kidId: String, choreId: String) async throws {
+        let _: FamsMutation = try await request("/api/fams/chores/\(pathComponent(choreId))/submit", method: "POST", body: ["kidId": kidId])
+    }
+    func saveFamsGoal(kidId: String, name: String, target: Int) async throws {
+        let _: FamsMutation = try await request("/api/fams/goals", method: "POST", body: ["kidId": kidId, "name": name, "target": target])
+    }
+
     // MARK: Family
 
     func families() async throws -> [Family] {

@@ -22,23 +22,36 @@ struct FamETCApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if onboarded {
-                    RootView()
-                        .environment(store)
+                #if DEBUG
+                if ProcessInfo.processInfo.environment["FAM_PREVIEW_FAMS"] == "1" {
+                    FamsPreviewRoot()
                 } else {
-                    OnboardingView { _ in
-                        onboarded = true
-                    }
+                    normalContent
                 }
+                #else
+                normalContent
+                #endif
             }
-            // First-party analytics: one app-open event per launch (anonymous,
-            // best-effort). Native signups are tracked server-side at /api/...signup.
-            .task { APIClient.shared.track("app_open") }
+            .task {
+                #if DEBUG
+                if ProcessInfo.processInfo.environment["FAM_PREVIEW_FAMS"] == "1" { return }
+                #endif
+                APIClient.shared.track("app_open")
+            }
             .onChange(of: store.me?.id) { _, _ in
                 ParentWatchCompanion.shared.updateIdentity(store.me)
             }
         }
     }
+
+    @ViewBuilder private var normalContent: some View {
+        if onboarded {
+            RootView().environment(store)
+        } else {
+            OnboardingView { _ in onboarded = true }
+        }
+    }
+
 }
 
 #if DEBUG

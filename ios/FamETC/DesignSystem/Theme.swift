@@ -148,8 +148,8 @@ enum Typography {
     static let body       = Theme.font(15, relativeTo: .body)
     static let label      = Theme.font(12.5, relativeTo: .subheadline)
     static let caption    = Theme.font(11.5, relativeTo: .caption)
-    static let kpiNumber  = Theme.mono(34, weight: .bold, relativeTo: .largeTitle)
-    static let statNumber = Theme.mono(20, weight: .bold, relativeTo: .title3)
+    static let kpiNumber  = Theme.font(34, weight: .bold, relativeTo: .largeTitle)
+    static let statNumber = Theme.font(20, weight: .bold, relativeTo: .title3)
     static let monoSmall  = Theme.mono(11, weight: .medium, relativeTo: .caption)
 }
 
@@ -245,7 +245,7 @@ struct KidProfileAvatar: View {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(String(kid.name.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .font(Theme.font(size * 0.4, weight: .semibold))
                     .foregroundStyle(Palette.text)
             }
         }

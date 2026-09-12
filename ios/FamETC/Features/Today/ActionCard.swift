@@ -248,7 +248,7 @@ private struct ActionRow: View {
                     Text(assigneeLabel)
                         .foregroundStyle(Palette.textSecond)
                 }
-                .font(Typography.mono(10.5))
+                .font(Typography.caption)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             }

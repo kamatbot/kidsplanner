@@ -56,29 +56,24 @@ struct AnimatedNumber: View {
 
 // MARK: - KPI label
 
-/// Small uppercase mono caption above a KPI value (mirrors web `KPI_LABEL`).
+/// Compact brand caption above a KPI value.
 struct KPILabel: View {
     let text: String
     var body: some View {
-        Text(text.uppercased())
-            .font(Typography.monoSmall)
-            .tracking(0.7)
+        Text(text)
+            .font(Typography.caption.weight(.medium))
             .foregroundStyle(Palette.textSecond)
     }
 }
 
 // MARK: - Micro label
 
-/// 11px uppercase, letter-spaced JetBrains Mono caption — the Horizon section
-/// header style used above cards/lists throughout the redesign (e.g. "TODAY'S
-/// SCHEDULE", "HOMEWORK DUE"). Same visual recipe as `KPILabel`; kept as a
-/// separate, more general name for section headers vs. KPI captions.
+/// Compact section labels share the same typeface as the rest of the app.
 struct MicroLabel: View {
     let text: String
     var body: some View {
-        Text(text.uppercased())
-            .font(Typography.monoSmall)
-            .tracking(0.9)
+        Text(text)
+            .font(Typography.caption.weight(.medium))
             .foregroundStyle(Palette.textSecond)
     }
 }
