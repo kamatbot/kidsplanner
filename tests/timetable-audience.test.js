@@ -196,7 +196,8 @@ test("calendar reminders exclude timetable lessons and parent homework remains f
   assert.match(source, /function renderHomeworkHub\(\)[\s\S]*?if \(activeKidId\) items = items\.filter/);
 
   const appStore = fs.readFileSync(path.join(__dirname, "..", "ios/FamETC/Domain/AppStore.swift"), "utf8");
-  assert.match(appStore, /let freshHomework = try await api\.homework\(\)/);
+  assert.match(appStore, /async let homeworkRequest = api\.homework\(\)/);
+  assert.match(appStore, /let freshHomework = try await homeworkRequest/);
   assert.match(appStore, /if loadGeneration == homeworkLoadGeneration,[\s\S]*?homework = freshHomework/);
   assert.match(appStore, /NotificationScheduler\.reschedule\(events: visibleFamilyEvents, homework: homework/);
 });
