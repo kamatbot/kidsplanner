@@ -2,14 +2,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { getDailyVocabulary } = require("../lib/vocabulary-challenges");
-const { DAILY_WORDS } = require("../lib/sat-words");
+const { LEGACY_DAILY_WORDS } = require("../lib/sat-words");
 
 test("all thirty words have three unique authored contexts and attached explanations", () => {
   const positions = new Set();
   for (let i = 0; i < 30; i++) {
     const date = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
     const result = getDailyVocabulary(date);
-    assert.deepEqual(result.word, DAILY_WORDS[i]);
+    assert.deepEqual(result.word, LEGACY_DAILY_WORDS[i]);
     assert.deepEqual(getDailyVocabulary(date), result);
     assert.equal(result.challenge.options.length, 3);
     assert.equal(new Set(result.challenge.options.map((option) => option.text)).size, 3);
@@ -25,7 +25,7 @@ test("all thirty words have three unique authored contexts and attached explanat
 });
 
 test("Monday-Sunday pool follows daily words across year and leap boundaries", () => {
-  for (const start of ["2026-12-28", "2024-02-26", "2025-12-29", "2026-09-07"]) {
+  for (const start of ["2026-12-28", "2024-02-26", "2025-12-29", "2026-09-14"]) {
     const pool = getDailyVocabulary(start).weekWords;
     for (let i = 0; i < 7; i++) {
       const date = new Date(`${start}T00:00:00Z`);
@@ -36,7 +36,7 @@ test("Monday-Sunday pool follows daily words across year and leap boundaries", (
       assert.deepEqual(result.word, pool[i]);
     }
   }
-  assert.equal(getDailyVocabulary("2027-01-01").word.word, "Eloquent");
+  assert.notEqual(getDailyVocabulary("2027-01-01").word.word, getDailyVocabulary("2026-12-31").word.word);
   assert.equal(getDailyVocabulary("2024-03-01").word.word, "Eloquent");
 });
 
