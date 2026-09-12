@@ -9,6 +9,21 @@ Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
+## What changed in v1.5
+
+Parent-approved calendar/reminder creates now complete without another chat
+turn, with persisted-grant recovery and read-back verification (details below).
+The Action Capability skill includes an executable, stdlib-only reservation
+adapter: private HAR → matching read-only GET → native sanitized skill → fresh
+session replay. Relearning patches the native recipe after verification; it
+does not overwrite custom instructions or bypass staged skill writes.
+
+Use the bundled [Action Capability skill](skills/action-capability/SKILL.md)
+for capture, recipe, interpreter and secret-input requirements. Focused fixtures
+and an isolated real Hermes skill-manager create/read/patch smoke cover the
+adapter; a real provider learn/reuse still requires a parent-selected service,
+permitted request path and interactive sign-in. No live reservation is claimed.
+
 ## What changed in v1.4
 
 The bridge now ships a Hermes v0.21 Action Capability skill. External-service

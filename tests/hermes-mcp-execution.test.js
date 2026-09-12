@@ -54,6 +54,33 @@ function issueActor(auth, actor, messageId) {
   });
 }
 
+test("reservation completion uses the real MCP child contract without write authority", () => {
+  const parent = store.createUser("mcp-lookup-parent@example.com", "Lookup Parent");
+  const fam = family.createFamily(parent.id, "Lookup Family");
+  const auth = hermes.familyForToken(hermes.connectFamily(fam.id).token);
+  const actorToken = issueActor(auth, { type: "parent", userId: parent.id, principalId: parent.id });
+  const created = invoke(auth, "fametc_cases_create", { actorToken, title: "Find reservation", goal: "Read itinerary" });
+  const caseId = created.structuredContent.id;
+  for (const state of ["planning", "researching"]) {
+    assert.equal(invoke(auth, "fametc_cases_transition", { actorToken, caseId, state }).isError, false);
+  }
+  const lookup = invoke(auth, "fametc_cases_get", { actorToken, caseId, includeChildren: true }).structuredContent;
+  assert.deepEqual(lookup.approvals, []);
+  assert.deepEqual(lookup.steps, []);
+  assert.equal(invoke(auth, "fametc_cases_transition", { actorToken, caseId, state: "completed" }).isError, true);
+  assert.equal(invoke(auth, "fametc_cases_add_step", {
+    actorToken, caseId, kind: "capability.workflow.learned", state: "completed",
+    output: { verified: true, effect: "read-only", intent: "reservation-lookup" },
+    idempotencyKey: "verified-read-only",
+  }).isError, false);
+  assert.equal(invoke(auth, "fametc_cases_transition", { actorToken, caseId, state: "completed" }).structuredContent.state, "completed");
+  assert.deepEqual(operatorStore.listApprovals(fam.id, caseId), []);
+  const another = invoke(auth, "fametc_cases_create", { actorToken, title: "Existing proposal", goal: "No read completion" }).structuredContent.id;
+  operatorStore.requestApproval(fam.id, another, { actionType: "calendar.create", action: { title: "Rejected" }, state: "rejected" });
+  assert.equal(invoke(auth, "fametc_cases_get", { actorToken, caseId: another }).structuredContent.approvals, undefined);
+  assert.equal(invoke(auth, "fametc_cases_get", { actorToken, caseId: another, includeChildren: true }).structuredContent.approvals[0].state, "rejected");
+});
+
 test("MCP requires explicit parent approval before running the exact stored calendar action", (t) => {
   try {
     require("better-sqlite3");

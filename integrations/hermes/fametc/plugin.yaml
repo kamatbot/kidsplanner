@@ -1,7 +1,7 @@
 name: fametc-platform
 label: FamETC
 kind: platform
-version: 1.4.0
+version: 1.5.0
 description: >
   Family-scoped FamETC REST adapter for Hermes Agent with signed family-room
   authority, a Hermes v0.21 Action Capability skill, read-only ambient Trip

@@ -1,7 +1,7 @@
 ---
 name: action-capability
 description: Use when FamETC must act on an external service.
-version: 0.1.0
+version: 0.2.0
 author: FamETC
 license: MIT
 platforms: [macos, linux, windows]
@@ -109,6 +109,78 @@ known expiry/drift behavior and fallback path. It must not generalize a lookup
 endpoint into a write capability.
 
 ## Reuse and recovery
+
+### Executable reservation adapter
+
+Use the bundled `scripts/reservation_workflow.py` for the learned path. It
+reuses Hermes HAR capture and `skill_manage`; do not create a parallel registry,
+credential store, or provider integration service. This prototype supports one
+reviewed HTTPS GET returning JSON itinerary segments, not arbitrary API calls.
+A GET method alone does not establish read-only effect: review the provider's
+documented/observed semantics and permission to replay before running it.
+
+Author a non-secret recipe with these exact keys (the host/path below are
+illustrative, not a working provider endpoint):
+
+```json
+{
+  "service": "airline",
+  "origin": "https://reservations.example.test",
+  "path": "/reservations/{booking}",
+  "query": ["surname"],
+  "headers": ["cookie"],
+  "segments": "/segments",
+  "fields": {"origin": "/from", "destination": "/to", "departure": "/at"},
+  "method": "GET",
+  "effect": "read-only"
+}
+```
+
+Paths must replace **every** account-specific value with a named placeholder;
+query/header lists contain names only. Static path segments use the runner's
+small reviewed route vocabulary; unsupported literals require review, not a
+relaxed validator. JSON pointers select minimum itinerary
+fields (origin/destination airport codes, timezone-qualified departure/arrival,
+optional flight number). Never include names, booking codes or whole responses.
+Do not use the upstream HAR summarizer that prints captured headers/samples.
+Capture with a private directory and `umask 077`; use a dedicated mode-0600 HAR
+that the adapter is explicitly allowed to consume/delete. It refuses symlinks
+and non-private files. On capture failure, delete the task-owned raw HAR yourself.
+
+Run using the installed Hermes venv and import root (substitute the verified
+installation directory if different):
+
+```sh
+PYTHONPATH="$HOME/.hermes/hermes-agent" \
+  "$HOME/.hermes/hermes-agent/venv/bin/python" \
+  "$HOME/.hermes/plugins/fametc/skills/action-capability/scripts/reservation_workflow.py" \
+  learn --recipe /private/task/recipe.json --har /private/task/capture.har
+```
+
+Supply JSON on **stdin**, never literal values in logged terminal commands:
+`actorToken` (fresh parent message), `caseId` (new lookup-only family case).
+Learning extracts provider session values from the private HAR in memory.
+The adapter consumes the capture, replays only its single matching request,
+compares projected results, then asks native `skill_manage` to create
+`fametc-action-<service>-reservation-lookup`. Refused or staged saves are **not**
+successful learning. Relearning first reads the existing native skill without
+template execution, verifies its service/origin, and patches only its recipe
+through the native write gate; custom instructions remain intact. Changed origins
+or incompatible skill content require review. Do not bypass the skill-write gate.
+
+For reuse, load that skill and run the same interpreter/import-root with
+`replay --skill <saved SKILL.md>`. Stdin also supplies `inputs` (placeholder/query
+values) and `headers` (fresh session headers). Keep these ephemeral; a browser
+vault may fill login fields but is **not** an API-cookie exporter. If no safe
+runtime-input channel exists, stay in the supervised browser and report that
+limitation. Never print or persist runtime input to bridge that gap.
+
+Verification expires after seven days. Redirects/challenges, auth expiry,
+nonpublic destinations, schema drift and capture mismatches stop replay. Success
+records only sanitized evidence and completes the read-only case. This does not
+issue an approval or execution grant, and cases with any approval history cannot
+use the read-only completion path. Return the projected itinerary through the
+normal family reply; never claim the synthetic fixture is a real booking.
 
 Load the matching learned skill and follow its verified script before opening
 the browser. Supply secrets only through the runtime mechanism documented by

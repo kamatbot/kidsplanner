@@ -2,6 +2,22 @@
 
 ## Foundation status
 
+### September 12 completion-and-reuse increment
+
+- Implemented delayed approval continuation for `calendar.create` and
+  `action.create`, with exact-action parent authority, existing M5 gates,
+  persisted-grant restart recovery and read-back verification. Uncertain writes
+  are not replayed; update/trip continuation remains outside this increment.
+- Implemented a read-only reservation Action Adapter using Hermes's native HAR
+  capture and skill manager. Private capture → verified GET → sanitized skill →
+  fresh-session replay has focused fixture coverage, including denied/staged
+  saves, expiry and schema drift. No new credential store or capability registry.
+- **Live proof pending:** a parent-selected provider, permitted request path and
+  interactive sign-in are still required. No United or other real reservation
+  lookup/reuse is claimed by the fixture tests. External writes remain prohibited.
+- Next acceptance: perform that supervised learn/reuse, then collect the existing
+  M4/M5 reviewed school-message-to-calendar evidence before expanding beta.
+
 Weeks 1–6 are complete. The Foundation Closeout unified the context contract, made action risk deterministic, added a formal threat model and adversarial regression suite, established the first Operator benchmark, and exposed parent-facing case/activity primitives.
 
 The Operator foundation remains aligned with Odds Core identity work in `kamatbot/odds` branch `feature/oddscore-m2-identity-foundation`:

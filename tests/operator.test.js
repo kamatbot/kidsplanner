@@ -175,3 +175,44 @@ test("kid case access is limited to the initiating kid while parents retain fami
   assert.equal(operator.getCase(fam.id, created.id, { actor: parentActor, roomId: "family" }).id, created.id);
   assert.deepEqual(operator.listCases(fam.id, { actor: firstActor, roomId: "family" }).map((item) => item.id), [created.id]);
 });
+
+test("read-only lookup completes only with parent verification and no write history", () => {
+  const operatorStore = require("../lib/operator-store");
+  const { adult, fam } = setupFamily("LookupCompletion");
+  const actor = { type: "parent", userId: adult.id };
+  const options = { actor, roomId: "family" };
+  const evidence = {
+    kind: "capability.workflow.reused", state: "completed",
+    output: { verified: true, effect: "read-only", intent: "reservation-lookup" },
+  };
+  function research(roomId = "family") {
+    const item = operator.createCase(fam.id, { actor, roomId, title: "Find reservation", goal: "Read itinerary" });
+    operator.transitionCase(fam.id, item.id, "planning", { actor });
+    operator.transitionCase(fam.id, item.id, "researching", { actor });
+    return item.id;
+  }
+  function refused(id, custom = options) {
+    assert.throws(() => operator.transitionCase(fam.id, id, "completed", custom),
+      (error) => error.code === "OPERATOR_INVALID_TRANSITION");
+    assert.equal(operatorStore.getCase(fam.id, id).state, "researching");
+  }
+  const id = research();
+  refused(id);
+  operator.addStep(fam.id, id, { ...options, ...evidence });
+  refused(id, { actor: { type: "agent", principalId: "hermes" } });
+  assert.equal(operator.transitionCase(fam.id, id, "completed", options).state, "completed");
+
+  for (const state of ["pending", "approved", "rejected"]) {
+    const withWrite = research();
+    operatorStore.requestApproval(fam.id, withWrite, { state, actionType: "calendar.create", action: { title: "Not a read" } });
+    operator.addStep(fam.id, withWrite, { ...options, ...evidence });
+    refused(withWrite);
+  }
+  const drift = research();
+  operator.addStep(fam.id, drift, { ...options, ...evidence });
+  operator.addStep(fam.id, drift, { ...options, kind: "capability.workflow.blocked", state: "blocked" });
+  refused(drift);
+  const wrongIntent = research();
+  operator.addStep(fam.id, wrongIntent, { ...options, ...evidence, output: { ...evidence.output, intent: "buy-ticket" } });
+  refused(wrongIntent);
+});
