@@ -307,11 +307,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           </div>
 
           <div class="today-brief-support">
-            <section class="card" aria-labelledby="today-fams-title">
-              <div class="today-card-header"><h2 id="today-fams-title">Your fams, your future</h2></div>
-              <p>Earn fams as you learn, build a savings goal, and explore how money grows.</p>
-              <p class="micro-label">1 fam = 1 THB · Regular rewards up to 300 / week</p>
-              <a class="btn-link" href="/finance">Open fams &amp; finance →</a>
+            <section class="card today-fams-card" aria-labelledby="today-fams-title">
+              <div class="today-card-header"><h2 id="today-fams-title">Fams</h2><span class="today-fams-value">1 fam = ฿1</span></div>
+              <div id="today-fams-body" aria-live="polite"><p>Loading rewards…</p></div>
             </section>
             <!-- Meals "Tonight" card (Meals §7 integration) — best-effort: a
                  fetch failure here must never break Today, see famRenderTodayMeals()
@@ -332,16 +330,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               <div id="today-homework-list"></div>
             </section>
 
-            <!-- School Stats (house points / attendance / canteen) — parent-only,
-                 populated by the Chrome extension's Moodle home-dashboard scrape.
-                 Hidden entirely until there's data (see renderSchoolStatsWidget). -->
-            <section class="widget card widget-school-stats today-compact-card" id="widget-school-stats" style="display:none">
-              <div class="widget-header">
-                <span class="widget-icon">🏫</span>
-                <span class="widget-label">School</span>
-              </div>
-              <div id="school-stats-rows"></div>
-            </section>
+
 
             <section class="card">
               <div class="today-card-header">

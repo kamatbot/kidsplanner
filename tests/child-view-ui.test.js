@@ -22,7 +22,7 @@ test('parent navigation scopes selected child and never renders for kid sessions
 test('synced Daily 5 without completions shows not done; failed sources identify recovery', async () => {
   const { nodes, view } = setup({ getGoals: async () => { throw new Error('offline'); } }); await view.render('one');
   const html = nodes['tab-child'].innerHTML;
-  assert.match(html, /0 of 5 done/); assert.equal((html.match(/>Not done</g) || []).length, 5); assert.match(html, /Habits unavailable/); assert.match(html, /No child-specific school snapshot/);
+  assert.match(html, /0 of 5 done/); assert.equal((html.match(/>Not done</g) || []).length, 5); assert.match(html, /Habits unavailable/); assert.match(html, /id="cv-fams"/);
   assert.doesNotMatch(html, /0 completed|>0<|onclick=|mark.*done/i); assert.match(html, /Set home plan/);
 });
 test('habit counts use exactly the seven displayed local dates; Daily 5 ignores invalid timestamps', async () => {
@@ -30,17 +30,11 @@ test('habit counts use exactly the seven displayed local dates; Daily 5 ignores 
   await view.render('one'); const html = nodes['tab-child'].innerHTML;
   assert.match(html, /2 of 7 days recorded/); assert.match(html, /1 of 5 done/); assert.equal((html.match(/>Done</g) || []).length, 1); assert.equal((html.match(/>Not done</g) || []).length, 4); assert.match(html, /2026-09-02: checked in/); assert.doesNotMatch(html, /2026-09-01: checked in/);
 });
-test('house points use the newest valid extension import for the selected child only', async () => {
-  const { context, nodes, view } = setup({ getChildInsights: async id => ({ kidId: id, date: '2026-09-08', schoolStats: { housePoints: 12, importedAt: '2026-09-08T08:00:00Z' } }) });
-  const cache = { one: { housePoints: 0, updatedAt: Date.parse('2026-09-08T09:00:00Z') }, two: { housePoints: 999, updatedAt: Date.parse('2026-09-08T10:00:00Z') } };
-  context.famGetSchoolStats = () => cache;
-  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">0</); assert.doesNotMatch(nodes['tab-child'].innerHTML, /999/);
-  cache.one.updatedAt = Date.parse('2026-09-08T07:00:00Z');
-  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">12</);
-  cache.one.updatedAt = 'invalid';
-  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">12</);
-  delete cache.one;
-  await view.render('one'); assert.match(nodes['tab-child'].innerHTML, /cv-point-value">12</);
+test('school points live within Fams rather than a separate progress widget', async () => {
+  const { nodes, view } = setup({ getChildInsights: async id => ({ kidId: id, date: '2026-09-08', schoolStats: { housePoints: 12, importedAt: '2026-09-08T08:00:00Z' } }) });
+  await view.render('one');
+  assert.match(nodes['tab-child'].innerHTML, /id="cv-fams"/);
+  assert.doesNotMatch(nodes['tab-child'].innerHTML, /cv-point-value|Manage fams|href="\/finance/);
 });
 test('desktop navigation never switches to Today-only or intermediate-width compression', () => {
   const read = name => fs.readFileSync(require('node:path').join(__dirname, '../public/css', name), 'utf8');
@@ -87,4 +81,22 @@ test('failed insight load cannot expose a blank editor that replaces an existing
   assert.doesNotMatch(nodes['tab-child'].innerHTML, />Not done</);
   nodes['tab-child'].onclick({ target: { closest: () => ({ dataset: { cvAction: 'edit-plan' } }) } });
   assert.doesNotMatch(nodes['tab-child'].innerHTML, /class="cv-plan-form"/);
+});
+
+test('Fams renders the selected child school conversion and parent controls safely', async () => {
+  const { context, nodes, view } = setup();
+  context.fetch = async url => ({ ok: true, json: async () => ({ kidId: new URL(url, 'https://example.test').searchParams.get('kidId'), isParent: true, balance: 225, weekly: {earned: 12,limit:300}, schoolPoints:{current:4.5,resetPending:false},goal:{name:'<Private goal>',target:500},chores:[{id:'c1',title:'<Chore>',amount:20,status:'submitted'}],transactions:[] }) });
+  await view.render('one');
+  assert.match(nodes['tab-child'].innerHTML,/4.5 points × 50 = 225 fams/);
+  assert.match(nodes['tab-child'].innerHTML,/&lt;Private goal>/);
+  assert.match(nodes['tab-child'].innerHTML,/data-cv-action="fams-approve"/);
+  assert.match(nodes['tab-child'].innerHTML,/data-cv-fams-form="chores"/);
+});
+test('late Fams responses cannot overwrite another child', async () => {
+  const { context, nodes, view } = setup(); let resolve;
+  context.fetch = url => url.endsWith('one') ? new Promise(r=>{resolve=r;}) : Promise.resolve({ok:false,json:async()=>({error:'offline'})});
+  const old=view.render('one'); await view.render('two');
+  resolve({ok:true,json:async()=>({kidId:'one',isParent:true,balance:999999})});await old;
+  assert.match(nodes['tab-child'].innerHTML,/<h1>Two<\/h1>/);
+  assert.doesNotMatch(nodes['tab-child'].innerHTML,/999999/);
 });

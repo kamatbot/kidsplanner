@@ -144,3 +144,31 @@
 @media (prefers-reduced-motion: reduce) {
   #tab-today *, #tab-today *::before, #tab-today *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* One family of type across the daily brief; figures align without changing face. */
+#tab-today { font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif; }
+#tab-today :where(h1,h2,h3,p,a,button,input,span,time,div) { font-family: inherit !important; }
+#tab-today .micro-label { letter-spacing: .025em; font-size: 12px; text-transform: none; font-weight: 500; }
+#tab-today .today-fams-card { padding: 20px; }
+#tab-today .today-fams-card h2 { font-size: 20px; line-height: 1.2; margin: 0; letter-spacing: -.025em; }
+.today-fams-value { color: var(--text-2); font-size: 12px; }
+#tab-today .today-fams-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text); text-align: left; text-decoration: none; cursor: pointer; }
+.today-fams-copy { display: grid; gap: 5px; flex: 1; min-width: 0; }
+.today-fams-name { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.today-fams-copy strong { font-size: 26px; font-weight: 650; line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+.today-fams-copy small { font-size: 13px; font-weight: 500; letter-spacing: 0; }
+.today-fams-track { height: 6px; background: var(--grid); border-radius: 6px; overflow: hidden; display: block; margin: 3px 0; }
+.today-fams-track > span { height: 100%; display: block; background: var(--accent); border-radius: inherit; }
+.today-fams-note { font-size: 12px; line-height: 1.5; color: var(--text-2); margin: 0; }
+.today-fams-footer { padding-top: 12px; }
+.today-fams-arrow { color: var(--accent); font-size: 20px; }
+.today-fams-coin { width: 58px; height: 58px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); color: var(--accent); border-radius: 50%; flex-shrink: 0; }
+.today-fams-coin svg { width: 40px; height: 40px; }
+#tab-today .today-fams-row:hover { color: var(--accent); }
+#tab-today .today-fams-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Rewards need room for each child's balance, not a tall, compressed text column. */
+#tab-today .today-brief-support { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#tab-today .today-fams-card { grid-column: 1 / -1; }
+#today-fams-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); column-gap: 28px; }
+#today-fams-body > .today-fams-footer { grid-column: 1 / -1; }
+@media (max-width: 600px) { #tab-today .today-brief-support { grid-template-columns: minmax(0, 1fr); } }

@@ -5,6 +5,8 @@
   'use strict';
   let generation = 0;
   let selected = null;
+  const famsPending = new Set();
+  const famsNumber = value => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
   const parts = [['news', 'News'], ['word', 'Word'], ['quote', 'Quote'], ['puzzle', 'Puzzle'], ['bt', 'Brain teaser']];
   const paths = {
     book: '<path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3z"/>',
@@ -48,7 +50,7 @@
     generation++; selected = null;
     for (const id of ['tab-child', 'child-nav']) {
       const el = document.getElementById(id);
-      if (el) { el.innerHTML = ''; el.hidden = true; el.onclick = null; }
+      if (el) { el.innerHTML = ''; el.hidden = true; el.onclick = null; el.onsubmit = null; }
     }
   }
   function activitiesFor(id, date, items) {
@@ -68,13 +70,6 @@
       <div class="cv-footer">${button('all-homework', `View all homework ${icon('arrow')}`)}${button('settings', 'School settings')}</div></section>`;
   }
   function progress(id, date, data, state, sources) {
-    // Existing extension imports are already keyed to this family's child ID.
-    // Read them in place; do not upload or reattribute legacy device records.
-    const local = window.famGetSchoolStats?.()?.[id];
-    const imported = local && Number.isFinite(local.housePoints) && timestamp(local.updatedAt) ? { ...local, importedAt: local.updatedAt } : null;
-    const shared = data && data.schoolStats;
-    const stats = imported && (!shared || !timestamp(shared.importedAt) || new Date(imported.importedAt) > new Date(shared.importedAt)) ? imported : shared;
-    const stamp = stats && timestamp(stats.importedAt);
     const habits = sources.goals.filter(g => g.kidId === id && g.type === 'habit');
     const days = datesEnding(date);
     const observed = data && data.daily5 && data.daily5.date === date ? data.daily5.parts || {} : {};
@@ -82,7 +77,7 @@
     const complete = parts.filter(([key]) => validPart(key)?.status === 'completed').length;
     const latest = parts.map(([key]) => validPart(key)?.updatedAt).filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0];
     return `<section class="cv-panel cv-progress" aria-labelledby="cv-progress-title"><h2 id="cv-progress-title">Making progress</h2>
-      <div class="cv-points"><h3>House points</h3>${stats && Number.isFinite(stats.housePoints) && stamp ? `<strong class="cv-point-value">${e(stats.housePoints)}</strong><p>Latest import · ${e(stamp)}</p>` : `<p>${state === 'loading' ? 'Loading school snapshot…' : 'No child-specific school snapshot available.'}</p>${button('settings', 'Connect school data')}`}</div>
+
       <div class="cv-habits"><h3>Habits <span>(past 7 days: ${e(dateLabel(days[0]))}–${e(dateLabel(date))})</span></h3>${habits.length ? habits.map(g => {
         const known = Array.isArray(g.checks); const checks = new Set(known ? g.checks : []);
         return `<div class="cv-habit"><div><strong>${e(g.title)}</strong><span>${known ? `${days.filter(d => checks.has(d)).length} of 7 days recorded` : 'Check-ins unavailable'}</span></div><div class="cv-days">${days.map(d => `<span class="cv-day" title="${e(dateLabel(d))}: ${known ? checks.has(d) ? 'checked in' : 'no check-in recorded' : 'unknown'}"><span>${e(dateLabel(d, { weekday: 'narrow' }))}</span><i class="${checks.has(d) ? 'is-done' : ''}" aria-label="${e(d)}: ${known ? checks.has(d) ? 'checked in' : 'no check-in recorded' : 'unknown'}"></i></span>`).join('')}</div></div>`;
@@ -95,26 +90,92 @@
     const stops = [{ name: 'School ends', time: plan.schoolEnd, note: 'Parent plan', icon: 'school' }, ...activitiesFor(id, date, sources.activities).map(({ activity, slot }) => ({ name: activity.name, time: slot.start ? `${slot.start}${slot.end ? `–${slot.end}` : ''}` : null, note: activity.location || 'Weekly activity', icon: 'activity' })), { name: 'Pickup', time: plan.pickupTime, note: plan.pickupLabel || 'Parent plan', icon: 'car' }, { name: 'Home', time: plan.homeTime, note: 'Expected · parent plan', icon: 'home' }];
     return `<section class="cv-panel cv-journey" aria-labelledby="cv-journey-title"><div class="cv-section-heading"><div><h2 id="cv-journey-title">Today, after school</h2><p>Your plan for ${e(dateLabel(date))} · not live tracking</p></div>${button('edit-plan', data && data.homePlan ? 'Edit plan' : 'Set home plan', !data ? 'disabled title="Load the current plan before editing"' : '')}</div><ol class="cv-stops">${stops.map(s => `<li><span class="cv-symbol">${icon(s.icon)}</span><h3>${e(s.name)}</h3><strong>${e(s.time || (data ? 'Not set' : 'Unavailable'))}</strong><p>${e(s.note)}</p></li>`).join('')}</ol><div id="cv-plan-editor" hidden></div></section>`;
   }
+  function financeMarkup(finance, state, message = '') {
+    const header = '<h2>Fams &amp; finance</h2>';
+    if (!finance) return `${header}<p role="status">${state === 'loading' ? 'Loading Fams…' : 'Fams couldn’t be loaded. Your other child information is still available.'}</p>${state === 'error' ? button('fams-retry', 'Try Fams again') : ''}`;
+    const goal = finance.goal;
+    const points = finance.schoolPoints.current;
+    return `${header}<p class="cv-fams-status" role="status" aria-live="polite">${e(message)}</p>
+      <div class="cv-fams-overview"><div><p>Available balance</p><strong class="cv-fams-balance">${e(famsNumber(finance.balance))} <span>fams</span></strong><p>1 fam = ฿1</p></div><div><h3>This week’s regular rewards</h3><p>${e(famsNumber(finance.weekly.earned))} of ${e(famsNumber(finance.weekly.limit))} fams</p><progress aria-label="This week’s regular rewards" max="${e(finance.weekly.limit)}" value="${e(Math.min(finance.weekly.earned, finance.weekly.limit))}"></progress><p>Chores and school house points are extra.</p></div><div><h3>School house points</h3><p>${Number.isFinite(points) ? `${e(famsNumber(points))} points × 50 = ${e(famsNumber(points * 50))} fams` : 'No school points imported yet.'}</p><p>New points earn 50 fams each, outside the weekly cap. The balance includes rewards already credited.</p></div></div>
+      <div class="cv-fams-controls"><div><h3>Savings goal</h3><p>${goal ? `${e(goal.name)} · ${e(famsNumber(finance.balance))} of ${e(famsNumber(goal.target))} fams${finance.balance >= goal.target ? ' · Target reached!' : ''}` : 'Choose something worth saving for.'}</p>${goal ? `<progress aria-label="Savings goal progress" max="${e(goal.target)}" value="${e(Math.min(finance.balance, goal.target))}"></progress>` : ''}<details><summary>${goal ? 'Edit savings goal' : 'Set a savings goal'}</summary><form data-cv-fams-form="goals"><label>Goal name<input name="name" maxlength="100" value="${e(goal?.name)}" required></label><label>Target in fams<input name="target" type="number" min="1" max="1000000000" step="1" value="${e(goal?.target)}" required></label><button class="cv-primary" type="submit">Save goal</button></form></details></div>
+      <div><h3>Chores &amp; extra rewards</h3><ul class="cv-fams-list">${finance.chores.length ? finance.chores.map(chore => `<li><div><strong>${e(chore.title)}</strong><p>${e(famsNumber(chore.amount))} fams · ${chore.status === 'submitted' ? 'Ready for approval' : chore.status === 'approved' ? 'Reward approved' : 'Waiting for completion'}</p></div>${chore.status === 'submitted' ? button('fams-approve', 'Approve reward', `data-id="${e(chore.id)}"`) : ''}</li>`).join('') : '<li>No chores assigned yet.</li>'}</ul><details><summary>Assign a chore</summary><form data-cv-fams-form="chores"><label>Chore<input name="title" maxlength="200" required placeholder="Water the plants"></label><label>Reward in fams<input name="amount" type="number" min="1" max="10000" step="1" required></label><button class="cv-primary" type="submit">Assign chore</button></form></details></div></div>
+      ${finance.schoolPoints.resetPending ? `<div class="cv-fams-reset"><p>School points fell below the previous total. Confirm only if the school started a new points period; this allows the new period’s points to earn rewards.</p>${button('fams-reset', 'Confirm school points reset')}</div>` : ''}
+      <details class="cv-fams-history"><summary>Recent rewards</summary><ul class="cv-fams-list">${finance.transactions.length ? finance.transactions.slice(0, 12).map(transaction => `<li><div><strong>${e(transaction.reason)}</strong><p>${e(timestamp(transaction.createdAt) || '')}</p></div><span>${transaction.amount > 0 ? '+' : ''}${e(famsNumber(transaction.amount))} fams</span></li>`).join('') : '<li>No rewards yet. The first reward will appear here.</li>'}</ul></details>`;
+  }
   async function render(id) {
     const kid = child(id); const root = document.getElementById('tab-child');
     if (!kid || !root) { clear(); return; }
     selected = id; const token = ++generation; const account = sessionUser; const familyId = currentFamily.id; const date = isoDate(new Date());
     const current = () => token === generation && sessionUser === account && currentFamily?.id === familyId && !!child(id) && isoDate(new Date()) === date;
     let data = null;
+    let finance = null;
+    let financeState = 'loading';
+    let financeRead = 0;
+    const mutationKey = `${account.id}:${familyId}:${id}`;
     const sources = { homework: [], goals: [], activities: [], errors: [], loading: true };
     function draw(state) {
-      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 5 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section class="cv-panel"><div class="cv-section-heading"><div><h2>Fams &amp; finance</h2><p>Assign chores, approve rewards and follow ${e(kid.name)}’s savings goal.</p></div><a class="btn-link" href="/finance?kidId=${encodeURIComponent(id)}">Manage fams →</a></div></section>${journey(id, date, data, sources)}</div>`;
+      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 5 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
       root.setAttribute('aria-busy', String(state === 'loading'));
     }
     root.onclick = event => {
       const b = event.target.closest('[data-cv-action]'); if (!b || !current()) return;
       const action = b.dataset.cvAction;
+      if (action === 'fams-retry') { refreshFinance(); return; }
+      if (action === 'fams-approve') { mutateFinance(`/chores/${encodeURIComponent(b.dataset.id)}/approve`, {}, 'Reward approved.'); return; }
+      if (action === 'fams-reset') { mutateFinance('/school-reset', {}, 'School points period confirmed.'); return; }
       if (action === 'retry') { render(id); return; }
       if (action === 'homework') { window.openChildHomeworkReview(b.dataset.id); return; }
       if (action === 'edit-plan') { if (data) editPlan(); return; }
       if (action === 'cancel-plan') { document.getElementById('cv-plan-editor').hidden = true; root.querySelector('[data-cv-action="edit-plan"]').focus(); return; }
       if (action === 'all-homework') { activeKidId = id; renderKidSwitcher(); switchNavTab('homework'); return; }
       if (['activities', 'goals', 'settings'].includes(action)) switchNavTab(action);
+    };
+    async function financeRequest(path = '', payload) {
+      if (!current()) throw new Error('Child selection changed.');
+      const response = await fetch(`/api/fams${path}${payload === undefined ? `?kidId=${encodeURIComponent(id)}` : ''}`, {
+        credentials: 'same-origin',
+        ...(payload === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, kidId: id }) })
+      });
+      if (!current()) throw new Error('Child selection changed.');
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Fams couldn’t be updated. Please try again.');
+      if (payload === undefined && (result.kidId !== id || !result.isParent)) throw new Error('Wrong Fams scope.');
+      return result;
+    }
+    async function refreshFinance(message = '') {
+      const request = ++financeRead;
+      const panel = document.getElementById('cv-fams');
+      if (!current() || !panel) return;
+      panel.setAttribute('aria-busy', 'true');
+      try {
+        const result = await financeRequest();
+        if (!current() || request !== financeRead) return;
+        finance = result; financeState = 'ready'; panel.innerHTML = financeMarkup(finance, financeState, message);
+      } catch (_) {
+        if (current() && request === financeRead) { finance = null; financeState = 'error'; panel.innerHTML = financeMarkup(null, 'error'); }
+      } finally { if (current() && request === financeRead) panel.setAttribute('aria-busy', 'false'); }
+    }
+    async function mutateFinance(path, payload, message) {
+      if (!current()) return;
+      const panel = document.getElementById('cv-fams');
+      const output = panel.querySelector('[role="status"]');
+      if (famsPending.has(mutationKey)) { output.textContent = 'A Fams update is still saving. Please wait.'; return; }
+      famsPending.add(mutationKey);
+      const buttons = [...panel.querySelectorAll('button')]; buttons.forEach(b => { b.disabled = true; });
+      output.textContent = 'Saving…';
+      try {
+        await financeRequest(path, payload);
+        if (current()) await refreshFinance(message);
+      } catch (error) { if (current()) output.textContent = error.message; }
+      finally { famsPending.delete(mutationKey); if (current()) buttons.forEach(b => { b.disabled = false; }); }
+    }
+    root.onsubmit = event => {
+      const form = event.target.closest('[data-cv-fams-form]');
+      if (!form) return;
+      event.preventDefault(); if (!current()) return;
+      const kind = form.dataset.cvFamsForm;
+      const payload = kind === 'goals' ? { name: form.elements.name.value, target: Number(form.elements.target.value) } : { title: form.elements.title.value, amount: Number(form.elements.amount.value) };
+      mutateFinance(`/${kind}`, payload, kind === 'goals' ? 'Savings goal saved.' : 'Chore assigned.');
     };
     function editPlan() {
       const editor = document.getElementById('cv-plan-editor'); const plan = data?.homePlan || {};
@@ -131,9 +192,11 @@
     }
     renderNavigation(); draw('loading');
     try {
-      const results = await Promise.allSettled([window.auth.getChildInsights(id, date), window.auth.getHomework({ kidId: id }), window.auth.getGoals({ kidId: id }), window.auth.getActivities({ kidId: id })]);
+      const results = await Promise.allSettled([window.auth.getChildInsights(id, date), window.auth.getHomework({ kidId: id }), window.auth.getGoals({ kidId: id }), window.auth.getActivities({ kidId: id }), financeRequest()]);
       if (!current()) return;
       sources.loading = false;
+      finance = results[4].status === 'fulfilled' ? results[4].value : null;
+      financeState = finance ? 'ready' : 'error';
       ['homework', 'goals', 'activities'].forEach((name, index) => {
         const result = results[index + 1];
         if (result.status === 'fulfilled' && Array.isArray(result.value)) sources[name] = result.value;

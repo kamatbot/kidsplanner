@@ -5020,12 +5020,53 @@ function renderTodayScreen() {
   }
 
   renderTodaySetupCard();
+  renderTodayFams();
   initDaily5Tabs();
   renderTodayActionQueue();
   renderTodaySchedule(todayIso);
   renderTodayHomework(todayIso);
   renderTodayHabitsAndMomentum();
   famRenderTodayMeals(todayIso);
+}
+
+let famsHomeGeneration = 0;
+async function renderTodayFams() {
+  const root = document.getElementById('today-fams-body');
+  if (!root || !sessionUser || !currentFamily) return;
+  const token = ++famsHomeGeneration, account = sessionUser, familyId = currentFamily.id;
+  const current = () => token === famsHomeGeneration && account === sessionUser && familyId === currentFamily?.id;
+  const parent = !isKidSession();
+  const kids = parent ? currentFamily.kids || [] : [{ id: sessionUser.kidId || '' }];
+  const fmt = n => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
+  root.innerHTML = '<p class="today-fams-note">Loading rewards…</p>';
+  if (!kids.length) { root.innerHTML = '<p class="today-fams-note">Add a child in Settings to start earning fams.</p>'; return; }
+  const results = await Promise.allSettled(kids.map(async kid => {
+    const response = await fetch('/api/fams?kidId=' + encodeURIComponent(kid.id), { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('Rewards unavailable');
+    return response.json();
+  }));
+  if (!current()) return;
+  root.replaceChildren();
+  results.forEach((result, index) => {
+    const kid = kids[index];
+    if (result.status !== 'fulfilled') {
+      const retry = document.createElement('button'); retry.className = 'btn-link'; retry.type = 'button';
+      retry.textContent = `${parent ? kid.name + '’s rewards' : 'Rewards'} unavailable · Retry`;
+      retry.onclick = renderTodayFams; root.append(retry); return;
+    }
+    const value = result.value;
+    const pct = Math.min(100, Math.max(0, value.weekly.earned / value.weekly.limit * 100));
+    const row = document.createElement(parent ? 'button' : 'a');
+    row.className = 'today-fams-row' + (parent ? '' : ' today-fams-kid');
+    if (parent) { row.type = 'button'; row.onclick = () => openChildView(kid.id); }
+    else row.href = '/finance';
+    const emblem = parent ? kidAvatarMarkup(kid.id) : '<span class="today-fams-coin" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="2"/><path d="M15 29V11h12M15 19h9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>';
+    row.innerHTML = `${emblem}<span class="today-fams-copy"><span class="today-fams-name">${parent ? esc(kid.name) : 'Your fams'}</span><strong>${fmt(value.balance)} <small>fams</small></strong><span class="today-fams-track" aria-hidden="true"><span style="width:${pct}%"></span></span><span class="today-fams-note">${fmt(value.weekly.earned)} of ${fmt(value.weekly.limit)} earned this week</span></span><span class="today-fams-arrow" aria-hidden="true">→</span>`;
+    root.append(row);
+  });
+  const foot = document.createElement('p'); foot.className = 'today-fams-note today-fams-footer';
+  foot.textContent = parent ? 'Chores, school points & savings · Open a child to manage' : 'Learn, save and grow · Explore your money';
+  root.append(foot);
 }
 
 // Meals "Tonight" card (docs/MEALS-PLAN.md §7 "Today" integration). Best-
@@ -7291,6 +7332,8 @@ async function init() {
   if (['today', 'calendar', 'homework', 'goals', 'activities', 'notes', 'settings'].includes(requestedTab)) {
     switchNavTab(requestedTab);
   }
+  const requestedChild = new URLSearchParams(window.location.search).get('child');
+  if (requestedChild) openChildView(requestedChild);
   startKidRequestPolling(); // parents: surface pending kid sign-in requests
   renderInstallAppControl();
   registerServiceWorker().then(renderNotificationsControl).then(startReminderLoop);

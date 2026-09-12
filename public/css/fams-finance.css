@@ -64,3 +64,9 @@
 .fams-chart-total { stroke: var(--accent); }
 .fams-chart-added { stroke: var(--text-2); stroke-dasharray: 6 5; }
 #fams-root .fams-chart-key { font-size: 13px; }
+
+/* Match the dashboard's type rather than mixing display and monospace faces. */
+#fams-root { font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; }
+#fams-root .fams-balance, #fams-root .fams-balance span:last-child, .fams-amount { font-family: inherit; font-variant-numeric: tabular-nums; }
+.fams-header h1 { font-size: clamp(25px, 3vw, 32px); }
+#fams-root h2 { font-size: 20px; }
