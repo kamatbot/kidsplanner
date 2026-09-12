@@ -209,5 +209,9 @@ test("parent decision API binds the session to the exact approval hash", async (
   assert.equal(approved.statusCode, 200);
   assert.equal(approved.body.approval.state, "approved");
   assert.equal(approved.body.approval.decidedBy, fixture.owner.id);
-  assert.equal(approved.body.execution.state, "ready");
+  assert.equal(approved.body.execution.state, "consumed");
+  assert.equal(approved.body.continuation.state, "completed");
+  assert.equal(operator.getCase(fixture.fam.id, fixture.approval.caseId, {
+    actor: parentActor(fixture.owner), roomId: "family",
+  }).state, "completed");
 });
