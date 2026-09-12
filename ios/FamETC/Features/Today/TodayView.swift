@@ -15,7 +15,7 @@ struct TodayScreen: View {
     }
 
     private var bottomClearance: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .phone ? Layout.tabBarClearance : Space.xl
+        Layout.bottomNavigationClearance > 0 ? Layout.bottomNavigationClearance : Space.xl
     }
 
     private var firstName: String {

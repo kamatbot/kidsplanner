@@ -45,7 +45,7 @@ struct Family: Codable, Identifiable {
 
 /// A structured chat card: family homework/event references are tappable;
 /// trip-* cards are informational timeline updates with category styling.
-struct ChatCard: Codable {
+struct ChatCard: Codable, Equatable {
     let type: String   // "homework" | "event" | "trip-flight" | ...
     let id: String
     var title: String?
@@ -54,7 +54,7 @@ struct ChatCard: Codable {
 /// Media attached to a chat message. GIF fields remain optional for the Giphy
 /// contract; private attachment fields are additive and decode safely on older
 /// cached messages.
-struct ChatMedia: Codable {
+struct ChatMedia: Codable, Equatable {
     let type: String       // "gif" | "attachment"
     var url: String?
     var previewUrl: String?
@@ -67,7 +67,7 @@ struct ChatMedia: Codable {
     var kind: String?
 }
 
-struct ChatMessage: Codable, Identifiable {
+struct ChatMessage: Codable, Identifiable, Equatable {
     let id: String
     let familyId: String
     let senderType: String   // "parent" | "kid"

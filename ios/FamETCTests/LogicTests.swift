@@ -149,17 +149,56 @@ final class LogicTests: XCTestCase {
 
     func testLandscapeMonthGridFitsRowsAboveFloatingTabBar() {
         XCTAssertEqual(
-            MonthCalendarView.compactCellHeight(availableHeight: 560, weekCount: 6),
+            MonthCalendarView.compactCellHeight(
+                availableHeight: 560,
+                weekCount: 6,
+                bottomClearance: Layout.tabBarClearance
+            ),
             62
         )
         XCTAssertEqual(
-            MonthCalendarView.compactCellHeight(availableHeight: 420, weekCount: 6),
+            MonthCalendarView.compactCellHeight(
+                availableHeight: 420,
+                weekCount: 6,
+                bottomClearance: Layout.tabBarClearance
+            ),
             52
         )
         XCTAssertEqual(
-            MonthCalendarView.compactCellHeight(availableHeight: 720, weekCount: 5),
+            MonthCalendarView.compactCellHeight(
+                availableHeight: 720,
+                weekCount: 5,
+                bottomClearance: Layout.tabBarClearance
+            ),
             72
         )
+    }
+
+    func testIPadMonthGridDoesNotReserveAnIPhoneTabBar() {
+        XCTAssertEqual(
+            MonthCalendarView.compactCellHeight(
+                availableHeight: 420,
+                weekCount: 6,
+                bottomClearance: 0
+            ),
+            54
+        )
+    }
+
+    func testAgendaItemsAreGroupedAndSortedOncePerDay() {
+        let homework = [
+            HomeworkItem(id: "late", kidId: nil, title: "Later", subject: nil,
+                         dueDate: "2026-09-14", dueTime: "16:00", status: "todo", effortMin: nil),
+            HomeworkItem(id: "early", kidId: nil, title: "Earlier", subject: nil,
+                         dueDate: "2026-09-14", dueTime: "08:00", status: "todo", effortMin: nil),
+            HomeworkItem(id: "next", kidId: nil, title: "Next day", subject: nil,
+                         dueDate: "2026-09-15", dueTime: nil, status: "todo", effortMin: nil),
+        ]
+
+        let grouped = Agenda.itemsByDay(events: [], homework: homework)
+
+        XCTAssertEqual(grouped["2026-09-14"]?.map(\.title), ["Earlier", "Later"])
+        XCTAssertEqual(grouped["2026-09-15"]?.map(\.title), ["Next day"])
     }
 
     func testKidSessionIgnoresParentAudienceAndKeepsSharedPlusOwnScope() {

@@ -26,7 +26,6 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
 
     @Environment(AppStore.self) private var store
-    @Environment(\.horizontalSizeClass) private var hSize
     @State private var draft = ""
     @State private var keyboardVisible = false
     @State private var showGifPicker = false
@@ -53,7 +52,9 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
     }
 
-    private var baseInset: CGFloat { hSize == .compact ? Layout.tabBarClearance : Space.lg }
+    private var baseInset: CGFloat {
+        Layout.bottomNavigationClearance > 0 ? Layout.bottomNavigationClearance : Space.lg
+    }
     private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
     private var isFamilyRoom: Bool { roomId == familyRoomId }
     private var currentMessages: [ChatMessage] { store.messagesByRoom[roomId] ?? [] }
@@ -171,6 +172,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    onImportMealPlan: handleMealPlanImport,
                                    canImportTripItinerary: canImportTripItinerary(m),
                                    onImportTripItinerary: handleTripItineraryImport)
+                        .equatable()
                         .id(m.id)
                 }
             }
@@ -399,6 +401,7 @@ extension ChatScreen where HeaderAccessory == EmptyView {
 struct ChatTabHost: View {
     @Environment(AppStore.self) private var store
     @State private var selectedRoomId = familyRoomId
+    @State private var isResolvingPendingRoom = false
 
     var body: some View {
         ChatScreen(roomId: selectedRoomId, title: selectedRoomTitle) {
@@ -423,10 +426,27 @@ struct ChatTabHost: View {
     }
 
     private func consumePendingRoom() {
-        guard let roomId = store.pendingChatRoomId,
-              store.chatRooms.contains(where: { $0.roomId == roomId }) else { return }
-        selectedRoomId = roomId
-        store.pendingChatRoomId = nil
+        guard let roomId = store.pendingChatRoomId else { return }
+        if store.chatRooms.contains(where: { $0.roomId == roomId }) {
+            selectedRoomId = roomId
+            store.pendingChatRoomId = nil
+            return
+        }
+        guard !isResolvingPendingRoom else { return }
+        isResolvingPendingRoom = true
+        Task {
+            let refreshed = await store.refreshChatRooms()
+            isResolvingPendingRoom = false
+            guard store.pendingChatRoomId == roomId else { return }
+            if store.chatRooms.contains(where: { $0.roomId == roomId }) {
+                selectedRoomId = roomId
+                store.pendingChatRoomId = nil
+            } else if refreshed {
+                // A successful authoritative room list means the invitation is
+                // unavailable; do not replay this stale push on a later launch.
+                store.pendingChatRoomId = nil
+            }
+        }
     }
 
     /// Family is the default whenever it exists. A trip-only guest falls back
@@ -1698,7 +1718,7 @@ private struct ChatAddEventSheet: View {
 
 // MARK: - One message row (fun bubbles + avatar, or a system card)
 
-struct ChatMessageRow: View {
+struct ChatMessageRow: View, Equatable {
     @Environment(AppStore.self) private var store
     let message: ChatMessage
     let isMine: Bool
@@ -1713,6 +1733,16 @@ struct ChatMessageRow: View {
     var onImportMealPlan: (ChatMessage) -> Void = { _ in }
     var canImportTripItinerary: Bool = false
     var onImportTripItinerary: (ChatMessage) -> Void = { _ in }
+
+    static func == (lhs: ChatMessageRow, rhs: ChatMessageRow) -> Bool {
+        lhs.message == rhs.message
+            && lhs.isMine == rhs.isMine
+            && lhs.senderName == rhs.senderName
+            && lhs.canAddToCalendar == rhs.canAddToCalendar
+            && lhs.canAddToShopping == rhs.canAddToShopping
+            && lhs.canImportMealPlan == rhs.canImportMealPlan
+            && lhs.canImportTripItinerary == rhs.canImportTripItinerary
+    }
 
     private var senderKid: Kid? {
         message.senderType == "kid" ? store.kids.first { $0.id == message.senderId } : nil
@@ -1852,7 +1882,7 @@ struct ChatMessageRow: View {
                     }
                 }
         } else if let media = message.media, media.type == "gif",
-                  let url = URL(string: media.url ?? media.previewUrl ?? "") {
+                  let url = URL(string: media.previewUrl ?? media.url ?? "") {
             AnimatedGIFView(url: url)
                 .frame(maxWidth: 240, maxHeight: 240)
                 .background(Palette.panel)
@@ -1940,11 +1970,23 @@ struct ChatMessageRow: View {
 }
 
 enum ChatLinkText {
+    private final class CachedAttributedText {
+        let value: AttributedString
+        init(_ value: AttributedString) { self.value = value }
+    }
+
+    private static let cache: NSCache<NSString, CachedAttributedText> = {
+        let cache = NSCache<NSString, CachedAttributedText>()
+        cache.countLimit = 300
+        return cache
+    }()
     private static let detector = try? NSDataDetector(
         types: NSTextCheckingResult.CheckingType.link.rawValue
     )
 
     static func attributed(_ text: String) -> AttributedString {
+        let key = text as NSString
+        if let cached = cache.object(forKey: key) { return cached.value }
         var output = AttributedString(text)
         guard let detector else { return output }
 
@@ -1961,6 +2003,7 @@ enum ChatLinkText {
             output[lower..<upper].link = url
             output[lower..<upper].underlineStyle = .single
         }
+        cache.setObject(CachedAttributedText(output), forKey: key)
         return output
     }
 }

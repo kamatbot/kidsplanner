@@ -20,26 +20,29 @@ struct WeekCalendarView: View {
     private var hourHeight: CGFloat { compactLandscape ? 44 : 56 }
     private var timelineHeight: CGFloat { 24 * hourHeight + 44 }
     private var days: [Date] { WeekCalendarMath.weekDates(startingAt: weekStart) }
-    private var maxAllDayItemCount: Int {
-        days.map { items(for: $0).filter { !$0.isTimed }.count }.max() ?? 0
-    }
-    private var hasAllDayItems: Bool { maxAllDayItemCount > 0 }
-    private var allDayContentHeight: CGFloat {
-        guard hasAllDayItems else { return 0 }
-        let itemHeight = CGFloat(maxAllDayItemCount * 44)
-        let spacing = CGFloat(max(0, maxAllDayItemCount - 1) * 3)
-        return itemHeight + spacing + 8
-    }
-    private var weekItems: [WeekCalendarItem] {
-        WeekCalendarData.items(events: events, familyEvents: familyEvents, homework: homework)
-    }
 
     var body: some View {
+        let visibleDays = days
+        let itemsByDay = WeekCalendarData.itemsByDay(
+            events: events,
+            familyEvents: familyEvents,
+            homework: homework
+        )
+        let maxAllDayItemCount = visibleDays
+            .map { itemsByDay[DateFmt.ymd.string(from: $0), default: []].filter { !$0.isTimed }.count }
+            .max() ?? 0
+        let allDayContentHeight = Self.allDayContentHeight(maxItemCount: maxAllDayItemCount)
+
         GeometryReader { proxy in
             VStack(spacing: compactLandscape ? Space.xs : Space.sm) {
                 header
-                allDayBand
-                timeline(width: proxy.size.width)
+                allDayBand(
+                    days: visibleDays,
+                    itemsByDay: itemsByDay,
+                    maxAllDayItemCount: maxAllDayItemCount,
+                    contentHeight: allDayContentHeight
+                )
+                timeline(width: proxy.size.width, days: visibleDays, itemsByDay: itemsByDay)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .layoutPriority(1)
@@ -103,7 +106,12 @@ struct WeekCalendarView: View {
             .frame(width: 44, height: 44)
     }
 
-    private var allDayBand: some View {
+    private func allDayBand(
+        days: [Date],
+        itemsByDay: [String: [WeekCalendarItem]],
+        maxAllDayItemCount: Int,
+        contentHeight: CGFloat
+    ) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Color.clear
@@ -116,17 +124,20 @@ struct WeekCalendarView: View {
             .frame(height: 38)
             .background(Palette.panel2)
 
-            if hasAllDayItems {
+            if maxAllDayItemCount > 0 {
                 HStack(alignment: .top, spacing: 0) {
                     Text("ALL-DAY")
                         .font(Typography.mono(9, .bold))
                         .foregroundStyle(Palette.textSecond)
-                        .frame(width: timeAxisWidth, height: allDayContentHeight, alignment: .topLeading)
+                        .frame(width: timeAxisWidth, height: contentHeight, alignment: .topLeading)
                         .padding(.top, 5)
                     ForEach(days, id: \.self) { day in
-                        allDayItems(for: day)
+                        allDayItems(
+                            items: itemsByDay[DateFmt.ymd.string(from: day), default: []],
+                            contentHeight: contentHeight
+                        )
                             .frame(maxWidth: .infinity)
-                            .frame(height: allDayContentHeight)
+                            .frame(height: contentHeight)
                             .padding(.horizontal, 2)
                     }
                 }
@@ -158,11 +169,11 @@ struct WeekCalendarView: View {
     }
 
     @ViewBuilder
-    private func allDayItems(for date: Date) -> some View {
-        let items = items(for: date).filter { !$0.isTimed }
+    private func allDayItems(items dayItems: [WeekCalendarItem], contentHeight: CGFloat) -> some View {
+        let items = dayItems.filter { !$0.isTimed }
         if items.isEmpty {
             Color.clear
-                .frame(maxWidth: .infinity, minHeight: allDayContentHeight)
+                .frame(maxWidth: .infinity, minHeight: contentHeight)
                 .accessibilityHidden(true)
         } else {
             VStack(alignment: .leading, spacing: 3) {
@@ -176,7 +187,11 @@ struct WeekCalendarView: View {
         }
     }
 
-    private func timeline(width: CGFloat) -> some View {
+    private func timeline(
+        width: CGFloat,
+        days: [Date],
+        itemsByDay: [String: [WeekCalendarItem]]
+    ) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 ZStack(alignment: .topLeading) {
@@ -186,7 +201,7 @@ struct WeekCalendarView: View {
                         ForEach(days, id: \.self) { day in
                             WeekTimelineDayColumn(
                                 date: day,
-                                items: items(for: day),
+                                items: itemsByDay[DateFmt.ymd.string(from: day), default: []],
                                 hourHeight: hourHeight,
                                 timelineHeight: timelineHeight,
                                 showKidLabels: showKidLabels,
@@ -211,7 +226,7 @@ struct WeekCalendarView: View {
                     .frame(width: 1, height: timelineHeight, alignment: .top)
                     .allowsHitTesting(false)
                 }
-                .padding(.bottom, Layout.tabBarClearance)
+                .padding(.bottom, Layout.bottomNavigationClearance)
             }
             .scrollIndicators(.visible)
             .onAppear { scrollToInitialHour(proxy) }
@@ -241,9 +256,11 @@ struct WeekCalendarView: View {
         return "\(startText)–\(endText)"
     }
 
-    private func items(for date: Date) -> [WeekCalendarItem] {
-        let key = DateFmt.ymd.string(from: date)
-        return weekItems.filter { $0.dateKey == key }
+    private static func allDayContentHeight(maxItemCount: Int) -> CGFloat {
+        guard maxItemCount > 0 else { return 0 }
+        let itemHeight = CGFloat(maxItemCount * 44)
+        let spacing = CGFloat(max(0, maxItemCount - 1) * 3)
+        return itemHeight + spacing + 8
     }
 
     private func shiftWeek(_ amount: Int) {
@@ -304,20 +321,20 @@ private struct WeekTimelineDayColumn: View {
     let onFamilyEvent: (WeekCalendarItem) -> Void
 
     private var timedItems: [WeekCalendarItem] { items.filter(\.isTimed) }
-    private var placements: [String: WeekEventPlacement] {
-        WeekCalendarMath.placements(for: timedItems.compactMap { item in
+
+    var body: some View {
+        let timedItems = timedItems
+        let placements = WeekCalendarMath.placements(for: timedItems.compactMap { item in
             guard let start = item.startMinute, let end = item.endMinute else { return nil }
             return WeekTimedInterval(id: item.id, startMinute: start, endMinute: end)
         })
-    }
 
-    var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 Palette.panel
                     .contentShape(Rectangle())
                     .overlay(alignment: .top) {
-                        VStack(spacing: 0) {
+                        ZStack(alignment: .top) {
                             ForEach(0...24, id: \.self) { hour in
                                 Rectangle()
                                     .fill(Palette.grid)
@@ -492,6 +509,17 @@ enum WeekCalendarData {
         events.compactMap(calendarItem(from:))
             + familyEvents.flatMap(familyItems(from:))
             + homework.map(homeworkItem(from:))
+    }
+
+    static func itemsByDay(
+        events: [CalendarEvent],
+        familyEvents: [FamilyEvent],
+        homework: [HomeworkItem]
+    ) -> [String: [WeekCalendarItem]] {
+        Dictionary(
+            grouping: items(events: events, familyEvents: familyEvents, homework: homework),
+            by: \WeekCalendarItem.dateKey
+        )
     }
 
     private static func calendarItem(from event: CalendarEvent) -> WeekCalendarItem? {

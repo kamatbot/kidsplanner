@@ -182,7 +182,7 @@ struct GifPickerSheet: View {
                             Haptics.selection()
                             onPick(gif); dismiss()
                         } label: {
-                            AnimatedGIFView(url: URL(string: gif.url.isEmpty ? gif.previewUrl : gif.url))
+                            AnimatedGIFView(url: URL(string: gif.previewUrl.isEmpty ? gif.url : gif.previewUrl))
                                 .frame(height: 110)
                                 .frame(maxWidth: .infinity)
                                 .background(Palette.border)

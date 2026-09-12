@@ -23,15 +23,15 @@ struct MonthCalendarView: View {
     }
     private var weekCount: Int { max(1, gridDays.count / 7) }
 
-    private var monthEventCount: Int {
-        gridDays.compactMap { $0 }
-            .filter { cal.isDate($0, equalTo: monthAnchor, toGranularity: .month) }
-            .reduce(0) { total, date in
-                total + Agenda.items(on: DateFmt.ymd.string(from: date), events: events, familyEvents: familyEvents, homework: homework).count
-            }
-    }
-
     var body: some View {
+        let visibleDays = gridDays
+        let weekCount = max(1, visibleDays.count / 7)
+        let itemsByDay = Agenda.itemsByDay(events: events, familyEvents: familyEvents, homework: homework)
+        let homeworkIDs = Set(homework.map(\.id))
+        let monthEventCount = visibleDays.compactMap { $0 }
+            .filter { cal.isDate($0, equalTo: monthAnchor, toGranularity: .month) }
+            .reduce(0) { $0 + (itemsByDay[DateFmt.ymd.string(from: $1)]?.count ?? 0) }
+
         GeometryReader { proxy in
             VStack(spacing: compactLandscape ? Space.xs : Space.md) {
                 header
@@ -40,20 +40,21 @@ struct MonthCalendarView: View {
                     .frame(height: 16)
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: gridSpacing) {
-                        ForEach(Array(gridDays.enumerated()), id: \.offset) { _, date in
+                        ForEach(Array(visibleDays.enumerated()), id: \.offset) { _, date in
                             if let date {
-                                DayCell(date: date, key: DateFmt.ymd.string(from: date),
-                                        dayNumber: cal.component(.day, from: date),
-                                        events: events, familyEvents: familyEvents, homework: homework,
+                                let key = DateFmt.ymd.string(from: date)
+                                DayCell(date: date, key: key,
+                                        dayNumber: cal.component(.day, from: date), items: itemsByDay[key] ?? [],
+                                        homeworkIDs: homeworkIDs,
                                         showKidLabels: showKidLabels,
                                         maxVisibleItems: compactLandscape ? 1 : 3)
-                                    .frame(height: cellHeight(availableHeight: proxy.size.height))
+                                    .frame(height: cellHeight(availableHeight: proxy.size.height, weekCount: weekCount))
                             } else {
-                                Color.clear.frame(height: cellHeight(availableHeight: proxy.size.height))
+                                Color.clear.frame(height: cellHeight(availableHeight: proxy.size.height, weekCount: weekCount))
                             }
                         }
                     }
-                    .padding(.bottom, compactLandscape || hSize == .compact ? Layout.tabBarClearance : Space.md)
+                    .padding(.bottom, compactLandscape || hSize == .compact ? Layout.bottomNavigationClearance : Space.md)
                 }
                 if !compactLandscape {
                     MicroLabel(text: "\(monthEventCount) item\(monthEventCount == 1 ? "" : "s") this month")
@@ -67,21 +68,23 @@ struct MonthCalendarView: View {
         .refreshable { await store.refreshDashboard() }
     }
 
-    private func cellHeight(availableHeight: CGFloat) -> CGFloat {
+    private func cellHeight(availableHeight: CGFloat, weekCount: Int) -> CGFloat {
         guard compactLandscape else { return hSize == .regular ? 104 : 72 }
         return Self.compactCellHeight(
             availableHeight: availableHeight,
             weekCount: weekCount,
-            gridSpacing: gridSpacing
+            gridSpacing: gridSpacing,
+            bottomClearance: Layout.bottomNavigationClearance
         )
     }
 
     static func compactCellHeight(
         availableHeight: CGFloat,
         weekCount: Int,
-        gridSpacing: CGFloat = Space.xs
+        gridSpacing: CGFloat = Space.xs,
+        bottomClearance: CGFloat = Layout.bottomNavigationClearance
     ) -> CGFloat {
-        let fixedHeight = 44 + 16 + (Space.xs * 2) + (Space.xs * 2) + Layout.tabBarClearance
+        let fixedHeight = 44 + 16 + (Space.xs * 2) + (Space.xs * 2) + bottomClearance
         let rowGaps = CGFloat(max(0, weekCount - 1)) * gridSpacing
         let availableRows = availableHeight - fixedHeight - rowGaps
         return min(72, max(52, floor(availableRows / CGFloat(weekCount))))
@@ -159,15 +162,13 @@ private struct DayCell: View {
     let date: Date
     let key: String
     let dayNumber: Int
-    let events: [CalendarEvent]
-    let familyEvents: [FamilyEvent]
-    let homework: [HomeworkItem]
+    let items: [AgendaItem]
+    let homeworkIDs: Set<String>
     let showKidLabels: Bool
     let maxVisibleItems: Int
     @State private var targeted = false
     @State private var eventDetailRef: DayEventRef?
 
-    private var items: [AgendaItem] { Agenda.items(on: key, events: events, familyEvents: familyEvents, homework: homework) }
     private var isToday: Bool { key == Agenda.todayKey() }
 
     var body: some View {
@@ -196,7 +197,7 @@ private struct DayCell: View {
                 .strokeBorder(isToday ? Palette.accent : Palette.border, lineWidth: isToday ? 2 : 1)
         )
         .dropDestination(for: String.self) { ids, _ in
-            guard store.isParent, let id = ids.first else { return false }
+            guard store.isParent, let id = ids.first, homeworkIDs.contains(id) else { return false }
             Haptics.selection()
             Task { await store.rescheduleHomework(id, to: key) }
             return true

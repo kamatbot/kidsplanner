@@ -89,4 +89,22 @@ final class ChatMergeTests: XCTestCase {
         XCTAssertEqual(store.messages.map(\.text), ["family hello"], "family room untouched by the trip merge")
         XCTAssertEqual(store.messagesByRoom["trip:t1"]?.map(\.text), ["trip hello"])
     }
+
+    func testUnreadCountTreatsBoundedWindowAsNewWhenSeenMessageExpired() {
+        let store = AppStore()
+        store.me = User(id: "me", email: "me@example.com", name: "Me", role: "parent")
+        store.messagesByRoom[familyRoomId] = [
+            ChatMessage(id: "m51", familyId: "f1", senderType: "parent", senderId: "other",
+                        postedByUserId: "other", text: "one", card: nil, media: nil,
+                        createdAt: "2026-01-01T10:01:00.000Z", deleted: false, deletedBy: nil,
+                        flagged: false, flagReason: nil, flaggedBy: nil),
+            ChatMessage(id: "m52", familyId: "f1", senderType: "parent", senderId: "other",
+                        postedByUserId: "other", text: "two", card: nil, media: nil,
+                        createdAt: "2026-01-01T10:02:00.000Z", deleted: false, deletedBy: nil,
+                        flagged: false, flagReason: nil, flaggedBy: nil),
+        ]
+        store.lastSeenChatIdByRoom[familyRoomId] = "m1"
+
+        XCTAssertEqual(store.unreadCount(for: familyRoomId), 2)
+    }
 }
