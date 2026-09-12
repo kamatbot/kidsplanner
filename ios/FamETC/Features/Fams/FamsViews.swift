@@ -95,6 +95,7 @@ struct FamsJourneyScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var model: FamsStore
     @State private var lesson: FamsLesson?
     @State private var showGoal = false
@@ -162,14 +163,16 @@ struct FamsJourneyScreen: View {
         .refreshable { if validSession && !model.saving { await model.load(kidId: kidId) } }
         .sheet(item: $lesson) { selected in
             NavigationStack { FamsLessonScreen(lesson: selected, model: model, kidId: kidId, isCurrent: { validSession }) }
+                .famsSheet(expanded: sizeClass == .regular)
         }
         .sheet(isPresented: $showGoal) {
             NavigationStack { FamsGoalEditor(model: model, kidId: kidId, isCurrent: { validSession }) }
+                .famsSheet(expanded: sizeClass == .regular)
         }
         .sheet(isPresented: $showCalculator) {
             NavigationStack {
                 FamsMoneyLab(initialBalance: model.wallet?.balance ?? 0)
-            }
+            }.famsSheet(expanded: sizeClass == .regular)
         }
     }
     @ViewBuilder private var statusFeedback: some View {
@@ -371,6 +374,9 @@ struct FamsJourneyScreen: View {
 }
 
 private extension View {
+    @ViewBuilder func famsSheet(expanded: Bool) -> some View {
+        if expanded { presentationSizing(.page) } else { self }
+    }
     func famsPanel(tint: Color = Palette.accent) -> some View {
         padding(14).background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(tint.opacity(0.2), lineWidth: 1))
