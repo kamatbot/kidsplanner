@@ -125,8 +125,19 @@ enum Agenda {
 
     /// All agenda items for a day key, sorted by time.
     static func items(on key: String, events: [CalendarEvent], familyEvents: [FamilyEvent] = [], homework: [HomeworkItem]) -> [AgendaItem] {
+        itemsByDay(events: events, familyEvents: familyEvents, homework: homework)[key] ?? []
+    }
+
+    /// Builds the expensive event expansion/date parsing pipeline once, then
+    /// gives calendar grids O(1) day lookup instead of rebuilding it per cell.
+    static func itemsByDay(
+        events: [CalendarEvent],
+        familyEvents: [FamilyEvent] = [],
+        homework: [HomeworkItem]
+    ) -> [String: [AgendaItem]] {
         let all = events.map(fromEvent) + familyEvents.flatMap(expandFamilyEvent) + homework.map(fromHomework)
-        return all.filter { $0.dayKey == key }.sorted { $0.sortKey < $1.sortKey }
+        return Dictionary(grouping: all, by: \AgendaItem.dayKey)
+            .mapValues { $0.sorted { $0.sortKey < $1.sortKey } }
     }
 
     /// Grouped agenda sections from today forward, limited to `days` ahead.

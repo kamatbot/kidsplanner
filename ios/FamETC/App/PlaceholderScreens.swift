@@ -133,7 +133,7 @@ struct HomeworkScreen: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .contentMargins(.bottom, Layout.tabBarClearance, for: .scrollContent)
+        .contentMargins(.bottom, Layout.bottomNavigationClearance, for: .scrollContent)
         .scrollIndicators(.hidden)
         .refreshable { await store.refreshDashboard() }
     }

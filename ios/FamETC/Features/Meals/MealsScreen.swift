@@ -85,7 +85,7 @@ struct MealsScreen: View {
         }
         .task {
             if store.isParent { section = .pantry }
-            await store.loadMeals()
+            if store.meals == nil { await store.loadMeals() }
         }
         .refreshable {
             await store.loadMeals()

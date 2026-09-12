@@ -38,7 +38,7 @@ struct SurfaceScaffold<Content: View, Trailing: View>: View {
                 .padding(Space.lg)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .contentMargins(.bottom, Layout.tabBarClearance, for: .scrollContent)
+            .contentMargins(.bottom, Layout.bottomNavigationClearance, for: .scrollContent)
         }
     }
 }

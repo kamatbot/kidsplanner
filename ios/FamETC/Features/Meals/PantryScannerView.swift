@@ -211,7 +211,7 @@ struct PantryScannerView: View {
             }
             .padding(Space.lg)
         }
-        .contentMargins(.bottom, Layout.tabBarClearance, for: .scrollContent)
+        .contentMargins(.bottom, Layout.bottomNavigationClearance, for: .scrollContent)
     }
 
     // MARK: Actions

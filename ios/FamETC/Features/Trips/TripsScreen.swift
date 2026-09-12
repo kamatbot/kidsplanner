@@ -19,7 +19,7 @@ struct TripsScreen: View {
             // keeping page content clear of the floating tab bar without
             // shrinking the visible viewport.
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: Layout.tabBarClearance)
+                Color.clear.frame(height: Layout.bottomNavigationClearance)
             }
             // Trip calendar rows are synthesized by the server rather than
             // persisted as editable appointments. The embedded web surface can

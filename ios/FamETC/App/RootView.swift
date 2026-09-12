@@ -191,11 +191,19 @@ struct RootView: View {
         .onChange(of: selection) { _, _ in Haptics.selection() }
     }
 
-    @ViewBuilder
     private var planningDestinationScreen: some View {
-        switch planningSelection {
-        case .trips: TripsScreen()
-        case .meals: MealsScreen()
+        // Keep both destinations mounted. In particular this preserves the
+        // WKWebView's scroll/form state when switching Trips <-> Meals and
+        // avoids treating every rail tap as a departure from Trips.
+        ZStack {
+            TripsScreen()
+                .opacity(planningSelection == .trips ? 1 : 0)
+                .allowsHitTesting(planningSelection == .trips)
+                .accessibilityHidden(planningSelection != .trips)
+            MealsScreen()
+                .opacity(planningSelection == .meals ? 1 : 0)
+                .allowsHitTesting(planningSelection == .meals)
+                .accessibilityHidden(planningSelection != .meals)
         }
     }
 

@@ -178,6 +178,12 @@ enum Layout {
     /// the TabView-level safeAreaInset does not propagate into the UIKit-hosted
     /// tab children.
     static let tabBarClearance: CGFloat = 88
+
+    /// The floating tab bar exists only on iPhone. iPad uses a navigation rail,
+    /// including when multitasking gives the content a compact size class.
+    static var bottomNavigationClearance: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .phone ? tabBarClearance : 0
+    }
 }
 
 // MARK: - Motion
@@ -232,11 +238,23 @@ struct KidProfileAvatar: View {
     let kid: Kid
     var size: CGFloat = 28
 
+    private static let imageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 40
+        return cache
+    }()
+
     private var image: UIImage? {
         guard let photo = kid.photo, photo.count <= 90000,
-              photo.hasPrefix("data:image/jpeg;base64,"),
-              let data = Data(base64Encoded: String(photo.dropFirst(23))) else { return nil }
-        return UIImage(data: data)
+              photo.hasPrefix("data:image/jpeg;base64,") else { return nil }
+        // Prefix/suffix fingerprint changes when a profile photo changes while
+        // avoiding a full base64 hash on every SwiftUI body evaluation.
+        let key = "\(kid.id):\(photo.count):\(photo.prefix(32)):\(photo.suffix(32))" as NSString
+        if let cached = Self.imageCache.object(forKey: key) { return cached }
+        guard let data = Data(base64Encoded: String(photo.dropFirst(23))),
+              let decoded = UIImage(data: data) else { return nil }
+        Self.imageCache.setObject(decoded, forKey: key)
+        return decoded
     }
 
     var body: some View {

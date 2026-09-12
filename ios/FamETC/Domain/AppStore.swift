@@ -315,7 +315,7 @@ final class AppStore {
     /// (`chatDidEnterBackground` clears that gate) or no room is on-screen.
     func restartChatLoop() {
         stopChatLoop()
-        guard !chatAppBackgrounded, let roomId = activeRoomId else { return }
+        guard !chatAppBackgrounded, !needsAuth, let roomId = activeRoomId else { return }
         chatLoopTask = Task { [weak self] in
             await self?.runActiveRoomLoop(roomId)
         }
@@ -330,7 +330,7 @@ final class AppStore {
     /// safe to call from every `refresh()`). Only `signedOut`/backgrounding
     /// tear it down.
     private func startFamilyPollLoopIfNeeded() {
-        guard familyPollTask == nil, !chatAppBackgrounded else { return }
+        guard familyPollTask == nil, !chatAppBackgrounded, !needsAuth else { return }
         familyPollTask = Task { [weak self] in
             await self?.runFamilyPollLoop()
         }
@@ -388,15 +388,21 @@ final class AppStore {
             let iterationStart = ContinuousClock.now
             let lastId = messagesByRoom[roomId]?.last?.id
             if first || lastId == nil {
-                await refreshRoomNow(roomId)
+                guard await refreshRoomNow(roomId) else { return }
                 first = false
             } else if let afterId = lastId {
-                if let fresh = try? await api.chatMessages(roomId: roomId, afterId: afterId, wait: true), !fresh.isEmpty {
-                    mergeIncoming(fresh, roomId: roomId)
-                    persist()
+                do {
+                    let fresh = try await api.chatMessages(roomId: roomId, afterId: afterId, wait: true)
+                    if !fresh.isEmpty {
+                        mergeIncoming(fresh, roomId: roomId)
+                        persist()
+                    }
+                } catch {
+                    if requireAuthentication(for: error) { return }
                 }
                 updateChatSeen(roomId)
                 if roomId == familyRoomId { await refreshKidRequests() } // surface new kid sign-in requests app-wide
+                if needsAuth { return }
             }
             guard !Task.isCancelled else { return }
             let elapsed = iterationStart.duration(to: .now)
@@ -419,8 +425,9 @@ final class AppStore {
             // The active-room loop already keeps the family room near-live —
             // don't double-poll it here.
             if activeRoomId != familyRoomId {
-                await refreshRoomNow(familyRoomId)
+                guard await refreshRoomNow(familyRoomId) else { return }
                 await refreshKidRequests()
+                if needsAuth { return }
             }
             guard !Task.isCancelled else { return }
             try? await Task.sleep(for: .seconds(8))
@@ -725,8 +732,28 @@ final class AppStore {
 
     func refreshKidRequests() async {
         guard isParent, family != nil else { kidRequests = []; return }
-        if let fresh = try? await api.kidAccessRequests() {
+        do {
+            let fresh = try await api.kidAccessRequests()
             if fresh.map(\.id) != kidRequests.map(\.id) { kidRequests = fresh }
+        } catch {
+            _ = requireAuthentication(for: error)
+        }
+    }
+
+    /// Refresh the room directory when a push targets a newly joined trip that
+    /// was not present at launch. Returns true when the server answered, even
+    /// if the requested room is no longer available.
+    @discardableResult
+    func refreshChatRooms() async -> Bool {
+        do {
+            chatRooms = try await api.chatRooms()
+            for room in chatRooms where lastSeenChatIdByRoom[room.roomId] == nil {
+                lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
+            }
+            return true
+        } catch {
+            _ = requireAuthentication(for: error)
+            return false
         }
     }
 
@@ -1127,12 +1154,18 @@ final class AppStore {
     /// Used as the first iteration of every per-room chat loop (re)start (cold
     /// start, a chat surface appearing, foreground return) so new cross-device
     /// messages show without waiting on the poll cadence.
-    private func refreshRoomNow(_ roomId: String) async {
-        if let fresh = try? await api.chatMessages(roomId: roomId, limit: 50) {
-            messagesByRoom[roomId] = Self.dedupe(fresh)
-            persist()
+    private func refreshRoomNow(_ roomId: String) async -> Bool {
+        do {
+            let normalized = Self.dedupe(try await api.chatMessages(roomId: roomId, limit: 50))
+            if messagesByRoom[roomId] != normalized {
+                messagesByRoom[roomId] = normalized
+                persist()
+            }
+            updateChatSeen(roomId)
+            return true
+        } catch {
+            return !requireAuthentication(for: error)
         }
-        updateChatSeen(roomId)
     }
 
     // MARK: Unread chat badge
@@ -1166,9 +1199,13 @@ final class AppStore {
     /// Unread count for one room (used by the room-list badges too).
     func unreadCount(for roomId: String) -> Int {
         guard let seen = lastSeenChatIdByRoom[roomId],
-              let msgs = messagesByRoom[roomId],
-              let idx = msgs.firstIndex(where: { $0.id == seen }),
-              idx + 1 < msgs.count else { return 0 }
+              let msgs = messagesByRoom[roomId] else { return 0 }
+        guard let idx = msgs.firstIndex(where: { $0.id == seen }) else {
+            // The server returns a bounded recent window. If the last-seen id
+            // fell outside it, every visible message is newer than our marker.
+            return msgs.filter { !isMine($0) }.count
+        }
+        guard idx + 1 < msgs.count else { return 0 }
         return msgs[(idx + 1)...].filter { !isMine($0) }.count
     }
 
@@ -1213,8 +1250,21 @@ final class AppStore {
     }
 
     private func handle(_ error: Error) {
-        if case APIError.unauthenticated = error { needsAuth = true }
+        if case APIError.unauthenticated = error { _ = requireAuthentication(for: error) }
         else { syncError = error.localizedDescription }
+    }
+
+    /// Moves the app to the re-auth boundary and cancels both pollers. Keeping
+    /// this in one place prevents an expired session from becoming a silent,
+    /// endless stream of 401 requests.
+    @discardableResult
+    private func requireAuthentication(for error: Error) -> Bool {
+        guard case APIError.unauthenticated = error else { return false }
+        needsAuth = true
+        stopChatLoop()
+        familyPollTask?.cancel()
+        familyPollTask = nil
+        return true
     }
 
     #if DEBUG

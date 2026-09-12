@@ -17,7 +17,8 @@ struct CachedAppData: Codable {
 
 /// Persists the last-known family/chat data so the app renders instantly on cold
 /// start (no launch spinner), then refreshes from the network in the background.
-struct DiskCache {
+final class DiskCache: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.fametc.disk-cache", qos: .utility)
     private let fileURL: URL = {
         let dir = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
@@ -25,16 +26,23 @@ struct DiskCache {
     }()
 
     func load() -> CachedAppData? {
-        guard let data = try? Data(contentsOf: fileURL) else { return nil }
-        return try? JSONDecoder().decode(CachedAppData.self, from: data)
+        queue.sync {
+            guard let data = try? Data(contentsOf: fileURL) else { return nil }
+            return try? JSONDecoder().decode(CachedAppData.self, from: data)
+        }
     }
 
     func save(_ appData: CachedAppData) {
-        guard let data = try? JSONEncoder().encode(appData) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        let fileURL = fileURL
+        queue.async {
+            guard let data = try? JSONEncoder().encode(appData) else { return }
+            try? data.write(to: fileURL, options: .atomic)
+        }
     }
 
     func clear() {
-        try? FileManager.default.removeItem(at: fileURL)
+        // Wait for older queued saves so sign-out is the final cache mutation
+        // and a delayed write cannot recreate another account's session data.
+        queue.sync { try? FileManager.default.removeItem(at: fileURL) }
     }
 }
