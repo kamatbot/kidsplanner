@@ -139,6 +139,12 @@ final class AppStore {
     /// Render from cache immediately (if present), then refresh from the network.
     func load() async {
         loadTheme()
+        #if DEBUG
+        // Hermetic navigation UI tests do not need a signed-in backend. Keeping
+        // the shell local prevents a slow/failed network request from masking
+        // whether one iPad rail tap changed the selected surface.
+        if DebugLaunch.mockNavigation { return }
+        #endif
         lastSeenChatIdByRoom[familyRoomId] = loadLastSeen(familyRoomId)
         if family == nil, let cached = cache.load() {
             me = cached.me
@@ -764,10 +770,14 @@ final class AppStore {
         isLoadingHomework = true
         homeworkError = nil
 
-        if let ev = try? await api.calendarEvents(force: force) { events = ev }
-        if let fe = try? await api.familyEvents() { familyEvents = fe }
+        // These endpoints are independent. Starting Homework immediately keeps
+        // its tab responsive even when a school calendar sync is slow.
+        async let calendarRequest = api.calendarEvents(force: force)
+        async let familyEventsRequest = api.familyEvents()
+        async let homeworkRequest = api.homework()
+
         do {
-            let freshHomework = try await api.homework()
+            let freshHomework = try await homeworkRequest
             if loadGeneration == homeworkLoadGeneration,
                mutationRevisionAtStart == homeworkMutationRevision,
                homeworkMutationIDs.isEmpty {
@@ -780,6 +790,8 @@ final class AppStore {
             }
         }
         if loadGeneration == homeworkLoadGeneration { isLoadingHomework = false }
+        if let freshEvents = try? await calendarRequest { events = freshEvents }
+        if let freshFamilyEvents = try? await familyEventsRequest { familyEvents = freshFamilyEvents }
         Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
     }
 
