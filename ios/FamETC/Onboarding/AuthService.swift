@@ -7,6 +7,41 @@ enum AuthError: Error {
     var isCancellation: Bool { if case .cancelled = self { return true }; return false }
 }
 
+/// Centralizes the native WebAuthn policy so every parent/kid registration and
+/// sign-in request carries the same server-required user-verification setting.
+/// Kept internal so FamETCTests can guard this security boundary directly.
+enum PasskeyRequestFactory {
+    static func registration(
+        relyingPartyIdentifier: String,
+        challenge: Data,
+        name: String,
+        userID: Data
+    ) -> ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest {
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(
+            relyingPartyIdentifier: relyingPartyIdentifier
+        )
+        let request = provider.createCredentialRegistrationRequest(
+            challenge: challenge,
+            name: name,
+            userID: userID
+        )
+        request.userVerificationPreference = .required
+        return request
+    }
+
+    static func assertion(
+        relyingPartyIdentifier: String,
+        challenge: Data
+    ) -> ASAuthorizationPlatformPublicKeyCredentialAssertionRequest {
+        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(
+            relyingPartyIdentifier: relyingPartyIdentifier
+        )
+        let request = provider.createCredentialAssertionRequest(challenge: challenge)
+        request.userVerificationPreference = .required
+        return request
+    }
+}
+
 // Native passkey sign-up that interoperates with the server's WebAuthn endpoints
 // (POST /api/webauthn/signup/options → /verify). The session cookie (fam_sess)
 // carries the challenge between the two calls and then becomes the auth session,
@@ -59,9 +94,12 @@ final class AuthService: NSObject {
         let userName = (user["name"] as? String) ?? "Fam ETC parent"
 
         // 2) platform passkey registration (Face ID / Touch ID)
-        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
-        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userID)
-        request.userVerificationPreference = .required
+        let request = PasskeyRequestFactory.registration(
+            relyingPartyIdentifier: rpID,
+            challenge: challenge,
+            name: userName,
+            userID: userID
+        )
         let auth = try await perform(request)
         guard let reg = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = reg.rawAttestationObject else { throw AuthError.registration }
@@ -140,9 +178,10 @@ final class AuthService: NSObject {
         else { throw AuthError.options }
 
         // 2) platform passkey assertion
-        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
-        let request = provider.createCredentialAssertionRequest(challenge: challenge)
-        request.userVerificationPreference = .required
+        let request = PasskeyRequestFactory.assertion(
+            relyingPartyIdentifier: rpID,
+            challenge: challenge
+        )
         let auth = try await perform(request)
         guard let assertion = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
             throw AuthError.registration
@@ -226,9 +265,12 @@ final class AuthService: NSObject {
         let userName = (user["name"] as? String) ?? "Fam ETC kid"
 
         // 2) platform passkey registration (Face ID / Touch ID / device PIN)
-        let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(relyingPartyIdentifier: rpID)
-        let request = provider.createCredentialRegistrationRequest(challenge: challenge, name: userName, userID: userID)
-        request.userVerificationPreference = .required
+        let request = PasskeyRequestFactory.registration(
+            relyingPartyIdentifier: rpID,
+            challenge: challenge,
+            name: userName,
+            userID: userID
+        )
         let auth = try await perform(request)
         guard let reg = auth.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = reg.rawAttestationObject else { throw AuthError.registration }
