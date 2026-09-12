@@ -87,8 +87,10 @@ struct QuoteWidget: View {
                             Button {
                                 Haptics.selection()
                                 let text = reflection
+                                let scope = Daily5Reporter.capture(store)
                                 Task {
-                                    _ = await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": "", "context": "\u{201C}\(q.text)\u{201D} — \(q.author)"])
+                                    guard await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": "", "context": "\u{201C}\(q.text)\u{201D} — \(q.author)"]) != nil else { return }
+                                    Daily5Reporter.report("quote", "completed", store: store, scope: scope)
                                     saved = true
                                     try? await Task.sleep(nanoseconds: 700_000_000)
                                     withAnimation(.easeInOut(duration: 0.3)) { flipped = false }

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f1efec">
+  <title>Fams — Fam ETC</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <!-- Dark mode must be applied before first paint (no flash): read the saved
+       preference or fall back to the OS setting. Mirrors the exact snippet in
+       index.html/trips.html so fam_theme applies consistently everywhere. -->
+  <script>
+    (function () {
+      try {
+        // fam_theme is stored JSON-encoded (see save() in util.js) — mirror
+        // that here so this pre-paint check agrees with applyThemeChoice().
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Finance uses the shared standalone shell. -->
+  <link rel="stylesheet" href="/css/fams-finance.css">
+</head>
+<body>
+  <div class="standalone-app-shell" data-page="finance">
+    <aside class="app-sidebar" aria-label="Primary navigation">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-mark">F</div>
+        <span class="sidebar-brand-name">Fam ETC</span>
+      </div>
+      <nav class="sidebar-nav" aria-label="Family">
+        <a class="sidebar-nav-item" href="/" aria-label="Today" title="Today">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4-1.4"></path></svg>
+          <span>Today</span>
+        </a>
+        <a class="sidebar-nav-item" href="/?tab=calendar" aria-label="Calendar" title="Calendar">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
+          <span>Calendar</span>
+        </a>
+        <a class="sidebar-nav-item" href="/?tab=homework" aria-label="Homework" title="Homework">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>
+          <span>Homework</span>
+        </a>
+        <a class="sidebar-nav-item" href="/goals?tab=goals" aria-label="Goals" title="Goals">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>
+          <span>Goals</span>
+        </a>
+        <a class="sidebar-nav-item" href="/activities?tab=activities" aria-label="Activities" title="Activities">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
+          <span>Activities</span>
+        </a>
+        <a class="sidebar-nav-item" href="/trips" aria-label="Trips" title="Trips">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>
+          <span>Trips</span>
+        </a>
+        <a class="sidebar-nav-item" href="/meals" aria-label="Meals" title="Meals">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13h16a1 1 0 0 1 1 1 7 7 0 0 1-7 7h-4a7 7 0 0 1-7-7 1 1 0 0 1 1-1Z"></path><path d="M4.5 13a1 1 0 0 1-1-1v-1a1 1 0 0 1 1-1h.5"></path><path d="M19.5 13a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-.5"></path><path d="M9 8c0-1 1-1.5 1-2.5S9 4 9 3"></path><path d="M14 8c0-1 1-1.5 1-2.5S14 4 14 3"></path></svg>
+          <span>Meals</span>
+        </a>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-bottom">
+        <a class="sidebar-nav-item" href="/?tab=notes" aria-label="Notes" title="Notes">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 0 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>Notes</span>
+        </a>
+        <a class="sidebar-nav-item" href="/settings?tab=settings" aria-label="Settings" title="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"></path></svg>
+          <span>Settings</span>
+        </a>
+      </div>
+    </aside>
+    <div class="standalone-main-content-wrap">
+      <main id="fams-root" class="standalone-main-content">
+<header class="fams-header"><div><a class="fams-back" href="/">Back to Today</a><h1>Small steps. Big possibilities.</h1><p>Earn Fams, choose a goal, and learn what money can do.</p></div><label id="fams-kid-label" hidden>Viewing<select id="fams-kid"></select></label></header>
+<div id="fams-status" role="status" aria-live="polite">Opening your Fams…</div>
+<button id="fams-retry" type="button" hidden>Try again</button>
+<div id="fams-content" hidden>
+<section class="fams-wallet" aria-labelledby="wallet-title"><div><h2 id="wallet-title">Your Fams</h2><p class="fams-balance"><span id="fams-balance">0</span> <span>fams</span></p><p>1 fam = 1 Thai baht</p></div><div class="fams-week"><h3>This week’s regular earnings</h3><p id="fams-week-text"></p><progress id="fams-week-progress" max="300" value="0"></progress><p>Regular rewards stop at 300 fams each week. Chores and house points are extra.</p></div></section>
+<details class="fams-explainer"><summary>How do I earn Fams?</summary><p id="fams-rates"></p><p>Complete today’s activities in Fam ETC to earn rewards. A news reflection needs at least 20 characters and earns once per day. A lesson reward is available once per day; each lesson earns only once. Reward days and Monday week resets use Bangkok time.</p></details>
+<div class="fams-columns"><section class="fams-section" aria-labelledby="goal-title"><h2 id="goal-title">Something worth saving for</h2><p id="fams-goal-summary">Pick a goal to make every fam count.</p><progress id="fams-goal-progress" hidden></progress><form id="fams-goal-form"><label>Your goal<input name="name" maxlength="80" required placeholder="A new skateboard"></label><label>Target in fams<input name="target" type="number" min="1" max="1000000" step="1" required inputmode="numeric"></label><button>Save goal</button></form></section>
+<section class="fams-section" aria-labelledby="chores-title"><h2 id="chores-title">Lend a hand. Earn a little extra.</h2><p>Finish a chore, then ask a parent to approve your reward.</p><ul id="fams-chores" class="fams-list"></ul><form id="fams-chore-form" hidden><h3>Assign a chore</h3><label>What needs doing?<input name="title" maxlength="120" required></label><label>Reward in fams<input name="amount" type="number" min="1" max="10000" step="1" required inputmode="numeric"></label><button>Assign chore</button></form><div id="fams-school-reset" hidden><p>School points dropped below the previous total. Confirm a new school period only if the school reset its points.</p><button id="fams-reset-button" type="button">Confirm school points reset</button></div></section></div>
+<section class="fams-section fams-learning" aria-labelledby="learning-title"><h2 id="learning-title">A little money wisdom</h2><p>Try a lesson. A good habit can last longer than a reward.</p><div id="fams-lessons"></div></section>
+<section class="fams-section" aria-labelledby="projection-title"><h2 id="projection-title">What if you kept saving?</h2><p>Explore how regular saving and compound growth could add up. These are imaginary results, not promised returns. The model compounds the yearly rate monthly, adds savings at each month’s end, and excludes fees, taxes and inflation.</p><form id="fams-projection-form" class="fams-projection-form"><label>Start with (฿)<input name="principal" type="number" value="100" min="0" max="1000000" step="1" required></label><label>Add each month (฿)<input name="monthlyContribution" type="number" value="100" min="0" max="100000" step="1" required></label><label>Yearly growth (%)<input name="annualRate" type="number" value="5" min="-50" max="30" step="0.1" required></label><label>Years<input name="years" type="number" value="10" min="1" max="50" step="1" required></label><button>Explore the possibilities</button></form><div id="fams-projection" aria-live="polite"></div><details class="fams-explainer"><summary>Three things a calculator can’t promise</summary><p><strong>Risk:</strong> investments can lose value. Growth is not a fixed reward.</p><p><strong>Inflation:</strong> prices can rise, so the same baht may buy less later.</p><p><strong>Diversification:</strong> spreading money across different investments helps avoid putting everything in one basket. It cannot remove all risk.</p></details></section>
+<section class="fams-section" aria-labelledby="activity-title"><h2 id="activity-title">Every fam has a story</h2><p id="fams-earned"></p><ul id="fams-transactions" class="fams-list"></ul></section>
+</div><footer class="fams-section"><p>Learn more with <a href="https://www.investor.gov/introduction-investing" target="_blank" rel="noopener noreferrer">Investor.gov’s saving and investing basics</a>. Your fams record tracks family rewards; this calculator does not move money or buy investments.</p></footer></main>
+    </div>
+  </div>
+
+  <script src="/js/fams-finance.js"></script>
+</body>
+</html>

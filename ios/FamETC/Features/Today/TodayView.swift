@@ -8,6 +8,7 @@ struct TodayScreen: View {
     @Environment(AppStore.self) private var store
     @State private var showAddEvent = false
     @State private var showNotes = false
+    @State private var showFinance = false
     let onOpenHomework: () -> Void
 
     init(onOpenHomework: @escaping () -> Void = {}) {
@@ -40,6 +41,22 @@ struct TodayScreen: View {
                         KidHeader(dateLabel: dateLabel, onMore: { showNotes = true })
                         KidTodayStack(onOpenHomework: onOpenHomework)
                     }
+                    Button { showFinance = true } label: {
+                        HStack(spacing: Space.md) {
+                            Image(systemName: "banknote").font(.title2)
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text("Fams & finance").font(Typography.cardTitle)
+                                Text("Earn, save and learn how money grows.").font(Typography.caption)
+                                Text("1 fam = 1 THB").font(Typography.caption)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                        }
+                        .foregroundStyle(Palette.text)
+                        .padding(Space.lg)
+                        .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.card))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(Space.lg)
                 .padding(.bottom, bottomClearance)
@@ -60,6 +77,13 @@ struct TodayScreen: View {
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
+        .sheet(isPresented: $showFinance) {
+            NavigationStack {
+                HybridWebView(path: "/finance", isEmbedded: true)
+                    .navigationTitle("Fams & finance")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showFinance = false } } }
+            }
+        }
     }
 }
 

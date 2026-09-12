@@ -654,6 +654,7 @@ require("./lib/routes/trips")(app, routeDeps);
 require("./lib/routes/activities")(app, routeDeps);
 require("./lib/routes/learning")(app, routeDeps);
 require("./lib/routes/child-insights")(app, routeDeps);
+require("./lib/routes/fams")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
 require("./lib/routes/push")(app, routeDeps);
 require("./lib/routes/ai")(app, routeDeps);
@@ -755,6 +756,7 @@ app.get("/privacy", (req, res) => sendPage(req, res, "privacy.html", PUB));
 app.get("/terms", (req, res) => sendPage(req, res, "terms.html", PUB));
 app.get("/pricing", (req, res) => sendPage(req, res, "pricing.html", PUB));
 app.get("/help", (req, res) => sendPage(req, res, "help.html", PUB));
+app.get("/finance", requireAuth, requireFamily, (req, res) => sendPage(req, res, "finance.html"));
 app.get("/security", requireAuth, (req, res) => sendPage(req, res, "security.html"));
 app.get("/billing", requireAuth, requireParent, (req, res) => sendPage(req, res, "billing.html"));
 // Trips: a member-scoped hub, not family-scoped — parents, kids (read-only),

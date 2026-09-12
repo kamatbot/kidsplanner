@@ -103,7 +103,7 @@
     let data = null;
     const sources = { homework: [], goals: [], activities: [], errors: [], loading: true };
     function draw(state) {
-      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 5 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div>${journey(id, date, data, sources)}</div>`;
+      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 5 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section class="cv-panel"><div class="cv-section-heading"><div><h2>Fams &amp; finance</h2><p>Assign chores, approve rewards and follow ${e(kid.name)}’s savings goal.</p></div><a class="btn-link" href="/finance?kidId=${encodeURIComponent(id)}">Manage fams →</a></div></section>${journey(id, date, data, sources)}</div>`;
       root.setAttribute('aria-busy', String(state === 'loading'));
     }
     root.onclick = event => {
