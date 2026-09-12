@@ -169,6 +169,18 @@
 /* Rewards need room for each child's balance, not a tall, compressed text column. */
 #tab-today .today-brief-support { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #tab-today .today-fams-card { grid-column: 1 / -1; }
-#today-fams-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); column-gap: 28px; }
+#today-fams-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; }
 #today-fams-body > .today-fams-footer { grid-column: 1 / -1; }
 @media (max-width: 600px) { #tab-today .today-brief-support { grid-template-columns: minmax(0, 1fr); } }
+
+/* Use the same text weight as the rest of the brief; labels are supporting copy. */
+#tab-today .today-action-title { font-size: 15px; font-weight: 500; line-height: 1.45; letter-spacing: 0; }
+#tab-today .today-action-body > .today-action-main:first-child:has(+ .today-action-main) .today-action-title { font-size: 12px; font-weight: 500; color: var(--text-2); }
+#tab-today .today-action-due { font-weight: 500; }
+#tab-today .today-actions-heading h2, #tab-today .today-agenda-card h2, #tab-today .today-fams-card h2, #tab-today .daily5-card h2 { font-size: 20px; font-weight: 600; letter-spacing: -.025em; }
+#tab-today .today-fams-row { padding: 10px 0 12px; gap: 16px; }
+#today-fams-body:has(.today-fams-kid) { grid-template-columns: minmax(0, 1fr); }
+.today-fams-copy { gap: 4px; }
+.today-fams-copy strong { font-weight: 600; }
+.today-fams-track { margin: 5px 0; }
+@media (max-width: 600px) { #today-fams-body { grid-template-columns: minmax(0, 1fr); } }
