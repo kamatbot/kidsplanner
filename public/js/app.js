@@ -554,6 +554,7 @@ async function bootstrapSession() {
     return false;
   }
   sessionUser = me.user;
+  window.famMyCorner?.setUser(sessionUser);
   save('fam_user', sessionUser);
   applyRoleScopingToUI();
 
@@ -5013,6 +5014,7 @@ async function deleteTodayAction(id) {
 }
 
 function renderTodayScreen() {
+  window.famMyCorner?.setUser(sessionUser);
   if (!sessionUser) return;
   const now = new Date();
   const todayIso = isoDate(now);
@@ -6072,6 +6074,7 @@ function toast(msg) {
    LOGOUT
 ============================================================ */
 async function handleLogout() {
+  window.famMyCorner?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();

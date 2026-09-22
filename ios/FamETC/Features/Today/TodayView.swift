@@ -8,6 +8,7 @@ struct TodayScreen: View {
     @State private var selectedKidID: String?
     @State private var showAddEvent = false
     @State private var showNotes = false
+    @State private var showMyCorner = false
 
     let onOpenHomework: () -> Void
 
@@ -36,6 +37,8 @@ struct TodayScreen: View {
                     } else {
                         TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
                         KidTodayStack(onOpenHomework: onOpenHomework)
+                        Button("My Corner · stickers & a note") { showMyCorner = true }
+                            .buttonStyle(.bordered)
                     }
                 }
                 .padding(Space.lg)
@@ -49,7 +52,10 @@ struct TodayScreen: View {
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
-        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil }
+        .sheet(isPresented: $showMyCorner) {
+            if let id = store.me?.id, !store.isParent { MyCornerScreen(ownerID: id).id(id) }
+        }
+        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil; showMyCorner = false }
         .onChange(of: store.kids.map(\.id)) { _, ids in
             if let selectedKidID, !ids.contains(selectedKidID) { self.selectedKidID = nil }
         }
