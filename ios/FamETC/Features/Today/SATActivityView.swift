@@ -11,7 +11,13 @@ struct SATActivityView: View {
     @State private var showPlacement = false
     @State private var savedToNotes = false
     @State private var noteFailed = false
+    @State private var savingNote = false
     @State private var picked: Int?
+    @State private var savingAnswer = false
+    @State private var failedAnswer: Int?
+    @State private var answerError: String?
+    @State private var loadError: String?
+    @State private var showExplanations = false
     @State private var showWeek = false
 
     private var scope: String { "\(store.me?.id ?? "")|\(Agenda.todayKey())" }
@@ -27,38 +33,62 @@ struct SATActivityView: View {
                     Text(response.challenge.prompt).font(Typography.body.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                ForEach(response.challenge.options.indices, id: \.self) { index in
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        OptionButton(text: response.challenge.options[index].text, state: optionState(index, response)) {
-                            guard picked == nil else { return }
+                VStack(spacing: Space.sm) {
+                    ForEach(response.challenge.options.indices, id: \.self) { index in
+                        LearningOption(text: response.challenge.options[index].text, index: index, state: optionState(index, response)) {
+                            guard picked == nil, !savingAnswer else { return }
                             Haptics.selection()
-                            picked = index
-                            let userID = store.me?.id
-                            let progressScope = Daily5Reporter.capture(store)
-                            Task {
-                                guard store.me?.id == userID else { return }
-                                let saved = try? await APIClient.shared.wordInteract(
-                                    word: response.word.word, correct: index == response.challenge.answerIndex)
-                                if saved != nil {
-                                    Daily5Reporter.report("word", "completed", store: store, scope: progressScope)
-                                }
-                            }
+                            savingAnswer = true
+                            failedAnswer = nil
+                            answerError = nil
+                            Task { await submitAnswer(index, response: response) }
                         }
-                        if picked != nil {
-                            Text(index == response.challenge.answerIndex ? "Misapplication" : "Correct usage")
-                                .font(Typography.caption.weight(.bold)).foregroundStyle(Palette.text)
-                            Text(response.challenge.options[index].explanation)
-                                .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        .disabled(savingAnswer)
+                        .accessibilityIdentifier("word.option.\(index)")
                     }
                 }
-                if let picked {
-                    Text(picked == response.challenge.answerIndex ? "You found the impostor." : "The marked misapplication is the impostor.")
-                        .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                    Text(response.word.def).font(Typography.body).fixedSize(horizontal: false, vertical: true)
-                    Text("“\(response.word.example)”").font(Typography.caption).foregroundStyle(Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
+                if savingAnswer {
+                    HStack(spacing: Space.sm) {
+                        ProgressView()
+                        Text("Saving your answer…").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                } else if let picked {
+                    LearningFeedback(
+                        title: picked == response.challenge.answerIndex ? "You found the impostor." : "The highlighted sentence is the misapplication.",
+                        message: response.challenge.options[response.challenge.answerIndex].explanation,
+                        kind: picked == response.challenge.answerIndex ? .success : .retry
+                    )
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(response.word.def).font(Typography.body).foregroundStyle(Palette.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("“\(response.word.example)”").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    DisclosureGroup("Review all explanations", isExpanded: $showExplanations) {
+                        VStack(alignment: .leading, spacing: Space.sm) {
+                            ForEach(response.challenge.options.indices, id: \.self) { index in
+                                Text(response.challenge.options[index].explanation)
+                                    .font(Typography.caption)
+                                    .foregroundStyle(Palette.textSecond)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(.top, Space.sm)
+                    }
+                    .frame(minHeight: 44)
+                } else if let failedAnswer, let answerError {
+                    LearningFeedback(title: "That answer wasn't recorded.", message: answerError, kind: .retry)
+                    Button("Retry answer") {
+                        savingAnswer = true
+                        self.failedAnswer = nil
+                        self.answerError = nil
+                        Task { await submitAnswer(failedAnswer, response: response) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Palette.accent)
+                    .frame(minHeight: 44)
+                    .disabled(savingAnswer)
+                    .accessibilityIdentifier("word.retrySave")
                 }
                 DisclosureGroup("This week's seven words", isExpanded: $showWeek) {
                     VStack(alignment: .leading, spacing: Space.sm) {
@@ -72,23 +102,30 @@ struct SATActivityView: View {
                 Button {
                     let userID = store.me?.id
                     let body = "\(response.word.word) (\(response.word.pos)) — \(response.word.def)\n\nExample: \(response.word.example)"
+                    savingNote = true
+                    noteFailed = false
                     Task {
                         let note = await store.addNote(body: body, source: "sat",
                             ref: ["kind": "sat", "id": response.word.word, "context": body])
                         guard store.me?.id == userID else { return }
+                        savingNote = false
                         savedToNotes = note != nil
                         noteFailed = note == nil
                     }
                 } label: {
-                    Label(savedToNotes ? "Word saved" : "Save word to Notes", systemImage: savedToNotes ? "checkmark.circle" : "pin")
+                    Label(savingNote ? "Saving word…" : savedToNotes ? "Word saved" : "Save word to Notes", systemImage: savedToNotes ? "checkmark.circle" : "pin")
                         .font(Typography.caption.weight(.semibold)).frame(minHeight: 44)
                 }
-                .disabled(savedToNotes)
-                if noteFailed { Text("Couldn't save the word. Try again.").font(Typography.caption).foregroundStyle(Palette.red) }
+                .buttonStyle(.borderedProminent)
+                .tint(Palette.accent)
+                .disabled(savedToNotes || savingNote)
+                .accessibilityIdentifier("word.save")
+                if noteFailed { LearningFeedback(title: "The word wasn't saved.", message: "Try saving it again when you're ready.", kind: .retry) }
                 actionRow
             } else {
-                Text("Today's word challenge is unavailable.").font(Typography.body)
-                Button("Retry") { Task { await loadChallenge() } }.frame(minHeight: 44)
+                LearningFeedback(title: "Today's word challenge couldn't load.", message: loadError, kind: .retry)
+                Button("Try again") { Task { await loadChallenge() } }
+                    .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
             }
         }
         .task(id: scope) { await loadChallenge() }
@@ -108,19 +145,39 @@ struct SATActivityView: View {
 
     @ViewBuilder private var actionButtons: some View {
         Button { showWordBank = true } label: { Label("Word bank", systemImage: "books.vertical.fill").font(Typography.caption.weight(.semibold)) }
-            .buttonStyle(PillButtonStyle(tint: Palette.teal))
+            .buttonStyle(.bordered).tint(Palette.accent).frame(minHeight: 44)
         Button { showQuiz = true } label: { Label("Pop quiz", systemImage: "bolt.fill").font(Typography.caption.weight(.semibold)) }
-            .buttonStyle(PillButtonStyle(tint: Palette.violet))
+            .buttonStyle(.bordered).tint(Palette.accent).frame(minHeight: 44)
         if !placementDone {
             Button { showPlacement = true } label: { Label("Words I know", systemImage: "sparkles").font(Typography.caption.weight(.semibold)) }
-                .buttonStyle(PillButtonStyle(tint: Palette.amber))
+                .buttonStyle(.bordered).tint(Palette.accent).frame(minHeight: 44)
         }
     }
 
-    private func optionState(_ index: Int, _ response: DailyVocabularyResponse) -> OptionButton.OptionState {
+    private func optionState(_ index: Int, _ response: DailyVocabularyResponse) -> LearningOption.State {
         guard let picked else { return .idle }
         if index == response.challenge.answerIndex { return .correct }
-        return index == picked ? .wrong : .dimmed
+        return index == picked ? .incorrect : .dimmed
+    }
+
+    private func submitAnswer(_ answer: Int, response: DailyVocabularyResponse) async {
+        let userID = store.me?.id
+        let day = Agenda.todayKey()
+        let progressScope = Daily5Reporter.capture(store)
+        guard store.me?.id == userID, Agenda.todayKey() == day else { return }
+        do {
+            _ = try await APIClient.shared.wordInteract(
+                word: response.word.word, correct: answer == response.challenge.answerIndex)
+            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            picked = answer
+            Daily5Reporter.report("word", "completed", store: store, scope: progressScope)
+        } catch {
+            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            failedAnswer = answer
+            answerError = error.localizedDescription
+        }
+        guard store.me?.id == userID, Agenda.todayKey() == day else { return }
+        savingAnswer = false
     }
 
     private func loadChallenge() async {
@@ -129,68 +186,34 @@ struct SATActivityView: View {
         loading = true
         response = nil
         picked = nil
+        savingAnswer = false
+        failedAnswer = nil
+        answerError = nil
+        loadError = nil
+        showExplanations = false
         savedToNotes = false
         noteFailed = false
+        savingNote = false
         showWeek = false
         showWordBank = false
         showQuiz = false
         showPlacement = false
-        let loaded = try? await APIClient.shared.dailyVocabulary(date: day)
-        guard !Task.isCancelled, scope == requestedScope else { return }
-        if let loaded, loaded.date == day, loaded.challenge.options.count == 3,
-           loaded.challenge.options.indices.contains(loaded.challenge.answerIndex) {
+        do {
+            let loaded = try await APIClient.shared.dailyVocabulary(date: day)
+            guard !Task.isCancelled, scope == requestedScope else { return }
+            guard loaded.date == day, loaded.challenge.options.count == 3,
+                  loaded.challenge.options.indices.contains(loaded.challenge.answerIndex) else {
+                loadError = "Today's challenge data isn't ready yet. Please try again."
+                loading = false
+                return
+            }
             response = loaded
             Daily5Reporter.report("word", "started", store: store, scope: Daily5Reporter.capture(store))
+        } catch {
+            guard !Task.isCancelled, scope == requestedScope else { return }
+            loadError = error.localizedDescription
         }
         loading = false
-    }
-}
-
-private struct PillButtonStyle: ButtonStyle {
-    let tint: Color
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(tint)
-            .padding(.horizontal, Space.md)
-            .padding(.vertical, Space.sm)
-            .frame(minHeight: 44)
-            .background(tint.opacity(configuration.isPressed ? 0.24 : 0.15), in: Capsule())
-    }
-}
-
-private struct OptionButton: View {
-    let text: String
-    let state: OptionState
-    let action: () -> Void
-    enum OptionState { case idle, correct, wrong, dimmed }
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(text).font(Typography.body).foregroundStyle(Palette.text)
-                    .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: Space.sm)
-                switch state {
-                case .correct: Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.green)
-                case .wrong: Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.red)
-                default: EmptyView()
-                }
-            }
-            .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(background, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(state != .idle)
-    }
-
-    private var background: Color {
-        switch state {
-        case .idle: return Palette.panel
-        case .correct: return Palette.green.opacity(0.18)
-        case .wrong: return Palette.red.opacity(0.15)
-        case .dimmed: return Palette.panel
-        }
     }
 }
 
@@ -201,6 +224,7 @@ private struct WordBankSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var response: WordBankResponse? = nil
     @State private var isLoading = true
+    @State private var loadError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -234,6 +258,13 @@ private struct WordBankSheet: View {
                             }
                         }
                     }
+                } else if let loadError {
+                    VStack(alignment: .leading, spacing: Space.lg) {
+                        LearningFeedback(title: "Word bank couldn't load.", message: loadError, kind: .retry)
+                        Button("Try again") { Task { await load() } }
+                            .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
+                    }
+                    .padding(Space.lg)
                 } else {
                     ContentUnavailableView("No words yet", systemImage: "book.closed",
                         description: Text("Answer daily SAT activities to start building your word bank."))
@@ -243,14 +274,25 @@ private struct WordBankSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Close") { dismiss() }.accessibilityIdentifier("secondaryClose")
                 }
             }
         }
         .task {
-            response = try? await APIClient.shared.wordBank()
-            isLoading = false
+            await load()
         }
+    }
+
+    private func load() async {
+        isLoading = true
+        loadError = nil
+        do {
+            response = try await APIClient.shared.wordBank()
+        } catch {
+            response = nil
+            loadError = error.localizedDescription
+        }
+        isLoading = false
     }
 
     private func statChip(_ label: String, _ count: Int, _ tint: Color) -> some View {
@@ -276,18 +318,26 @@ private struct WordQuizSheet: View {
     @State private var picked: Int? = nil
     @State private var score = 0
     @State private var finished = false
+    @State private var loadError: String? = nil
 
     var body: some View {
         NavigationStack {
             Group {
                 if isLoading {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let loadError {
+                    VStack(alignment: .leading, spacing: Space.lg) {
+                        LearningFeedback(title: "Pop quiz couldn't load.", message: loadError, kind: .retry)
+                        Button("Try again") { Task { await load() } }
+                            .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
+                    }
+                    .padding(Space.lg)
                 } else if needMore || questions.isEmpty {
                     ContentUnavailableView("Learn a few more words first", systemImage: "hourglass",
                         description: Text("Keep practicing the daily SAT word to unlock the pop quiz."))
                 } else if finished {
                     VStack(spacing: Space.md) {
-                        Text("🎉").font(.system(size: 48))
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 42)).foregroundStyle(Palette.green)
                         Text("You scored \(score)/\(questions.count)")
                             .font(Typography.title).foregroundStyle(Palette.text)
                         Button {
@@ -297,19 +347,20 @@ private struct WordQuizSheet: View {
                                 .font(Typography.body.weight(.bold))
                                 .foregroundStyle(Palette.onAccent)
                                 .padding(.horizontal, Space.xl).padding(.vertical, Space.sm)
-                                .background(Palette.violet, in: Capsule())
+                                .background(Palette.accent, in: Capsule())
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     let q = questions[index]
+                    ScrollView {
                     VStack(alignment: .leading, spacing: Space.md) {
                         Text("Question \(index + 1) of \(questions.count)")
                             .font(Typography.caption).foregroundStyle(Palette.textSecond)
                         Text(q.prompt).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
                             .fixedSize(horizontal: false, vertical: true)
                         ForEach(q.options.indices, id: \.self) { i in
-                            OptionButton(text: q.options[i], state: optionState(i, q)) {
+                            LearningOption(text: q.options[i], index: i, state: optionState(i, q)) {
                                 answer(i, q)
                             }
                         }
@@ -325,44 +376,56 @@ private struct WordQuizSheet: View {
                                     .padding(.vertical, Space.sm + 2)
                                     .padding(.horizontal, Space.md)
                                     .frame(minHeight: 44)
-                                    .background(Palette.violet.opacity(0.15), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                                    .background(Palette.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .padding(Space.lg)
+                    .frame(maxWidth: 680, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
             }
             .navigationTitle("Pop Quiz")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
+                    Button("Close") { dismiss() }.accessibilityIdentifier("secondaryClose")
                 }
             }
         }
         .task {
-            if let r = try? await APIClient.shared.wordQuiz(n: 5) {
-                questions = r.questions
-                needMore = (r.needMore ?? false) || r.questions.count < 2
-            } else {
-                needMore = true
-            }
-            isLoading = false
+            await load()
         }
     }
 
-    private func optionState(_ i: Int, _ q: WordQuizQuestion) -> OptionButton.OptionState {
+    private func load() async {
+        isLoading = true
+        loadError = nil
+        do {
+            let response = try await APIClient.shared.wordQuiz(n: 5)
+            questions = response.questions
+            needMore = (response.needMore ?? false) || response.questions.count < 2
+        } catch {
+            questions = []
+            needMore = false
+            loadError = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    private func optionState(_ i: Int, _ q: WordQuizQuestion) -> LearningOption.State {
         guard let picked else { return .idle }
         if i == q.answerIndex { return .correct }
-        if i == picked { return .wrong }
+        if i == picked { return .incorrect }
         return .dimmed
     }
 
     private func answer(_ i: Int, _ q: WordQuizQuestion) {
         guard picked == nil else { return }
         Haptics.selection()
-        withAnimation(.easeOut(duration: 0.2)) { picked = i }
+        picked = i
         let correct = i == q.answerIndex
         if correct { score += 1 }
         Task { try? await APIClient.shared.wordInteract(word: q.word, correct: correct) }
@@ -381,11 +444,13 @@ private struct WordQuizSheet: View {
 // MARK: - Placement sheet
 
 private struct PlacementSheet: View {
+    @Environment(\.dismiss) private var dismiss
     let onDone: () -> Void
 
     @State private var candidates: [SATWord] = Array(Daily.words.shuffled().prefix(6))
     @State private var selected: Set<String> = []
     @State private var isSaving = false
+    @State private var saveError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -399,6 +464,7 @@ private struct PlacementSheet: View {
                     VStack(spacing: Space.sm) {
                         ForEach(candidates, id: \.word) { w in
                             Button {
+                                guard !isSaving else { return }
                                 Haptics.selection()
                                 if selected.contains(w.word) { selected.remove(w.word) }
                                 else { selected.insert(w.word) }
@@ -417,6 +483,7 @@ private struct PlacementSheet: View {
                                 .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                             }
                             .buttonStyle(.plain)
+                            .disabled(isSaving)
                         }
                     }
                 }
@@ -424,8 +491,15 @@ private struct PlacementSheet: View {
                 Button {
                     Task {
                         isSaving = true
+                        saveError = nil
                         if !selected.isEmpty {
-                            try? await APIClient.shared.wordPlacement(known: Array(selected))
+                            do {
+                                try await APIClient.shared.wordPlacement(known: Array(selected))
+                            } catch {
+                                isSaving = false
+                                saveError = error.localizedDescription
+                                return
+                            }
                         }
                         isSaving = false
                         onDone()
@@ -439,12 +513,21 @@ private struct PlacementSheet: View {
                     .foregroundStyle(Palette.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Space.sm + 2)
-                    .background(Palette.teal, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                 }
                 .disabled(isSaving)
+                .accessibilityIdentifier("word.save")
+                if let saveError {
+                    LearningFeedback(title: "Your choices weren't saved.", message: saveError, kind: .retry)
+                }
             }
             .padding(Space.lg)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }.accessibilityIdentifier("secondaryClose")
+                }
+            }
         }
     }
 }

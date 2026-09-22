@@ -19,6 +19,9 @@ struct BrainTeaserView: View {
     @State private var index = 0
     @State private var picked: Int? = nil
     @State private var answeredCount = 0
+    @State private var isSavingAnswer = false
+    @State private var failedAnswer: Int? = nil
+    @State private var answerError: String? = nil
     @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
 
     var body: some View {
@@ -54,7 +57,7 @@ struct BrainTeaserView: View {
 
         case .loaded(let response):
             if response.questions.isEmpty {
-                Text("No brain teasers today — check back tomorrow! 🌙")
+                Text("No brain teasers today — check back tomorrow.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
             } else if index >= response.questions.count {
@@ -76,7 +79,7 @@ struct BrainTeaserView: View {
                     .foregroundStyle(Palette.violet)
                 Spacer()
                 if q.resurfaced == true {
-                    Text("🔁 Seen before — try again")
+                    Label("Seen before — try again", systemImage: "arrow.clockwise")
                         .font(Typography.caption.weight(.semibold))
                         .foregroundStyle(Palette.warn)
                         .padding(.horizontal, Space.sm)
@@ -85,90 +88,92 @@ struct BrainTeaserView: View {
                 }
             }
 
+            ProgressView(value: Double(answeredCount), total: Double(total))
+                .tint(Palette.accent)
+                .accessibilityLabel("Question progress")
+                .accessibilityValue("\(answeredCount) of \(total) answered")
+
             Text(q.q)
-                .font(Typography.body.weight(.semibold))
+                .font(Typography.cardTitle)
                 .foregroundStyle(Palette.text)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(q.options.indices, id: \.self) { i in
-                Button {
-                    guard picked == nil else { return }
+                LearningOption(text: q.options[i], index: i, state: optionState(q, i)) {
+                    guard picked == nil, !isSavingAnswer else { return }
                     Haptics.selection()
-                    withAnimation(.easeOut(duration: 0.2)) { picked = i }
-                    Task { await report(qid: q.qid, correct: i == q.answerIndex) }
-                } label: {
-                    HStack {
-                        Text(q.options[i]).font(Typography.body).foregroundStyle(Palette.text)
-                        Spacer(minLength: Space.sm)
-                        if picked != nil && i == q.answerIndex {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.green)
-                        } else if picked == i {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.red)
-                        }
-                    }
-                    .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(optionBackground(q, i), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    isSavingAnswer = true
+                    failedAnswer = nil
+                    answerError = nil
+                    Task { await report(qid: q.qid, answer: i, correct: i == q.answerIndex) }
                 }
-                .buttonStyle(.plain)
-                .disabled(picked != nil)
+                .disabled(isSavingAnswer)
+                .accessibilityIdentifier("brain.option.\(i)")
             }
 
-            if let picked {
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    HStack(spacing: Space.xs) {
-                        Image(systemName: picked == q.answerIndex ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(picked == q.answerIndex ? Palette.green : Palette.red)
-                        Text(picked == q.answerIndex ? "Correct!" : "Not quite — the right answer is highlighted above.")
-                            .font(Typography.caption.weight(.semibold))
-                            .foregroundStyle(Palette.textSecond)
-                    }
-
-                    if let explanation = q.exp?.trimmingCharacters(in: .whitespacesAndNewlines), !explanation.isEmpty {
-                        Text(explanation)
-                            .font(Typography.caption)
-                            .foregroundStyle(Palette.textSecond)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityLabel("Why: \(explanation)")
-                    }
+            if isSavingAnswer {
+                HStack(spacing: Space.sm) {
+                    ProgressView()
+                    Text("Saving your answer…")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
                 }
-                .fixedSize(horizontal: false, vertical: true)
+            } else if let picked {
+                LearningFeedback(
+                    title: picked == q.answerIndex ? "Correct." : "Not quite — the right answer is highlighted above.",
+                    message: q.exp?.trimmingCharacters(in: .whitespacesAndNewlines),
+                    kind: picked == q.answerIndex ? .success : .retry
+                )
 
                 nextButton(total: total)
+            } else if let failedAnswer, let answerError {
+                LearningFeedback(title: "That answer wasn't saved.", message: answerError, kind: .retry)
+                Button("Retry answer") {
+                    isSavingAnswer = true
+                    self.failedAnswer = nil
+                    self.answerError = nil
+                    Task { await report(qid: q.qid, answer: failedAnswer, correct: failedAnswer == q.answerIndex) }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Palette.accent)
+                .frame(minHeight: 44)
+                .disabled(isSavingAnswer)
+                .accessibilityIdentifier("brain.retrySave")
             }
         }
     }
 
-    private func optionBackground(_ q: BrainTeaserQ, _ i: Int) -> Color {
-        guard picked != nil else { return Palette.panel }
-        if i == q.answerIndex { return Palette.green.opacity(0.18) }
-        if i == picked { return Palette.red.opacity(0.15) }
-        return Palette.panel
+    private func optionState(_ q: BrainTeaserQ, _ i: Int) -> LearningOption.State {
+        guard picked != nil else { return .idle }
+        if i == q.answerIndex { return .correct }
+        if i == picked { return .incorrect }
+        return .dimmed
     }
 
     private func nextButton(total: Int) -> some View {
         Button {
             Haptics.selection()
-            withAnimation {
-                answeredCount += 1
-                index += 1
-                picked = nil
-            }
+            answeredCount += 1
+            index += 1
+            picked = nil
+            failedAnswer = nil
+            answerError = nil
         } label: {
-            Text(index + 1 < total ? "Next question →" : "See results →")
+            Text(index + 1 < total ? "Next question" : "Finish")
                 .font(Typography.body.weight(.bold))
                 .foregroundStyle(Palette.onAccent)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(Palette.violet, in: RoundedRectangle(cornerRadius: Radius.pill, style: .continuous))
+                .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.pill, style: .continuous))
         }
         .buttonStyle(PressableStyle())
+        .accessibilityIdentifier("brain.next")
     }
 
     // MARK: Done state
 
     private func doneState(total: Int) -> some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            Text("🎉 Brain fully teased!")
+            Label("Brain teaser complete", systemImage: "checkmark.circle.fill")
                 .font(Typography.body.weight(.bold))
                 .foregroundStyle(Palette.text)
             Text("\(answeredCount)/\(total) today")
@@ -189,7 +194,7 @@ struct BrainTeaserView: View {
                 .font(Typography.body.weight(.bold))
                 .foregroundStyle(Palette.onAccent)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(Palette.violet, in: RoundedRectangle(cornerRadius: Radius.pill, style: .continuous))
+                .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.pill, style: .continuous))
         }
         .buttonStyle(PressableStyle())
     }
@@ -204,9 +209,20 @@ struct BrainTeaserView: View {
         index = 0
         picked = nil
         answeredCount = 0
+        isSavingAnswer = false
+        failedAnswer = nil
+        answerError = nil
         do {
             let response = try await APIClient.shared.brainTeaserToday()
             guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            guard response.date == day,
+                  response.count == response.questions.count,
+                  response.questions.allSatisfy({ question in
+                      question.options.count >= 2 && question.options.indices.contains(question.answerIndex)
+                  }) else {
+                state = .error("Today's teaser data isn't ready yet. Please try again.")
+                return
+            }
             state = .loaded(response)
             if !response.questions.isEmpty {
                 Daily5Reporter.report("bt", "started", store: store, scope: progressScope)
@@ -217,7 +233,19 @@ struct BrainTeaserView: View {
         }
     }
 
-    private func report(qid: String, correct: Bool) async {
-        try? await APIClient.shared.brainTeaserAnswer(qid: qid, correct: correct)
+    private func report(qid: String, answer: Int, correct: Bool) async {
+        let userID = store.me?.id
+        let day = Agenda.todayKey()
+        do {
+            try await APIClient.shared.brainTeaserAnswer(qid: qid, correct: correct)
+            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            picked = answer
+        } catch {
+            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            failedAnswer = answer
+            answerError = error.localizedDescription
+        }
+        guard store.me?.id == userID, Agenda.todayKey() == day else { return }
+        isSavingAnswer = false
     }
 }

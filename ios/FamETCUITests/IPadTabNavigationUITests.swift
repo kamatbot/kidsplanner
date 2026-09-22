@@ -6,22 +6,26 @@ final class IPadTabNavigationUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    func testEveryRailDestinationRespondsToOneTap() throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else {
-            throw XCTSkip("The compact rail is an iPad-only navigation surface.")
-        }
-
+    func testAdaptiveNavigationKeepsSelectionAcrossRotation() throws {
         let app = XCUIApplication()
         app.launchEnvironment["FAM_ONBOARDED"] = "1"
         app.launchEnvironment["FAM_MOCK_NAVIGATION"] = "1"
         app.launch()
 
-        assertOneTap(app, tab: "homework", screen: "homework")
-        assertOneTap(app, tab: "calendar", screen: "calendar")
-        assertOneTap(app, tab: "chat", screen: "chat")
-        assertOneTap(app, tab: "trips", screen: "planning")
-        assertOneTap(app, tab: "meals", screen: "planning")
-        assertOneTap(app, tab: "today", screen: "today")
+        assertOneTap(app, tab: "Homework", screen: "homework")
+        assertOneTap(app, tab: "Calendar", screen: "calendar")
+        assertOneTap(app, tab: "Chat", screen: "chat")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        XCTAssertTrue(app.descendants(matching: .any)["screen-chat"].waitForExistence(timeout: 3))
+        assertOneTap(app, tab: "Planning", screen: "planning")
+        let picker = app.segmentedControls.firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 2))
+        picker.buttons["Meals"].tap()
+        XCUIDevice.shared.orientation = .portrait
+        XCTAssertTrue(picker.buttons["Meals"].isSelected)
+        picker.buttons["Trips"].tap()
+        assertOneTap(app, tab: "Today", screen: "today")
     }
 
     private func assertOneTap(
@@ -31,8 +35,8 @@ final class IPadTabNavigationUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let button = app.buttons["ipad-tab-\(tab)"]
-        XCTAssertTrue(button.waitForExistence(timeout: 2), "Missing \(tab) rail button", file: file, line: line)
+        let button = app.buttons[tab].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 2), "Missing \(tab) navigation button", file: file, line: line)
         button.tap()
 
         let destination = app.descendants(matching: .any)["screen-\(screen)"]

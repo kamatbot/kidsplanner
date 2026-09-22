@@ -656,6 +656,17 @@ final class APIClient: FamilyActionService {
         return data
     }
 
+    func dailyFiveProgress(date: String, cookie: String) async throws -> DailyFiveProgressPayload {
+        let data = try await rawSend("/api/daily5/progress?date=\(date)", method: "GET", body: nil, cookie: cookie)
+        return try JSONDecoder().decode(DailyFiveProgressPayload.self, from: data)
+    }
+
+    func childDailyFiveProgress(kidID: String, date: String, cookie: String) async throws -> FamilyDailyFiveProgress {
+        guard let encodedID = kidID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { throw APIError.badURL }
+        let data = try await rawSend("/api/children/\(encodedID)/insights?date=\(date)", method: "GET", body: nil, cookie: cookie)
+        return try DailyFiveSnapshotDecoder.decodeInsights(data, expectedDate: date).dailyFive
+    }
+
     func reportDaily5(date: String, part: String, status: String, retract: Bool, cookie: String) async throws {
         if status == "started", !retract {
             let data = try await rawSend("/api/daily5/progress?date=\(date)", method: "GET", body: nil, cookie: cookie)

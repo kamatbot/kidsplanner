@@ -46,6 +46,28 @@ struct CalendarScreen: View {
                 if canToggleMode && !isLandscape {
                     modeBar
                 }
+                if store.isLoadingCalendar && store.events.isEmpty && store.familyEvents.isEmpty {
+                    ProgressView("Loading your calendar…")
+                        .font(Typography.body)
+                        .padding(Space.lg)
+                }
+                if store.calendarError != nil {
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        Label("Calendar couldn't refresh", systemImage: "wifi.exclamationmark")
+                            .font(Typography.cardTitle)
+                        Text(store.events.isEmpty && store.familyEvents.isEmpty
+                             ? "Your events couldn't be loaded. Check your connection and try again."
+                             : "Saved events are still shown. Try again to check for changes.")
+                            .font(Typography.body).foregroundStyle(Palette.textSecond)
+                        Button("Retry calendar") { Task { await store.loadCalendarAndHomework(force: true) } }
+                            .frame(minHeight: 44)
+                            .disabled(store.isLoadingCalendar)
+                            .accessibilityIdentifier("calendar.retry")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Space.lg)
+                    .background(Palette.panel)
+                }
                 if store.homeworkError != nil {
                     HomeworkSyncErrorNotice(isRetrying: store.isLoadingHomework) {
                         Task { await store.loadCalendarAndHomework(force: true) }
@@ -60,7 +82,10 @@ struct CalendarScreen: View {
                         .padding(.bottom, Space.md)
                 }
                 Group {
-                    if useGrid && displayedMode == .month {
+                    if store.events.isEmpty && store.familyEvents.isEmpty && store.homework.isEmpty
+                        && (store.isLoadingCalendar || store.calendarError != nil) {
+                        Spacer()
+                    } else if useGrid && displayedMode == .month {
                         MonthCalendarView(
                             events: displayData.events,
                             familyEvents: displayData.familyEvents,

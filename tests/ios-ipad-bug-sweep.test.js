@@ -27,10 +27,10 @@ test("calendar grids build day-keyed data once and validate homework drops", () 
   assert.match(week, /let itemsByDay = WeekCalendarData\.itemsByDay/);
 });
 
-test("iPad never receives floating iPhone tab-bar clearance", () => {
+test("native adaptive navigation never adds legacy floating bar clearance", () => {
   const theme = read("ios/FamETC/DesignSystem/Theme.swift");
   assert.match(theme, /static var bottomNavigationClearance/);
-  assert.match(theme, /userInterfaceIdiom == \.phone \? tabBarClearance : 0/);
+  assert.match(theme, /static var bottomNavigationClearance: CGFloat \{\s*0\s*\}/);
   for (const relative of [
     "ios/FamETC/Features/Chat/ChatView.swift",
     "ios/FamETC/Features/Trips/TripsScreen.swift",

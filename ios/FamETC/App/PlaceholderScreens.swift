@@ -51,12 +51,14 @@ struct HomeworkScreen: View {
     }
 
     var body: some View {
-        ZStack {
-            ScreenBackground()
-            if horizontalSizeClass == .regular && !dynamicTypeSize.isAccessibilitySize {
-                regularWorkspace
-            } else {
-                compactWorkspace
+        GeometryReader { proxy in
+            ZStack {
+                ScreenBackground()
+                if canUseRegularWorkspace(availableWidth: proxy.size.width) {
+                    regularWorkspace
+                } else {
+                    compactWorkspace
+                }
             }
         }
         .onAppear(perform: reconcileSelection)
@@ -267,6 +269,15 @@ struct HomeworkScreen: View {
 
     private func queueWidth(for width: CGFloat) -> CGFloat {
         min(390, max(330, width * 0.34))
+    }
+
+    /// A regular size class can still be a narrow Split View window. Keep the
+    /// queue, detail pane, and their gutter usable before choosing the two-pane
+    /// workspace rather than reserving 330 points for a cramped queue.
+    private func canUseRegularWorkspace(availableWidth: CGFloat) -> Bool {
+        horizontalSizeClass == .regular
+            && !dynamicTypeSize.isAccessibilitySize
+            && availableWidth >= 800
     }
 
     private func reconcileSelection() {
@@ -562,6 +573,7 @@ private struct HomeworkAssignmentDetail: View {
     let item: HomeworkItem
     let kidName: String?
     @Binding var draftStep: String
+    @State private var showingStartHelp = false
 
     private var dueState: HomeworkDueState { HomeworkDueState(item: item, todayKey: Agenda.todayKey()) }
     private var isMutating: Bool { store.homeworkMutationIDs.contains(item.id) }
@@ -573,6 +585,7 @@ private struct HomeworkAssignmentDetail: View {
                 nextStep
                 checklist
                 if !store.isParent {
+                    if !item.isDone { helpMeStartButton }
                     assignmentActions
                 }
             }
@@ -582,6 +595,9 @@ private struct HomeworkAssignmentDetail: View {
         }
         .scrollIndicators(.hidden)
         .background(Palette.bg)
+        .sheet(isPresented: $showingStartHelp) {
+            HomeworkStartSheet(item: item)
+        }
     }
 
     private var context: some View {
@@ -753,6 +769,32 @@ private struct HomeworkAssignmentDetail: View {
             }
         }
         .disabled(isMutating)
+    }
+
+    private var helpMeStartButton: some View {
+        Button {
+            Haptics.selection()
+            showingStartHelp = true
+        } label: {
+            VStack(alignment: .leading, spacing: Space.xs) {
+                Label("Help me start", systemImage: "sparkles")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                Text("Make a short starting plan and, if you choose, ask family for help.")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(Space.lg)
+            .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                    .strokeBorder(Palette.border, lineWidth: 1)
+            }
+        }
+        .buttonStyle(PressableStyle(scale: 0.98))
+        .accessibilityHint("Opens hints without changing this assignment")
     }
 
     @ViewBuilder private var statusActions: some View {

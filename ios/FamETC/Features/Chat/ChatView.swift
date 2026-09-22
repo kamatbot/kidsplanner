@@ -26,7 +26,13 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
 
     @Environment(AppStore.self) private var store
-    @State private var draft = ""
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var drafts: [String: String] = [:]
+    @State private var sendingRooms: Set<String> = []
+    @State private var failedRooms: Set<String> = []
+    @State private var isNearBottom = true
+    @State private var hasUnreadMessages = false
+    @State private var displayedRoomID: String?
     @State private var keyboardVisible = false
     @State private var showGifPicker = false
     @State private var hwRef: HWRef?
@@ -58,6 +64,10 @@ struct ChatScreen<HeaderAccessory: View>: View {
     private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
     private var isFamilyRoom: Bool { roomId == familyRoomId }
     private var currentMessages: [ChatMessage] { store.messagesByRoom[roomId] ?? [] }
+    private var draft: String {
+        get { drafts[roomId, default: ""] }
+        nonmutating set { drafts[roomId] = newValue }
+    }
 
     var body: some View {
         ZStack {
@@ -66,6 +76,16 @@ struct ChatScreen<HeaderAccessory: View>: View {
                 header
                 Divider().overlay(Palette.border)
                 messages
+                if failedRooms.contains(roomId) {
+                    Label("Couldn't confirm delivery. Your draft is still here; check the chat before sending again.", systemImage: "wifi.exclamationmark")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(Space.md)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.panel)
+                        .accessibilityIdentifier("chat.send.failure")
+                }
                 composer
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -78,13 +98,28 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // native tab page, the iPad docked column, or the slide-over sheet.
         // The onChange covers the iPad docked column, where a room switch
         // changes `roomId` on an already-appeared screen (no onAppear refires).
-        .onAppear { store.activeRoomId = roomId }
+        .onAppear { displayedRoomID = roomId; store.activeRoomId = roomId }
         // If this screen came from a push tap, NotificationHandler already
         // started the fetch before navigation. Consume that in-flight result
         // immediately instead of waiting for the chat loop's first request.
         .task(id: roomId) { await store.consumeNotificationChatPrefetch(roomId: roomId) }
-        .onChange(of: roomId) { _, newValue in store.activeRoomId = newValue }
-        .onDisappear { if store.activeRoomId == roomId { store.activeRoomId = nil } }
+        .onChange(of: roomId) { _, newValue in
+            displayedRoomID = newValue
+            store.activeRoomId = newValue
+            isNearBottom = true
+            hasUnreadMessages = false
+            scrollToBottom(animated: false)
+        }
+        .onChange(of: store.me?.id) { _, _ in
+            drafts = [:]
+            sendingRooms = []
+            failedRooms = []
+            isSendingBuzz = false
+        }
+        .onDisappear {
+            displayedRoomID = nil
+            if store.activeRoomId == roomId { store.activeRoomId = nil }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             store.chatDidEnterBackground()
         }
@@ -188,10 +223,38 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // card/button tap without blocking it).
         .simultaneousGesture(TapGesture().onEnded { composerFocused = false })
         .overlay { emptyOrLoading }
-        .onChange(of: currentMessages.count) { oldCount, _ in
-            scrollToBottom(animated: oldCount > 0)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 100
+        } action: { _, nearBottom in
+            isNearBottom = nearBottom
+            if nearBottom { hasUnreadMessages = false }
         }
-        .onChange(of: keyboardVisible) { _, v in if v { scrollToBottom(animated: true) } }
+        .overlay(alignment: .bottom) {
+            if hasUnreadMessages {
+                Button {
+                    hasUnreadMessages = false
+                    scrollToBottom(animated: true)
+                } label: {
+                    Label("New messages", systemImage: "arrow.down")
+                        .font(Typography.label.weight(.semibold))
+                        .padding(.horizontal, Space.lg)
+                        .frame(minHeight: 44)
+                        .foregroundStyle(Palette.onAccent)
+                        .background(Palette.accent, in: Capsule())
+                }
+                .padding(Space.sm)
+                .accessibilityIdentifier("chat.newMessages")
+            }
+        }
+        .onChange(of: currentMessages.last?.id) { oldID, newID in
+            guard newID != nil else { return }
+            if oldID == nil || isNearBottom {
+                scrollToBottom(animated: oldID != nil)
+            } else {
+                hasUnreadMessages = true
+            }
+        }
+        .onChange(of: keyboardVisible) { _, v in if v && isNearBottom { scrollToBottom(animated: true) } }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -287,7 +350,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // the rows this update just added, then pin to the bottom edge —
         // ScrollPosition tracks the edge through any late layout growth.
         DispatchQueue.main.async {
-            if animated {
+            if animated && !reduceMotion {
                 withAnimation(.easeOut(duration: 0.2)) { scrollPos.scrollTo(edge: .bottom) }
             } else {
                 scrollPos.scrollTo(edge: .bottom)
@@ -297,7 +360,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     // MARK: Composer (+ menu + wide input + circular send)
 
-    private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !sendingRooms.contains(roomId) && !isSendingBuzz }
     private var canBuzz: Bool { canSend && !isSendingBuzz }
 
     private var composer: some View {
@@ -314,7 +377,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                 }
             )
 
-            TextField(isFamilyRoom ? "Message the family…" : "Message the trip…", text: $draft, axis: .vertical)
+            TextField(isFamilyRoom ? "Message the family…" : "Message the trip…", text: Binding(get: { draft }, set: { draft = $0 }), axis: .vertical)
                 .font(.system(size: 17))
                 .foregroundStyle(Palette.text)
                 .lineLimit(1...5)
@@ -322,9 +385,13 @@ struct ChatScreen<HeaderAccessory: View>: View {
                 .padding(.horizontal, Space.md).padding(.vertical, Space.sm + 3)
                 .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
+                .accessibilityIdentifier("chat.composer")
 
             Button(action: send) {
-                Image(systemName: "paperplane.fill")
+                Group {
+                    if sendingRooms.contains(roomId) { ProgressView().tint(Palette.onAccent) }
+                    else { Image(systemName: "paperplane.fill") }
+                }
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Palette.onAccent)
                     .frame(width: 44, height: 44)
@@ -332,6 +399,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
             }
             .disabled(!canSend)
             .accessibilityLabel("Send message")
+            .accessibilityIdentifier("chat.send")
         }
         .padding(.horizontal, Space.md).padding(.top, Space.sm).padding(.bottom, Space.sm)
         .background(Palette.panel)
@@ -349,30 +417,50 @@ struct ChatScreen<HeaderAccessory: View>: View {
         guard !isSendingBuzz else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let targetRoom = roomId
+        let accountID = store.me?.id
         isSendingBuzz = true
         Task {
             do {
-                try await store.sendBuzz(text: text, roomId: roomId)
+                try await store.sendBuzz(text: text, roomId: targetRoom)
+                guard store.me?.id == accountID else { return }
                 // If the user edited the composer while the request was in
                 // flight, keep that newer draft instead of clearing it.
-                if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text {
-                    draft = ""
+                if drafts[targetRoom]?.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+                    drafts[targetRoom] = ""
                 }
                 Haptics.notify(.success)
             } catch {
+                guard store.me?.id == accountID else { return }
                 Haptics.notify(.error)
-                buzzAlert = .error(error.localizedDescription)
+                if displayedRoomID == targetRoom { buzzAlert = .error(error.localizedDescription) }
             }
             isSendingBuzz = false
         }
     }
 
     private func send() {
+        guard canSend else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        draft = ""
+        let targetRoom = roomId
+        let accountID = store.me?.id
+        sendingRooms.insert(targetRoom)
+        failedRooms.remove(targetRoom)
         Haptics.selection()
-        Task { await store.send(text: text, roomId: roomId) }
+        Task {
+            let sent = await store.send(text: text, roomId: targetRoom)
+            guard store.me?.id == accountID else { return }
+            sendingRooms.remove(targetRoom)
+            if sent {
+                if drafts[targetRoom]?.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+                    drafts[targetRoom] = ""
+                }
+                if displayedRoomID == targetRoom { scrollToBottom(animated: true) }
+            } else {
+                failedRooms.insert(targetRoom)
+            }
+        }
     }
 
     private func emptyState(icon: String, title: String, detail: String) -> some View {

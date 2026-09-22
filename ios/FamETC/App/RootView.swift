@@ -1,34 +1,9 @@
 import SwiftUI
 
-// MARK: - Size-class branching strategy
-//
-// Fam ETC leans on Chat being "always nearby" the way a family group chat is,
-// so the layout isn't a plain 1:1 port of RetireOdds's iPhone-only tab bar:
-//
-//   iPhone (any orientation)          → FloatingTabBar (5 compact entries),
-//                                        same pill / matchedGeometryEffect /
-//                                        glass-material pattern as RetireOdds.
-//                                        Planning switches between Trips and
-//                                        Meals through its context menu.
-//
-//   iPad (all orientations and roles) → compact nav rail (Today/Calendar/
-//                                        Homework/Chat/Trips/Meals) + one full-
-//                                        width content surface. Chat is a real
-//                                        tab, so selecting it replaces Today/
-//                                        Calendar/etc. instead of becoming a
-//                                        floating sheet or a side column.
-//
-// iPad size classes are regular×regular in BOTH orientations, so orientation is
-// read from actual geometry (`onGeometryChange`), not size classes.
-//
-// Chat's own tab content is `ChatTabHost`: family chat opens immediately and,
-// once the signed-in user is on a trip, a compact header control switches rooms
-// without adding another navigation layer (docs/TRIPS-PLAN.md "iOS" §2).
-//
-// Settings/Goals/Activities are NOT native tabs — they're reached from a "More"
-// entry inside Today, hosted by `HybridWebView`. That "More" sheet/menu is out
-// of scope for this scaffold; only the compact five-entry native surface is
-// wired here.
+// A single native tab hierarchy adapts to phone, tablet, and resizable displays.
+// Do not branch the screen tree by device idiom: doing so recreates local drafts,
+// navigation stacks, and web views when the available space changes.
+// Chat stays a destination; Planning retains both Trips and Meals while switching.
 enum PlanningDestination: String, CaseIterable, Identifiable {
     case trips, meals
 
@@ -86,22 +61,49 @@ struct RootView: View {
     @AppStorage("fam_onboarded") private var onboarded = false
     @State private var selection: Tab = .today
     @State private var planningSelection: PlanningDestination = .trips
+    @State private var assistanceChild: AssistanceChildRoute?
+    @State private var pendingAssistanceURL: URL?
+    private struct AssistanceChildRoute: Identifiable { let id: String }
 
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
-    /// Notes remains available as a screen, but is intentionally not a native
-    /// navigation entry in the compact shell.
-    private var roleTabs: [Tab] { Tab.allCases }
+    private func openAssistanceRoute(_ url: URL) {
+        guard url.scheme == "https", let host = url.host?.lowercased(),
+              ["fametc.com", "www.fametc.com"].contains(host), url.path == "/",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.queryItems?.first(where: { $0.name == "famRoute" })?.value == "today",
+              let id = components.queryItems?.first(where: { $0.name == "childId" })?.value else { return }
+        if (store.me == nil || store.isRefreshing || !store.assistanceIdentityVerified), !store.needsAuth {
+            pendingAssistanceURL = url
+            return
+        }
+        pendingAssistanceURL = nil
+        guard !store.needsAuth, store.assistanceIdentityVerified, let user = store.me, user.role != "kid",
+              store.family?.parentIds.contains(user.id) == true,
+              store.kids.contains(where: { $0.id == id }) else { return }
+        selection = .today
+        assistanceChild = AssistanceChildRoute(id: id)
+    }
+
 
     var body: some View {
-        Group {
-            if isPad {
-                iPadLayout
-            } else {
-                iPhoneLayout
-            }
-        }
+        adaptiveLayout
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
+        .onOpenURL { openAssistanceRoute($0) }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            if let url = activity.webpageURL { openAssistanceRoute(url) }
+        }
+        .sheet(item: $assistanceChild) { route in
+            ParentAttentionSheet(childID: route.id)
+        }
+        .onChange(of: store.isRefreshing) { _, refreshing in
+            guard !refreshing else { return }
+            if store.assistanceIdentityVerified, let url = pendingAssistanceURL { openAssistanceRoute(url) }
+            else { pendingAssistanceURL = nil }
+        }
+        .onChange(of: store.me?.id) { _, _ in assistanceChild = nil }
+        .onChange(of: store.needsAuth) { _, needsAuth in
+            if needsAuth { assistanceChild = nil; pendingAssistanceURL = nil }
+        }
         // Parents: kids waiting to be let in appear as a banner above everything.
         .safeAreaInset(edge: .top, spacing: 0) {
             KidApprovalBanner()
@@ -109,6 +111,7 @@ struct RootView: View {
         }
         .task {
             await store.load()
+            if let url = pendingAssistanceURL { openAssistanceRoute(url) }
             consumePendingChatRoute()
             // Now that we know there's an authenticated session, ask for push
             // permission (prompts once) and register/refresh the APNs token. Gated
@@ -173,21 +176,32 @@ struct RootView: View {
 
     // MARK: iPhone — floating pill tab bar (5 entries)
 
-    private var iPhoneLayout: some View {
+    /// One structural identity across window sizes and display transitions.
+    /// System bars own safe areas and can adapt to Duo's vertical presentation.
+    private var adaptiveLayout: some View {
         TabView(selection: $selection) {
             TodayScreen(onOpenHomework: { selection = .homework })
-                .toolbar(.hidden, for: .tabBar)
+                .accessibilityIdentifier("screen-today")
+                .tabItem { Label("Today", systemImage: Tab.today.icon) }
                 .tag(Tab.today)
-            CalendarScreen().toolbar(.hidden, for: .tabBar).tag(Tab.calendar)
-            HomeworkScreen().toolbar(.hidden, for: .tabBar).tag(Tab.homework)
-            ChatTabHost().toolbar(.hidden, for: .tabBar).tag(Tab.chat)
-            planningDestinationScreen.toolbar(.hidden, for: .tabBar).tag(Tab.planning)
+            CalendarScreen()
+                .accessibilityIdentifier("screen-calendar")
+                .tabItem { Label("Calendar", systemImage: Tab.calendar.icon) }.tag(Tab.calendar)
+            HomeworkScreen()
+                .accessibilityIdentifier("screen-homework")
+                .tabItem { Label("Homework", systemImage: Tab.homework.icon) }.tag(Tab.homework)
+            ChatTabHost()
+                .accessibilityIdentifier("screen-chat")
+                .badge(store.unreadChatCount)
+                .tabItem { Label("Chat", systemImage: Tab.chat.icon) }.tag(Tab.chat)
+            planningDestinationScreen
+                .accessibilityIdentifier("screen-planning")
+                .tabItem { Label("Planning", systemImage: Tab.planning.icon) }.tag(Tab.planning)
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            FloatingTabBar(selection: $selection, planningSelection: $planningSelection, tabs: roleTabs)
-                .padding(.bottom, 2) // sit a little lower (was Space.md)
+        .tabViewStyle(.sidebarAdaptable)
+        .tabViewSidebarFooter {
+            Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", action: signOut)
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
         .onChange(of: selection) { _, _ in Haptics.selection() }
     }
 
@@ -205,45 +219,15 @@ struct RootView: View {
                 .allowsHitTesting(planningSelection == .meals)
                 .accessibilityHidden(planningSelection != .meals)
         }
-    }
-
-    // MARK: iPad — rail + one full-width content surface
-
-    /// Chat is a normal tab on iPad. The rail remains visible, while the
-    /// selected screen owns the entire content region beside it.
-    private var iPadLayout: some View {
-        HStack(spacing: 0) {
-            NavRailList(
-                selection: $selection,
-                planningSelection: $planningSelection,
-                tabs: roleTabs,
-                onSignOut: signOut
-            )
-                .frame(width: 90)
-            Divider()
-            TabView(selection: $selection) {
-                TodayScreen(onOpenHomework: { selection = .homework })
-                    .toolbar(.hidden, for: .tabBar)
-                    .accessibilityIdentifier("screen-today")
-                    .tag(Tab.today)
-                CalendarScreen()
-                    .toolbar(.hidden, for: .tabBar)
-                    .accessibilityIdentifier("screen-calendar")
-                    .tag(Tab.calendar)
-                HomeworkScreen()
-                    .toolbar(.hidden, for: .tabBar)
-                    .accessibilityIdentifier("screen-homework")
-                    .tag(Tab.homework)
-                ChatTabHost()
-                    .toolbar(.hidden, for: .tabBar)
-                    .accessibilityIdentifier("screen-chat")
-                    .tag(Tab.chat)
-                planningDestinationScreen
-                    .toolbar(.hidden, for: .tabBar)
-                    .accessibilityIdentifier("screen-planning")
-                    .tag(Tab.planning)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("Planning destination", selection: $planningSelection) {
+                ForEach(PlanningDestination.allCases) { destination in
+                    Label(destination.label, systemImage: destination.icon).tag(destination)
+                }
             }
-            .frame(maxWidth: .infinity)
+            .pickerStyle(.segmented)
+            .padding(Space.md)
+            .background(Palette.sidebar)
         }
     }
 
@@ -258,250 +242,6 @@ struct RootView: View {
     }
 }
 
-// MARK: - iPad nav rail
-
-/// Vertical nav rail for the iPad layout: icon + label rows stacked down the
-/// rail, selection driven by direct taps (not `List(selection:)`, which only
-/// updates selection via edit mode / NavigationSplitView row selection and
-/// otherwise leaves taps outside a split view inert).
-///
-/// The Planning slot is rendered as separate Trips and Meals rows on iPad;
-/// `planningSelection` keeps the iPhone Tab contract shared with the content.
-private struct NavRailList: View {
-    @Binding var selection: Tab
-    @Binding var planningSelection: PlanningDestination
-    var tabs: [Tab] = Tab.allCases
-    let onSignOut: () -> Void
-    @Environment(AppStore.self) private var store
-
-    var body: some View {
-        VStack(spacing: Space.xs) {
-            ForEach(tabs) { tab in
-                if tab == .planning {
-                    railRow(for: tab, planningDestination: .trips)
-                    railRow(for: tab, planningDestination: .meals)
-                } else {
-                    railRow(for: tab)
-                }
-            }
-            Spacer()
-            Button(action: onSignOut) {
-                VStack(spacing: 4) {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Sign out")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .foregroundStyle(Palette.textSecond)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, Space.sm)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Sign out and choose another account")
-            .padding(.bottom, Space.sm)
-        }
-        .padding(.top, Space.md)
-        .padding(.horizontal, Space.xs)
-    }
-
-    private func railRow(for tab: Tab, planningDestination: PlanningDestination? = nil) -> some View {
-        let displayedPlanningDestination = planningDestination ?? self.planningSelection
-        let isOn = tab == selection && (tab != .planning || self.planningSelection == displayedPlanningDestination)
-        let label = tab.displayLabel(for: displayedPlanningDestination)
-        let identifier = planningDestination?.rawValue ?? tab.rawValue
-        return Button {
-            if let planningDestination {
-                choosePlanning(planningDestination)
-            } else {
-                chooseTab(tab)
-            }
-        } label: {
-            VStack(spacing: 4) {
-                Image(systemName: tab.displayIcon(for: displayedPlanningDestination))
-                    .font(.system(size: 18, weight: .semibold))
-                    .overlay(alignment: .topTrailing) {
-                        if tab == .chat && store.unreadChatCount > 0 {
-                            unreadBadge(store.unreadChatCount)
-                        }
-                    }
-                Text(label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(isOn ? Palette.text : Palette.textSecond)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, Space.sm)
-            .background {
-                if isOn {
-                    RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
-                        .fill(Palette.accentSoft)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("ipad-tab-\(identifier)")
-        .accessibilityLabel(planningDestination.map(\.label) ?? (tab == .planning ? "Planning, " + label : label))
-        .accessibilityAddTraits(isOn ? .isSelected : [])
-    }
-
-    private func chooseTab(_ tab: Tab) {
-        guard selection != tab else { return }
-        withTransaction(Transaction(animation: nil)) {
-            selection = tab
-        }
-        Haptics.selection()
-    }
-
-    private func choosePlanning(_ destination: PlanningDestination) {
-        let destinationChanges = planningSelection != destination
-        let selectionChanges = selection != .planning
-        planningSelection = destination
-        if selectionChanges {
-            withTransaction(Transaction(animation: nil)) {
-                selection = .planning
-            }
-        }
-        if selectionChanges || destinationChanges {
-            Haptics.selection()
-        }
-    }
-
-    private func unreadBadge(_ count: Int) -> some View {
-        Text(count > 9 ? "9+" : "\(count)")
-            .font(.system(size: 10, weight: .heavy))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(Palette.coral, in: Capsule())
-            .offset(x: 10, y: -7)
-    }
-}
-
-private struct PlanningDestinationMenu: View {
-    let onSelect: (PlanningDestination) -> Void
-
-    var body: some View {
-        Button {
-            onSelect(.trips)
-        } label: {
-            Label(PlanningDestination.trips.label, systemImage: PlanningDestination.trips.icon)
-        }
-        Button {
-            onSelect(.meals)
-        } label: {
-            Label(PlanningDestination.meals.label, systemImage: PlanningDestination.meals.icon)
-        }
-    }
-}
-
-// MARK: - Floating tab bar (iPhone)
-
-/// Custom floating tab bar: a glass capsule raised clear of the home-indicator /
-/// Siri gesture zone, with an ink pill that slides between tabs
-/// (matchedGeometryEffect). Icon-only; VoiceOver reads the full labels.
-struct FloatingTabBar: View {
-    @Binding var selection: Tab
-    @Binding var planningSelection: PlanningDestination
-    /// Compact tab list (RootView passes all five entries).
-    var tabs: [Tab] = Tab.allCases
-    @Environment(AppStore.self) private var store
-    @Namespace private var pillNS
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs) { tab in
-                let isOn = selection == tab
-                if tab == .planning {
-                    tabButton(tab, isOn: isOn)
-                        .contextMenu {
-                            PlanningDestinationMenu { destination in
-                                choosePlanning(destination)
-                            }
-                        }
-                        .accessibilityHint("Long press to choose Trips or Meals.")
-                        .accessibilityAction(named: Text("Choose Trips")) {
-                            choosePlanning(.trips)
-                        }
-                        .accessibilityAction(named: Text("Choose Meals")) {
-                            choosePlanning(.meals)
-                        }
-                } else {
-                    tabButton(tab, isOn: isOn)
-                }
-            }
-        }
-        .padding(Space.xs + 2)
-        .background(.ultraThinMaterial, in: Capsule())
-        .background(Palette.panel.opacity(0.55), in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.border.opacity(0.85), lineWidth: 1))
-        .shadow(color: .black.opacity(0.14), radius: 18, x: 0, y: 8)
-        .padding(.horizontal, Space.md)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Tab bar")
-    }
-
-    private func tabButton(_ tab: Tab, isOn: Bool) -> some View {
-        let label = tab.displayLabel(for: planningSelection)
-        return Button {
-            guard !isOn else { return }
-            withAnimation(Motion.maybe(Motion.snappy, reduceMotion: reduceMotion)) {
-                selection = tab
-            }
-        } label: {
-            VStack(spacing: 2) {
-                Image(systemName: tab.displayIcon(for: planningSelection))
-                    .font(.system(size: 16, weight: .semibold))
-                    .overlay(alignment: .topTrailing) {
-                        if tab == .chat && store.unreadChatCount > 0 { unreadBadge(store.unreadChatCount) }
-                    }
-                Text(label)
-                    .font(.system(size: 9, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(isOn ? Palette.bg : Palette.textSecond)
-            .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background {
-                if isOn {
-                    Capsule()
-                        .fill(Palette.text)
-                        .matchedGeometryEffect(id: "activePill", in: pillNS)
-                        .padding(.horizontal, 3)
-                }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(tab == .planning ? "Planning, " + label : label)
-        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
-    }
-
-    private func choosePlanning(_ destination: PlanningDestination) {
-        let destinationChanges = planningSelection != destination
-        let selectionChanges = selection != .planning
-        planningSelection = destination
-        if selectionChanges {
-            // iPhone's RootView selection observer supplies the normal selection
-            // haptic when this changes tabs.
-            selection = .planning
-        } else if destinationChanges {
-            Haptics.selection()
-        }
-    }
-
-    private func unreadBadge(_ count: Int) -> some View {
-        Text(count > 9 ? "9+" : "\(count)")
-            .font(.system(size: 10, weight: .heavy))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(Palette.coral, in: Capsule())
-            .offset(x: 10, y: -7)
-    }
-}
 
 // MARK: - Re-auth
 

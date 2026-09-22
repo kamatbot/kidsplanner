@@ -36,5 +36,11 @@
     -->
     <key>aps-environment</key>
     <string>development</string>
+
+    <!-- Credential-free, file-protected family projection for the iOS widget. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.fametc.app.family-assistance</string>
+    </array>
 </dict>
 </plist>

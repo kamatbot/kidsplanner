@@ -15,6 +15,7 @@ struct MonthCalendarView: View {
     var compactLandscape = false
     var onAdd: (() -> Void)?
     @State private var monthAnchor = MonthCalendarView.firstOfMonth(Date())
+    @State private var dayAgendaRef: DayAgendaRef?
 
     private let cal = Calendar.current
     private var gridSpacing: CGFloat { compactLandscape ? Space.xs : 6 }
@@ -47,7 +48,10 @@ struct MonthCalendarView: View {
                                         dayNumber: cal.component(.day, from: date), items: itemsByDay[key] ?? [],
                                         homeworkIDs: homeworkIDs,
                                         showKidLabels: showKidLabels,
-                                        maxVisibleItems: compactLandscape ? 1 : 3)
+                                        maxVisibleItems: compactLandscape ? 1 : 3,
+                                        onOpenAgenda: {
+                                            dayAgendaRef = DayAgendaRef(id: key, date: date)
+                                        })
                                     .frame(height: cellHeight(availableHeight: proxy.size.height, weekCount: weekCount))
                             } else {
                                 Color.clear.frame(height: cellHeight(availableHeight: proxy.size.height, weekCount: weekCount))
@@ -66,6 +70,11 @@ struct MonthCalendarView: View {
         }
         .background(ScreenBackground())
         .refreshable { await store.refreshDashboard() }
+        .sheet(item: $dayAgendaRef) { ref in
+            // Keep the selected date, but derive its rows from the same live,
+            // audience-scoped inputs as the grid after an edit or refresh.
+            DayAgendaSheet(date: ref.date, items: itemsByDay[ref.id] ?? [])
+        }
     }
 
     private func cellHeight(availableHeight: CGFloat, weekCount: Int) -> CGFloat {
@@ -166,6 +175,7 @@ private struct DayCell: View {
     let homeworkIDs: Set<String>
     let showKidLabels: Bool
     let maxVisibleItems: Int
+    let onOpenAgenda: () -> Void
     @State private var targeted = false
     @State private var eventDetailRef: DayEventRef?
 
@@ -173,19 +183,28 @@ private struct DayCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 2) {
-                Text("\(dayNumber)")
-                    .font(Typography.mono(12, isToday ? .heavy : .semibold))
-                    .foregroundStyle(isToday ? Palette.onAccent : Palette.text)
-                    .frame(width: 21, height: 21)
-                    .background(isToday ? Palette.accent : Color.clear, in: Circle())
-                Spacer(minLength: 0)
-                if items.count > maxVisibleItems {
-                    Text("+\(items.count - maxVisibleItems)")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Palette.textSecond)
+            Button(action: onOpenAgenda) {
+                HStack(spacing: 2) {
+                    Text("\(dayNumber)")
+                        .font(Typography.mono(12, isToday ? .heavy : .semibold))
+                        .foregroundStyle(isToday ? Palette.onAccent : Palette.text)
+                        .frame(width: 21, height: 21)
+                        .background(isToday ? Palette.accent : Color.clear, in: Circle())
+                    Spacer(minLength: 0)
+                    if items.count > maxVisibleItems {
+                        Text("+\(items.count - maxVisibleItems)")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Palette.accent)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(items.count > maxVisibleItems
+                ? "Show all \(items.count) items for \(date.formatted(.dateTime.weekday(.wide).month(.wide).day()))"
+                : "Show agenda for \(date.formatted(.dateTime.weekday(.wide).month(.wide).day()))")
+            .accessibilityIdentifier("month-day-agenda-\(key)")
             ForEach(items.prefix(maxVisibleItems)) { chip($0) }
             Spacer(minLength: 0)
         }
@@ -246,4 +265,61 @@ private struct DayEventRef: Identifiable {
     let id: String
     let eventId: String
     let occurrenceDate: String
+}
+
+private struct DayAgendaRef: Identifiable {
+    let id: String
+    let date: Date
+}
+
+/// The grid intentionally previews only a few items. This sheet keeps the
+/// complete day reachable, including the existing event and homework details.
+private struct DayAgendaSheet: View {
+    let date: Date
+    let items: [AgendaItem]
+    @Environment(\.dismiss) private var dismiss
+    @State private var eventDetailRef: DayEventRef?
+    @State private var homeworkID: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(items) { item in
+                    Button {
+                        if let event = item.familyEvent {
+                            eventDetailRef = DayEventRef(
+                                id: "\(event.id)-\(event.date)",
+                                eventId: event.id,
+                                occurrenceDate: event.date
+                            )
+                        } else if let homework = item.homework {
+                            homeworkID = homework.id
+                        }
+                    } label: {
+                        AgendaRow(item: item, showKidLabel: true)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(item.familyEvent == nil && item.homework == nil)
+                    .accessibilityHint(item.familyEvent != nil || item.homework != nil ? "Show details" : "")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+        .sheet(item: $eventDetailRef) { ref in
+            EventDetailSheet(eventId: ref.eventId, occurrenceDate: ref.occurrenceDate)
+        }
+        .sheet(item: Binding(
+            get: { homeworkID.map(DayHomeworkRef.init) },
+            set: { homeworkID = $0?.id }
+        )) { ref in
+            HomeworkDetailSheet(homeworkId: ref.id)
+        }
+    }
+}
+
+private struct DayHomeworkRef: Identifiable {
+    let id: String
 }

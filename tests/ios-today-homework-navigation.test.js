@@ -24,7 +24,7 @@ function structSource(source, name) {
 
 test("iPhone and iPad Today tabs route to the native Homework tab", () => {
   const routes = rootView.match(/TodayScreen\(onOpenHomework: \{ selection = \.homework \}\)/g) ?? [];
-  assert.equal(routes.length, 2, "both production Today screens should route to Homework");
+  assert.equal(routes.length, 1, "one state-preserving Today screen routes to Homework at every size");
 });
 
 test("Today passes the homework route through both role stacks and cards", () => {

@@ -77,9 +77,9 @@ struct MealsScreen: View {
             .pickerStyle(.segmented)
 
             switch store.isParent ? section : .shopping {
-            case .pantry: pantryContent
-            case .menu: menuContent
-            case .shopping: shoppingContent
+            case .pantry: mealsDataContent { pantryContent }
+            case .menu: mealsDataContent { menuContent }
+            case .shopping: mealsDataContent { shoppingContent }
             case .recipes: recipesContent
             }
         }
@@ -106,10 +106,60 @@ struct MealsScreen: View {
         }
     }
 
+    @ViewBuilder
+    private func mealsDataContent<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if store.meals == nil {
+            if let error = store.mealsError {
+                mealsErrorState(error, retainedData: false)
+            } else {
+                HStack(spacing: Space.sm) {
+                    ProgressView()
+                    Text(store.isLoadingMeals ? "Loading meals…" : "Preparing meals…")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                .frame(maxWidth: .infinity, minHeight: 120)
+                .accessibilityLabel("Loading meals")
+            }
+        } else {
+            if let error = store.mealsError {
+                mealsErrorState(error, retainedData: true)
+            } else if store.isLoadingMeals {
+                HStack(spacing: Space.sm) {
+                    ProgressView()
+                    Text("Updating meals…")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                .accessibilityLabel("Updating meals")
+            }
+            content()
+        }
+    }
+
+    private func mealsErrorState(_ error: String, retainedData: Bool) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: Space.md) {
+                Label(retainedData ? "Meals couldn’t refresh" : "Meals couldn’t load", systemImage: "wifi.exclamationmark")
+                    .font(Typography.cardTitle)
+                    .foregroundStyle(Palette.text)
+                Text(retainedData ? "Showing your saved meals. \(error)" : error)
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                Button("Try again") { Task { await store.loadMeals() } }
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("meals.retry")
+            }
+        }
+    }
+
     // MARK: Pantry
 
     private var pantryContent: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
+        let items = pantryItems
+        return VStack(alignment: .leading, spacing: Space.md) {
             AccentButton(title: "Scan pantry \u{1F4F7}", systemImage: "camera.fill") {
                 Haptics.selection(); showScanner = true
             }
@@ -119,7 +169,7 @@ struct MealsScreen: View {
             .font(Typography.body.weight(.semibold))
             .foregroundStyle(Palette.accent)
 
-            if pantryItems.isEmpty {
+            if items.isEmpty {
                 emptyCard(
                     icon: "basket",
                     title: "Your pantry is empty",
@@ -129,9 +179,9 @@ struct MealsScreen: View {
             } else {
                 Card {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(pantryItems) { item in
+                        ForEach(items) { item in
                             PantryRow(item: item)
-                            if item.id != pantryItems.last?.id {
+                            if item.id != items.last?.id {
                                 Divider().overlay(Palette.border).padding(.vertical, Space.sm)
                             }
                         }
@@ -144,10 +194,11 @@ struct MealsScreen: View {
     // MARK: Menu
 
     private var menuContent: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
+        let entries = menuEntries
+        return VStack(alignment: .leading, spacing: Space.md) {
             AccentButton(title: "Add a dinner", systemImage: "plus.circle.fill") { showAddMenu = true }
 
-            if menuEntries.isEmpty {
+            if entries.isEmpty {
                 emptyCard(
                     icon: "fork.knife",
                     title: "No dinners planned",
@@ -156,9 +207,9 @@ struct MealsScreen: View {
             } else {
                 Card {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(menuEntries) { entry in
+                        ForEach(entries) { entry in
                             MenuRow(entry: entry)
-                            if entry.id != menuEntries.last?.id {
+                            if entry.id != entries.last?.id {
                                 Divider().overlay(Palette.border).padding(.vertical, Space.sm)
                             }
                         }
@@ -171,7 +222,8 @@ struct MealsScreen: View {
     // MARK: Shopping
 
     private var shoppingContent: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
+        let items = shoppingItems
+        return VStack(alignment: .leading, spacing: Space.md) {
             QuickAddShoppingRow()
             if store.isParent {
                 AccentButton(title: "Add low pantry items", systemImage: "cart.badge.plus") {
@@ -179,7 +231,7 @@ struct MealsScreen: View {
                 }
             }
 
-            if shoppingItems.isEmpty {
+            if items.isEmpty {
                 emptyCard(
                     icon: "cart",
                     title: "Shopping list is empty",
@@ -188,9 +240,9 @@ struct MealsScreen: View {
             } else {
                 Card {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(shoppingItems) { item in
+                        ForEach(items) { item in
                             ShoppingRow(item: item)
-                            if item.id != shoppingItems.last?.id {
+                            if item.id != items.last?.id {
                                 Divider().overlay(Palette.border).padding(.vertical, Space.xs)
                             }
                         }

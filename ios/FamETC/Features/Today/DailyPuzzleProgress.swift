@@ -196,6 +196,16 @@ enum DailyNewsSelection {
 }
 
 struct DailyPuzzleCrosswordInput {
+    /// UIKit first-responder movement is asynchronous; the logical cursor is
+    /// authoritative when a fast keyboard sends the next letter to an old field.
+    static func cursor(_ key: String?, fallbackRow: Int, fallbackCol: Int) -> (row: Int, col: Int) {
+        if let parts = key?.split(separator: "-"), parts.count == 3, parts[0] == "c",
+           let row = Int(parts[1]), let col = Int(parts[2]), row >= 0, col >= 0 {
+            return (row, col)
+        }
+        return (fallbackRow, fallbackCol)
+    }
+
     static func cellKey(row: Int, col: Int) -> String {
         "c-\(row)-\(col)"
     }

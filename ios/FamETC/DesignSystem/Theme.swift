@@ -179,10 +179,10 @@ enum Layout {
     /// tab children.
     static let tabBarClearance: CGFloat = 88
 
-    /// The floating tab bar exists only on iPhone. iPad uses a navigation rail,
-    /// including when multitasking gives the content a compact size class.
+    /// Native adaptive navigation now reserves its own safe area on every
+    /// display. Extra phone-only padding would leave a gap after unfolding.
     static var bottomNavigationClearance: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .phone ? tabBarClearance : 0
+        0
     }
 }
 

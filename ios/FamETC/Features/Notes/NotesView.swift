@@ -22,7 +22,7 @@ struct NotesScreen: View {
             Button { Haptics.selection(); showComposer = true } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.onAccent)
-                    .frame(width: 38, height: 38).background(Palette.accent, in: Circle())
+                    .frame(width: 44, height: 44).background(Palette.accent, in: Circle())
             }
             .accessibilityLabel("Add a note")
         }) {
@@ -240,6 +240,7 @@ private struct AddNoteSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var noteText = ""
     @State private var saving = false
+    @State private var saveFailed = false
     @FocusState private var focused: Bool
 
     private var canSave: Bool { !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !saving }
@@ -262,6 +263,14 @@ private struct AddNoteSheet: View {
                         .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
                         .focused($focused)
+                        .disabled(saving)
+
+                    if saveFailed {
+                        Label("Your note wasn't saved. Your writing is still here; try again.", systemImage: "wifi.exclamationmark")
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     Spacer()
                 }
@@ -285,12 +294,16 @@ private struct AddNoteSheet: View {
 
     private func save() {
         let text = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard canSave else { return }
         saving = true
+        saveFailed = false
+        let userID = store.me?.id
         Task {
-            await store.addNote(body: text, source: "manual")
+            let note = await store.addNote(body: text, source: "manual")
+            guard store.me?.id == userID else { return }
             saving = false
-            dismiss()
+            if note != nil { dismiss() }
+            else { saveFailed = true }
         }
     }
 }

@@ -24,8 +24,24 @@ final class AppStore {
     /// convenience mirror of the family room so pre-Trips call sites (and
     /// ChatMergeTests) keep working unchanged.
     var messagesByRoom: [String: [ChatMessage]] = [:]
-    var me: User?
-    var family: Family?
+    var me: User? {
+        didSet {
+            if oldValue?.id != me?.id {
+                notes = []
+                notesLoadGeneration &+= 1
+                sessionGeneration &+= 1
+            }
+        }
+    }
+    var family: Family? {
+        didSet {
+            if oldValue?.id != family?.id {
+                notes = []
+                notesLoadGeneration &+= 1
+                sessionGeneration &+= 1
+            }
+        }
+    }
     var kidRequests: [KidAccessRequest] = []   // pending kid sign-ins (parents approve)
     var events: [CalendarEvent] = []           // school-feed events (read-only)
     var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
@@ -39,10 +55,23 @@ final class AppStore {
     var homeworkMutationIDs: Set<String> = []
     var isLoadingHomework = false
     var homeworkError: String?
+    var isLoadingCalendar = false
+    var calendarError: String?
+    /// Only stamped after all brief sources have successfully refreshed.
+    var attentionUpdatedAt: Date?
+    /// DiskCache is display acceleration, never authority for an external link.
+    var assistanceIdentityVerified = false
+    private var calendarHomeworkUpdatedAt: Date?
+    private var actionsUpdatedAt: Date?
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
+    private var notesLoadGeneration = 0
+    private var sessionGeneration = 0
     /// Parent composite Meals state, or the family shopping projection for a
     /// kid session. Kids never receive pantry/menu/prefs/household state.
     var meals: MealsState?
+    var isLoadingMeals = false
+    var mealsError: String?
+    private var mealsLoadGeneration = 0
     /// Chat rooms this session can see (`GET /api/chat/rooms`) — just the
     /// family room until the user is on a trip. Failing soft leaves this at
     /// just the family room so the Chat tab behaves exactly as before.
@@ -129,6 +158,8 @@ final class AppStore {
     /// an older GET can arrive after a successful PATCH and erase the new state.
     private var homeworkMutationRevision = 0
     private var homeworkLoadGeneration = 0
+    private var refreshGeneration = 0
+    private var actionLoadGeneration = 0
 
     init(actionService: FamilyActionService = APIClient.shared) {
         self.actionService = actionService
@@ -159,6 +190,9 @@ final class AppStore {
     }
 
     func refresh() async {
+        assistanceIdentityVerified = false
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
         isRefreshing = true
         // Restart the chat loops unconditionally — including on a thrown 401 or
         // transport error — so a failed initial network call (cold-start cookie
@@ -168,11 +202,32 @@ final class AppStore {
         // until something else (e.g. the Chat tab's `activeRoomId` toggle)
         // happened to kick a poll — surfacing as "messages don't load until I
         // tap the screen".
-        defer { isRefreshing = false; restartChatLoop(); startFamilyPollLoopIfNeeded() }
+        defer {
+            if generation == refreshGeneration {
+                isRefreshing = false
+                restartChatLoop()
+                startFamilyPollLoopIfNeeded()
+            }
+        }
         do {
-            me = try await api.me().user
+            let currentUser = try await api.me().user
+            guard generation == refreshGeneration else { return }
+            if currentUser?.id != me?.id {
+                ParentFamilyAssistancePublisher.clear()
+                events = []
+                familyEvents = []
+                homework = []
+                actions = []
+                attentionUpdatedAt = nil
+            }
+            me = currentUser
             let fams = try await api.families()
+            guard generation == refreshGeneration else { return }
+            if family?.id != fams.first?.id { ParentFamilyAssistancePublisher.clear() }
             family = fams.first
+            assistanceIdentityVerified = currentUser.map { user in
+                user.role != "kid" && family?.parentIds.contains(user.id) == true
+            } ?? false
             if family != nil {
                 // These loads are independent — run them concurrently so the
                 // initial sync takes as long as the slowest call, not the sum.
@@ -183,14 +238,21 @@ final class AppStore {
                 async let notesLoad: Void = loadNotes()
                 async let mealsLoad: Void = loadMeals()
                 async let rooms = api.chatRooms()
-                messages = Self.dedupe(try await msgs)
+                let freshMessages = try await msgs
+                guard generation == refreshGeneration else { return }
+                messages = Self.dedupe(freshMessages)
                 updateChatSeen(familyRoomId)
                 _ = await (kids, calHw, actionLoad, notesLoad, mealsLoad)
+                guard generation == refreshGeneration else { return }
                 // Fail soft to just the family room (Trips-unaware/unreachable server).
-                chatRooms = (try? await rooms) ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
+                let freshRooms = try? await rooms
+                guard generation == refreshGeneration else { return }
+                chatRooms = freshRooms ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
             } else {
                 // A guest with zero families can still be on a trip.
-                chatRooms = (try? await api.chatRooms()) ?? []
+                let freshRooms = try? await api.chatRooms()
+                guard generation == refreshGeneration else { return }
+                chatRooms = freshRooms ?? []
             }
             for room in chatRooms where lastSeenChatIdByRoom[room.roomId] == nil {
                 lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
@@ -198,21 +260,46 @@ final class AppStore {
             syncError = nil
             needsAuth = false
             persist()
+            await ParentFamilyAssistancePublisher.publish(from: self)
         } catch APIError.unauthenticated {
+            guard generation == refreshGeneration else { return }
+            assistanceIdentityVerified = false
+            ParentFamilyAssistancePublisher.clear()
+            attentionUpdatedAt = nil
             needsAuth = true
         } catch {
+            guard generation == refreshGeneration else { return }
             syncError = error.localizedDescription
         }
     }
 
     func signedOut() {
+        sessionGeneration &+= 1
+        notesLoadGeneration &+= 1
+        notes = []
+        assistanceIdentityVerified = false
+        refreshGeneration &+= 1
+        actionLoadGeneration &+= 1
+        isRefreshing = false
+        ParentFamilyAssistancePublisher.clear()
         stopChatLoop()
         familyPollTask?.cancel()
         familyPollTask = nil
         cache.clear()
+        attentionUpdatedAt = nil
+        calendarHomeworkUpdatedAt = nil
+        actionsUpdatedAt = nil
+        events = []
+        familyEvents = []
+        homework = []
         me = nil
         family = nil
         meals = nil
+        isLoadingMeals = false
+        mealsError = nil
+        mealsLoadGeneration &+= 1
+        isLoadingCalendar = false
+        calendarError = nil
         actions = []
         isLoadingActions = false
         actionError = nil
@@ -469,21 +556,34 @@ final class AppStore {
     /// Load the signed-in user's notes (kids see only their own; parents see
     /// the whole family — the server scopes it from the session).
     func loadNotes() async {
+        notesLoadGeneration &+= 1
+        let generation = notesLoadGeneration
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
         guard family != nil else { notes = []; return }
-        if let ns = try? await api.notes() { notes = ns }
+        if let ns = try? await api.notes(), generation == notesLoadGeneration,
+           session == sessionGeneration, me?.id == accountID, family?.id == familyID {
+            notes = ns
+        }
     }
 
-    /// Add a note (optimistic append, then reload to pick up the server id /
-    /// timestamps). Returns the optimistic note on success, `nil` on failure.
+    /// Append a confirmed note, then refresh. Late responses never enter another session.
     @discardableResult
     func addNote(body: String, source: String = "manual", ref: [String: Any]? = nil, date: String? = nil) async -> Note? {
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
         do {
             let note = try await api.addNote(body: body, date: date, source: source, ref: ref)
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return nil }
+            notesLoadGeneration &+= 1
             notes.insert(note, at: 0)
             await loadNotes()
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return nil }
             return note
         } catch {
-            handle(error)
+            if session == sessionGeneration, me?.id == accountID, family?.id == familyID { handle(error) }
             return nil
         }
     }
@@ -491,11 +591,16 @@ final class AppStore {
     /// Delete a note the signed-in member authored. Optimistic removal; reloads
     /// from the server on failure so a rejected delete reappears.
     func deleteNote(_ id: String) async {
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        notesLoadGeneration &+= 1
         let backup = notes
         notes.removeAll { $0.id == id }
         do {
             try await api.deleteNote(id)
         } catch {
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return }
             notes = backup
             handle(error)
         }
@@ -514,13 +619,33 @@ final class AppStore {
     /// Parents load the composite planner; kids load only the shopping
     /// projection so pantry/menu/household data never crosses the API boundary.
     func loadMeals() async {
-        guard family != nil else { meals = nil; return }
-        if isParent {
-            if let m = try? await api.mealsState() { meals = m }
-        } else if let shopping = try? await api.shoppingItems() {
-            var state = MealsState()
-            state.shopping = shopping
-            meals = state
+        mealsLoadGeneration &+= 1
+        let generation = mealsLoadGeneration
+        guard family != nil else {
+            meals = nil; isLoadingMeals = false; mealsError = nil
+            return
+        }
+        let accountID = me?.id
+        let familyID = family?.id
+        let parent = isParent
+        isLoadingMeals = true
+        mealsError = nil
+        defer { if generation == mealsLoadGeneration { isLoadingMeals = false } }
+        do {
+            let loaded: MealsState
+            if parent {
+                loaded = try await api.mealsState()
+            } else {
+                var projection = MealsState()
+                projection.shopping = try await api.shoppingItems()
+                loaded = projection
+            }
+            guard generation == mealsLoadGeneration, me?.id == accountID, family?.id == familyID else { return }
+            meals = loaded
+        } catch {
+            guard generation == mealsLoadGeneration, me?.id == accountID, family?.id == familyID else { return }
+            mealsError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
         }
     }
 
@@ -779,6 +904,8 @@ final class AppStore {
     /// trustworthy empty workload. Reads older than a local mutation are
     /// ignored so they cannot roll successful edits back.
     func loadCalendarAndHomework(force: Bool = false) async {
+        attentionUpdatedAt = nil
+        calendarHomeworkUpdatedAt = nil
         guard family != nil else {
             events = []
             familyEvents = []
@@ -786,6 +913,8 @@ final class AppStore {
             homeworkMutationIDs = []
             isLoadingHomework = false
             homeworkError = nil
+            isLoadingCalendar = false
+            calendarError = nil
             homeworkMutationRevision &+= 1
             homeworkLoadGeneration &+= 1
             return
@@ -793,9 +922,14 @@ final class AppStore {
 
         homeworkLoadGeneration &+= 1
         let loadGeneration = homeworkLoadGeneration
+        let accountID = me?.id
+        let familyID = family?.id
         let mutationRevisionAtStart = homeworkMutationRevision
         isLoadingHomework = true
         homeworkError = nil
+        isLoadingCalendar = true
+        calendarError = nil
+        defer { if loadGeneration == homeworkLoadGeneration { isLoadingCalendar = false } }
 
         // These endpoints are independent. Starting Homework immediately keeps
         // its tab responsive even when a school calendar sync is slow.
@@ -803,12 +937,15 @@ final class AppStore {
         async let familyEventsRequest = api.familyEvents()
         async let homeworkRequest = api.homework()
 
+        var homeworkLoaded = false
         do {
             let freshHomework = try await homeworkRequest
             if loadGeneration == homeworkLoadGeneration,
+               me?.id == accountID, family?.id == familyID,
                mutationRevisionAtStart == homeworkMutationRevision,
                homeworkMutationIDs.isEmpty {
                 homework = freshHomework
+                homeworkLoaded = true
             }
         } catch {
             if loadGeneration == homeworkLoadGeneration {
@@ -817,8 +954,23 @@ final class AppStore {
             }
         }
         if loadGeneration == homeworkLoadGeneration { isLoadingHomework = false }
-        if let freshEvents = try? await calendarRequest { events = freshEvents }
-        if let freshFamilyEvents = try? await familyEventsRequest { familyEvents = freshFamilyEvents }
+        var freshEvents: [CalendarEvent]?
+        var freshFamilyEvents: [FamilyEvent]?
+        var calendarLoadError: Error?
+        do { freshEvents = try await calendarRequest } catch { calendarLoadError = error }
+        do { freshFamilyEvents = try await familyEventsRequest } catch { calendarLoadError = error }
+        guard me?.id == accountID, family?.id == familyID,
+              loadGeneration == homeworkLoadGeneration else { return }
+        if let calendarLoadError {
+            calendarError = calendarLoadError.localizedDescription
+            if case APIError.unauthenticated = calendarLoadError { handle(calendarLoadError) }
+        }
+        if let freshEvents { events = freshEvents }
+        if let freshFamilyEvents { familyEvents = freshFamilyEvents }
+        if homeworkLoaded, freshEvents != nil, freshFamilyEvents != nil, !needsAuth {
+            calendarHomeworkUpdatedAt = Date()
+            updateAttentionFreshness()
+        }
         Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
     }
 
@@ -829,6 +981,10 @@ final class AppStore {
     /// rows before they enter native state. Existing rows remain visible while
     /// a refresh is in flight; an initial failure is kept local to the card.
     func loadFamilyActions() async {
+        actionLoadGeneration &+= 1
+        let generation = actionLoadGeneration
+        attentionUpdatedAt = nil
+        actionsUpdatedAt = nil
         guard family != nil else {
             actions = []
             isLoadingActions = false
@@ -838,13 +994,26 @@ final class AppStore {
 
         isLoadingActions = true
         actionError = nil
+        let accountID = me?.id
+        let familyID = family?.id
         do {
-            actions = try await actionService.familyActions().filter { canViewAction($0) }
+            let freshActions = try await actionService.familyActions()
+            guard generation == actionLoadGeneration, me?.id == accountID, family?.id == familyID else { return }
+            actions = freshActions.filter { canViewAction($0) }
+            actionsUpdatedAt = Date()
+            updateAttentionFreshness()
         } catch {
+            guard generation == actionLoadGeneration, me?.id == accountID, family?.id == familyID else { return }
             actionError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
         }
         isLoadingActions = false
+    }
+
+    private func updateAttentionFreshness() {
+        guard let calendarDate = calendarHomeworkUpdatedAt, let actionDate = actionsUpdatedAt,
+              !needsAuth else { return }
+        attentionUpdatedAt = min(calendarDate, actionDate)
     }
 
     /// Add a family appointment (server posts a chat card; chat updates on poll).
@@ -885,13 +1054,38 @@ final class AppStore {
 
     /// Pull-to-refresh on the Today / Calendar screens — forces a fresh feed sync.
     func refreshDashboard() async {
-        if let families = try? await api.families(), let updated = families.first(where: { $0.id == family?.id }) {
+        assistanceIdentityVerified = false
+        let generation = refreshGeneration
+        do {
+            let currentUser = try await api.me().user
+            guard generation == refreshGeneration else { return }
+            guard let currentUser, currentUser.id == me?.id else {
+                ParentFamilyAssistancePublisher.clear()
+                await refresh()
+                return
+            }
+            let families = try await api.families()
+            guard generation == refreshGeneration else { return }
+            guard let updated = families.first(where: { $0.id == family?.id }) else {
+                ParentFamilyAssistancePublisher.clear()
+                await refresh()
+                return
+            }
+            me = currentUser
             family = updated
+            assistanceIdentityVerified = currentUser.role != "kid" && updated.parentIds.contains(currentUser.id)
             persist()
+        } catch {
+            guard generation == refreshGeneration else { return }
+            attentionUpdatedAt = nil
+            handle(error)
+            return
         }
         async let calendar: Void = loadCalendarAndHomework(force: true)
         async let actionLoad: Void = loadFamilyActions()
         _ = await (calendar, actionLoad)
+        guard generation == refreshGeneration else { return }
+        await ParentFamilyAssistancePublisher.publish(from: self)
     }
 
     /// Drag-to-reschedule a homework item to a new due date (yyyy-MM-dd).
@@ -1109,18 +1303,31 @@ final class AppStore {
         completingActionIDs.remove(action.id)
     }
 
-    func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String, roomId: String = familyRoomId) async {
+    @discardableResult
+    func sendMessage(text: String, card: [String: Any]? = nil, senderType: String = "parent", senderId: String, roomId: String = familyRoomId) async -> Bool {
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
         do {
             let msg = try await api.sendChatMessage(text: text, card: card, senderType: senderType, senderId: senderId, roomId: roomId)
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return false }
             mergeIncoming([msg], roomId: roomId)   // NEVER append: the long-poll may already have delivered this id
             persist()
-        } catch { handle(error) }
+            return true
+        } catch {
+            if session == sessionGeneration, me?.id == accountID, family?.id == familyID { handle(error) }
+            return false
+        }
     }
 
     /// Sends one dedicated Buzz alert. Errors intentionally propagate so the
     /// Chat composer can keep its draft and offer a retry.
     func sendBuzz(text: String, roomId: String = familyRoomId) async throws {
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
         let msg = try await api.sendChatBuzz(text: text, roomId: roomId)
+        guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { throw CancellationError() }
         mergeIncoming([msg], roomId: roomId)
         persist()
     }
@@ -1128,10 +1335,11 @@ final class AppStore {
     /// Convenience used by the native Chat screen — sends as the signed-in user.
     /// (The server derives the real sender from the session; these are for the
     /// API shape only.)
-    func send(text: String, roomId: String = familyRoomId) async {
+    @discardableResult
+    func send(text: String, roomId: String = familyRoomId) async -> Bool {
         let sType = me?.role == "kid" ? "kid" : "parent"
         let sId = (me?.role == "kid" ? me?.kidId : me?.id) ?? me?.id ?? ""
-        await sendMessage(text: text, senderType: sType, senderId: sId, roomId: roomId)
+        return await sendMessage(text: text, senderType: sType, senderId: sId, roomId: roomId)
     }
 
     /// Send a GIF (Giphy) to a chat room (defaults to family).
@@ -1260,6 +1468,9 @@ final class AppStore {
     @discardableResult
     private func requireAuthentication(for error: Error) -> Bool {
         guard case APIError.unauthenticated = error else { return false }
+        assistanceIdentityVerified = false
+        ParentFamilyAssistancePublisher.clear()
+        attentionUpdatedAt = nil
         needsAuth = true
         stopChatLoop()
         familyPollTask?.cancel()

@@ -1,4 +1,18 @@
 name: FamETC
+schemes:
+  FamETC:
+    build:
+      targets:
+        FamETC: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - FamETCTests
+        - FamETCUITests
+    archive:
+      config: Release
 options:
   bundleIdPrefix: com.fametc
   deploymentTarget:
@@ -13,8 +27,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "1.1"
-    CURRENT_PROJECT_VERSION: "4"
+    MARKETING_VERSION: "1.2"
+    CURRENT_PROJECT_VERSION: "11"
     # Apple Developer Team ID — matches IOS_APP_IDS on the server
     # (B4F73U5RGR.com.fametc.app, see .env.example). Same Apple account as
     # RetireOdds, unchanged per APP-BRIEF.md.
@@ -35,8 +49,11 @@ targets:
     platform: iOS
     sources:
       - path: FamETC
+      - path: FamETCWidgetShared
     dependencies:
       - target: FamETCParentWatch
+        embed: true
+      - target: FamETCWidget
         embed: true
     settings:
       base:
@@ -48,6 +65,21 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+  FamETCWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: FamETCWidget
+      - path: FamETCWidgetShared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.family-widget
+        PRODUCT_NAME: FamETCWidget
+        INFOPLIST_FILE: FamETCWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: FamETCWidget/FamETCWidget.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
 
   FamETCTests:
     type: bundle.unit-test

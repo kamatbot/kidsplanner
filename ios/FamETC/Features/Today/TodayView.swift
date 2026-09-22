@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// The home dashboard — restyled to the Horizon "Daily 5" card stack
-/// (docs/design/redesign/canvas-1f parent, canvas-1g kid). Parents get
-/// Today's schedule / Homework due / Daily 5; kids get a bigger, simpler
-/// version of the same three plus their own homework in full.
+/// The native Today landing surface. The first screen is deliberately small:
+/// one real priority, today's real events, and the work already in the family
+/// contract. Secondary feature cards remain behind the disclosure.
 struct TodayScreen: View {
     @Environment(AppStore.self) private var store
+    @State private var selectedKidID: String?
     @State private var showAddEvent = false
     @State private var showNotes = false
+
     let onOpenHomework: () -> Void
 
     init(onOpenHomework: @escaping () -> Void = {}) {
@@ -18,42 +19,29 @@ struct TodayScreen: View {
         Layout.bottomNavigationClearance > 0 ? Layout.bottomNavigationClearance : Space.xl
     }
 
-    private var firstName: String {
-        guard let name = store.me?.name, !name.isEmpty else { return "" }
-        return String(name.split(separator: " ").first ?? Substring(name))
-    }
-    private var greeting: String {
-        let h = Calendar.current.component(.hour, from: Date())
-        let part = h < 12 ? "Good morning" : (h < 18 ? "Good afternoon" : "Good evening")
-        return firstName.isEmpty ? part : "\(part), \(firstName)"
-    }
-    private var dateLabel: String { Date().formatted(.dateTime.weekday(.wide).month(.wide).day()) }
-
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.lg) {
                     if store.isParent {
-                        ParentHeader(greeting: greeting, dateLabel: dateLabel, onMore: { showNotes = true })
+                        TodayParentHeader(
+                            greeting: greeting,
+                            dateLabel: dateLabel,
+                            onAddEvent: { showAddEvent = true },
+                            onMore: { showNotes = true }
+                        )
+                        TodayKidFilter(selectedKidID: $selectedKidID)
                         ParentTodayStack(onOpenHomework: onOpenHomework)
+                            .environment(\.todayKidFilter, selectedKidID)
                     } else {
-                        KidHeader(dateLabel: dateLabel, onMore: { showNotes = true })
+                        TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
                         KidTodayStack(onOpenHomework: onOpenHomework)
                     }
-
                 }
                 .padding(Space.lg)
                 .padding(.bottom, bottomClearance)
-                // Chat-style: tapping anywhere that isn't a field/button/card control
-                // puts the keyboard away. (Controls consume their own taps first.)
                 .contentShape(Rectangle())
                 .onTapGesture { famDismissKeyboard() }
-            }
-
-            if store.isParent {
-                AddEventFAB { showAddEvent = true }
-                    .padding(.trailing, Space.lg)
-                    .padding(.bottom, bottomClearance)
             }
         }
         .background(ScreenBackground())
@@ -61,82 +49,91 @@ struct TodayScreen: View {
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
-
-    }
-}
-
-// MARK: - Parent header (canvas-1f)
-
-private struct ParentHeader: View {
-    let greeting: String
-    let dateLabel: String
-    let onMore: () -> Void
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: Space.md) {
-            VStack(alignment: .leading, spacing: 3) {
-                MicroLabel(text: dateLabel)
-                Text(greeting).font(Typography.title).foregroundStyle(Palette.text)
-            }
-            Spacer(minLength: Space.sm)
-            MoreMenu(onNotes: onNotes)
+        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil }
+        .onChange(of: store.kids.map(\.id)) { _, ids in
+            if let selectedKidID, !ids.contains(selectedKidID) { self.selectedKidID = nil }
         }
     }
 
-    private var onNotes: () -> Void { onMore }
-}
+    private var firstName: String {
+        guard let name = store.me?.name, !name.isEmpty else { return "" }
+        return String(name.split(separator: " ").first ?? Substring(name))
+    }
 
-private struct AddEventFAB: View {
-    let action: () -> Void
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
+        return firstName.isEmpty ? part : "\(part), \(firstName)"
+    }
 
-    var body: some View {
-        Button {
-            Haptics.impact(.medium)
-            action()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Palette.onAccent)
-                .frame(width: 58, height: 58)
-                .background(Signal.gradient(), in: Circle())
-                .shadow(color: Signal.end.opacity(0.28), radius: 8, x: 0, y: 5)
-        }
-        .buttonStyle(PressableStyle(scale: 0.94))
-        .accessibilityLabel("Add event")
-        .accessibilityHint("Create a family event")
+    private var dateLabel: String {
+        Date().formatted(.dateTime.weekday(.wide).month(.wide).day())
     }
 }
 
-// MARK: - Parent card stack (canvas-1f: schedule / homework due + Daily 5)
+// MARK: - Parent Today
 
 private struct ParentTodayStack: View {
-    @Environment(\.horizontalSizeClass) private var hSize
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.todayKidFilter) private var selectedKidID
+    @State private var showBrief = false
+    @State private var showSecondary = false
+    @State private var showAddEvent = false
+    @State private var showSchoolNotice = false
+    @State private var showActions = false
     let onOpenHomework: () -> Void
+
+    private var summaryLayout: AnyLayout {
+        sizeClass == .regular && !textSize.isAccessibilitySize
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: Space.lg))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: Space.lg))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            ActionCard()
-            FamsHomeCard()
-            if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
-                ScheduleCard()
-                HomeworkDueCard(onOpenHomework: onOpenHomework)
-            } else {
-                HStack(alignment: .top, spacing: Space.lg) {
-                    ScheduleCard().frame(maxWidth: .infinity)
-                    HomeworkDueCard(onOpenHomework: onOpenHomework).frame(maxWidth: .infinity)
+            summaryLayout {
+                VStack(spacing: Space.lg) {
+                    TodayParentPriorityCard(onReview: { showBrief = true })
+                    TodayScheduleTimelineCard()
+                    TodayParentProgressCard()
                 }
+                .frame(maxWidth: .infinity)
+                DailyFiveCard().frame(maxWidth: .infinity)
             }
-            PathOddsFamilySummaryCard()
-            DailyFiveCard()
+            TodayUtilitiesRow(
+                onScanNotice: { showSchoolNotice = true },
+                onOpenActions: { showActions = true }
+            )
+            TodaySecondaryDisclosure(
+                isExpanded: $showSecondary,
+                role: .parent,
+                extra: AnyView(HomeworkDueCard(onOpenHomework: onOpenHomework))
+            )
+        }
+        .sheet(isPresented: $showBrief) {
+            ParentAttentionSheet(childID: selectedKidID)
+        }
+        .sheet(isPresented: $showAddEvent) { AddEventSheet() }
+        .sheet(isPresented: $showSchoolNotice) { SchoolNoticeSheet() }
+        .sheet(isPresented: $showActions) {
+            NavigationStack {
+                ScrollView { ActionCard().padding(Space.lg) }
+                    .background(ScreenBackground())
+                    .navigationTitle("Family actions")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") { showActions = false }
+                    } }
+            }
         }
     }
 }
 
-// MARK: - Study start
+// MARK: - Study start / homework
 
-/// Selects one real, open assignment. Urgency is date/time first; an assignment
-/// already in progress wins only when that urgency is otherwise identical.
+/// Selects one real, open assignment. A parent can review it but never marks a
+/// child's homework complete from Today; a child gets the student-owned
+/// controls in `StudyStartCard` and `KidHomeworkRow` below.
 enum StudyStartPriority {
     private static let displayDate: DateFormatter = {
         let formatter = DateFormatter()
@@ -201,33 +198,46 @@ enum StudyStartPriority {
 
 private struct StudyStartCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.todayKidFilter) private var selectedKidID
 
-    private var item: HomeworkItem? { StudyStartPriority.select(from: store.homework) }
+    private var item: HomeworkItem? {
+        let scoped = store.homework.filter {
+            (store.isParent || $0.kidId == store.me?.kidId) &&
+            (selectedKidID == nil || $0.kidId == selectedKidID)
+        }
+        return StudyStartPriority.select(from: scoped)
+    }
+
     private var childName: String? {
         guard let kidID = item?.kidId else { return nil }
         return store.kids.first { $0.id == kidID }?.name
     }
 
     var body: some View {
-        Card {
+        Card(padding: Space.lg) {
             VStack(alignment: .leading, spacing: Space.md) {
-                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Text(store.isParent ? "Needs a plan" : "Start here")
-                        .font(Typography.cardTitle)
-                        .foregroundStyle(Palette.text)
+                HStack(alignment: .top, spacing: Space.sm) {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(store.isParent ? "Needs a plan" : "Start here")
+                            .font(Typography.cardTitle)
+                            .foregroundStyle(Palette.text)
+                        if let item, store.homeworkMutationIDs.contains(item.id) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Palette.accent)
+                                .accessibilityLabel("Updating homework")
+                        }
+                        if store.isParent, let childName {
+                            Text(childName)
+                                .font(Typography.caption.weight(.semibold))
+                                .foregroundStyle(Palette.textSecond)
+                                .lineLimit(1)
+                        }
+                    }
                     Spacer(minLength: Space.sm)
-                    if let item, store.homeworkMutationIDs.contains(item.id) {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Palette.accent)
-                            .accessibilityLabel("Updating homework")
-                    }
-                    if store.isParent, let childName {
-                        Text(childName)
-                            .font(Typography.caption.weight(.semibold))
-                            .foregroundStyle(Palette.textSecond)
-                            .lineLimit(1)
-                    }
+                    TodayAssetImage(name: "TodayStudyArt", fallback: "book.closed.fill")
+                        .frame(width: 76, height: 62)
+                        .accessibilityHidden(true)
                 }
 
                 if store.homeworkError != nil {
@@ -239,9 +249,13 @@ private struct StudyStartCard: View {
                 if let item {
                     assignmentContent(item)
                 } else {
-                    Text(store.isParent
-                         ? "No open homework needs a start right now."
-                         : "No open homework needs your attention right now.")
+                    Text(store.isLoadingHomework
+                         ? "Loading homework…"
+                         : (store.homeworkError != nil
+                            ? "Homework may be out of date. Check Homework for the latest."
+                            : (store.isParent
+                               ? "No open homework needs a start right now."
+                               : "No open homework needs your attention right now.")))
                         .font(Typography.body)
                         .foregroundStyle(Palette.textSecond)
                         .fixedSize(horizontal: false, vertical: true)
@@ -385,99 +399,55 @@ private struct HomeworkSyncNotice: View {
     }
 }
 
-// MARK: - Today's schedule card
-
-private struct ScheduleCard: View {
-    @Environment(AppStore.self) private var store
-
-    private var items: [AgendaItem] {
-        Agenda.items(on: Agenda.todayKey(), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework)
-            .filter { $0.kind != .homework }
-    }
-
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                MicroLabel(text: "Today's schedule")
-                if items.isEmpty {
-                    Text("Nothing is scheduled today.")
-                        .font(Typography.body).foregroundStyle(Palette.textSecond)
-                        .padding(.top, Space.xs)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(items) { item in
-                            ScheduleRow(item: item)
-                            if item.id != items.last?.id { Divider().overlay(Palette.border) }
-                        }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// One schedule row: mono time · kid-color bar · title · kid name (right).
-private struct ScheduleRow: View {
-    @Environment(AppStore.self) private var store
-    let item: AgendaItem
-
-    var body: some View {
-        HStack(spacing: Space.md) {
-            Text(item.time ?? "—")
-                .font(Typography.mono(12.5))
-                .foregroundStyle(Palette.textSecond)
-                .frame(width: 50, alignment: .leading)
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Agenda.kidColor(item.kidId, kids: store.kids) ?? Palette.accent)
-                .frame(width: 3, height: 28)
-            Text(item.title)
-                .font(Typography.body.weight(.semibold))
-                .foregroundStyle(Palette.text)
-                .lineLimit(1)
-            Spacer(minLength: Space.sm)
-            if let kid = store.kids.first(where: { $0.id == item.kidId }) {
-                HStack(spacing: Space.xs) {
-                    KidProfileAvatar(kid: kid, size: 24)
-                    Text(kid.name)
-                        .font(Typography.caption.weight(.semibold))
-                        .foregroundStyle(Palette.textSecond)
-                }
-            }
-        }
-        .padding(.vertical, Space.sm + 2)
-        .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Homework due card
-
 private struct HomeworkDueCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.todayKidFilter) private var selectedKidID
     let onOpenHomework: () -> Void
 
-    private var items: [HomeworkItem] { Agenda.homeworkDueSoon(store.homework, days: 7) }
+    private var items: [HomeworkItem] {
+        let limit = Agenda.dayKey(offset: 7)
+        return store.homework
+            .filter {
+                !$0.isDone && $0.dueDate <= limit &&
+                (selectedKidID == nil || $0.kidId == selectedKidID)
+            }
+            .sorted {
+                ($0.dueDate, $0.dueTime ?? "23:59", $0.id) < ($1.dueDate, $1.dueTime ?? "23:59", $1.id)
+            }
+    }
 
     var body: some View {
-        Card {
+        Card(padding: Space.lg) {
             VStack(alignment: .leading, spacing: Space.sm) {
                 HStack(alignment: .firstTextBaseline) {
                     MicroLabel(text: "Homework due")
                     Spacer()
                     if !items.isEmpty {
-                        Text("\(items.count)").font(Typography.mono(11)).foregroundStyle(Palette.textSecond)
+                        Text("\(items.count)")
+                            .font(Typography.mono(11))
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                }
+                if store.homeworkError != nil {
+                    HomeworkSyncNotice(hasCachedHomework: !store.homework.isEmpty) {
+                        Task { await store.loadCalendarAndHomework(force: true) }
                     }
                 }
                 HomeworkOpenButton(action: onOpenHomework)
                 if items.isEmpty {
-                    Text("No homework is due this week.")
-                        .font(Typography.body).foregroundStyle(Palette.textSecond)
+                    Text(store.isLoadingHomework
+                         ? "Loading homework…"
+                         : (store.homeworkError == nil
+                            ? "No homework is due this week."
+                            : "Homework isn't available right now."))
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
                         .padding(.top, Space.xs)
                 } else {
-                    VStack(spacing: Space.sm + 2) {
-                        ForEach(items.prefix(5)) { HomeworkDueRow(item: $0) }
-                        if items.count > 5 {
-                            Text("+\(items.count - 5) more")
+                    VStack(spacing: Space.sm) {
+                        ForEach(items.prefix(4)) { HomeworkDueRow(item: $0) }
+                        if items.count > 4 {
+                            Text("+\(items.count - 4) more")
                                 .font(Typography.caption.weight(.semibold))
                                 .foregroundStyle(Palette.textSecond)
                         }
@@ -489,19 +459,23 @@ private struct HomeworkDueCard: View {
     }
 }
 
-/// A due-soon homework row for parents. Progress is student-owned, so Today
-/// keeps the due item visible without offering a status mutation.
+/// Parent homework remains read-only: reviewing is a navigation action, not a
+/// completion mutation owned by the parent.
 private struct HomeworkDueRow: View {
     let item: HomeworkItem
 
-    private static let shortWeekday: DateFormatter = { let f = DateFormatter(); f.dateFormat = "EEE"; return f }()
+    private static let shortWeekday: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
 
     private var due: (text: String, color: Color) {
         let today = Agenda.todayKey()
         if item.dueDate < today { return ("overdue", Palette.red) }
         if item.dueDate == today { return ("today", Palette.warn) }
-        let d = DateFmt.ymd.date(from: item.dueDate) ?? Date()
-        return (Self.shortWeekday.string(from: d), Palette.textSecond)
+        let date = DateFmt.ymd.date(from: item.dueDate) ?? Date()
+        return (Self.shortWeekday.string(from: date), Palette.textSecond)
     }
 
     var body: some View {
@@ -524,201 +498,82 @@ private struct HomeworkDueRow: View {
     }
 }
 
-// MARK: - Kid header (canvas-1g)
-
-private struct KidHeader: View {
-    @Environment(AppStore.self) private var store
-    let dateLabel: String
-    let onMore: () -> Void
-
-    private var kid: Kid? { store.kids.first { $0.id == store.me?.kidId } }
-    private var kidName: String { kid?.name ?? store.me?.name ?? "there" }
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: Space.md) {
-            if let kid { KidProfileAvatar(kid: kid, size: 44) }
-            VStack(alignment: .leading, spacing: 3) {
-                MicroLabel(text: dateLabel)
-                Text("Hi, \(kidName)")
-                    .font(Typography.title)
-                    .foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Here’s what matters today.")
-                    .font(Typography.body)
-                    .foregroundStyle(Palette.textSecond)
-            }
-            Spacer(minLength: Space.sm)
-            MoreMenu(onNotes: onMore)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Today for \(kidName)")
-        .accessibilityValue(dateLabel)
-    }
-}
-
-private struct MoreMenu: View {
-    let onNotes: () -> Void
-    var foreground: Color = Palette.text
-
-    var body: some View {
-        Menu {
-            Button(action: onNotes) {
-                Label("Notes", systemImage: "note.text")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(foreground)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel("More")
-        .accessibilityHint("Open Notes and other family tools")
-    }
-}
-
-// MARK: - Kid card stack (canvas-1g)
+// MARK: - Kid Today
 
 private struct KidTodayStack: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.horizontalSizeClass) private var hSize
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var textSize
+    @State private var showSecondary = false
     let onOpenHomework: () -> Void
 
-    private var todayItems: [AgendaItem] {
-        Agenda.items(on: Agenda.todayKey(), events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: store.homework)
-            .filter { $0.kind != .homework }
+    private var kidID: String? { store.me?.kidId }
+
+    private var summaryLayout: AnyLayout {
+        sizeClass == .regular && !textSize.isAccessibilitySize
+            ? AnyLayout(HStackLayout(alignment: .top, spacing: Space.lg))
+            : AnyLayout(VStackLayout(alignment: .leading, spacing: Space.lg))
     }
-    private var nextUp: AgendaItem? { todayItems.first }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            if hSize == .compact || dynamicTypeSize.isAccessibilitySize {
-                StudyStartCard()
-                FamsHomeCard()
-                ActionCard()
-                if let nextUp { KidNextUpCallout(item: nextUp) }
-                KidDayCard(items: todayItems)
-            } else {
-                HStack(alignment: .top, spacing: Space.lg) {
-                    VStack(spacing: Space.lg) { StudyStartCard(); FamsHomeCard() }
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    VStack(alignment: .leading, spacing: Space.lg) {
-                        ActionCard()
-                        if let nextUp { KidNextUpCallout(item: nextUp) }
-                        KidDayCard(items: todayItems)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
+            summaryLayout {
+                DailyFiveCard(isKid: true).frame(maxWidth: .infinity)
+                VStack(spacing: Space.lg) {
+                    StudyStartCard()
+                    TodayScheduleTimelineCard(kidID: kidID)
+                    TodayChildFamsCard(kidID: kidID)
                 }
+                .frame(maxWidth: .infinity)
             }
-
-            KidHomeworkCard(onOpenHomework: onOpenHomework)
-            PathOddsQuestCard()
-            DailyFiveCard(isKid: true)
+            TodaySecondaryDisclosure(
+                isExpanded: $showSecondary,
+                role: .kid,
+                extra: AnyView(KidHomeworkCard(onOpenHomework: onOpenHomework))
+            )
         }
     }
 }
 
-private struct KidNextUpCallout: View {
-    let item: AgendaItem
-
-    var body: some View {
-        HStack(spacing: Space.sm + 2) {
-            Image(systemName: "clock")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Palette.accent)
-                .accessibilityHidden(true)
-            (Text("Next up: ")
-                + Text(item.title).bold()
-                + Text(item.time.map { " at \($0)" } ?? ""))
-                .font(Typography.body)
-                .foregroundStyle(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .padding(.horizontal, Space.lg)
-        .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct KidDayCard: View {
-    @Environment(AppStore.self) private var store
-    let items: [AgendaItem]
-
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                MicroLabel(text: "Your day")
-                if items.isEmpty {
-                    Text("Nothing is scheduled today.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.textSecond)
-                } else {
-                    VStack(spacing: Space.sm) {
-                        ForEach(items) { item in
-                            HStack(spacing: Space.md) {
-                                Text(item.time ?? "—")
-                                    .font(Typography.mono(14, .bold))
-                                    .frame(width: 56, alignment: .leading)
-                                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                    .fill(Agenda.kidColor(item.kidId, kids: store.kids) ?? Palette.accent)
-                                    .frame(width: 4, height: 30)
-                                Text(item.title)
-                                    .font(Typography.body.weight(.semibold))
-                                    .foregroundStyle(Palette.text)
-                                    .lineLimit(1)
-                                Spacer(minLength: Space.sm)
-                                if let subtitle = item.subtitle, !subtitle.isEmpty {
-                                    Text(subtitle)
-                                        .font(Typography.caption)
-                                        .foregroundStyle(Palette.textSecond)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(.horizontal, Space.md)
-                            .padding(.vertical, Space.sm + 2)
-                            .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                            .accessibilityElement(children: .combine)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// The kid's own homework: overdue/today/upcoming plus done items due today.
 private struct KidHomeworkCard: View {
     @Environment(AppStore.self) private var store
     let onOpenHomework: () -> Void
 
     private var items: [HomeworkItem] {
-        let today = Agenda.todayKey(); let limit = Agenda.dayKey(offset: 7)
+        let today = Agenda.todayKey()
+        let limit = Agenda.dayKey(offset: 7)
         return store.homework
-            .filter { (!$0.isDone && $0.dueDate <= limit) || ($0.isDone && $0.dueDate == today) }
+            .filter { $0.kidId == store.me?.kidId && ((!$0.isDone && $0.dueDate <= limit) || ($0.isDone && $0.dueDate == today)) }
             .sorted { a, b in
                 if a.isDone != b.isDone { return !a.isDone }
-                return a.dueDate < b.dueDate
+                return (a.dueDate, a.id) < (b.dueDate, b.id)
             }
     }
+
     private var leftCount: Int { items.filter { !$0.isDone }.count }
 
     var body: some View {
-        Card {
+        Card(padding: Space.lg) {
             VStack(alignment: .leading, spacing: Space.sm) {
                 HStack(alignment: .firstTextBaseline) {
                     MicroLabel(text: "Homework")
                     Spacer()
-                    Text("\(leftCount) left").font(Typography.mono(12)).foregroundStyle(Palette.textSecond)
+                    Text(store.isLoadingHomework && items.isEmpty ? "Not loaded" : "\(leftCount) left")
+                        .font(Typography.mono(12))
+                        .foregroundStyle(Palette.textSecond)
                 }
                 HomeworkOpenButton(action: onOpenHomework)
                 if items.isEmpty {
-                    Text("No homework is due this week.")
-                        .font(Typography.body).foregroundStyle(Palette.textSecond)
+                    Text(store.isLoadingHomework
+                         ? "Loading homework…"
+                         : (store.homeworkError == nil
+                            ? "No homework is due this week."
+                            : "Homework isn't available right now."))
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
                 } else {
                     VStack(spacing: Space.sm) {
-                        ForEach(items) { KidHomeworkRow(item: $0) }
+                        ForEach(items.prefix(4)) { KidHomeworkRow(item: $0) }
                     }
                 }
             }
@@ -772,9 +627,12 @@ private struct KidHomeworkRow: View {
                 Spacer(minLength: Space.sm)
                 trailing
             }
-            .padding(.horizontal, Space.md).padding(.vertical, Space.sm + 2)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(isOverdue ? Palette.red : Palette.border, lineWidth: isOverdue ? 1.5 : 1))
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.sm + 2)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(isOverdue ? Palette.red : Palette.border, lineWidth: isOverdue ? 1.5 : 1)
+            )
             .opacity(item.isDone ? 0.55 : 1)
         }
         .buttonStyle(.plain)

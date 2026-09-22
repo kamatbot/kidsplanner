@@ -17,11 +17,15 @@ function sourceBetween(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("iPad rail destinations are real buttons with stable test identities", () => {
-  const rail = sourceBetween(rootView, "private struct NavRailList", "private struct PlanningDestinationMenu");
-  assert.match(rail, /return Button\s*\{/);
-  assert.doesNotMatch(rail, /\.onTapGesture/);
-  assert.match(rail, /\.accessibilityIdentifier\("ipad-tab-\\\(identifier\)"\)/);
+test("all display sizes share one native adaptive navigation tree", () => {
+  assert.equal((rootView.match(/TabView\(selection:/g) ?? []).length, 1);
+  assert.match(rootView, /\.tabViewStyle\(\.sidebarAdaptable\)/);
+  assert.doesNotMatch(rootView, /userInterfaceIdiom|FloatingTabBar|private var iPadLayout/);
+  for (const screen of ["today", "calendar", "homework", "chat", "planning"]) {
+    assert.ok(rootView.includes(`.accessibilityIdentifier("screen-${screen}")`));
+  }
+  assert.match(rootView, /\.badge\(store.unreadChatCount\)/);
+  assert.match(rootView, /Picker\("Planning destination", selection: \$planningSelection\)/);
 });
 
 test("homework loading starts alongside independent calendar requests", () => {
