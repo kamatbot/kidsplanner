@@ -38,7 +38,7 @@ function parentActor(user) {
   return { type: "parent", userId: user.id, principalId: user.id };
 }
 
-function createApprovalFixture({ approverUserId, expiresAt = "2026-09-20T12:00:00.000Z" } = {}) {
+function createApprovalFixture({ approverUserId, expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString() } = {}) {
   const { parent, fam } = setupFamily("Approval");
   const secondParent = makeParent("Second Parent");
   const joined = family.joinFamilyAsParent(fam.inviteCode, secondParent.id);
