@@ -386,8 +386,17 @@ private struct TodayProgressRow: View {
     }
 
     private var dailyText: String {
+        guard let completed = progress?.daily3Completed else { return "Not loaded" }
+        return "\(completed)/3"
+    }
+
+    private var challengeText: String {
         guard let progress else { return "Not loaded" }
-        return "\(progress.completed)/\(progress.total)"
+        switch progress.scheduledChallengeStatus {
+        case "completed": return "Done"
+        case "started": return "In progress"
+        default: return "Ready"
+        }
     }
 
     private var homeworkText: String {
@@ -417,7 +426,7 @@ private struct TodayProgressRow: View {
         }
         .padding(.vertical, Space.sm + 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(kid.name), Daily 5 \(dailyText), \(homeworkText)")
+        .accessibilityLabel("\(kid.name), Daily 3 \(dailyText), scheduled challenge \(challengeText), \(homeworkText)")
     }
 
     @ViewBuilder
@@ -436,7 +445,7 @@ private struct TodayProgressRow: View {
     private var metricsContent: some View {
         HStack(spacing: Space.lg) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Daily 5")
+                Text("Daily 3")
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
                 Text(dailyText)
@@ -444,6 +453,15 @@ private struct TodayProgressRow: View {
                     .foregroundStyle(Palette.accent)
             }
             .frame(minWidth: 58, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Challenge")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                Text(challengeText)
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+            }
+            .frame(minWidth: 76, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Homework")
                     .font(Typography.caption)
@@ -831,11 +849,9 @@ struct TodaySecondaryDisclosure: View {
                 if role == .parent {
                     ActionCard()
                     FamsHomeCard()
-                    PathOddsFamilySummaryCard()
                 } else {
                     ActionCard()
                     FamsHomeCard()
-                    PathOddsQuestCard()
                 }
             }
             .padding(.top, Space.sm)
@@ -847,7 +863,7 @@ struct TodaySecondaryDisclosure: View {
                     Text("More family tools")
                         .font(Typography.cardTitle)
                         .foregroundStyle(Palette.text)
-                    Text("Homework, actions, rewards and PathOdds")
+                    Text("Homework, actions and rewards")
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecond)
                         .fixedSize(horizontal: false, vertical: true)

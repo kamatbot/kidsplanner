@@ -30,6 +30,31 @@ struct SATActivityView: View {
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(response.word.word).font(Typography.title).foregroundStyle(Palette.text)
                     Text(response.word.pos).font(Typography.caption.italic()).foregroundStyle(Palette.textSecond)
+                    if let theme = response.theme {
+                        Text(theme).font(Typography.monoSmall.weight(.bold)).foregroundStyle(Palette.accent)
+                    }
+                    if let root = response.root {
+                        Text("Root: \(root.form) — \(root.meaning)")
+                            .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                        Text(root.origin).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                    if let lesson = response.lesson {
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text(lesson.title).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                            Text(lesson.focus).font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.accent)
+                            Text(lesson.explanation).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            ForEach(lesson.examples, id: \.self) { example in
+                                Text("• \(example)").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            }
+                            if let grammar = lesson.grammar {
+                                Text(grammar.title).font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.text)
+                                Text("\(grammar.explanation) \(grammar.example)")
+                                    .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            }
+                        }
+                        .padding(Space.sm)
+                        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                    }
                     Text(response.challenge.prompt).font(Typography.body.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 }

@@ -317,6 +317,35 @@ struct VocabularyWord: Codable {
     var example: String
 }
 
+/// Optional weekly-learning context. These fields are additive so an older
+/// cached vocabulary response remains decodable.
+struct VocabularyRoot: Codable {
+    var form: String
+    var meaning: String
+    var origin: String
+}
+
+struct WeeklyQuote: Codable {
+    var text: String
+    var author: String
+    var theme: String
+    var weekStart: String
+}
+
+struct VocabularyGrammar: Codable {
+    var title: String
+    var explanation: String
+    var example: String
+}
+
+struct VocabularyLesson: Codable {
+    var title: String
+    var focus: String
+    var explanation: String
+    var examples: [String]
+    var grammar: VocabularyGrammar? = nil
+}
+
 struct VocabularyContextOption: Codable {
     var text: String
     var explanation: String
@@ -335,6 +364,10 @@ struct DailyVocabularyResponse: Codable {
     var word: VocabularyWord
     var weekWords: [VocabularyWord]
     var challenge: VocabularyChallenge
+    var theme: String? = nil
+    var root: VocabularyRoot? = nil
+    var quote: WeeklyQuote? = nil
+    var lesson: VocabularyLesson? = nil
 }
 
 /// A single word bank entry (`/api/wordbank`). Mirrors `lib/wordbank.js`.
@@ -412,6 +445,37 @@ struct SudokuPuzzle: Codable {
     var difficulty: String
 }
 
+struct MentalMathPuzzle: Codable {
+    var title: String
+    var prompt: String
+    var answer: String
+    var explanation: String
+}
+
+struct PuzzleSource: Codable {
+    var title: String
+    var url: String
+    var publishedAt: String
+}
+
+struct PuzzleChart: Codable {
+    var title: String
+    var unit: String
+    var labels: [String]
+    var values: [Double]
+    var source: PuzzleSource
+}
+
+struct PuzzleQuestion: Codable, Identifiable {
+    var id: String
+    var passage: String
+    var prompt: String
+    var options: [String]
+    var answerIndex: Int
+    var explanations: [String]
+    var attribution: String? = nil
+}
+
 struct DailyPuzzleResponse: Codable {
     var date: String
     var available: Bool
@@ -420,6 +484,9 @@ struct DailyPuzzleResponse: Codable {
     var instructions: String?
     var crossword: CrosswordPuzzle?
     var sudoku: SudokuPuzzle?
+    var mentalMath: MentalMathPuzzle? = nil
+    var chart: PuzzleChart? = nil
+    var question: PuzzleQuestion? = nil
 }
 
 // MARK: - Response wrappers (thin, match server.js route shapes)

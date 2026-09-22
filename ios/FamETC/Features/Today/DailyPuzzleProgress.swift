@@ -27,7 +27,11 @@ struct DailyPuzzleProgressIdentity: Hashable {
 
     private static func fingerprint(for puzzle: DailyPuzzleResponse) -> String {
         let material: String
-        if let crossword = puzzle.crossword {
+        if puzzle.mentalMath != nil || puzzle.question != nil || puzzle.chart != nil {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            material = String(decoding: (try? encoder.encode(puzzle)) ?? Data(), as: UTF8.self)
+        } else if let crossword = puzzle.crossword {
             let entries = crossword.entries
                 .sorted { $0.id < $1.id }
                 .map { entry in

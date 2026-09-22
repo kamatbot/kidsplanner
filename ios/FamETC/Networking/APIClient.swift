@@ -276,7 +276,7 @@ final class APIClient: FamilyActionService {
     }
 
     func dailyPuzzle(date: String) async throws -> DailyPuzzleResponse {
-        try await request("/api/enrichment/puzzle/today?date=\(date)")
+        try await request("/api/enrichment/puzzle/today?date=\(date)&schedule=weekly")
     }
 
     // MARK: Meals (composite parent-gated; shopping is family-readable)

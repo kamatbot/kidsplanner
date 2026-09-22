@@ -133,10 +133,10 @@ test("malformed dates are rejected", () => {
   assert.deepEqual(puzzles.getDailyPuzzle("not-a-date"), { error: "Use a real date in YYYY-MM-DD format." });
 });
 
-test('every day has a stable puzzle and fourteen Sudoku days have different valid boards', () => {
+test('historical days have stable puzzles and fourteen Sudoku days have different valid boards', () => {
   const boards = new Set();
   for (let offset = 0; boards.size < 14 && offset < 33; offset++) {
-    const date = new Date(Date.UTC(2026, 8, 7 + offset)).toISOString().slice(0, 10);
+    const date = new Date(Date.UTC(2026, 7, 1 + offset)).toISOString().slice(0, 10);
     const first = puzzles.getDailyPuzzle(date);
     assert.equal(first.available, true);
     assert.deepEqual(puzzles.getDailyPuzzle(date), first);

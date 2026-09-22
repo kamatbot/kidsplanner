@@ -36,8 +36,8 @@ function buildRoute(news = {}) {
   return routes["GET /api/enrichment/puzzle/today"];
 }
 
-async function call(handlers, { user = null, family = null, date } = {}) {
-  const req = { user, family, query: { date } };
+async function call(handlers, { user = null, family = null, date, schedule } = {}) {
+  const req = { user, family, query: { date, schedule } };
   const res = {
     statusCode: 200,
     headers: {},
@@ -132,4 +132,18 @@ test("news failure returns the deterministic SAT/static fallback", async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.crossword.entries.length, 7);
   assert.equal(new Set(response.body.crossword.entries.map((entry) => entry.answer)).size, 7);
+});
+
+
+test('weekly-capable clients get scheduled questions while installed older clients retain supported puzzles', async () => {
+  const route = buildRoute({ getRecentNews: async () => ({ items: [] }) });
+  const scope = { user: {id:'kid'}, family: {id:'family'} };
+  const older = await call(route, {...scope, date:'2026-09-25'});
+  assert.equal(older.body.type, 'sudoku');
+  assert.ok(older.body.sudoku && older.body.available);
+  const current = await call(route, {...scope, date:'2026-09-25', schedule:'weekly'});
+  assert.equal(current.body.type, 'sat');
+  assert.equal(current.body.question.options.length, 4);
+  const monday = await call(route, {...scope, date:'2026-09-21', schedule:'weekly'});
+  assert.equal(monday.body.type, 'brainteaser');
 });

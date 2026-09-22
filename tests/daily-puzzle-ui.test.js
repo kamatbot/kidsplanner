@@ -21,7 +21,7 @@ test("daily-puzzle auth wrapper sends the encoded local date", async () => {
   };
   vm.runInNewContext(authSource, sandbox, { filename: "auth.js" });
   assert.deepEqual(await sandbox.window.auth.getDailyPuzzle("2026-08-15"), payload);
-  assert.equal(calls[0].url, "/api/enrichment/puzzle/today?date=2026-08-15");
+  assert.equal(calls[0].url, "/api/enrichment/puzzle/today?date=2026-08-15&schedule=weekly");
   assert.equal(calls[0].options.method, "GET");
 });
 

@@ -36,7 +36,7 @@
 ## Design (FINAL — Horizon redesign, user-confirmed 2026-07-11; spec: docs/design/redesign/)
 | Decision | Value |
 |---|---|
-| Language | Full Horizon adoption per "Fam ETC Redesign.dc.html" (claude.ai/design d048593a…): one structure everywhere — sidebar nav → main content → docked family chat (slim-strip collapse on Homework/Goals/Activities). Today replaces the widget-wall dashboard; learning widgets fold into one "Daily 5" card. |
+| Language | Full Horizon adoption per "Fam ETC Redesign.dc.html" (claude.ai/design d048593a…): one structure everywhere — sidebar nav → main content → docked family chat (slim-strip collapse on Homework/Goals/Activities). Today replaces the widget-wall dashboard; News, Quote and Word form "Daily 3"; Brain Teaser / Puzzle has its own section. |
 | Palette | Horizon tokens 1:1 web+iOS (`public/css/horizon.css` / `Theme.swift`): bg `#f1efec` greige, panel white, accent `#6f43d6` violet (the ONLY interactive color), coral `#f0704f` partner; dark mode = same tokens re-resolved (accent `#b98cff`). Per-kid identity = parent-selected profile color and optional photo, shared across web and native surfaces (updated 2026-09-07). Existing palette is the fallback for profiles without a valid color. Green/red strictly semantic. |
 | Hero gradient | coral→violet, reserved for ONE momentum element per screen |
 | Dark mode | both at launch (marketing screenshots in light mode); web toggle Auto/Light/Dark in Settings |

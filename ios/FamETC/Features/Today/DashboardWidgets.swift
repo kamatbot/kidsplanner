@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import CryptoKit
 
 /// Puts the keyboard away. The dashboard's free-text fields use `axis: .vertical`
 /// (so Return inserts a newline instead of dismissing) and live inside a
@@ -14,19 +15,21 @@ func famDismissKeyboard() {
 struct QuoteWidget: View {
     @Environment(AppStore.self) private var store
     @Binding var reflection: String
+    let quote: WeeklyQuote?
+    let onRetry: () -> Void
     @State private var saved = false
     @State private var saving = false
     @State private var saveFailed = false
 
     var body: some View {
-        let q = Daily.quote
         return VStack(alignment: .leading, spacing: Space.lg) {
             LearningActivityHeading(title: "Quote of the Day", subtitle: "Pause for a thought, then make it your own.", systemImage: "quote.bubble")
-            Text("“\(q.text)”")
-                .font(Typography.title)
-                .foregroundStyle(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("— \(q.author)").font(Typography.body).foregroundStyle(Palette.textSecond)
+            if let quote {
+                Text("“\(quote.text)”")
+                    .font(Typography.title).foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("— \(quote.author)").font(Typography.body).foregroundStyle(Palette.textSecond)
+                Text(quote.theme).font(Typography.caption).foregroundStyle(Palette.textSecond)
             Divider().overlay(Palette.border)
             Text("Your reflection").font(Typography.cardTitle).foregroundStyle(Palette.text)
             TextField("What did this quote make you think of?", text: $reflection, axis: .vertical)
@@ -53,7 +56,7 @@ struct QuoteWidget: View {
                 saving = true
                 saveFailed = false
                 Task {
-                    let note = await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": "", "context": "\u{201C}\(q.text)\u{201D} — \(q.author)"])
+                    let note = await store.addNote(body: text, source: "quote", ref: ["kind": "quote", "id": quote.weekStart, "context": "\u{201C}\(quote.text)\u{201D} — \(quote.author)"])
                     saving = false
                     guard store.me?.id == userID, Agenda.todayKey() == day else { return }
                     if note != nil {
@@ -72,6 +75,12 @@ struct QuoteWidget: View {
             .tint(Palette.accent)
             .disabled(saving || saved || reflection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("quote.save")
+            } else {
+                LearningFeedback(title: "Today's quote couldn't load.", message: "The weekly learning edition isn't ready yet.", kind: .retry)
+                Button("Try again", action: onRetry)
+                    .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
+                    .accessibilityIdentifier("quote.retry")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -114,7 +123,7 @@ struct DailyFiveCard: View {
 
         var id: String {
             switch self {
-            case .quote: return "quote"
+        case .quote: return "quote"
             case .word: return "word"
             case .teaser: return "teaser"
             case .puzzle(let puzzle): return "puzzle-\(puzzle.date)-\(puzzle.type ?? "")"
@@ -138,18 +147,21 @@ struct DailyFiveCard: View {
     @State private var dailyFiveProgressLoading = false
 
     var body: some View {
-        TodayDailyFivePreview(
-            isKid: isKid,
-            statuses: activityStatuses,
-            newsChoices: newsChoices,
-            selectedNews: selectedNews,
-            isLoading: extrasLoading || dailyFiveProgressLoading,
-            progressKnown: dailyFiveProgress != nil,
-            canRetry: !extrasLoading,
-            onOpen: openActivity,
-            onSelectNews: selectNews,
-            onRetry: { Task { await loadDailyExtras() } }
-        )
+        VStack(spacing: Space.md) {
+            TodayDailyFivePreview(
+                isKid: isKid,
+                statuses: activityStatuses,
+                newsChoices: newsChoices,
+                selectedNews: selectedNews,
+                isLoading: extrasLoading || dailyFiveProgressLoading,
+                progressKnown: dailyFiveProgress != nil,
+                canRetry: !extrasLoading,
+                onOpen: openActivity,
+                onSelectNews: selectNews,
+                onRetry: { Task { await loadDailyExtras() } }
+            )
+            puzzleSection
+        }
         .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") { await loadDailyExtras() }
         .onReceive(NotificationCenter.default.publisher(for: .famsRewardsChanged)) { _ in
             Task { await refreshServerProgress() }
@@ -202,13 +214,7 @@ struct DailyFiveCard: View {
         var result: [DailyFiveActivity: DailyFiveActivityStatus] = [:]
         result[.news] = ideaSaved || hasNote(source: "news") ? .completed : (newsChoices.allSatisfy { $0.article == nil } && !extrasLoading ? .unavailable : .available)
         result[.word] = vocabulary == nil ? .unavailable : .available
-        result[.quote] = hasNote(source: "quote") ? .completed : .available
-        result[.brain] = .available
-        if let puzzle, puzzle.available {
-            result[.puzzle] = puzzleStatus == "Puzzle solved" ? .completed : puzzleStatus == "Resume your puzzle" ? .started : .available
-        } else {
-            result[.puzzle] = .unavailable
-        }
+        result[.quote] = hasNote(source: "quote") ? .completed : (vocabulary?.quote == nil ? .unavailable : .available)
         return result
     }
 
@@ -220,8 +226,8 @@ struct DailyFiveCard: View {
         case "completed": return .completed
         case "started": return .started
         default:
-            if activity == .puzzle && puzzle?.available != true { return .unavailable }
             if activity == .word && vocabulary == nil { return .unavailable }
+            if activity == .quote && vocabulary?.quote == nil { return .unavailable }
             if activity == .news && newsChoices.allSatisfy({ $0.article == nil }) { return .unavailable }
             return .available
         }
@@ -246,13 +252,6 @@ struct DailyFiveCard: View {
         switch activity {
         case .quote: activeSheet = .quote
         case .word: activeSheet = .word
-        case .brain: activeSheet = .teaser
-        case .puzzle:
-            guard let puzzle, puzzle.available else {
-                Task { await loadDailyExtras() }
-                return
-            }
-            activeSheet = .puzzle(puzzle)
         case .news:
             guard let article = selectedNews ?? newsChoices.compactMap(\.article).first else { return }
             selectedNewsID = article.id
@@ -263,7 +262,7 @@ struct DailyFiveCard: View {
     @ViewBuilder
     private func sheetContent(_ sheet: DailySheet) -> some View {
         switch sheet {
-        case .quote: QuoteWidget(reflection: $quoteReflection).id(extrasScope)
+        case .quote: QuoteWidget(reflection: $quoteReflection, quote: vocabulary?.quote, onRetry: { Task { await loadDailyExtras() } }).id(extrasScope)
         case .word: WordWidget()
         case .teaser: QuizWidget()
         case .puzzle(let puzzle):
@@ -354,6 +353,34 @@ struct DailyFiveCard: View {
                 puzzleStatus = "Resume your puzzle"
             }
         }
+    }
+
+    private var puzzleSection: some View {
+        Card(padding: Space.md) {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                LearningActivityHeading(title: "Brain & Puzzle", subtitle: "A different thinking challenge for each day.", systemImage: "puzzlepiece")
+                if extrasLoading {
+                    ProgressView("Loading today's challenge…")
+                } else if let puzzle {
+                    Text(puzzle.instructions ?? "Take your time and work it through.")
+                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    Button {
+                        Haptics.selection()
+                        activeSheet = puzzle.type == "brainteaser" ? .teaser : .puzzle(puzzle)
+                    } label: {
+                        Label(puzzle.title ?? "Open today's challenge", systemImage: "arrow.up.right.circle.fill")
+                            .font(Typography.body.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.borderedProminent).tint(Palette.accent)
+                    .accessibilityIdentifier("today.puzzle.open")
+                } else {
+                    LearningFeedback(title: "Today's challenge couldn't load.", message: "Try again to fetch the scheduled puzzle.", kind: .retry)
+                    Button("Retry challenge") { Task { await loadDailyExtras() } }
+                        .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -553,17 +580,35 @@ private struct DailyPuzzleView: View {
     @State private var showClearConfirmation = false
     @State private var didReportEdit = false
     @State private var progressScope: Daily5Reporter.Scope?
+    @State private var questionPicked: Int?
+    @State private var questionAttempted = false
+    @State private var mentalMathAnswer = ""
+    @State private var mentalMathAttempted = false
+    @State private var mentalMathSolved = false
+    private let questionStorageKey: String?
+    private let mentalMathStorageKey: String?
 
     init(puzzle: DailyPuzzleResponse, userID: String) {
         self.puzzle = puzzle
         let identity = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: userID)
         progressIdentity = identity
         progressKeys = DailyPuzzleProgressStore.allowedKeys(for: puzzle)
+        questionStorageKey = puzzle.question.map {
+            Self.privateProgressKey(userID: userID, date: puzzle.date,
+                identity: Self.questionMaterial(question: $0, chart: puzzle.chart), kind: "question")
+        }
+        mentalMathStorageKey = puzzle.mentalMath.map {
+            Self.privateProgressKey(userID: userID, date: puzzle.date,
+                identity: "\($0.title)|\($0.prompt)|\($0.answer)|\($0.explanation)", kind: "mentalMath")
+        }
         _answers = State(initialValue: DailyPuzzleProgressStore.load(
             for: identity,
             allowedKeys: progressKeys
         ))
         _resultMessage = State(initialValue: DailyPuzzleProgressStore.isSolved(for: identity) ? "Puzzle solved" : nil)
+        _questionPicked = State(initialValue: questionStorageKey.flatMap { UserDefaults.standard.object(forKey: $0) as? Int })
+        _mentalMathAnswer = State(initialValue: mentalMathStorageKey.flatMap { UserDefaults.standard.string(forKey: $0 + ".answer") } ?? "")
+        _mentalMathSolved = State(initialValue: mentalMathStorageKey.map { UserDefaults.standard.bool(forKey: $0 + ".solved") } ?? false)
     }
 
     var body: some View {
@@ -572,10 +617,14 @@ private struct DailyPuzzleView: View {
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
                 .fixedSize(horizontal: false, vertical: true)
-            if let crossword = puzzle.crossword {
+            if let question = puzzle.question {
+                if let chart = puzzle.chart { chartContent(chart) }
+                questionContent(question)
+            } else if let crossword = puzzle.crossword {
                 crosswordContent(crossword)
             } else if let sudoku = puzzle.sudoku {
                 sudokuView(sudoku)
+                if let mentalMath = puzzle.mentalMath { mentalMathContent(mentalMath) }
             } else {
                 Text("This puzzle is unavailable. Close this sheet and retry from Today.")
                     .font(Typography.body)
@@ -588,17 +637,19 @@ private struct DailyPuzzleView: View {
                     kind: resultMessage.hasPrefix("Puzzle solved") ? .success : .retry
                 )
             }
-            HStack(spacing: Space.md) {
-                Button("Clear") { showClearConfirmation = true }
-                .buttonStyle(.bordered)
-                .tint(Palette.textSecond)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("puzzle.clear")
-                Spacer()
-                AccentButton(title: "Check puzzle", systemImage: "checkmark.circle.fill") {
-                    checkPuzzle()
+            if puzzle.question == nil {
+                HStack(spacing: Space.md) {
+                    Button("Clear") { showClearConfirmation = true }
+                    .buttonStyle(.bordered)
+                    .tint(Palette.textSecond)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("puzzle.clear")
+                    Spacer()
+                    AccentButton(title: "Check puzzle", systemImage: "checkmark.circle.fill") {
+                        checkPuzzle()
+                    }
+                    .accessibilityIdentifier("puzzle.check")
                 }
-                .accessibilityIdentifier("puzzle.check")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -614,6 +665,135 @@ private struct DailyPuzzleView: View {
         } message: {
             Text("This removes your saved answers for today's puzzle.")
         }
+    }
+
+    @ViewBuilder
+    private func chartContent(_ chart: PuzzleChart) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text(chart.title).font(Typography.cardTitle).foregroundStyle(Palette.text)
+            Text("Unit: \(chart.unit)").font(Typography.caption.weight(.semibold)).foregroundStyle(Palette.textSecond)
+            ForEach(Array(zip(chart.labels, chart.values).enumerated()), id: \.offset) { _, item in
+                HStack {
+                    Text(item.0).font(Typography.caption).frame(maxWidth: .infinity, alignment: .leading)
+                    Text("\(item.1, specifier: "%.1f") \(chart.unit)").font(Typography.monoSmall).foregroundStyle(Palette.text)
+                }
+                .accessibilityLabel("\(item.0): \(item.1) \(chart.unit)")
+            }
+            if let url = URL(string: chart.source.url) {
+                Link("Source: \(chart.source.title) · \(chart.source.publishedAt)", destination: url)
+                    .font(Typography.caption).frame(minHeight: 44, alignment: .leading)
+            } else {
+                Text("Source: \(chart.source.title) · \(chart.source.publishedAt)").font(Typography.caption)
+            }
+        }
+        .padding(Space.md)
+        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+    }
+
+    private func questionContent(_ question: PuzzleQuestion) -> some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            Text(question.passage).font(Typography.body).foregroundStyle(Palette.textSecond)
+            Text(question.prompt).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+            if let attribution = question.attribution {
+                Text(attribution).font(Typography.caption).foregroundStyle(Palette.textSecond)
+            }
+            ForEach(question.options.indices, id: \.self) { index in
+                LearningOption(text: question.options[index], index: index, state: questionOptionState(index, question)) {
+                    guard isCurrentScope(), question.options.indices.contains(index) else { return }
+                    questionPicked = index
+                    questionAttempted = true
+                    questionStorageKey.map { UserDefaults.standard.set(index, forKey: $0) }
+                    if index == question.answerIndex {
+                        reportProgress("completed")
+                        resultMessage = "Puzzle solved — that answer fits the evidence."
+                        Haptics.notify(.success)
+                    } else {
+                        resultMessage = "Try again — read the evidence and explanations below."
+                        Haptics.notify(.warning)
+                    }
+                }
+                .accessibilityIdentifier("puzzle.question.option.\(index)")
+            }
+            if questionAttempted || questionPicked != nil {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Explanations").font(Typography.caption.weight(.semibold))
+                    ForEach(question.explanations.indices, id: \.self) { index in
+                        Text("\(index + 1). \(question.explanations[index])").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                }
+            }
+        }
+    }
+
+    private func mentalMathContent(_ mentalMath: MentalMathPuzzle) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text(mentalMath.title).font(Typography.cardTitle).foregroundStyle(Palette.text)
+            Text(mentalMath.prompt).font(Typography.body).foregroundStyle(Palette.text)
+            TextField("Your answer", text: mentalMathBinding)
+                .textFieldStyle(.roundedBorder).accessibilityIdentifier("puzzle.mentalMath.answer")
+            Button("Check shortcut") {
+                guard isCurrentScope() else { return }
+                mentalMathAttempted = true
+                mentalMathSolved = normalizedMath(mentalMathAnswer) == normalizedMath(mentalMath.answer)
+                if mentalMathSolved {
+                    mentalMathStorageKey.map { UserDefaults.standard.set(true, forKey: $0 + ".solved") }
+                    Haptics.notify(.success)
+                } else { Haptics.notify(.warning) }
+            }
+            .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
+            if mentalMathAttempted || mentalMathSolved {
+                LearningFeedback(title: mentalMathSolved ? "Shortcut solved" : "Try the shortcut again", message: mentalMath.explanation, kind: mentalMathSolved ? .success : .retry)
+            }
+        }
+        .padding(Space.md)
+        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+    }
+
+    private func questionOptionState(_ index: Int, _ question: PuzzleQuestion) -> LearningOption.State {
+        guard let questionPicked, questionPicked == question.answerIndex else { return .idle }
+        if index == question.answerIndex { return .correct }
+        return index == questionPicked ? .incorrect : .dimmed
+    }
+
+    private func normalizedMath(_ answer: String) -> String {
+        answer.lowercased().filter { !$0.isWhitespace && $0 != "," }
+    }
+
+    private var mentalMathBinding: Binding<String> {
+        Binding(
+            get: { mentalMathAnswer },
+            set: { value in
+                guard isCurrentScope() else { return }
+                guard value != mentalMathAnswer else { return }
+                mentalMathAnswer = value
+                mentalMathStorageKey.map { UserDefaults.standard.set(value, forKey: $0 + ".answer") }
+                mentalMathAttempted = false
+                guard mentalMathSolved else { return }
+                mentalMathSolved = false
+                resultMessage = nil
+                DailyPuzzleProgressStore.recordCheck(correct: 0, required: 1, for: progressIdentity)
+                reportProgress("started", retract: true)
+                mentalMathStorageKey.map { UserDefaults.standard.removeObject(forKey: $0 + ".solved") }
+            }
+        )
+    }
+
+    private static func privateProgressKey(userID: String, date: String, identity: String, kind: String) -> String {
+        let source = "\(userID)|\(date)|\(kind)|\(identity)"
+        let hash = SHA256.hash(data: Data(source.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "fam_puzzle_\(kind).\(hash)"
+    }
+
+    private static func questionMaterial(question: PuzzleQuestion, chart: PuzzleChart?) -> String {
+        let separator = "\u{1F}"
+        let chartMaterial = chart.map {
+            "\($0.title)|\($0.unit)|\($0.labels.joined(separator: separator))|\($0.values.map { String($0) }.joined(separator: separator))|\($0.source.title)|\($0.source.url)|\($0.source.publishedAt)"
+        } ?? ""
+        return "\(question.id)|\(question.passage)|\(question.prompt)|\(question.options.joined(separator: separator))|\(question.answerIndex)|\(question.explanations.joined(separator: separator))|\(chartMaterial)"
+    }
+
+    private func isCurrentScope() -> Bool {
+        store.me?.id == progressIdentity.userID && progressIdentity.date == Agenda.todayKey()
     }
 
     @ViewBuilder
@@ -844,6 +1024,7 @@ private struct DailyPuzzleView: View {
         return Binding(
             get: { answers[cellKey] ?? "" },
             set: { value in
+                guard isCurrentScope() else { return }
                 let letters = value.uppercased().filter(\.isLetter)
                 guard let entry = activeEntry(containingRow: row, col: col, in: crossword),
                       let index = crosswordCells(for: entry).firstIndex(where: { $0.row == row && $0.col == col }) else {
@@ -886,6 +1067,7 @@ private struct DailyPuzzleView: View {
     }
 
     private func deleteCrosswordLetter(row: Int, col: Int, crossword: CrosswordPuzzle) {
+        guard isCurrentScope() else { return }
         guard let entry = activeEntry(containingRow: row, col: col, in: crossword),
               let index = crosswordCells(for: entry).firstIndex(where: { $0.row == row && $0.col == col }) else {
             return
@@ -943,6 +1125,7 @@ private struct DailyPuzzleView: View {
         return Binding(
             get: { answers[cellKey] ?? "" },
             set: {
+                guard isCurrentScope() else { return }
                 resultMessage = nil
                 answers[cellKey] = String($0.filter { ("1"..."9").contains(String($0)) }.suffix(1))
                 DailyPuzzleProgressStore.save(answers, for: progressIdentity, allowedKeys: progressKeys)
@@ -965,15 +1148,24 @@ private struct DailyPuzzleView: View {
     }
 
     private func clearPuzzle() {
+        guard isCurrentScope() else { return }
         let hadAnswers = !answers.isEmpty
         answers = [:]
+        mentalMathAnswer = ""
+        mentalMathAttempted = false
+        mentalMathSolved = false
         resultMessage = nil
         DailyPuzzleProgressStore.clear(for: progressIdentity)
+        mentalMathStorageKey.map {
+            UserDefaults.standard.removeObject(forKey: $0 + ".solved")
+            UserDefaults.standard.removeObject(forKey: $0 + ".answer")
+        }
         if hadAnswers { reportProgress("started", retract: true) }
         didReportEdit = false
     }
 
     private func checkPuzzle() {
+        guard isCurrentScope() else { return }
         let required: [(String, String)]
         if let crossword = puzzle.crossword {
             required = crossword.solution.enumerated().flatMap { row, line in
@@ -989,11 +1181,15 @@ private struct DailyPuzzleView: View {
             return
         }
         let correct = required.filter { answers[$0.0]?.uppercased() == $0.1 }.count
-        DailyPuzzleProgressStore.recordCheck(correct: correct, required: required.count, for: progressIdentity)
-        if !required.isEmpty && correct == required.count {
+        let mentalMathComplete = puzzle.mentalMath == nil || mentalMathSolved
+        DailyPuzzleProgressStore.recordCheck(correct: mentalMathComplete ? correct : 0, required: required.count, for: progressIdentity)
+        if !required.isEmpty && correct == required.count && mentalMathComplete {
             reportProgress("completed")
             resultMessage = "Puzzle solved — every answer is correct."
             Haptics.notify(.success)
+        } else if !mentalMathComplete && correct == required.count {
+            resultMessage = "The Sudoku is solved. Complete the mental-math shortcut to finish today's challenge."
+            Haptics.notify(.warning)
         } else {
             let unanswered = required.filter { (answers[$0.0] ?? "").isEmpty }.count
             resultMessage = unanswered > 0

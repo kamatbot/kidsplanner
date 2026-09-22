@@ -86,8 +86,30 @@ struct FamilyDailyFiveProgress: Codable, Equatable {
     let completed: Int
     let started: Int
     let total: Int
+    /// Additive child-overview fields. The wire-compatible Daily 5 record
+    /// still carries all legacy parts; Today presents only the Daily 3 trio.
+    let daily3Completed: Int?
+    let scheduledChallengeStatus: String?
+
+    init(
+        completed: Int,
+        started: Int,
+        total: Int,
+        daily3Completed: Int? = nil,
+        scheduledChallengeStatus: String? = nil
+    ) {
+        self.completed = completed
+        self.started = started
+        self.total = total
+        self.daily3Completed = daily3Completed
+        self.scheduledChallengeStatus = scheduledChallengeStatus
+    }
 
     var summary: String {
+        if let daily3Completed {
+            let challenge = scheduledChallengeStatus ?? "ready"
+            return "Daily 3: \(daily3Completed) of 3 complete, scheduled challenge \(challenge)"
+        }
         if completed >= total { return "Daily 5 complete" }
         if started > 0 { return "Daily 5: \(completed) of \(total) complete, \(started) in progress" }
         return "Daily 5: \(completed) of \(total) complete"

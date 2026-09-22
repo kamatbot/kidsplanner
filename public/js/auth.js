@@ -705,7 +705,7 @@
   }
 
   async function getDailyPuzzle(date) {
-    return api("/api/enrichment/puzzle/today?date=" + encodeURIComponent(date || ""), { method: "GET" });
+    return api("/api/enrichment/puzzle/today?date=" + encodeURIComponent(date || "") + "&schedule=weekly", { method: "GET" });
   }
 
   /* ---------- AI parse (schedule/homework photo -> structured items) ---------- */

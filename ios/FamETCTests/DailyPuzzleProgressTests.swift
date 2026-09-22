@@ -2,6 +2,23 @@ import XCTest
 @testable import FamETC
 
 final class DailyPuzzleProgressTests: XCTestCase {
+    func testWeeklyIdentityIncludesMentalMathAnswerAndExplanation() throws {
+        let json = #"{"date":"2026-09-23","available":true,"type":"sudoku","sudoku":{"puzzle":"0","solution":"1","size":9,"difficulty":"Easy"},"mentalMath":{"title":"Multiply","prompt":"48 × 25","answer":"1200","explanation":"Divide by four, multiply by100."}}"#
+        var first = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(json.utf8))
+        let identity = DailyPuzzleProgressIdentity(puzzle: first, userID: "kid")
+        first.mentalMath?.answer = "1800"
+        XCTAssertNotEqual(identity, DailyPuzzleProgressIdentity(puzzle: first, userID: "kid"))
+        first.mentalMath?.answer = "1200"
+        first.mentalMath?.explanation = "A revised method."
+        XCTAssertNotEqual(identity, DailyPuzzleProgressIdentity(puzzle: first, userID: "kid"))
+    }
+
+    func testFridayAttributionDecodesFromQuestion() throws {
+        let json = #"{"date":"2026-09-25","available":true,"type":"sat","question":{"id":"sat-1","passage":"Text","prompt":"Which?","options":["A","B","C","D"],"answerIndex":1,"explanations":["a","b","c","d"],"attribution":"Original SAT-style practice; not a College Board question."}}"#
+        let response = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(response.question?.attribution, "Original SAT-style practice; not a College Board question.")
+    }
+
     @MainActor
     func testFinishedReportAllowsRetryButPreservesNewerEventWithSameStatus() {
         let failed = Daily5Reporter.Event(transition: "completed|false")
