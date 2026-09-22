@@ -34,7 +34,7 @@ test("parent Today omits study start while the kid stack keeps it", () => {
 test("parent homework rows and details are read-only", () => {
   assert.match(homework, /canMutate: !store\.isParent/);
   assert.match(homework, /if canMutate, let onToggle/);
-  assert.match(homework, /if !store\.isParent \{\s*assignmentActions/);
+  assert.match(homework, /if !store\.isParent \{\s*if !item\.isDone \{ helpMeStartButton \}\s*assignmentActions\s*\}/);
   assert.match(homework, /if !store\.isParent \{\s*ViewThatFits/);
   assert.match(homework, /canMutate: !store\.isParent/);
   assert.match(homework, /if canMutate \{\s*Button\(action: onToggle\)/);

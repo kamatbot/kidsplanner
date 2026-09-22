@@ -15,13 +15,15 @@ final class DocumentScannerViewController: UIViewController {
 
     private let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
-    private let sessionQueue = DispatchQueue(label: "ro.scanner.session")
-    private let videoQueue = DispatchQueue(label: "ro.scanner.video")
+    private let sessionQueue = DispatchQueue(label: "fam.scanner.session")
+    private let videoQueue = DispatchQueue(label: "fam.scanner.video")
     private var previewLayer: AVCaptureVideoPreviewLayer!
 
     private let lock = NSLock()
     private var latestPixelBuffer: CVPixelBuffer?
     private var latestCorners: [CGPoint]?  // [tl,tr,br,bl] for perspective correction
+    // Only accessed on the serial video queue; Vision performs synchronously.
+    private var lastAnalysisTimestamp: CFTimeInterval = 0
     private var detectedFrames = 0
     private var capturing = false
     private var didFinish = false
@@ -139,7 +141,6 @@ final class DocumentScannerViewController: UIViewController {
     // MARK: detection (video queue) — invisible, drives auto-capture only
 
     private func handle(pixelBuffer: CVPixelBuffer) {
-        lock.lock(); latestPixelBuffer = pixelBuffer; lock.unlock()
         let request = VNDetectDocumentSegmentationRequest()
         // Back camera in portrait → frames are sensor-landscape; .right uprights them.
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
@@ -154,9 +155,8 @@ final class DocumentScannerViewController: UIViewController {
             latestCorners = [q.topLeft, q.topRight, q.bottomRight, q.bottomLeft]
             detectedFrames += 1
             hint.text = "Hold steady…"
-            // It "waits" here until a receipt is actually detected, then captures
-            // after a short confirmation window (~16 confident frames).
-            if detectedFrames >= 16 { capture() }
+            // Throttled detection (~10 fps): captures after 5 consecutive confident frames (~0.5s).
+            if detectedFrames >= 5 { capture() }
         } else {
             detectedFrames = 0
             latestCorners = nil
@@ -206,6 +206,15 @@ final class DocumentScannerViewController: UIViewController {
 extension DocumentScannerViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        lock.lock()
+        latestPixelBuffer = pb
+        lock.unlock()
+
+        let now = CACurrentMediaTime()
+        guard now - lastAnalysisTimestamp >= 0.1 else { return } // Cap detection at ~10 fps
+        lastAnalysisTimestamp = now
+
         handle(pixelBuffer: pb)
     }
 }

@@ -2789,8 +2789,33 @@ function getNextMonday() {
   return d;
 }
 
+let pdfJsLoadingPromise = null;
+function loadPdfJs() {
+  if (typeof pdfjsLib !== 'undefined') return Promise.resolve(pdfjsLib);
+  if (pdfJsLoadingPromise) return pdfJsLoadingPromise;
+  pdfJsLoadingPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '/js/vendor/pdfjs/pdf.min.js';
+    s.onload = () => {
+      if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/vendor/pdfjs/pdf.worker.min.js';
+        resolve(pdfjsLib);
+      } else {
+        pdfJsLoadingPromise = null;
+        reject(new Error('PDF.js failed to initialize.'));
+      }
+    };
+    s.onerror = () => {
+      pdfJsLoadingPromise = null;
+      reject(new Error('Could not load PDF.js library.'));
+    };
+    document.head.appendChild(s);
+  });
+  return pdfJsLoadingPromise;
+}
+
 async function renderPdfToBase64(file) {
-  if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js not loaded yet. Please try again.');
+  await loadPdfJs();
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/vendor/pdfjs/pdf.worker.min.js';
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
