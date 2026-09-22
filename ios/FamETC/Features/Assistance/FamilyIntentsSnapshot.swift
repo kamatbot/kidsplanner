@@ -304,8 +304,18 @@ enum DailyFiveSnapshotDecoder {
             }
         }
         let values = payload.daily5.parts.values
+        let daily3Parts = ["news", "quote", "word"]
+        let daily3Completed = daily3Parts.filter { payload.daily5.parts[$0]?.status == "completed" }.count
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let date = ISO8601DateFormatter().date(from: expectedDate + "T12:00:00Z") else {
+            throw URLError(.cannotParseResponse)
+        }
+        let challengeKey = [2, 3].contains(calendar.component(.weekday, from: date)) ? "bt" : "puzzle"
+        let scheduledChallengeStatus = payload.daily5.parts[challengeKey]?.status ?? "ready"
         let progress = FamilyDailyFiveProgress(completed: values.filter { $0.status == "completed" }.count,
-            started: values.filter { $0.status == "started" }.count, total: allowedParts.count)
+            started: values.filter { $0.status == "started" }.count, total: allowedParts.count,
+            daily3Completed: daily3Completed, scheduledChallengeStatus: scheduledChallengeStatus)
         return FamilyChildInsightSnapshot(dailyFive: progress,
             expectedHomeTime: payload.homePlan?.homeTime.flatMap(displayTime))
     }

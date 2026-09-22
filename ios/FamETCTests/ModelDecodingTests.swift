@@ -23,6 +23,29 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(value.challenge.options[value.challenge.answerIndex].explanation, "Dogmatic, not practical")
     }
 
+    func testWeeklyLearningAndQuestionPuzzleRemainAdditive() throws {
+        let vocabulary = try JSONDecoder().decode(DailyVocabularyResponse.self, from: Data(#"{"date":"2026-09-24","weekStart":"2026-09-21","word":{"word":"Pragmatic","pos":"adjective","def":"Practical.","example":"A pragmatic plan."},"weekWords":[],"challenge":{"id":"v1","prompt":"Pick.","options":[{"text":"A","explanation":"Why"}],"answerIndex":0},"theme":"Evidence","root":{"form":"prag","meaning":"do","origin":"Greek"},"quote":{"text":"Observe.","author":"Fam ETC","theme":"Evidence","weekStart":"2026-09-21"},"lesson":{"title":"Use evidence","focus":"Precision","explanation":"Say what the data supports.","examples":["The chart rises."],"grammar":{"title":"Claim","explanation":"Use a verb.","example":"The values increase."}}}"#.utf8))
+        XCTAssertEqual(vocabulary.quote?.author, "Fam ETC")
+        XCTAssertEqual(vocabulary.root?.form, "prag")
+        XCTAssertEqual(vocabulary.lesson?.grammar?.title, "Claim")
+
+        let puzzle = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(#"{"date":"2026-09-24","available":true,"type":"news-analysis","chart":{"title":"Rainfall","unit":"mm","labels":["Mon"],"values":[12.0],"source":{"title":"Meteorological Department","url":"https://example.test/rain","publishedAt":"2026-09-24"}},"question":{"id":"rain-1","passage":"Read the chart.","prompt":"Which day?","options":["Mon","Tue","Wed","Thu"],"answerIndex":0,"explanations":["Correct","No","No","No"]}}"#.utf8))
+        XCTAssertEqual(puzzle.chart?.unit, "mm")
+        XCTAssertEqual(puzzle.question?.options.count, 4)
+
+        let friday = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(#"{"date":"2026-09-25","available":true,"type":"sat","question":{"id":"sat-1","passage":"A short passage.","prompt":"Which claim follows?","options":["A","B","C","D"],"answerIndex":1,"explanations":["No","Yes","No","No"],"attribution":"Fam ETC original SAT-style question"}}"#.utf8))
+        XCTAssertNil(friday.chart)
+        XCTAssertEqual(friday.question?.answerIndex, 1)
+        XCTAssertEqual(friday.question?.attribution, "Fam ETC original SAT-style question")
+
+        let wednesday = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(#"{"date":"2026-09-23","available":true,"type":"sudoku","sudoku":{"puzzle":"530070000600195000098000060800060003400803001700020006060000280000419005000080079","solution":"534678912672195348198342567859761423426853791713924856961537284287419635345286179","size":9,"difficulty":"Easy"},"mentalMath":{"title":"Shortcut","prompt":"25 × 16","answer":"400","explanation":"Quarter 100 then multiply by 16."}}"#.utf8))
+        XCTAssertEqual(wednesday.mentalMath?.answer, "400")
+
+        let legacy = try JSONDecoder().decode(DailyVocabularyResponse.self, from: Data(#"{"date":"2026-09-07","weekStart":"2026-09-07","word":{"word":"Pragmatic","pos":"adjective","def":"Practical.","example":"A pragmatic plan."},"weekWords":[],"challenge":{"id":"v1","prompt":"Pick.","options":[{"text":"A","explanation":"Why"}],"answerIndex":0}}"#.utf8))
+        XCTAssertNil(legacy.quote)
+        XCTAssertNil(legacy.lesson)
+    }
+
     func testKidPhotoRemainsCompatibleWithLegacyProfiles() throws {
         let data = ##"{"id":"k1","name":"Maya","grade":"6","color":"#123456","createdAt":"2026-09-07"}"##.data(using: .utf8)!
         var kid = try JSONDecoder().decode(Kid.self, from: data)

@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// The five Daily 5 activities share one compact entry point on Today. The
+/// The three Daily 3 learning activities share one compact entry point on Today. The
 /// preview intentionally owns only presentation: each activity still opens its
 /// existing native experience through the callback supplied by `DailyFiveCard`.
 enum DailyFiveActivity: String, CaseIterable, Identifiable {
     case news
     case word
     case quote
-    case puzzle
-    case brain
 
     var id: String { rawValue }
 
@@ -17,8 +15,6 @@ enum DailyFiveActivity: String, CaseIterable, Identifiable {
         case .news: return "news"
         case .word: return "word"
         case .quote: return "quote"
-        case .puzzle: return "puzzle"
-        case .brain: return "bt"
         }
     }
 
@@ -27,8 +23,6 @@ enum DailyFiveActivity: String, CaseIterable, Identifiable {
         case .news: return "News"
         case .word: return "Word"
         case .quote: return "Quote"
-        case .puzzle: return "Puzzle"
-        case .brain: return "Brain"
         }
     }
 
@@ -37,8 +31,6 @@ enum DailyFiveActivity: String, CaseIterable, Identifiable {
         case .news: return "newspaper"
         case .word: return "textformat.abc"
         case .quote: return "quote.bubble"
-        case .puzzle: return "puzzlepiece"
-        case .brain: return "brain.head.profile"
         }
     }
 }
@@ -123,7 +115,7 @@ struct TodayDailyFivePreview: View {
         VStack(alignment: .leading, spacing: Space.md) {
             headerLayout {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Daily 5")
+                    Text("Daily 3")
                         .font(Typography.cardTitle.weight(.bold))
                         .foregroundStyle(Palette.onAccent)
                     Text(isKid ? "One small win at a time" : "Explore together")
@@ -146,19 +138,19 @@ struct TodayDailyFivePreview: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("today.daily5.open")
-                .accessibilityHint("Open the next Daily 5 activity")
+                .accessibilityHint("Open the next Daily 3 activity")
             }
 
             if isLoading {
                 Text("Progress updating…")
                     .font(Typography.monoSmall.weight(.bold))
                     .foregroundStyle(Palette.onAccent.opacity(0.9))
-                    .accessibilityLabel("Daily 5 progress is updating")
+                    .accessibilityLabel("Daily 3 progress is updating")
             } else if !progressKnown {
                 Text("Progress updates as you go")
                     .font(Typography.monoSmall.weight(.bold))
                     .foregroundStyle(Palette.onAccent.opacity(0.9))
-                    .accessibilityLabel("Daily 5 progress is not available yet")
+                    .accessibilityLabel("Daily 3 progress is not available yet")
             } else {
                 Text("\(completedCount) of \(DailyFiveActivity.allCases.count) complete")
                     .font(Typography.monoSmall.weight(.bold))
@@ -166,7 +158,7 @@ struct TodayDailyFivePreview: View {
                     .accessibilityLabel("\(completedCount) of \(DailyFiveActivity.allCases.count) activities complete")
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.sm), count: textSize.isAccessibilitySize ? 2 : 5), spacing: Space.md) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Space.sm), count: textSize.isAccessibilitySize ? 2 : 3), spacing: Space.md) {
                     ForEach(DailyFiveActivity.allCases) { activity in
                         DailyFiveProgressButton(
                             activity: activity,
@@ -314,7 +306,7 @@ struct TodayDailyFivePreview: View {
 
     private func shortNewsLabel(_ choice: DailyNewsChoice) -> String {
         switch choice.category {
-        case "regional": return "Local"
+        case "regional": return "Local Innovation"
         case "science": return "Science"
         case "culture": return "Culture"
         default: return choice.label
@@ -437,7 +429,7 @@ private struct DailyFiveNewsChoiceTile: View {
 
     private var categoryLabel: String {
         switch choice.category {
-        case "regional": return "Local"
+        case "regional": return "Local Innovation"
         case "science": return "Science"
         case "culture": return "Culture"
         default: return choice.label

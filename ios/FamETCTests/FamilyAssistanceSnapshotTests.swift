@@ -109,6 +109,15 @@ final class FamilyAssistanceSnapshotTests: XCTestCase {
         XCTAssertEqual(child.tomorrowActivities.first?.title, "Late activity")
     }
 
+    func testDailyThreeCountsOnlyItsPartsAndSelectsTheScheduledChallenge() throws {
+        for (date, expected) in [("2026-09-22", "completed"), ("2026-09-23", "started")] {
+            let json = "{\"daily5\":{\"date\":\"\(date)\",\"parts\":{\"news\":{\"status\":\"completed\"},\"word\":{\"status\":\"started\"},\"puzzle\":{\"status\":\"started\"},\"bt\":{\"status\":\"completed\"}}}}"
+            let progress = try DailyFiveSnapshotDecoder.decode(Data(json.utf8), expectedDate: date)
+            XCTAssertEqual(progress.daily3Completed, 1)
+            XCTAssertEqual(progress.scheduledChallengeStatus, expected)
+        }
+    }
+
     func testDailyFiveRejectsUnknownStatusKeyDateAndMissingParts() throws {
         let valid = Data(#"{"daily5":{"date":"2026-09-16","parts":{"word":{"status":"completed"},"bt":{"status":"started"}}}}"#.utf8)
         let progress = try DailyFiveSnapshotDecoder.decode(valid, expectedDate: "2026-09-16")
