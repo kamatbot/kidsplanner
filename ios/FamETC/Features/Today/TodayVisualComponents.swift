@@ -831,11 +831,9 @@ struct TodaySecondaryDisclosure: View {
                 if role == .parent {
                     ActionCard()
                     FamsHomeCard()
-                    PathOddsFamilySummaryCard()
                 } else {
                     ActionCard()
                     FamsHomeCard()
-                    PathOddsQuestCard()
                 }
             }
             .padding(.top, Space.sm)
@@ -847,7 +845,7 @@ struct TodaySecondaryDisclosure: View {
                     Text("More family tools")
                         .font(Typography.cardTitle)
                         .foregroundStyle(Palette.text)
-                    Text("Homework, actions, rewards and PathOdds")
+                    Text("Homework, actions and rewards")
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecond)
                         .fixedSize(horizontal: false, vertical: true)
