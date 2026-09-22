@@ -17,6 +17,8 @@ async function renderSatActivity() {
   currentSatWord = null;
   vocabularyAnswered = false;
   vocabularyScope = scope;
+  const rootLabel = document.getElementById('word-root');
+  if (rootLabel) rootLabel.textContent = '';
   ['sat-word', 'sat-pos', 'sat-def', 'sat-example'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.textContent = id === 'sat-word' ? 'Loading today’s word…' : '';
@@ -53,12 +55,15 @@ async function renderSatActivity() {
     if (!data.word || !Array.isArray(data.weekWords) || data.weekWords.length !== 7 || !challenge || !Array.isArray(challenge.options) || challenge.options.length !== 3 || !Number.isInteger(challenge.answerIndex) || challenge.answerIndex < 0 || challenge.answerIndex > 2 || challenge.options.some((option) => !option.text || !option.explanation)) throw new Error('Invalid vocabulary challenge');
     dailyVocabulary = data;
     currentSatWord = data.word;
+    if (typeof applyWeeklyQuote === 'function') applyWeeklyQuote(data.quote);
+    if (rootLabel && data.root) rootLabel.textContent = `This week’s root: ${data.root.form} · ${data.root.meaning} (${data.root.origin})`;
     const w = data.word;
     [['sat-word', w.word], ['sat-pos', w.pos], ['sat-def', w.def], ['sat-example', w.example]].forEach(([id, value]) => {
       const el = document.getElementById(id);
       if (el) el.textContent = value;
     });
     container.innerHTML = `
+      ${data.lesson ? `<section class="weekly-word-lesson" aria-label="Today’s word lesson"><h3>${esc(data.lesson.title)}</h3><p>${esc(data.lesson.focus)}</p><p>${esc(data.lesson.explanation)}</p><ul>${(data.lesson.examples || []).map(example => `<li>${esc(example)}</li>`).join('')}</ul>${data.lesson.grammar ? `<h4>${esc(data.lesson.grammar.title)}</h4><p>${esc(data.lesson.grammar.explanation)}</p><p>${esc(data.lesson.grammar.example)}</p>` : ''}</section>` : ''}
       <div class="fam-sat-task-title">Two truths and a lie</div>
       <p>${esc(challenge.prompt)}</p>
       <div class="fam-sat-options">
@@ -68,6 +73,7 @@ async function renderSatActivity() {
       <details><summary class="fam-sat-placement-summary">This week’s shared vocabulary</summary><dl>${data.weekWords.map((word) => `<dt>${esc(word.word)} (${esc(word.pos)})</dt><dd>${esc(word.def)}</dd>`).join('')}</dl></details>`;
   } catch (error) {
     if (token !== vocabularyRequestToken || scope !== daily5DoneKey()) return;
+    if (typeof applyWeeklyQuote === 'function') applyWeeklyQuote(null);
     const word = document.getElementById('sat-word');
     if (word) word.textContent = 'Vocabulary unavailable';
     container.innerHTML = '<p role="status">Could not load today’s shared word. Please try again.</p><button type="button" class="btn-secondary" onclick="renderSatActivity()">Retry</button>';
@@ -103,6 +109,7 @@ async function answerSatActivity(chosenIndex) {
       const res = await window.auth.wordBankInteract(word.word, correct);
       if (scope === daily5DoneKey() && res && res.entry) {
         mergeWordBankEntry(res.entry);
+        markDaily5Done('word');
         window.famChildProgress?.report('word', 'completed');
       }
     } catch (e) { /* best effort */ }

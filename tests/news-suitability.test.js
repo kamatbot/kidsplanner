@@ -37,3 +37,15 @@ test('no eligible local innovation leaves the daily slot empty, including cached
  assert.equal(outage.choices[0].article,null);
  assert.deepEqual(outage.items,[]);
 });
+
+
+test('innovation evidence in full feed content survives display truncation and cached reads', async () => {
+ const news = fresh();
+ const xml = `<rss>${entry('Thai students unveil a community project', 'Children shared their work with neighbors.', '<content:encoded>Students designed a prototype water filter.</content:encoded>')}</rss>`;
+ const options = {now: NOW, feeds: [feed], fetch: async () => ({status: 200, text: async () => xml})};
+ const first = await news.getDailyNews('2026-09-22', options);
+ assert.equal(first.choices[0].article.headline, 'Thai students unveil a community project');
+ const cached = await news.getDailyNews('2026-09-22', {...options, now: NOW + 31 * 60 * 1000, fetch: async () => { throw Error('offline'); }});
+ assert.equal(cached.choices[0].article.headline, first.choices[0].article.headline);
+ assert.doesNotMatch(JSON.stringify(cached), /feed-screened|content:encoded/);
+});

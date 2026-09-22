@@ -29,6 +29,8 @@ test('web and native requests receive the same new daily word on every date in t
     const native = run({ id: 'kid', role: 'kid' }, { id: 'family' }, date);
     assert.equal(web.statusCode, 200);
     assert.deepEqual(web.body, native.body);
-    assert.deepEqual(web.body.word, DAILY_WORDS[index]);
+    assert.deepEqual(web.body, vocabulary.getDailyVocabulary(date));
+    if (index < 8) assert.deepEqual(web.body.word, DAILY_WORDS[index]);
+    else assert.ok(web.body.root && web.body.theme && web.body.lesson && web.body.quote);
   }
 });

@@ -70,3 +70,17 @@ test('wrong-date and undated vocabulary payloads remain unavailable with Retry',
     assert.doesNotMatch(h.elements['sat-activity'].innerHTML, /answerSatActivity/);
   }
 });
+
+
+test('weekly root, weekday lesson and grammar render with the shared quote', async () => {
+  const data = { ...payload(), root: { form: 'spect', meaning: 'look', origin: 'Latin' }, quote: { theme: 'Integrity', text: 'Keep your word.', author: 'Fam ETC' }, lesson: { title: 'The Tone & Connotation Meter', focus: 'Spectator', explanation: 'Compare neutral observer with eager fan.', examples: ['The spectator watched quietly.'], grammar: { title: 'Word in the Mechanics', explanation: 'A spectator is a countable noun.', example: 'Two spectators watched.' } } };
+  const h = harness(async () => data);
+  h.elements['word-root'] = {};
+  let quote;
+  h.sandbox.applyWeeklyQuote = value => { quote = value; };
+  await h.sandbox.renderSatActivity();
+  assert.match(h.elements['word-root'].textContent, /spect.*look.*Latin/);
+  assert.match(h.elements['sat-activity'].innerHTML, /Word in the Mechanics/);
+  assert.match(h.elements['sat-activity'].innerHTML, /Two spectators watched/);
+  assert.deepEqual(quote, data.quote);
+});

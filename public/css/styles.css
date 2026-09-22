@@ -1550,3 +1550,21 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 #tab-notes .notes-hub > .notes-hub-header { margin-bottom: 0; }
 #tab-notes .notes-hub > .notes-hub-header > h3 { margin: 0; }
+
+/* Weekly learning: readable lessons and source-backed data on narrow screens. */
+.weekly-word-lesson { padding: 12px 0; line-height: 1.6; }
+.weekly-word-lesson h3, .weekly-word-lesson h4 { margin: 8px 0; }
+.weekly-word-lesson ul { padding-left: 22px; }
+.news-data-chart { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+.news-data-chart caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+.news-data-chart th, .news-data-chart td { text-align: left; padding: 8px 6px; vertical-align: top; }
+.news-data-chart th { width: 45%; }
+.news-data-chart meter { display: block; width: 100%; min-width: 60px; }
+#puzzle-grid-wrap > p { overflow-wrap: anywhere; }
+#puzzle-mental-math section { margin-top: 16px; line-height: 1.6; }
+#puzzle-mental-math input { max-width: 100%; width: 140px; padding: 8px; }
+#puzzle-mental-math button { margin-top: 8px; }
+
+#puzzle-grid-wrap .quiz-option { min-height: 44px; text-align: left; }
+#puzzle-grid-wrap .quiz-option[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+#puzzle-grid-wrap .quiz-option:disabled { color: var(--text); opacity: 1; }

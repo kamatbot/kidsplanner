@@ -461,7 +461,7 @@ function selectNewsStory(index) {
 async function loadRecentNews(requestToken, now) {
   const scope = daily5DoneKey();
   const requestedDate = isoDate(now || new Date());
-  const categories = [['regional', 'Local/Regional'], ['science', 'Global Science & Discovery'], ['culture', 'Culture, Sports & Human Interest']];
+  const categories = [['regional', 'Local Innovation'], ['science', 'Global Science & Discovery'], ['culture', 'Culture, Sports & Human Interest']];
   try {
     const data = await window.auth.getRecentNews(requestedDate);
     if (requestToken !== newsRequestToken || scope !== daily5DoneKey()) return;
@@ -2382,8 +2382,13 @@ async function loadDailyPuzzle(now) {
   const userId = sessionUser && sessionUser.id;
   currentDailyPuzzle = null;
   currentPuzzleProgressKey = null;
-  currentPuzzleCompletionKey = daily5DoneKey();
+  const completionKey = daily5DoneKey();
+  currentPuzzleCompletionKey = completionKey;
   card.hidden = false;
+  const puzzlePanel = document.getElementById('daily5-panel-puzzle');
+  if (puzzlePanel) puzzlePanel.hidden = false;
+  const teaserPanel = document.getElementById('daily5-panel-quiz');
+  if (teaserPanel) teaserPanel.hidden = true;
   document.getElementById('puzzle-grid-wrap').innerHTML = '';
   document.getElementById('puzzle-clues').innerHTML = '';
   document.getElementById('puzzle-status').textContent = 'Loading today’s puzzle…';
@@ -2391,11 +2396,17 @@ async function loadDailyPuzzle(now) {
   if (retry) retry.hidden = true;
   try {
     const result = await window.auth.getDailyPuzzle(isoDate(now || new Date()));
-    if (requestToken !== puzzleRequestToken || userId !== (sessionUser && sessionUser.id)) return;
-    if (!result || !result.available) throw new Error('Puzzle unavailable');
+    if (requestToken !== puzzleRequestToken || userId !== (sessionUser && sessionUser.id) || completionKey !== daily5DoneKey()) return;
+    if (!result || result.date !== isoDate(now || new Date())) throw new Error('Puzzle edition unavailable');
+    const teaserPanel = document.getElementById('daily5-panel-quiz');
+    const puzzlePanel = document.getElementById('daily5-panel-puzzle');
+    if (teaserPanel) teaserPanel.hidden = result.type !== 'brainteaser';
+    if (puzzlePanel) puzzlePanel.hidden = result.type === 'brainteaser';
+    if (result.type === 'brainteaser') { applyDaily5Done(); return; }
+    if (!result.available) throw new Error(result.instructions || 'Puzzle unavailable');
     currentDailyPuzzle = result;
     // The complete board identity prevents restoring answers into a changed puzzle.
-    currentPuzzleProgressKey = `fam_puzzle_${userId || 'anon'}_${result.date || isoDate(now || new Date())}_${JSON.stringify([result.type, result.sudoku, result.crossword])}`;
+    currentPuzzleProgressKey = `fam_puzzle_${userId || 'anon'}_${result.date || isoDate(now || new Date())}_${JSON.stringify([result.type, result.sudoku, result.crossword, result.question, result.chart, result.mentalMath])}`;
     card.hidden = false;
     const title = document.getElementById('puzzle-title');
     const icon = document.getElementById('puzzle-icon');
@@ -2403,6 +2414,12 @@ async function loadDailyPuzzle(now) {
     if (title) title.textContent = result.title || "Today's puzzle";
     if (icon) icon.textContent = result.type === 'sudoku' ? '🔢' : '🧩';
     if (instructions) instructions.textContent = result.instructions || '';
+    for (const id of ['puzzle-clear-btn', 'puzzle-check-btn']) {
+      const button = document.getElementById(id);
+      if (button) button.hidden = !!result.question;
+    }
+    renderMentalMath(result.mentalMath);
+    if (result.question) { renderAcademicChallenge(result); return; }
     renderDailyPuzzle(result);
     const progress = load(currentPuzzleProgressKey);
     const inputs = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]'));
@@ -2414,9 +2431,71 @@ async function loadDailyPuzzle(now) {
     grid.oninput = saveDailyPuzzleProgress;
     grid.onkeyup = saveDailyPuzzleProgress;
   } catch (e) {
-    if (requestToken !== puzzleRequestToken || userId !== (sessionUser && sessionUser.id)) return;
+    if (requestToken !== puzzleRequestToken || userId !== (sessionUser && sessionUser.id) || completionKey !== daily5DoneKey()) return;
     document.getElementById('puzzle-status').textContent = 'Could not load today’s puzzle. Try again.';
     if (retry) retry.hidden = false;
+  }
+}
+
+function renderMentalMath(math) {
+  const root = document.getElementById('puzzle-mental-math');
+  if (!root) return;
+  root.innerHTML = math ? `<section aria-label="Mental math shortcut"><h3>${esc(math.title)}</h3><p>${esc(math.prompt)}</p><label>Your answer <input id="mental-math-answer" inputmode="decimal" autocomplete="off" oninput="resetMentalMath()"></label> <button type="button" class="btn-secondary" onclick="checkMentalMath()">Check shortcut</button><p id="mental-math-feedback" role="status"></p></section>` : '';
+  const progress = load(currentPuzzleProgressKey);
+  if (math && progress?.mathAnswer) document.getElementById('mental-math-answer').value = progress.mathAnswer;
+  if (math && progress?.mathSolved) document.getElementById('mental-math-feedback').textContent = `Correct. ${math.explanation}`;
+}
+
+function resetMentalMath() {
+  if (!currentDailyPuzzle?.mentalMath || currentPuzzleCompletionKey !== daily5DoneKey()) return;
+  const previous = load(currentPuzzleProgressKey) || {};
+  save(currentPuzzleProgressKey, { ...previous, mathAnswer: document.getElementById('mental-math-answer').value, mathSolved: false, solved: false });
+  document.getElementById('mental-math-feedback').textContent = '';
+  const done = load(daily5DoneKey()) || {};
+  delete done.puzzle;
+  save(daily5DoneKey(), done);
+  window.famChildProgress?.report('puzzle', 'started', { reset: true });
+  applyDaily5Done();
+}
+
+function checkMentalMath() {
+  if (!currentDailyPuzzle?.mentalMath || currentPuzzleCompletionKey !== daily5DoneKey()) return;
+  const math = currentDailyPuzzle.mentalMath;
+  const answer = document.getElementById('mental-math-answer').value.trim().replaceAll(',', '');
+  const correct = answer !== '' && Number.isFinite(Number(answer)) && Number(answer) === Number(math.answer);
+  if (!correct) resetMentalMath();
+  const previous = load(currentPuzzleProgressKey) || {};
+  save(currentPuzzleProgressKey, { ...previous, mathAnswer: answer, mathSolved: correct, solved: correct && !!previous.solved });
+  document.getElementById('mental-math-feedback').textContent = `${correct ? 'Correct.' : 'Try this method, then try again.'} ${math.explanation}`;
+  const inputs = Array.from(document.querySelectorAll('#puzzle-grid-wrap input[data-solution]'));
+  if (correct && inputs.length && inputs.every(input => input.value)) checkDailyPuzzle();
+}
+
+function renderAcademicChallenge(result) {
+  const question = result.question;
+  const chart = result.chart;
+  const grid = document.getElementById('puzzle-grid-wrap');
+  const chartMarkup = chart ? `<table class="news-data-chart"><caption>${esc(chart.title)} (${esc(chart.unit)})</caption><tbody>${chart.labels.map((label, index) => `<tr><th scope="row">${esc(label)}</th><td><meter min="0" max="${Math.max(1, ...chart.values)}" value="${chart.values[index]}" aria-label="${esc(label)}">${chart.values[index]}</meter> ${esc(chart.values[index])} ${esc(chart.unit)}</td></tr>`).join('')}</tbody></table><p><a href="${esc(chart.source.url)}" target="_blank" rel="noopener noreferrer">${esc(chart.source.title)}</a> · ${esc(chart.source.publishedAt.slice(0, 10))}</p>` : '';
+  grid.innerHTML = `${chartMarkup}<p>${esc(question.passage)}</p><h3>${esc(question.prompt)}</h3><div class="quiz-options">${question.options.map((option, index) => `<button type="button" class="quiz-opt quiz-option" onclick="answerAcademicChallenge(${index})">${String.fromCharCode(65 + index)}. ${esc(option)}</button>`).join('')}</div>${question.attribution ? `<p class="puzzle-instructions">${esc(question.attribution)}</p>` : ''}<div id="academic-feedback" role="status"></div>`;
+  const progress = load(currentPuzzleProgressKey);
+  if (Number.isInteger(progress?.choice)) answerAcademicChallenge(progress.choice, true);
+}
+
+function answerAcademicChallenge(choice, restoring = false) {
+  if (!currentDailyPuzzle?.question || currentPuzzleCompletionKey !== daily5DoneKey()) return;
+  const question = currentDailyPuzzle.question;
+  if (!Number.isInteger(choice) || choice < 0 || choice >= question.options.length) return;
+  const correct = choice === question.answerIndex;
+  const buttons = document.querySelectorAll('#puzzle-grid-wrap .quiz-option');
+  buttons.forEach((button, index) => {
+    button.disabled = correct;
+    button.setAttribute('aria-pressed', String(index === choice));
+  });
+  document.getElementById('academic-feedback').innerHTML = `<p>${correct ? 'Correct — challenge complete.' : 'Not quite. Read the explanations and try again.'}</p>${question.explanations.map((explanation, index) => `<p><strong>${String.fromCharCode(65 + index)}.</strong> ${esc(explanation)}</p>`).join('')}`;
+  if (!restoring) {
+    save(currentPuzzleProgressKey, { choice, solved: correct });
+    if (correct) markDaily5Done('puzzle');
+    else window.famChildProgress?.report('puzzle', 'started');
   }
 }
 
@@ -2435,7 +2514,7 @@ function saveDailyPuzzleProgress(solved = false) {
       applyDaily5Done();
     }
   }
-  save(currentPuzzleProgressKey, { values, solved: solved === true || (!changed && !!previous.solved) });
+  save(currentPuzzleProgressKey, { ...previous, values, solved: solved === true || (!changed && !!previous.solved) });
 }
 
 function renderDailyPuzzle(result) {
@@ -2579,6 +2658,7 @@ function clearDailyPuzzle() {
   const done = load(daily5DoneKey()) || {};
   delete done.puzzle;
   save(daily5DoneKey(), done);
+  renderMentalMath(currentDailyPuzzle.mentalMath);
   applyDaily5Done();
 }
 
@@ -2597,7 +2677,13 @@ function checkDailyPuzzle() {
   });
   const status = document.getElementById('puzzle-status');
   if (!status) return;
-  if (correct === inputs.length) { markDaily5Done('puzzle'); saveDailyPuzzleProgress(true); }
+  const mathComplete = !currentDailyPuzzle.mentalMath || !!load(currentPuzzleProgressKey)?.mathSolved;
+  if (correct === inputs.length && mathComplete) { markDaily5Done('puzzle'); saveDailyPuzzleProgress(true); }
+  if (correct === inputs.length && !mathComplete) {
+    saveDailyPuzzleProgress(false);
+    status.textContent = 'Sudoku correct! Complete the mental math shortcut above to finish today’s challenge.';
+    return;
+  }
   status.textContent = correct === inputs.length
     ? 'You did it — every answer is correct! 🎉'
     : unanswered
@@ -2675,7 +2761,7 @@ async function answerBrainTeaserQ(chosen) {
   brainTeaserAnswered = true;
   const q = brainTeaserQuestions[brainTeaserIndex];
   const correct = chosen === q.answerIndex;
-  const btns = document.querySelectorAll('.quiz-opt');
+  const btns = document.querySelectorAll('#quiz-options .quiz-opt');
   btns.forEach((btn, i) => {
     btn.disabled = true;
     if (i === q.answerIndex) btn.classList.add('correct');

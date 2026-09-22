@@ -105,3 +105,54 @@ test('failed puzzle load keeps recovery visible and cannot produce empty-board s
   assert.match(h.elements['puzzle-status'].textContent, /Could not load/);
   assert.equal(h.storage.size, 0);
 });
+
+test('Wednesday completion requires both the Sudoku and the mental math answer', async () => {
+  const h = setup();
+  Object.assign(h.elements, { 'puzzle-mental-math': {}, 'mental-math-answer': {value:''}, 'mental-math-feedback': {} });
+  h.context.esc = String;
+  h.context.window.auth.getDailyPuzzle = async () => ({ available:true,date:h.context.day,type:'sudoku',sudoku:{puzzle:'00',solution:'12'},mentalMath:{title:'Multiply by 25',prompt:'48 × 25',answer:'1200',explanation:'Divide by4, multiply by100.'} });
+  await h.context.loadDailyPuzzle();
+  h.inputs().forEach((input,index) => { input.value = String(index + 1); });
+  h.context.checkDailyPuzzle();
+  assert.equal(h.storage.get(h.context.daily5DoneKey()), undefined);
+  assert.match(h.elements['puzzle-status'].textContent,/mental math shortcut/);
+  h.elements['mental-math-answer'].value = '12';
+  h.context.checkMentalMath();
+  assert.equal(h.storage.get(h.context.daily5DoneKey())?.puzzle,undefined);
+  h.elements['mental-math-answer'].value = '1,200';
+  h.context.checkMentalMath();
+  assert.equal(h.storage.get(h.context.daily5DoneKey()).puzzle,true);
+  h.elements['mental-math-answer'].value = '0';
+  h.context.resetMentalMath();
+  assert.equal(h.storage.get(h.context.daily5DoneKey()).puzzle,undefined);
+});
+
+test('scheduled multiple choice requires a correct answer and rejects stale-account answers', async () => {
+  const h=setup(); h.context.esc=String;
+  h.elements['academic-feedback']={};
+  const buttons=Array.from({length:4},()=>({setAttribute(){}}));
+  h.context.document.querySelectorAll=()=>buttons;
+  h.context.window.auth.getDailyPuzzle=async()=>({available:true,date:h.context.day,type:'sat',question:{id:'one',passage:'Evidence',prompt:'Which?',options:['A','B','C','D'],answerIndex:2,explanations:['No','No','Yes','No']}});
+  await h.context.loadDailyPuzzle();
+  h.context.answerAcademicChallenge(0);
+  assert.equal(h.storage.get(h.context.daily5DoneKey()),undefined);
+  assert.match(h.elements['academic-feedback'].innerHTML,/try again/);
+  h.context.answerAcademicChallenge(2);
+  assert.equal(h.storage.get(h.context.daily5DoneKey()).puzzle,true);
+  assert.ok(buttons.every(button=>button.disabled));
+  h.context.sessionUser.id='another';
+  h.context.answerAcademicChallenge(2);
+  assert.equal(h.storage.get(h.context.daily5DoneKey()),undefined);
+});
+
+
+test('a puzzle response crossing local midnight cannot become the new day’s challenge', async () => {
+  const h = setup(); let resolve;
+  h.context.window.auth.getDailyPuzzle = () => new Promise(done => { resolve = done; });
+  const pending = h.context.loadDailyPuzzle();
+  h.context.day = '2026-09-08';
+  resolve({available:true,date:'2026-09-07',type:'sudoku',sudoku:{puzzle:'00',solution:'12'}});
+  await pending;
+  assert.equal(h.context.currentDailyPuzzle, null);
+  assert.equal(h.storage.size, 0);
+});

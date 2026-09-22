@@ -19,16 +19,16 @@ test('parent navigation scopes selected child and never renders for kid sessions
   assert.match(nodes['child-nav'].innerHTML, /One &lt;img>/); assert.equal((nodes['child-nav'].innerHTML.match(/aria-current="page"/g) || []).length, 1);
   context.sessionUser = { role: 'kid' }; await view.render('one'); assert.equal(nodes['tab-child'].innerHTML, ''); assert.equal(nodes['child-nav'].hidden, true);
 });
-test('synced Daily 5 without completions shows not done; failed sources identify recovery', async () => {
+test('synced Daily 3 without completions shows not done; failed sources identify recovery', async () => {
   const { nodes, view } = setup({ getGoals: async () => { throw new Error('offline'); } }); await view.render('one');
   const html = nodes['tab-child'].innerHTML;
-  assert.match(html, /0 of 5 done/); assert.equal((html.match(/>Not done</g) || []).length, 5); assert.match(html, /Habits unavailable/); assert.match(html, /id="cv-fams"/);
+  assert.match(html, /0 of 3 done/); assert.equal((html.match(/>Not done</g) || []).length, 3); assert.match(html, /Habits unavailable/); assert.match(html, /id="cv-fams"/);
   assert.doesNotMatch(html, /0 completed|>0<|onclick=|mark.*done/i); assert.match(html, /Set home plan/);
 });
-test('habit counts use exactly the seven displayed local dates; Daily 5 ignores invalid timestamps', async () => {
+test('habit counts use exactly the seven displayed local dates; Daily 3 ignores invalid timestamps', async () => {
   const { nodes, view } = setup({ getGoals: async () => [{ kidId: 'one', type: 'habit', title: 'Read', checks: ['2026-09-01', '2026-09-02', '2026-09-08', '2026-09-08', '2026-09-09'] }], getChildInsights: async () => ({ kidId: 'one', date: '2026-09-08', daily5: { date: '2026-09-08', parts: { news: { status: 'completed', updatedAt: '2026-09-08T08:00:00Z' }, word: { status: 'completed', updatedAt: 'invalid' }, quote: { status: 'started', updatedAt: '2026-09-08T09:00:00Z' } } } }) });
   await view.render('one'); const html = nodes['tab-child'].innerHTML;
-  assert.match(html, /2 of 7 days recorded/); assert.match(html, /1 of 5 done/); assert.equal((html.match(/>Done</g) || []).length, 1); assert.equal((html.match(/>Not done</g) || []).length, 4); assert.match(html, /2026-09-02: checked in/); assert.doesNotMatch(html, /2026-09-01: checked in/);
+  assert.match(html, /2 of 7 days recorded/); assert.match(html, /1 of 3 done/); assert.equal((html.match(/>Done</g) || []).length, 1); assert.equal((html.match(/>Not done</g) || []).length, 2); assert.match(html, /2026-09-02: checked in/); assert.doesNotMatch(html, /2026-09-01: checked in/);
 });
 test('school points live within Fams rather than a separate progress widget', async () => {
   const { nodes, view } = setup({ getChildInsights: async id => ({ kidId: id, date: '2026-09-08', schoolStats: { housePoints: 12, importedAt: '2026-09-08T08:00:00Z' } }) });

@@ -43,7 +43,7 @@
     $('fams-kid').value = kidId;
     if (!data.kidId) { status('Add a child in Settings to start earning Fams.'); return; }
     $('fams-balance').textContent = number(data.balance);
-    $('fams-rates').textContent = `Daily 5: ${number(data.rates.daily5)} fams per activity · Homework: ${number(data.rates.homework)} (up to ${number(data.rates.homeworkDailyLimit)} per day) · News reflection: ${number(data.rates.newsComment)} · Finance lesson: ${number(data.rates.lesson)} · School house point: ${number(data.rates.schoolPoint)} extra.`;
+    $('fams-rates').textContent = `Daily learning: ${number(data.rates.daily5)} fams per activity · Homework: ${number(data.rates.homework)} (up to ${number(data.rates.homeworkDailyLimit)} per day) · News reflection: ${number(data.rates.newsComment)} · Finance lesson: ${number(data.rates.lesson)} · School house point: ${number(data.rates.schoolPoint)} extra.`;
     $('fams-week-text').textContent = `${number(data.weekly.earned)} / ${number(data.weekly.limit)} fams`;
     $('fams-week-progress').max = data.weekly.limit;
     $('fams-week-progress').value = data.weekly.earned;
