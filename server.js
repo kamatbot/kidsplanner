@@ -686,7 +686,13 @@ app.get(/^\/js\/([\w.-]+\.js)$/, (req, res, next) => {
   const body = jsCache.get(file);
   if (body == null) return next();
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache"); // revalidate — app.js changes every deploy
+  // When requested with the current deploy's content hash (?v=BUILD), allow
+  // immutable browser caching. Unversioned or mismatching requests revalidate.
+  if (req.query.v && req.query.v === BUILD) {
+    res.setHeader("Cache-Control", IMMUTABLE);
+  } else {
+    res.setHeader("Cache-Control", "no-cache");
+  }
   res.send(body);
 });
 // Service worker MUST be served at root scope ("/sw.js", not "/js/sw.js")
