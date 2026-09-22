@@ -21,8 +21,10 @@ struct CornerDocument: Codable, Equatable {
 final class CornerService {
     private let session: URLSession
     private let cookie: String
-    init() {
-        let config = URLSessionConfiguration.ephemeral
+    private let ownerID: String
+    init(ownerID: String, configuration: URLSessionConfiguration = .ephemeral) {
+        self.ownerID = ownerID
+        let config = configuration
         config.httpShouldSetCookies = false
         config.httpCookieStorage = nil
         config.httpAdditionalHeaders = Config.clientHeaders
@@ -37,6 +39,7 @@ final class CornerService {
         request.httpMethod = value == nil ? "GET" : "PUT"
         request.httpShouldHandleCookies = false
         request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        request.setValue(ownerID, forHTTPHeaderField: "X-Fam-Corner-Account")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let value { request.httpBody = try JSONEncoder().encode(value) }

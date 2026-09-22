@@ -42,6 +42,12 @@ struct HybridWebView: UIViewRepresentable {
         return container
     }
 
+    static func dismantleUIView(_ container: HybridWebContainer, coordinator: Coordinator) {
+        // Destroy the old page's JS/network context when sign-out removes tabs.
+        container.webView.stopLoading()
+        container.webView.loadHTMLString("", baseURL: nil)
+    }
+
     func updateUIView(_ container: HybridWebContainer, context: Context) {
         // SwiftUI may update a host with a different route. Reuse the retained
         // WKWebView (and its cookie/data-store state) while loading that route.

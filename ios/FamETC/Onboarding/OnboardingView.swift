@@ -49,6 +49,7 @@ struct OnboardingView: View {
     let onFinish: (String?) -> Void
 
     private enum Screen { case role, parentWelcome, family, kid }
+    @AppStorage("fam_logout_unconfirmed") private var logoutUnconfirmed = false
     @State private var screen: Screen = .role
     @State private var signingUp = false
     @State private var authError: String?
@@ -81,6 +82,15 @@ struct OnboardingView: View {
             .padding(.horizontal, screen == .kid ? 0 : 24)
         }
         .foregroundColor(FamTokens.textPrimary)
+        .safeAreaInset(edge: .top) {
+            if logoutUnconfirmed {
+                HStack {
+                    Text("Signed out on this device. Server sign-out could not be confirmed.")
+                        .font(.footnote)
+                    Button("Dismiss") { logoutUnconfirmed = false }
+                }.padding().background(FamTokens.surface)
+            }
+        }
         .fullScreenCover(item: $recoveryPayload) { payload in
             RecoveryCodesView(codes: payload.codes) {
                 recoveryPayload = nil

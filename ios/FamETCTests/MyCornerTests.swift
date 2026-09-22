@@ -2,6 +2,19 @@ import XCTest
 @testable import FamETC
 
 final class MyCornerTests: XCTestCase {
+    func testEditorAccountBindingRejectsBothReadAndWriteUnderAnotherSession() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CornerAccountProtocol.self]
+        let service = CornerService(ownerID: "editor-owner", configuration: config)
+        for value in [nil, CornerDocument.empty] as [CornerDocument?] {
+            do {
+                _ = try await service.request(value)
+                XCTFail("An editor must not read or save a different session's corner")
+            } catch APIError.http(let code, _) {
+                XCTAssertEqual(code, 403)
+            }
+        }
+    }
     func testServerShapeDecodes() throws {
         let payload = #"{"revision":3,"note":"Art club","stickers":[{"id":"one","stickerId":"tuk-tuk","x":0,"y":1,"rotation":-180}]}"#
         let value = try JSONDecoder().decode(CornerDocument.self, from: Data(payload.utf8))
@@ -53,4 +66,22 @@ final class MyCornerTests: XCTestCase {
         await task.value
         XCTAssertNil(model.draft)
     }
+}
+
+private final class CornerAccountProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        // The server belongs to a different child. Without the editor binding,
+        // it would return that child's document using the captured session.
+        let bound = request.value(forHTTPHeaderField: "X-Fam-Corner-Account") == "editor-owner"
+        let response = HTTPURLResponse(url: request.url!, statusCode: bound ? 403 : 200,
+                                       httpVersion: nil, headerFields: nil)!
+        let body = bound ? #"{"error":"The signed-in account changed."}"#
+            : #"{"revision":0,"note":"Other child's private note","stickers":[]}"#
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }

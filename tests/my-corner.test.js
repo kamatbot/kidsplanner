@@ -40,7 +40,9 @@ const draft = { revision: 0, note: 'Ask about art club — private', stickers: [
 test('real HTTP: private read/write, second client, bounded edits and explicit conflicts', async () => {
   assert.equal((await call(null)).status, 401);
   assert.equal((await call(parent)).status, 403);
+  assert.equal((await call(sibling, 'GET', null, '', child.id)).status, 403);
   assert.equal((await call(sibling, 'PUT', draft, '', child.id)).status, 403);
+  assert.deepEqual((await call(sibling)).body, { revision: 0, note: '', stickers: [] });
   assert.equal((await call(parent, 'PUT', draft)).status, 403);
   const saved = await call(child, 'PUT', draft);
   assert.equal(saved.status, 200); assert.equal(saved.body.revision, 1);

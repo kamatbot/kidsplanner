@@ -13,14 +13,14 @@ struct MyCornerScreen: View {
 
     init(ownerID: String) {
         self.ownerID = ownerID
-        let service = CornerService()
+        let service = CornerService(ownerID: ownerID)
         _model = State(initialValue: MyCornerModel(request: { try await service.request($0) }))
     }
     private var adjacent: Bool { sizeClass == .regular && !textSize.isAccessibilitySize }
     var body: some View {
         NavigationStack {
             ScrollView {
-                if store.me?.id == ownerID && !store.isParent {
+                if store.me?.id == ownerID && store.me?.role == "kid" && !store.needsAuth {
                     VStack(alignment: .leading, spacing: Space.md) {
                         Text("Only your child account can open this corner. Nothing here is shared with family.")
                             .foregroundStyle(Palette.textSecond)
@@ -80,9 +80,13 @@ struct MyCornerScreen: View {
         .controlSize(.large)
         .tint(Palette.accent)
         .interactiveDismissDisabled(model.dirty || model.busy)
-        .task { await model.load() }
+        .task {
+            guard store.me?.id == ownerID, store.me?.role == "kid", !store.needsAuth else { return }
+            await model.load()
+        }
         .onChange(of: store.me?.id) { _, _ in model.clear(); showDrawer = false; dismiss() }
         .onChange(of: store.isParent) { _, isParent in if isParent { model.clear(); showDrawer = false; dismiss() } }
+        .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { model.clear(); showDrawer = false; dismiss() } }
         .onDisappear { model.clear() }
     }
     private func editor(_ draft: CornerDocument) -> some View {

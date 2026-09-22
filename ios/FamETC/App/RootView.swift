@@ -59,6 +59,7 @@ enum Tab: String, CaseIterable, Identifiable {
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("fam_onboarded") private var onboarded = false
+    @State private var signingOut = false
     @State private var selection: Tab = .today
     @State private var planningSelection: PlanningDestination = .trips
     @State private var assistanceChild: AssistanceChildRoute?
@@ -85,7 +86,10 @@ struct RootView: View {
 
 
     var body: some View {
-        adaptiveLayout
+        Group {
+            if signingOut { ProgressView("Signing out…") }
+            else { adaptiveLayout }
+        }
         .tint(Palette.accent)
         .preferredColorScheme(store.colorScheme)
         .onOpenURL { openAssistanceRoute($0) }
@@ -143,7 +147,7 @@ struct RootView: View {
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             routeFromLiveChatNotification(fallbackRoomId: "trip:\(tripId)")
         }
-        .overlay { if store.needsAuth { ReauthOverlay() } }
+        .overlay { if store.needsAuth && !signingOut { ReauthOverlay() } }
         .onAppear {
             #if DEBUG
             switch DebugLaunch.screen {
@@ -232,12 +236,13 @@ struct RootView: View {
     }
 
     private func signOut() {
+        guard !signingOut else { return }
+        signingOut = true
+        store.signedOut() // Fence outstanding loads and clear private view state now.
         Task {
-            await APIClient.shared.logout()
-            await MainActor.run {
-                store.signedOut()
-                onboarded = false
-            }
+            let confirmed = await APIClient.shared.logout()
+            UserDefaults.standard.set(!confirmed, forKey: "fam_logout_unconfirmed")
+            onboarded = false
         }
     }
 }

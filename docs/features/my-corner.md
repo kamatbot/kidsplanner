@@ -47,7 +47,13 @@ Drafts exist only in editor memory. Closing asks before discarding. No note data
 is stored in localStorage, native DiskCache, UserDefaults or URLCache. Native
 requests use an ephemeral session with the cookie captured when the editor opens;
 account changes clear/dismiss the editor and generation checks reject late results.
-Web requests additionally send the expected account ID in `X-Fam-Corner-Account`; a changed session is rejected before reading or saving. This header never chooses an owner. Server logout revocation remains the existing auth boundary.
+Both web and native requests send the editor's expected account ID in
+`X-Fam-Corner-Account`; a changed session is rejected before reading or saving.
+This header never chooses an owner. The web editor revalidates `/api/me` before
+opening and clears its private DOM and unsaved drafts when its tab is hidden;
+the interface asks users to save before switching tabs. Lifecycle generation
+checks prevent a late response restoring that content. Native sign-out now
+clears the app's native and WK session cookies even if server revocation fails.
 
 ## Focused verification
 

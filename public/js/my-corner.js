@@ -31,8 +31,22 @@
     if (dirty && !window.confirm('Discard your unsaved corner changes?')) return;
     clear(); opener?.focus();
   }
-  function open() {
+  async function open() {
     if (!owner || dialog) return;
+    const token = ++generation, expectedOwner = owner;
+    try {
+      const response = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
+      const data = response.ok ? await response.json() : null;
+      if (token !== generation || document.hidden) return;
+      if (data?.user?.role !== 'kid' || data.user.id !== expectedOwner) {
+        setUser(null);
+        window.toast?.('Your account changed. Refresh before opening My Corner.');
+        return;
+      }
+    } catch {
+      if (token === generation) window.toast?.('Could not confirm your account. Please retry.');
+      return;
+    }
     opener = document.activeElement;
     dialog = el('dialog', '', 'fam-corner'); dialog.setAttribute('aria-labelledby', 'fam-corner-title');
     const title = el('h2', 'My Corner'); title.id = 'fam-corner-title';
@@ -40,7 +54,7 @@
     status = el('p', 'Loading your corner…'); status.setAttribute('role', 'status');
     body = el('div');
     saveButton = button('Save changes', save); saveButton.disabled = true;
-    dialog.append(header, el('p', 'Only your child account can open this corner. Nothing here is shared with family.'), status, body, saveButton);
+    dialog.append(header, el('p', 'Only your child account can open this corner. Nothing here is shared with family. Save before switching tabs; unsaved edits are cleared when this tab is hidden.'), status, body, saveButton);
     dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
     document.body.append(dialog); dialog.showModal(); load();
   }
@@ -126,5 +140,8 @@
     } finally { if (token === generation) { busy = false; render(); } }
   }
   window.addEventListener('pagehide', clear);
+  // ponytail: hidden tabs discard drafts for privacy; encrypted recoverable drafts
+  // need a separate design before preserving unsaved work across account changes.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); });
   window.famMyCorner = { setUser, clear: () => { clear(); owner = null; } };
 })();

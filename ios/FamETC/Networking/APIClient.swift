@@ -46,7 +46,8 @@ final class APIClient: FamilyActionService {
         configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
-    private let session: URLSession = {
+    private var session = APIClient.makeSession()
+    private static func makeSession() -> URLSession {
         let c = URLSessionConfiguration.default
         c.httpCookieStorage = .shared
         c.httpCookieAcceptPolicy = .always
@@ -57,8 +58,8 @@ final class APIClient: FamilyActionService {
         // the web subscription gate (in-app purchases ship later). Carries the
         // shared-secret header when configured — see Config.clientHeaders.
         c.httpAdditionalHeaders = Config.clientHeaders
-        return URLSession(configuration: c)
-    }()
+        return URLSession(configuration: c, delegate: SessionCancellationDelegate(), delegateQueue: nil)
+    }
 
     // MARK: Fams — server owns amounts, deduplication and approval rules.
     func famsWallet(kidId: String) async throws -> FamsWallet {
@@ -557,8 +558,19 @@ final class APIClient: FamilyActionService {
     func me() async throws -> MeResponse {
         try await request("/api/me")
     }
-    func logout() async {
-        _ = try? await rawSend("/api/logout", method: "POST", body: [:])
+    @MainActor func logout() async -> Bool {
+        SessionSignOut.generation += 1
+        let cookies = HTTPCookieStorage.shared.cookies(for: base) ?? []
+        let cookie = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] ?? ""
+        // Drain old native/auth responses before clearing credentials. Revocation
+        // uses the captured cookie without accepting any response cookies.
+        if let delegate = session.delegate as? SessionCancellationDelegate { await delegate.cancel(session) }
+        await AuthService.shared.cancelSessionRequests()
+        let confirmed = await SessionSignOut.finish(baseURL: base) {
+            _ = try await self.rawSend("/api/logout", method: "POST", body: [:], timeout: 8, cookie: cookie)
+        }
+        session = Self.makeSession()
+        return confirmed
     }
 
     // MARK: Analytics (fire-and-forget)
