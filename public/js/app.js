@@ -2,39 +2,6 @@
    DAILY CONTENT DATA
 ============================================================ */
 
-const QUOTES = [
-  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
-  { text: "Learning is not attained by chance; it must be sought for with ardor and diligence.", author: "Abigail Adams" },
-  { text: "Education is the most powerful weapon you can use to change the world.", author: "Nelson Mandela" },
-  { text: "The beautiful thing about learning is that no one can take it away from you.", author: "B.B. King" },
-  { text: "It does not matter how slowly you go as long as you do not stop.", author: "Confucius" },
-  { text: "Believe you can and you're halfway there.", author: "Theodore Roosevelt" },
-  { text: "Success is not final, failure is not fatal: it is the courage to continue that counts.", author: "Winston Churchill" },
-  { text: "The more that you read, the more things you will know.", author: "Dr. Seuss" },
-  { text: "You are never too old to set another goal or to dream a new dream.", author: "C.S. Lewis" },
-  { text: "Genius is one percent inspiration and ninety-nine percent perspiration.", author: "Thomas Edison" },
-  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
-  { text: "Start where you are. Use what you have. Do what you can.", author: "Arthur Ashe" },
-  { text: "Don't watch the clock; do what it does. Keep going.", author: "Sam Levenson" },
-  { text: "The expert in anything was once a beginner.", author: "Helen Hayes" },
-  { text: "You don't have to be great to start, but you have to start to be great.", author: "Zig Ziglar" },
-  { text: "Every accomplishment starts with the decision to try.", author: "Gail Devers" },
-  { text: "Shoot for the moon. Even if you miss, you'll land among the stars.", author: "Les Brown" },
-  { text: "Push yourself, because no one else is going to do it for you.", author: "Unknown" },
-  { text: "Wake up with determination. Go to bed with satisfaction.", author: "Unknown" },
-  { text: "Work hard in silence, let success make the noise.", author: "Frank Ocean" },
-  { text: "Do something today that your future self will thank you for.", author: "Sean Patrick Flanery" },
-  { text: "Dream it. Wish it. Do it.", author: "Unknown" },
-  { text: "In learning you will teach, and in teaching you will learn.", author: "Phil Collins" },
-  { text: "The key to success is to focus on goals, not obstacles.", author: "Unknown" },
-  { text: "Hard work beats talent when talent doesn't work hard.", author: "Tim Notke" },
-  { text: "Don't stop when you're tired. Stop when you're done.", author: "Unknown" },
-  { text: "Little by little, one travels far.", author: "J.R.R. Tolkien" },
-  { text: "The mind is not a vessel to be filled, but a fire to be kindled.", author: "Plutarch" },
-  { text: "Curiosity is the wick in the candle of learning.", author: "William Arthur Ward" },
-  { text: "An investment in knowledge pays the best interest.", author: "Benjamin Franklin" },
-];
-
 const SAT_WORDS = [
   { word: "Eloquent",    pos: "adjective", def: "Fluent or persuasive in speaking or writing.",                                    example: "The eloquent speaker captivated the audience with her powerful words." },
   { word: "Persevere",   pos: "verb",      def: "Continue in a course of action despite difficulty or with little indication of success.", example: "She decided to persevere with her studies despite the many challenges." },
@@ -298,6 +265,7 @@ async function saveQuoteReflection() {
   const note = await saveNoteFromWidget(body, 'quote', { kind: 'quote', id: '', context: currentQuote ? currentQuote.text : '' });
   if (note && scope === daily5DoneKey()) {
     window.famChildProgress?.report('quote', 'completed');
+    markDaily5Done('quote');
     textEl.value = '';
     flipQuoteCard(false);
   }
@@ -2313,20 +2281,20 @@ function applyDaily5Done() {
   const s = load(daily5DoneKey()) || {};
   const quest = document.getElementById('daily-quest-summary');
   if (quest) {
-    const parts = [['news', 'News reflection'], ['bt', 'Brain teaser'], ['puzzle', 'Puzzle']];
-    quest.textContent = `News, brain teaser & puzzle · ${parts.filter(([key]) => s[key]).length} of 3 complete`;
+    const parts = [['news', 'News reflection'], ['quote', 'Quote reflection'], ['word', 'Word activity']];
+    quest.textContent = `News, Quote & Word · ${parts.filter(([key]) => s[key]).length} of 3 complete`;
     quest.title = parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
   }
-  // PathOdds SAT completion does not hide the separate vocabulary challenge.
+  // Brain teaser completion belongs to the separate challenge section.
   const bt = document.getElementById('widget-quiz');
   if (bt) bt.hidden = !!s.bt;
   const completed = document.getElementById('daily5-quiz-done');
   if (completed) completed.hidden = !s.bt;
 }
 
-// Tabs change visibility only: drafts, puzzle inputs and the PathOdds iframe
-// stay mounted. Selection is transient and resets on account/day changes.
-const DAILY5_ACTIVITIES = ['news', 'word', 'puzzle', 'quiz', 'quote'];
+// Daily 3 tabs preserve drafts. The separate challenge stays mounted.
+// Selection is transient and resets on account/day changes.
+const DAILY5_ACTIVITIES = ['news', 'quote', 'word'];
 let daily5ActivityScope = '';
 let daily5Activity = 'news';
 
@@ -2369,18 +2337,27 @@ function initDaily5Tabs() {
   };
 }
 
+function applyWeeklyQuote(quote) {
+  currentQuote = quote && quote.text && quote.author ? quote : null;
+  document.getElementById('quote-text').textContent = currentQuote ? currentQuote.text : 'Quote unavailable. Retry the Word activity to reload this week’s edition.';
+  document.getElementById('quote-author').textContent = currentQuote ? `— ${currentQuote.author}` : '';
+  const theme = document.getElementById('quote-theme');
+  if (theme) theme.textContent = currentQuote ? `This week: ${quote.theme}` : '';
+  document.getElementById('quote-reflect-prompt').textContent = currentQuote ? `How could you practise ${quote.theme.toLowerCase()} today?` : 'What matters to you today?';
+}
+
 function renderWidgets() {
   const now = new Date();
   const requestToken = ++newsRequestToken;
   renderNewsLoading();
 
-  // Quote
-  const q = dailyPick(QUOTES, now);
-  currentQuote = q;
-  document.getElementById('quote-text').textContent   = q.text;
-  document.getElementById('quote-author').textContent = `— ${q.author}`;
+  // Quote and word share the server's Monday-based weekly edition.
+  currentQuote = null;
+  document.getElementById('quote-text').textContent = 'Loading this week’s quote…';
+  document.getElementById('quote-author').textContent = '';
+  const theme = document.getElementById('quote-theme');
+  if (theme) theme.textContent = '';
   flipQuoteCard(false);
-  document.getElementById('quote-reflect-prompt').textContent = 'What does this quote mean to you today?';
   document.getElementById('quote-reflect-text').value = '';
 
   // SAT Word

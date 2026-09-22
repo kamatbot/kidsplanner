@@ -18,8 +18,8 @@ test("Today gives priorities more space beside the agenda and stacks on mobile",
   assert.match(styles, /\.app-shell:has\(#tab-today\.active\) \.main-content\s*\{\s*scrollbar-gutter:\s*stable/);
 });
 
-test("Daily 5 offers one mounted panel per accessible tab", () => {
-  for (const key of ['news', 'word', 'puzzle', 'quiz', 'quote']) {
+test("Daily 3 offers one mounted panel per accessible tab", () => {
+  for (const key of ['news', 'quote', 'word']) {
     assert.match(markup, new RegExp(`id="daily5-tab-${key}"[^>]*role="tab"[^>]*aria-controls="daily5-panel-${key}"`));
     assert.match(markup, new RegExp(`id="daily5-panel-${key}"[^>]*role="tabpanel"[^>]*aria-labelledby="daily5-tab-${key}"`));
   }

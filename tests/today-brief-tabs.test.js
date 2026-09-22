@@ -6,8 +6,8 @@ const vm = require('node:vm');
 const source = fs.readFileSync('public/js/app.js', 'utf8');
 
 function setup() {
-  const keys = ['news', 'word', 'puzzle', 'quiz', 'quote'];
-  const nodes = { 'daily5-tabs': {} };
+  const keys = ['news', 'quote', 'word'];
+  const nodes = { 'daily5-tabs': {}, 'daily5-panel-puzzle': { hidden: false, children: [{}] } };
   for (const key of keys) {
     nodes[`daily5-tab-${key}`] = { id: `daily5-tab-${key}`, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, focus() { this.focused = true; } };
     nodes[`daily5-panel-${key}`] = { hidden: false, draft: `untouched-${key}`, children: [{}] };
@@ -17,7 +17,7 @@ function setup() {
   return { ctx, nodes, keys };
 }
 
-test('Daily5 shows exactly one mounted panel and never replaces activity state', () => {
+test('Daily3 shows exactly one mounted panel and never replaces activity state', () => {
   const { ctx, nodes, keys } = setup();
   ctx.initDaily5Tabs();
   const child = nodes['daily5-panel-puzzle'].children[0];
@@ -39,12 +39,12 @@ test('arrow keys wrap, Home/End work, and non-tab keys are not intercepted', () 
   let prevented = 0;
   const key = (id, value) => nodes['daily5-tabs'].onkeydown({ target: { id }, key: value, preventDefault() { prevented++; } });
   key('daily5-tab-news', 'ArrowLeft');
-  assert.equal(nodes['daily5-tab-quote'].focused, true);
-  key('daily5-tab-quote', 'ArrowRight');
+  assert.equal(nodes['daily5-tab-word'].focused, true);
+  key('daily5-tab-word', 'ArrowRight');
   assert.equal(nodes['daily5-panel-news'].hidden, false);
   key('daily5-tab-news', 'End');
-  assert.equal(nodes['daily5-panel-quote'].hidden, false);
-  key('daily5-tab-quote', 'Home');
+  assert.equal(nodes['daily5-panel-word'].hidden, false);
+  key('daily5-tab-word', 'Home');
   assert.equal(nodes['daily5-panel-news'].hidden, false);
   key('other-field', 'ArrowRight');
   key('daily5-tab-news', 'Tab');
@@ -75,7 +75,7 @@ test('completed brain teaser keeps an explicit completion state in its tab', () 
   ctx.applyDaily5Done();
   assert.equal(nodes['widget-quiz'].hidden, true);
   assert.equal(nodes['daily5-quiz-done'].hidden, false);
-  assert.match(nodes['daily-quest-summary'].textContent, /2 of 3 complete/);
+  assert.match(nodes['daily-quest-summary'].textContent, /1 of 3 complete/);
 });
 
 test('compact homework preview counts unfinished work, shows two, and preserves role actions', () => {
