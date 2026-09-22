@@ -33,6 +33,7 @@
   <link rel="stylesheet" href="/css/chat-media.css">
   <link rel="stylesheet" href="/css/settings.css">
   <link rel="stylesheet" href="/css/today-home.css">
+  <link rel="stylesheet" href="/css/mood-check-in.css">
   <link rel="stylesheet" href="/css/child-view.css">
   <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
 </head>
@@ -345,6 +346,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               </div>
             </section>
           </div>
+
+              <section id="mood-check-in" class="card mood-check-in" hidden aria-label="Optional energy check-in"></section>
 
               <section class="card daily5-card" aria-labelledby="daily5-title">
                 <div class="daily5-brief-header">
@@ -1531,6 +1534,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <script src="/js/settings.js"></script>
 <script src="/js/child-progress.js"></script>
 <script src="/js/child-view.js"></script>
+<script src="/js/mood-check-in.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

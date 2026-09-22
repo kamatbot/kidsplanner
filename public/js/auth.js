@@ -360,8 +360,10 @@
     return (data && data.messages) || [];
   }
 
-  async function sendChatMessage(text, media) {
+  async function sendChatMessage(text, media, clientMessageId, expectedContext) {
     const body = { text: text || "" };
+    if (clientMessageId) body.clientMessageId = clientMessageId;
+    if (expectedContext) body.expectedContext = expectedContext;
     if (media) body.media = media;
     return api("/api/chat/messages", { method: "POST", body: JSON.stringify(body) });
   }

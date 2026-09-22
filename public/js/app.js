@@ -513,6 +513,7 @@ async function handlePinChatMessage(id) {
    SESSION / FAMILY BOOTSTRAP (backend-sourced)
 ============================================================ */
 async function bootstrapSession() {
+  window.famMoodCheckIn?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
@@ -5076,6 +5077,7 @@ async function deleteTodayAction(id) {
 }
 
 function renderTodayScreen() {
+  window.famMoodCheckIn?.mount(() => sessionUser?.role === "kid" && currentFamily ? `${sessionUser.id}:${currentFamily.id}` : "");
   if (!sessionUser) return;
   const now = new Date();
   const todayIso = isoDate(now);
@@ -6135,6 +6137,7 @@ function toast(msg) {
    LOGOUT
 ============================================================ */
 async function handleLogout() {
+  window.famMoodCheckIn?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
