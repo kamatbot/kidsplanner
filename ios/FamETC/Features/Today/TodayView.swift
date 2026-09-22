@@ -8,6 +8,7 @@ struct TodayScreen: View {
     @State private var selectedKidID: String?
     @State private var showAddEvent = false
     @State private var showNotes = false
+    @State private var showMoodCheckIn = false
 
     let onOpenHomework: () -> Void
 
@@ -36,6 +37,14 @@ struct TodayScreen: View {
                     } else {
                         TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
                         KidTodayStack(onOpenHomework: onOpenHomework)
+                        if store.me?.role == "kid", !store.needsAuth {
+                            Button("Energy check-in (optional)") {
+                                guard store.me?.role == "kid", !store.needsAuth else { return }
+                                showMoodCheckIn = true
+                            }
+                            .frame(minHeight: 44)
+                            .tint(Palette.accent)
+                        }
                     }
                 }
                 .padding(Space.lg)
@@ -49,7 +58,8 @@ struct TodayScreen: View {
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
-        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil }
+        .sheet(isPresented: $showMoodCheckIn) { MoodCheckInView() }
+        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil; showMoodCheckIn = false }
         .onChange(of: store.kids.map(\.id)) { _, ids in
             if let selectedKidID, !ids.contains(selectedKidID) { self.selectedKidID = nil }
         }

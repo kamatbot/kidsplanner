@@ -495,8 +495,10 @@ final class APIClient: FamilyActionService {
         let r: MessagesResponse = try await request(path, timeout: wait ? 35 : nil)
         return r.messages
     }
-    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String, roomId: String = familyRoomId) async throws -> ChatMessage {
+    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String, roomId: String = familyRoomId, clientMessageId: String? = nil, expectedContext: [String: String]? = nil) async throws -> ChatMessage {
         var body: [String: Any] = ["text": text, "senderType": senderType, "senderId": senderId]
+        if let clientMessageId { body["clientMessageId"] = clientMessageId }
+        if let expectedContext { body["expectedContext"] = expectedContext }
         if let card { body["card"] = card }
         if let media { body["media"] = media }
         let r: MessageResponse = try await request(chatBasePath(roomId), method: "POST", body: body)

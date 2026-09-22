@@ -75,7 +75,7 @@ struct NotesScreen: View {
                     .foregroundStyle(Palette.accent)
                 Text("No notes yet")
                     .font(Typography.cardTitle).foregroundStyle(Palette.text)
-                Text("Reflections you save from the daily quote, mood check-in, news, or chat show up here — or tap “Add a note” to write one yourself.")
+                Text("Reflections you save from the daily quote, news, or chat show up here — or tap “Add a note” to write one yourself.")
                     .font(Typography.body).foregroundStyle(Palette.textSecond)
             }
         }
