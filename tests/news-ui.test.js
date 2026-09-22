@@ -224,7 +224,7 @@ test("client keeps categories visible and does not force a story selection", asy
   await helpers.loadRecentNews(1, now);
 
   assert.equal(helpers.currentNews(), null);
-  assert.match(helpers.elements['news-choices'].innerHTML, /Local\/Regional/);
+  assert.match(helpers.elements['news-choices'].innerHTML, /Local Innovation/);
   assert.match(helpers.elements['news-choices'].innerHTML, /Global Science & Discovery/);
   assert.match(helpers.elements['news-choices'].innerHTML, /Culture, Sports & Human Interest/);
   assert.equal((helpers.elements['news-choices'].innerHTML.match(/disabled/g) || []).length, 2);
