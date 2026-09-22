@@ -15,6 +15,21 @@ test('web media HTTP: upload is private; retry is idempotent; Trip scope and ran
  const parent=store.createUser('parent@example.test','Parent'),other=store.createUser('other@example.test','Other');const fam=family.createFamily(parent.id,'Family');family.createFamily(other.id,'Unrelated');
  const parentCookie=cookie(parent),otherCookie=cookie(other);
  async function request(url,method='GET',body,token=parentCookie,headers={}){return fetch(base+url,{method,headers:{Cookie:token,...headers,...(body && !(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}
+ const shell=await (await request('/app')).text();
+ const versionedScript=shell.match(/src="(\/js\/app\.js\?v=[^"]+)"/);
+ assert.ok(versionedScript,'app shell must use a versioned app.js');
+ const current=await request(versionedScript[1]);
+ assert.equal(current.status,200);
+ assert.equal(current.headers.get('cache-control'),'public, max-age=31536000, immutable');
+ const currentBody=await current.text();
+ for(const script of ['/js/app.js','/js/app.js?v=previous-release','/js/app.js?v=bad&v=other']){
+   const response=await request(script);
+   assert.equal(response.status,200);
+   assert.equal(response.headers.get('cache-control'),'no-cache');
+   assert.equal(await response.text(),currentBody);
+ }
+ const worker=await request('/sw.js');
+ assert.equal(worker.headers.get('cache-control'),'no-cache');
  function uploadForm(roomId,type='image/jpeg',bytes=Buffer.from('ffd8ffe112345678','hex')){const form=new FormData();form.append('roomId',roomId);form.append('file',new Blob([bytes],{type}),type==='image/jpeg'?'photo.jpg':'clip.webm');return form;}
  assert.equal((await request('/api/chat/attachments','POST',uploadForm('family'),'')).status,401);
  const response=await request('/api/chat/attachments','POST',uploadForm('family'));assert.equal(response.status,200);const media=(await response.json()).attachment;

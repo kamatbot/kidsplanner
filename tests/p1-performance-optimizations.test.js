@@ -2,66 +2,98 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs");
-const path = require("path");
-
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+const { EventEmitter } = require("node:events");
+const { createRequire } = require("node:module");
 const ROOT = path.join(__dirname, "..");
-const PUBLIC = path.join(ROOT, "public");
 
-test("public/index.html does not include render-blocking PDF.js in head", () => {
-  const html = fs.readFileSync(path.join(PUBLIC, "index.html"), "utf8");
-  assert.doesNotMatch(html, /<script\b[^>]*src=["'][^"']*pdf\.min\.js["']/i, "pdf.min.js must not be synchronously loaded in index.html");
+function pdfLoader() {
+  const source = fs.readFileSync(path.join(ROOT, "public/js/app.js"), "utf8");
+  const scripts = [];
+  const context = vm.createContext({ document: {
+    createElement: () => ({ remove() { this.removed = true; } }),
+    head: { appendChild(script) { scripts.push(script); } },
+  } });
+  vm.runInContext(source.slice(source.indexOf("let pdfJsLoadingPromise"), source.indexOf("async function renderPdfToBase64")), context);
+  return { context, scripts, load: () => context.loadPdfJs() };
+}
+
+test("PDF.js is absent from initial HTML and concurrent uploads share one lazy load", async () => {
+  const html = fs.readFileSync(path.join(ROOT, "public/index.html"), "utf8");
+  assert.doesNotMatch(html, /<script\b[^>]*src=["'][^"']*pdf\.min\.js["']/i);
+  const { context, scripts, load } = pdfLoader();
+  assert.equal(scripts.length, 0);
+  const first = load();
+  assert.equal(load(), first);
+  assert.equal(scripts.length, 1);
+  assert.equal(scripts[0].src, '/js/vendor/pdfjs/pdf.min.js');
+  context.pdfjsLib = { GlobalWorkerOptions: {} };
+  scripts[0].onload();
+  assert.equal(await first, context.pdfjsLib);
+  assert.equal(context.pdfjsLib.GlobalWorkerOptions.workerSrc, '/js/vendor/pdfjs/pdf.worker.min.js');
+  assert.equal(await load(), context.pdfjsLib);
+  assert.equal(scripts.length, 1);
 });
 
-test("public/js/app.js dynamically loads PDF.js on demand in renderPdfToBase64", () => {
-  const appJs = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
-  assert.match(appJs, /function loadPdfJs\(\)/, "loadPdfJs helper must exist in app.js");
-  assert.match(appJs, /\/js\/vendor\/pdfjs\/pdf\.min\.js/, "loadPdfJs must point to local vendor pdf.min.js");
-  assert.match(appJs, /await loadPdfJs\(\)/, "renderPdfToBase64 must await loadPdfJs before using pdfjsLib");
-});
+for (const failure of ['onerror', 'onload']) {
+  test(`PDF.js ${failure} failure rejects shared callers and permits a new attempt`, async () => {
+    const { context, scripts, load } = pdfLoader();
+    const pending = load();
+    assert.equal(load(), pending);
+    const rejection = assert.rejects(pending, /PDF.js/);
+    scripts[0][failure]();
+    await rejection;
+    const retry = load();
+    assert.equal(scripts.length, 2);
+    context.pdfjsLib = { GlobalWorkerOptions: {} };
+    scripts[1].onload();
+    assert.equal(await retry, context.pdfjsLib);
+  });
+}
 
-test("server.js serves versioned scripts with immutable caching and unversioned with no-cache", () => {
-  const serverSource = fs.readFileSync(path.join(ROOT, "server.js"), "utf8");
-  assert.match(
-    serverSource,
-    /req\.query\.v && req\.query\.v === BUILD/,
-    "server.js must check req.query.v against BUILD"
-  );
-  assert.match(
-    serverSource,
-    /res\.setHeader\("Cache-Control", IMMUTABLE\)/,
-    "server.js must set IMMUTABLE for current build"
-  );
-  assert.match(
-    serverSource,
-    /res\.setHeader\("Cache-Control", "no-cache"\)/,
-    "server.js must fall back to no-cache for unversioned requests"
-  );
-});
+function attachmentLimiter(value) {
+  const filename = path.join(ROOT, 'lib/routes/chat.js');
+  const context = vm.createContext({
+    require: createRequire(filename), module: { exports: {} },
+    process: { env: { RL_CHAT_ATTACHMENT_READ_MAX: value } },
+  });
+  vm.runInContext(fs.readFileSync(filename, 'utf8'), context, { filename });
+  return () => {
+    const res = new EventEmitter();
+    res.headers = {};
+    res.set = (key, value) => { res.headers[key] = value; return res; };
+    res.status = (code) => { res.statusCode = code; return res; };
+    res.json = () => res;
+    context.limitConcurrentAttachmentReads({}, res, () => { res.accepted = true; });
+    return res;
+  };
+}
 
-test("lib/routes/chat.js raises attachment read concurrency ceiling to 8 (configurable)", () => {
-  const chatRouteSource = fs.readFileSync(path.join(ROOT, "lib/routes/chat.js"), "utf8");
-  assert.match(
-    chatRouteSource,
-    /MAX_CONCURRENT_ATTACHMENT_READS\s*=\s*Number\(process\.env\.RL_CHAT_ATTACHMENT_READ_MAX\)\s*>\s*0\s*\?\s*Number\(process\.env\.RL_CHAT_ATTACHMENT_READ_MAX\)\s*:\s*8/,
-    "MAX_CONCURRENT_ATTACHMENT_READS must default to 8 and accept RL_CHAT_ATTACHMENT_READ_MAX"
-  );
-  assert.match(
-    chatRouteSource,
-    /activeAttachmentReads >= MAX_CONCURRENT_ATTACHMENT_READS/,
-    "limitConcurrentAttachmentReads must check against MAX_CONCURRENT_ATTACHMENT_READS"
-  );
-});
+for (const [value, capacity] of [[undefined, 8], ['3', 3], ['Infinity', 8], ['1.5', 8], ['0', 8], ['-2', 8], ['invalid', 8]]) {
+  test(`attachment capacity ${String(value)} is bounded at ${capacity} and released once`, () => {
+    const request = attachmentLimiter(value);
+    const active = Array.from({ length: capacity }, request);
+    assert.ok(active.every(res => res.accepted));
+    const excess = request();
+    assert.equal(excess.statusCode, 503);
+    assert.equal(excess.headers['Retry-After'], '1');
+    active[0].emit('finish');
+    active[0].emit('close');
+    assert.equal(request().accepted, true);
+    assert.equal(request().statusCode, 503, 'finish + close must release just one slot');
+    active[1].emit('close');
+    assert.equal(request().accepted, true, 'a disconnected reader must free a slot');
+  });
+}
 
-test("ios/FamETC/DocumentScannerViewController.swift throttles Vision detection to 10 fps with frame dropping", () => {
-  const scannerSource = fs.readFileSync(
-    path.join(ROOT, "ios/FamETC/DocumentScannerViewController.swift"),
-    "utf8"
-  );
-  assert.match(scannerSource, /fam\.scanner\.session/, "session queue must use fam prefix");
-  assert.match(scannerSource, /fam\.scanner\.video/, "video queue must use fam prefix");
-  assert.match(scannerSource, /var isAnalyzing\s*=\s*false/, "must track in-flight analysis");
-  assert.match(scannerSource, /var lastAnalysisTimestamp:\s*CFTimeInterval/, "must track analysis timestamp");
-  assert.match(scannerSource, /now - lastAnalysisTimestamp >= 0\.1/, "must throttle analysis to at most 10 fps");
-  assert.match(scannerSource, /detectedFrames >= 5/, "must auto-capture after 5 consecutive confident frames (~0.5s)");
+test("scanner keeps throttling on its serial video queue without reading main-thread capture state", () => {
+  const scanner = fs.readFileSync(path.join(ROOT, "ios/FamETC/DocumentScannerViewController.swift"), "utf8");
+  const callback = scanner.slice(scanner.indexOf("    func captureOutput("));
+  assert.match(scanner, /alwaysDiscardsLateVideoFrames = true/);
+  assert.match(scanner, /DispatchQueue\(label: "fam.scanner.video"\)/);
+  assert.match(callback, /latestPixelBuffer = pb[\s\S]*now - lastAnalysisTimestamp >= 0\.1/);
+  assert.doesNotMatch(callback, /didFinish|capturing|isAnalyzing/);
+  assert.match(scanner, /detectedFrames >= 5/);
 });

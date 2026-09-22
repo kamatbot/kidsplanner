@@ -22,7 +22,7 @@ final class DocumentScannerViewController: UIViewController {
     private let lock = NSLock()
     private var latestPixelBuffer: CVPixelBuffer?
     private var latestCorners: [CGPoint]?  // [tl,tr,br,bl] for perspective correction
-    private var isAnalyzing = false
+    // Only accessed on the serial video queue; Vision performs synchronously.
     private var lastAnalysisTimestamp: CFTimeInterval = 0
     private var detectedFrames = 0
     private var capturing = false
@@ -146,9 +146,6 @@ final class DocumentScannerViewController: UIViewController {
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
         try? handler.perform([request])
         let quad = request.results?.first as? VNRectangleObservation
-        lock.lock()
-        isAnalyzing = false
-        lock.unlock()
         DispatchQueue.main.async { [weak self] in self?.updateDetection(quad) }
     }
 
@@ -208,22 +205,15 @@ final class DocumentScannerViewController: UIViewController {
 
 extension DocumentScannerViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        guard !didFinish, !capturing else { return }
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         lock.lock()
         latestPixelBuffer = pb
-        let analyzing = isAnalyzing
         lock.unlock()
 
-        guard !analyzing else { return }
         let now = CACurrentMediaTime()
         guard now - lastAnalysisTimestamp >= 0.1 else { return } // Cap detection at ~10 fps
         lastAnalysisTimestamp = now
-
-        lock.lock()
-        isAnalyzing = true
-        lock.unlock()
 
         handle(pixelBuffer: pb)
     }
