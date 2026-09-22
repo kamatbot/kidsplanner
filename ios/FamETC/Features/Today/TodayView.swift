@@ -531,6 +531,9 @@ private struct KidTodayStack: View {
                 DailyFiveCard(isKid: true).frame(maxWidth: .infinity)
                 VStack(spacing: Space.lg) {
                     StudyStartCard()
+                    if store.me?.role == "kid", let userID = store.me?.id {
+                        StudyPalCard(userID: userID).id(userID)
+                    }
                     TodayScheduleTimelineCard(kidID: kidID)
                     TodayChildFamsCard(kidID: kidID)
                 }
