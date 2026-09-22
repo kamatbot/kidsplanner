@@ -1,5 +1,6 @@
 /* ============================================================
    DAILY CONTENT DATA
+============================================================ */
 
 const SAT_WORDS = [
   { word: "Eloquent",    pos: "adjective", def: "Fluent or persuasive in speaking or writing.",                                    example: "The eloquent speaker captivated the audience with her powerful words." },
@@ -76,6 +77,7 @@ const QUIZ = [
    LEGACY STORAGE MIGRATION (kp_ -> fam_) — one-time, idempotent.
    This is the ONLY place kp_ keys are read or written anywhere
    in this file. Every other function below uses fam_ only.
+============================================================ */
 function migrateLegacyStorage() {
   const KP_KEYS = ['kp_users', 'kp_events', 'kp_schedules', 'kp_session'];
   try {
@@ -101,6 +103,7 @@ function migrateLegacyStorage() {
 
 /* ============================================================
    STATE
+============================================================ */
 let sessionUser     = null;   // { id, email, name, createdAt } from GET /api/me
 let currentFamily    = null;  // { id, name, inviteCode, parentIds, kids, createdAt }
 let activeChildViewId = null;
@@ -178,6 +181,7 @@ let schoolKidMappings = []; // [{ kidId, moodleUserId }] as returned by the serv
    THEME (dark mode) — fam_theme in localStorage: 'light' | 'dark' | 'system'.
    Applied before first paint by the inline <head> script in index.html;
    this just keeps it in sync after a user picks a theme in Settings.
+============================================================ */
 function setTheme(choice) {
   if (choice === 'system') {
     localStorage.removeItem('fam_theme');
@@ -209,6 +213,7 @@ function initTheme() {
 /* ============================================================
    SIDEBAR USER MENU (click-toggle dropdown — the old header version was
    hover-only, which doesn't work on touch/iPad)
+============================================================ */
 function toggleUserMenu() {
   const menu = document.getElementById('sidebar-user-menu');
   if (menu) menu.classList.toggle('open');
@@ -222,6 +227,7 @@ document.addEventListener('click', (e) => {
    ENRICHMENT + NOTES (Notes tab, quote/mood/news reflections,
    SAT word activity + word bank + pop quiz, brain teaser, gating).
    See /private/tmp .../enrichment-spec.md section 4 for the contract.
+============================================================ */
 let notesItems      = [];    // last-loaded list from GET /api/notes
 let currentQuote    = null;  // today's { text, author }
 let currentNews     = null;  // today's accepted recent news item
@@ -505,6 +511,7 @@ async function handlePinChatMessage(id) {
 
 /* ============================================================
    SESSION / FAMILY BOOTSTRAP (backend-sourced)
+============================================================ */
 async function bootstrapSession() {
   window.famMoodCheckIn?.clear();
   activeChildViewId = null;
@@ -517,6 +524,7 @@ async function bootstrapSession() {
   }
   sessionUser = me.user;
   window.FamStudyPal?.render(document.getElementById('today-study-pal'), sessionUser);
+  window.famMyCorner?.setUser(sessionUser);
   save('fam_user', sessionUser);
   applyRoleScopingToUI();
 
@@ -563,6 +571,7 @@ async function bootstrapSession() {
    "Kid sign-in". The backend enforces this independently (requireParent on
    every parent-only route) — this is UI-layer only, so a kid never even
    sees a control they can't use.
+============================================================ */
 function isKidSession() {
   return !!(sessionUser && sessionUser.role === 'kid');
 }
@@ -1142,6 +1151,7 @@ async function handleRemoveParent(userId) {
 
 /* ============================================================
    DASHBOARD
+============================================================ */
 function showDashboard() {
   const now  = new Date();
 
@@ -1222,6 +1232,7 @@ function showDashboard() {
 
 /* ============================================================
    MAIN CALENDAR
+============================================================ */
 function setCalView(v) {
   currentView = v;
   document.getElementById('btn-week').classList.toggle('active', v === 'week');
@@ -1634,6 +1645,7 @@ function esc(s) {
    service worker injects window.famGetSchoolMappings() into an open
    fametc.com tab to learn which kids to import homework/timetable for —
    see chrome-extension/background.js and content.js.
+============================================================ */
 async function loadSchoolKidMappings() {
   if (isKidSession()) { schoolKidMappings = []; return schoolKidMappings; }
   try {
@@ -1709,6 +1721,7 @@ function famGetSchoolMappings() {
 
 /* ============================================================
    EVENTS — ADD / VIEW / DELETE
+============================================================ */
 // Audience ("For") select: whole family (default, kidId null) or one specific
 // kid. Kid sessions may only target themselves or the family — never a
 // sibling — mirroring the server's own coercion (see calendar.js PATCH/POST).
@@ -2131,6 +2144,7 @@ async function deleteCurrentEvent() {
 
 /* ============================================================
    UPLOAD / SCHEDULES
+============================================================ */
 function openUploadModal() {
   clearUpload();
   document.getElementById('schedule-name').value = '';
@@ -2250,6 +2264,7 @@ function viewSchedule(id) {
 
 /* ============================================================
    WIDGETS
+============================================================ */
 /* Daily 5 completion — once the day's word activity / brain teaser is
    answered, the interactive blocks leave the Today view for the rest of the
    day (the word, quote, and news stay). Per-user, per-local-day. */
@@ -2362,6 +2377,7 @@ function renderWidgets() {
 
 /* ============================================================
    DATE-BASED PUZZLE — daily Sudoku or crossword
+============================================================ */
 async function loadDailyPuzzle(now) {
   const card = document.getElementById('widget-puzzle');
   if (!card) return;
@@ -2683,6 +2699,7 @@ function checkDailyPuzzle() {
    POST /api/brainteaser/answer). Day-ramped question count (Mon1..Fri5,
    weekend 3), resurfacing previously-wrong questions with shuffled options.
    Falls back to the local QUIZ bank if the server route isn't reachable yet.
+============================================================ */
 let brainTeaserQuestions = []; // [{qid,q,options,answerIndex,resurfaced}]
 let brainTeaserIndex     = 0;
 let brainTeaserAnswered  = false;
@@ -2789,6 +2806,7 @@ function nextQuestion() {
 
 /* ============================================================
    STREAK
+============================================================ */
 function setStreakDisplays(count) {
   ['streak-count', 'daily5-streak-count'].forEach((id) => {
     const el = document.getElementById(id);
@@ -2816,6 +2834,7 @@ function incrementStreak() {
 
 /* ============================================================
    AI SCHEDULE PARSING (server-side proxy — POST /api/ai/parse)
+============================================================ */
 
 let parsedEvents = [];
 
@@ -3039,6 +3058,7 @@ function applyParsedSchedule() {
 
 /* ============================================================
    MODALS
+============================================================ */
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
@@ -3059,6 +3079,7 @@ function closeModalOnBg(e, id) {
    Activities/Settings), so it doesn't poll needlessly in the background.
    Parent-only controls (delete/flag) are still backend-enforced
    (requireParent) — the UI just doesn't offer delete to a kid session.
+============================================================ */
 function kidColorFor(kidProfileId) {
   const kids = (currentFamily && currentFamily.kids) || [];
   const idx = kids.findIndex((k) => k.id === kidProfileId);
@@ -3790,6 +3811,7 @@ function setupChatRealtimeNudges() {
    CHAT DOCK — avatar strip, collapse-to-slim-rail (Homework/Goals/
    Activities), unread badge, and the kid-session slide-over.
    Docked-vs-collapsed-vs-hidden per tab is decided in switchNavTab().
+============================================================ */
 function renderChatDockAvatars() {
   if (!currentFamily) return;
   const parents = currentFamily.parents || (currentFamily.parentIds || []).map((id) => ({ id, name: null }));
@@ -3984,6 +4006,7 @@ function applyChatDockState(tab) {
    and Approve/Deny. Approving creates the kid profile and unlocks passkey setup
    on the kid's device. Parents-only; kids never poll or see this. Backed by
    /api/family/access-requests (see lib/kid-access.js).
+============================================================ */
 const KID_REQ_POLL_MS = 12000;
 let kidReqPollTimer = null;
 let kidNudgesReady = false;
@@ -4130,6 +4153,7 @@ async function handleFlagChatMessage(id) {
    CHAT PICKERS — emoji popover (hardcoded unicode grid, no external lib)
    and GIF popover (Giphy, proxied through our server — see auth.js
    searchGifs/trendingGifs). Only one popover is open at a time.
+============================================================ */
 function closeChatPickers() {
   const emojiPop = document.getElementById('chat-emoji-popover');
   const gifPop = document.getElementById('chat-gif-popover');
@@ -4264,6 +4288,7 @@ document.addEventListener('click', (e) => {
    filtered by the kid switcher (activeKidId) + a subject dropdown. Kid
    sessions see + can complete only their own homework (also enforced
    server-side — see server.js /api/homework routes).
+============================================================ */
 let homeworkItems   = [];   // last-loaded list from GET /api/homework
 let homeworkWorkspaceSelection = null;
 let homeworkWorkspaceStatus = 'open';
@@ -4503,6 +4528,7 @@ async function toggleHomeworkDone(id) {
    yet (Goals tab is an unbuilt placeholder) — that card renders an honest
    empty state instead of invented numbers. The Daily 5 card below reuses
    the existing quote/word/quiz/news widgets verbatim (see index.html).
+============================================================ */
 function todaySetupFocusTarget(selector) {
   const target = document.querySelector(selector);
   if (!target) return;
@@ -5055,6 +5081,7 @@ async function deleteTodayAction(id) {
 function renderTodayScreen() {
   window.famMoodCheckIn?.mount(() => sessionUser?.role === "kid" && currentFamily ? `${sessionUser.id}:${currentFamily.id}` : "");
   window.FamStudyPal?.render(document.getElementById('today-study-pal'), sessionUser);
+  window.famMyCorner?.setUser(sessionUser);
   if (!sessionUser) return;
   const now = new Date();
   const todayIso = isoDate(now);
@@ -5629,6 +5656,7 @@ function celebrateHomeworkDone() {
    GOALS (Phase W3, canvas 1d) — habit rings (check in today, per-week
    target) + milestone bars (total count). Gentle language throughout: a
    missed day is never flagged, streaks just start counting again.
+============================================================ */
 let goalsItems = []; // last-loaded list from GET /api/goals
 
 async function loadGoals() {
@@ -5829,6 +5857,7 @@ async function deleteGoalItem(id) {
    helper banner rendered only from real data (today's activity + its gear
    tags). Creating/editing an activity does NOT create calendar events in
    this phase — that sync is a follow-up.
+============================================================ */
 let activitiesItems = []; // last-loaded list from GET /api/activities
 let editingActivityId = null;
 let activityScheduleDraft = []; // [{day,start,end}] while the add/edit modal is open
@@ -6040,6 +6069,7 @@ function visibleHomeworkDueItems() {
    CHAT_DOCK_MODE/applyChatDockState(). Its poll lifecycle is tied to the
    dock being visible at all (docked or collapsed), so it never polls
    needlessly once hidden.
+============================================================ */
 function switchNavTab(tab) {
   if (tab === 'child' && (isKidSession() || !sessionUser || !currentFamily?.kids?.some(kid => kid.id === activeChildViewId))) tab = 'today';
   if (tab !== 'child') { activeChildViewId = null; window.famChildView?.cancel(); }
@@ -6098,6 +6128,7 @@ async function openChildHomeworkReview(id) {
 
 /* ============================================================
    TOAST
+============================================================ */
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -6108,9 +6139,11 @@ function toast(msg) {
 
 /* ============================================================
    LOGOUT
+============================================================ */
 async function handleLogout() {
   window.famMoodCheckIn?.clear();
   window.FamStudyPal?.render(document.getElementById('today-study-pal'), null);
+  window.famMyCorner?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
@@ -6122,6 +6155,7 @@ async function handleLogout() {
    INSTALLABLE WEB APP
    Chrome owns the final install confirmation. The control is shown only
    after beforeinstallprompt confirms this browser/profile can install it.
+============================================================ */
 let deferredInstallPrompt = null;
 
 function isInstalledWebApp() {
@@ -6172,6 +6206,7 @@ async function handleInstallApp() {
 
 /* ============================================================
    SECURITY & BACKUP CODES (Settings tab)
+============================================================ */
 let currentGeneratedBackupCodes = null;
 
 async function renderSecuritySettings() {
@@ -6304,6 +6339,7 @@ async function handleSettingsRemovePasskey(id) {
    Gracefully degrades where the browser/OS doesn't support it — notably
    iOS/iPadOS Safari, which only supports web push for a Home Screen–
    installed PWA, not a regular browser tab.
+============================================================ */
 let swRegistration = null;
 
 function pushSupported() {
@@ -6424,6 +6460,7 @@ async function handleToggleNotifications() {
    forward every 20 min (and whenever the tab regains focus or data changes).
    Closed-tab reminders remain an iOS-only capability (would need Web Push +
    a server-side scheduler).
+============================================================ */
 const FAM_REMINDER_WINDOW_MS = 12 * 60 * 60 * 1000; // schedule timers up to 12h out
 const FAM_REMINDER_MAX = 30;                        // cap concurrent timers
 let famReminderTimers = [];
@@ -6536,6 +6573,7 @@ function startReminderLoop() {
    Returns: { homeworkAdded, eventsAdded, timetableEventsAdded,
               activityEventsAdded, activityEventsRemoved, homeworkSkipped,
               intentionalSkipped, importWarnings } (also toasted).
+============================================================ */
 
 // Dedupe key helpers — exported as plain functions so they're easy to unit
 // test in isolation if ever pulled into a node-testable module.
@@ -6715,6 +6753,7 @@ function schoolImportMergeParserWarnings(result, parseWarnings) {
    dependency-free so they're independently unit-testable from node --test
    (see tests/school-stats.test.js) without dragging in this whole
    DOM/localStorage-heavy file.
+============================================================ */
 const SCHOOL_STATS_KEY = 'fam_school_stats';
 const { LOW_BALANCE_THRESHOLD, compareSchoolStats, matchKidByFirstName } = window.famSchoolStats;
 
@@ -7378,6 +7417,7 @@ window.famImportSchoolData = famImportSchoolData;
 
 /* ============================================================
    INIT
+============================================================ */
 async function init() {
   migrateLegacyStorage();
   const ok = await bootstrapSession();

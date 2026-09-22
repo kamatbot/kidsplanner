@@ -9,6 +9,7 @@ struct TodayScreen: View {
     @State private var showAddEvent = false
     @State private var showNotes = false
     @State private var showMoodCheckIn = false
+    @State private var showMyCorner = false
 
     let onOpenHomework: () -> Void
 
@@ -45,6 +46,13 @@ struct TodayScreen: View {
                             .frame(minHeight: 44)
                             .tint(Palette.accent)
                         }
+                        if store.me?.role == "kid", !store.needsAuth {
+                            Button("My Corner · stickers & a note") {
+                                guard store.me?.role == "kid", !store.needsAuth else { return }
+                                showMyCorner = true
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
                 }
                 .padding(Space.lg)
@@ -59,7 +67,14 @@ struct TodayScreen: View {
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
         .sheet(isPresented: $showMoodCheckIn) { MoodCheckInView() }
-        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil; showMoodCheckIn = false }
+        .sheet(isPresented: $showMyCorner) {
+            if let id = store.me?.id, store.me?.role == "kid", !store.needsAuth { MyCornerScreen(ownerID: id).id(id) }
+        }
+        .onChange(of: store.me?.id) { _, _ in
+            selectedKidID = nil
+            showMoodCheckIn = false
+            showMyCorner = false
+        }
         .onChange(of: store.kids.map(\.id)) { _, ids in
             if let selectedKidID, !ids.contains(selectedKidID) { self.selectedKidID = nil }
         }
