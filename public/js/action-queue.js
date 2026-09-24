@@ -254,8 +254,8 @@
       .hermes-op-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.hermes-op-actions button{min-width:82px;min-height:44px}.hermes-op-meta{font-size:11px;color:var(--text-2);margin-top:8px;word-break:break-word}
       .hermes-op-decision-status{min-height:18px;margin-top:6px;font-size:12px;color:var(--text-2)}.hermes-op-evidence{margin-top:10px;font-size:12px}.hermes-op-evidence strong{display:block;margin-bottom:3px}.hermes-op-activity{margin-top:10px}.hermes-op-activity summary{cursor:pointer;display:flex;align-items:center;min-height:44px;font-size:12px;font-weight:650}.hermes-op-timeline{list-style:none;padding:7px 0 0;margin:0;display:grid;gap:6px}.hermes-op-timeline li{display:flex;gap:8px;font-size:12px;color:var(--text-2)}
       .hermes-op-feedback{margin-top:12px;padding:11px;border-radius:10px;border:1px solid var(--border);background:var(--bg)}.hermes-op-feedback strong{font-size:13px}.hermes-op-feedback p{margin:4px 0 0;color:var(--text-2);font-size:12px}.hermes-op-feedback-done{margin-top:10px;color:var(--text-2);font-size:12px}
-      .hermes-op-dot{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:5px;flex:0 0 auto}.hermes-op-empty{color:var(--text-2);font-size:13px;padding:5px 0}.hermes-op-error{color:var(--danger,#b42318);font-size:12px}.hermes-op-retry{margin-top:8px;min-height:44px}
-      .hermes-op-actions button:focus-visible,.hermes-op-header button:focus-visible,.hermes-op-activity summary:focus-visible,.hermes-op-retry:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px}
+      .hermes-op-dot{width:7px;height:7px;border-radius:50%;background:currentColor;margin-top:5px;flex:0 0 auto}.hermes-op-empty{color:var(--text-2);font-size:13px;padding:5px 0}.hermes-op-error{color:var(--danger,#b42318);font-size:12px}
+      .hermes-op-actions button:focus-visible,.hermes-op-header button:focus-visible,.hermes-op-activity summary:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px}
       @media(max-width:640px){.hermes-op-header,.hermes-op-row{flex-direction:column}.hermes-op-header button{min-height:44px}.hermes-op-stage{white-space:normal}.hermes-op-action-details{grid-template-columns:1fr}.hermes-op-actions button{flex:1}}
     `;
     document.head.appendChild(style);
@@ -407,10 +407,9 @@
       bindDecisionButtons(panel);
       bindFeedbackButtons(panel);
     } catch (error) {
-      panel.hidden = false;
-      list.innerHTML = `<div class="hermes-op-empty" role="alert">Hermes case activity is temporarily unavailable.<br><button type="button" class="btn-secondary hermes-op-retry">Try again</button></div>`;
-      const retry = list.querySelector(".hermes-op-retry");
-      if (retry) retry.addEventListener("click", loadCases);
+      // Today shows Hermes only when it has cases: a failed refresh keeps the
+      // last cases on screen, and a failed first load stays out of the way.
+      if (!list.querySelector(".hermes-op-case")) panel.hidden = true;
     } finally {
       loadingCases = false;
       list.setAttribute("aria-busy", "false");

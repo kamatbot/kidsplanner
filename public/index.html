@@ -33,11 +33,19 @@
   <link rel="stylesheet" href="/css/chat-media.css">
   <link rel="stylesheet" href="/css/settings.css">
   <link rel="stylesheet" href="/css/today-home.css">
+  <link rel="stylesheet" href="/css/today-learning.css">
   <link rel="stylesheet" href="/css/child-view.css">
   <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
 </head>
 <body>
-<!-- Today seed ea7660a1: the Daily Brief keeps mounted activity tabs and its accepted action/agenda layout.
+<!-- Today seed 694b4b4f — Needs-You Stack.
+THESIS: Today is a queue, not a widget wall: one prioritised stack of what needs a parent now, with the day and the children beside it; it refuses the equal-card grid.
+OWN-WORLD: Horizon — greige ground, three white bands split by hairline rules, violet only for actions, kid profile colours as identity dots, Space Grotesk text, JetBrains Mono for times and counts.
+STORY: A parent sees how many things need them, clears the top one in a tap, scans the day and each child's load, then plays Daily 3.
+FIRST VIEWPORT: Greeting with a one-line day summary; band one splits 3:2 — Family Actions stack left (top item emphasised, one control per row), Schedule timeline with a now-line right; Children and Tonight/Habits band below.
+FORM: Needs-You Stack, structure 4 of 7, seed 694b4b4f.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance -->
+<!-- Child view seed f65d002f.
 THESIS: The child page connects parental help with observed progress, without a timetable or sibling ranking.
 OWN-WORLD: Existing Horizon type, neutral panels, violet actions, circular child avatars and status marks.
 STORY: Choose a child, review the next homework task, see recorded progress, and set today's expected home plan.
@@ -192,171 +200,176 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
              device; a parent approves/denies here. Populated by renderKidAccessRequests(). -->
         <div id="kid-requests-banner" class="kid-requests-banner" hidden></div>
 
-        <!-- Today Tab — the new landing screen. Schedule/homework/habits/momentum
-             lists are rendered by renderTodayScreen() (app.js); the Daily 5 card
-             below reuses the existing quote/word/news/quiz widgets verbatim. -->
+        <!-- Today Tab — the Needs-You Stack. Three bands: what needs you beside
+             today's schedule; the children beside dinner and habits; Daily 3
+             beside the weekly challenge. Lists are rendered by
+             renderTodayScreen() (app.js); the learning widgets keep their
+             mounted panels so drafts and puzzle progress survive tab changes. -->
         <div id="tab-child" class="tab-panel" hidden></div>
         <div class="tab-panel active" id="tab-today">
-          <div class="today-header">
+          <header class="today-header">
             <div class="today-greeting-col">
-              <div class="micro-label" id="today-date-label"></div>
-              <div class="today-greeting" id="today-greeting"></div>
+              <h1 class="today-greeting" id="today-greeting"></h1>
+              <p class="today-summary" id="today-summary"><span id="today-date-label"></span><span id="today-summary-needs"></span><span id="today-summary-events"></span></p>
             </div>
-            <div class="today-sync-status micro-label" id="today-sync-status" hidden>
-              <span class="today-sync-dot"></span><span id="today-sync-text"></span>
+            <div class="today-sync-status" id="today-sync-status" hidden>
+              <span class="today-sync-dot" id="today-sync-dot"></span><span id="today-sync-text"></span>
             </div>
-            <button class="btn-primary" id="today-add-event-btn" onclick="openAddEventModal()" style="display:inline-flex;align-items:center;gap:7px">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add event
-            </button>
+          </header>
+
+          <!-- Band 1: what needs you (the stack) beside today's schedule.
+               action-queue.js inserts the Hermes case panel before
+               #today-actions-card, so it stays inside the stack region. -->
+          <div class="today-band today-band-now">
+            <div class="today-region today-needs">
+              <section class="today-actions-card" id="today-actions-card" aria-labelledby="today-actions-title">
+                <div class="today-section-head">
+                  <h2 id="today-actions-title">Family Actions</h2>
+                  <span id="today-actions-count" class="today-count"></span>
+                  <div class="today-section-actions">
+                    <button type="button" class="today-mini-btn parent-only" id="today-action-add-btn"
+                            onclick="openTodayActionComposer()" aria-expanded="false"
+                            aria-controls="today-action-composer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add</button>
+                  </div>
+                </div>
+
+                <div id="today-actions-status" class="today-actions-status" role="status" aria-live="polite"></div>
+
+                <div id="today-action-composer" class="today-action-composer" hidden>
+                  <div class="today-action-composer-header">
+                    <div>
+                      <h3>Add a family action</h3>
+                      <p>Give the next step a clear home. You can change the details later.</p>
+                    </div>
+                    <button type="button" class="today-action-close btn-link" onclick="closeTodayActionComposer()">Cancel</button>
+                  </div>
+                  <form id="today-action-form" onsubmit="saveTodayAction(event)">
+                    <div class="form-group">
+                      <label for="today-action-title">Action</label>
+                      <input type="text" id="today-action-title" maxlength="200" required aria-describedby="today-action-form-error"
+                             placeholder="Pack uniforms for Friday">
+                    </div>
+                    <div class="today-action-form-grid">
+                      <div class="form-group">
+                        <label for="today-action-due-date">Due date <span>(optional)</span></label>
+                        <input type="date" id="today-action-due-date">
+                      </div>
+                      <div class="form-group">
+                        <label for="today-action-due-time">Time <span>(optional)</span></label>
+                        <input type="time" id="today-action-due-time">
+                      </div>
+                      <div class="form-group">
+                        <label for="today-action-assignee">For</label>
+                        <select id="today-action-assignee" aria-describedby="today-action-assignee-help">
+                          <option value="family">Family / shared</option>
+                        </select>
+                        <span id="today-action-assignee-help" class="today-action-field-help">The whole family can see shared actions.</span>
+                      </div>
+                      <div class="form-group today-action-notes-group">
+                        <label for="today-action-notes">Notes <span>(optional)</span></label>
+                        <textarea id="today-action-notes" rows="2" maxlength="2000" placeholder="Anything helpful to remember"></textarea>
+                      </div>
+                    </div>
+                    <div id="today-action-form-error" class="error-msg today-action-form-error" role="alert" hidden></div>
+                    <div class="today-action-form-actions">
+                      <button type="button" class="btn-secondary" onclick="closeTodayActionComposer()">Cancel</button>
+                      <button type="submit" class="btn-primary" id="today-action-save-btn">Add action</button>
+                    </div>
+                  </form>
+                </div>
+
+                <div id="today-actions-list" class="today-actions-list"></div>
+                <div id="today-actions-footer" class="today-actions-footer"></div>
+              </section>
+            </div>
+
+            <section class="today-region today-day today-agenda-card" aria-labelledby="today-agenda-title">
+              <div class="today-section-head">
+                <h2 id="today-agenda-title">Schedule</h2>
+                <span class="today-count" id="today-schedule-count"></span>
+                <div class="today-section-actions">
+                  <button type="button" class="today-mini-btn" id="today-add-event-btn" onclick="openAddEventModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Event</button>
+                </div>
+              </div>
+              <div id="today-schedule-list" class="today-timeline"></div>
+              <div class="today-tomorrow" id="today-tomorrow" hidden>
+                <span class="today-tomorrow-label">Tomorrow</span>
+                <div id="today-tomorrow-row"></div>
+              </div>
+              <a href="#" class="today-link today-agenda-footer" onclick="switchNavTab('calendar');return false">Open calendar<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+            </section>
           </div>
 
-          <section class="card today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
+          <section class="today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
             <div class="today-setup-header">
               <div>
-                <div class="micro-label">Quick setup</div>
-                <h2 id="today-setup-title">Make Fam ETC useful this week</h2>
+                <h2 id="today-setup-title">Make Fam ETC useful this week <span class="today-count" id="today-setup-progress"></span></h2>
                 <p id="today-setup-intro">A few small connections now will save time later. You can come back whenever you're ready.</p>
               </div>
               <div class="today-setup-header-actions">
-                <button type="button" class="btn-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Dismiss</button>
+                <button type="button" class="today-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Dismiss</button>
               </div>
             </div>
             <div id="today-setup-content"></div>
           </section>
 
-          <!-- Today action queue — manual family commitments are the primary
-               hierarchy. Supporting schedule/homework/habits cards remain
-               below as context; see renderTodayActionQueue() in app.js. -->
-          <div class="today-brief-primary">
-          <section class="card today-actions-card" id="today-actions-card" aria-labelledby="today-actions-title">
-            <div class="today-actions-header">
-              <div class="today-actions-heading">
-                <h2 id="today-actions-title">Family Actions</h2>
-                <span id="today-actions-count" class="today-brief-count"></span>
+          <!-- Band 2: each child at a glance (homework load, habits, fams)
+               beside tonight's dinner and the family's habits. -->
+          <div class="today-band today-band-home">
+            <section class="today-region today-people" aria-labelledby="today-fams-title">
+              <div class="today-section-head">
+                <h2 id="today-fams-title">Children</h2>
+                <div class="today-section-actions"><span class="today-fams-value">1 fam = ฿1</span></div>
               </div>
-              <div class="today-actions-header-actions">
-                <button type="button" class="btn-primary parent-only" id="today-action-add-btn"
-                        onclick="openTodayActionComposer()" aria-expanded="false"
-                        aria-controls="today-action-composer">Add action</button>
-              </div>
-            </div>
-
-            <div id="today-actions-status" class="today-actions-status" role="status" aria-live="polite"></div>
-
-            <div id="today-action-composer" class="today-action-composer" hidden>
-              <div class="today-action-composer-header">
-                <div>
-                  <h3>Add a family action</h3>
-                  <p>Give the next step a clear home. You can change the details later.</p>
+              <div id="today-fams-body" aria-live="polite"><p class="today-fams-note">Loading…</p></div>
+              <!-- Kid sessions only: their own homework list (renderTodayHomework). -->
+              <section class="today-homework-card" id="today-homework-card" aria-labelledby="today-homework-title" hidden>
+                <div class="today-section-head">
+                  <h3 id="today-homework-title">Your homework</h3>
+                  <span class="today-count" id="today-homework-count"></span>
+                  <div class="today-section-actions"><a href="#" class="today-link" onclick="switchNavTab('homework');return false">All homework<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></div>
                 </div>
-                <button type="button" class="today-action-close btn-link" onclick="closeTodayActionComposer()">Cancel</button>
-              </div>
-              <form id="today-action-form" onsubmit="saveTodayAction(event)">
-                <div class="form-group">
-                  <label for="today-action-title">Action</label>
-                  <input type="text" id="today-action-title" maxlength="200" required aria-describedby="today-action-form-error"
-                         placeholder="Pack uniforms for Friday">
-                </div>
-                <div class="today-action-form-grid">
-                  <div class="form-group">
-                    <label for="today-action-due-date">Due date <span>(optional)</span></label>
-                    <input type="date" id="today-action-due-date">
-                  </div>
-                  <div class="form-group">
-                    <label for="today-action-due-time">Time <span>(optional)</span></label>
-                    <input type="time" id="today-action-due-time">
-                  </div>
-                  <div class="form-group">
-                    <label for="today-action-assignee">For</label>
-                    <select id="today-action-assignee" aria-describedby="today-action-assignee-help">
-                      <option value="family">Family / shared</option>
-                    </select>
-                    <span id="today-action-assignee-help" class="today-action-field-help">The whole family can see shared actions.</span>
-                  </div>
-                  <div class="form-group today-action-notes-group">
-                    <label for="today-action-notes">Notes <span>(optional)</span></label>
-                    <textarea id="today-action-notes" rows="2" maxlength="2000" placeholder="Anything helpful to remember"></textarea>
-                  </div>
-                </div>
-                <div id="today-action-form-error" class="error-msg today-action-form-error" role="alert" hidden></div>
-                <div class="today-action-form-actions">
-                  <button type="button" class="btn-secondary" onclick="closeTodayActionComposer()">Cancel</button>
-                  <button type="submit" class="btn-primary" id="today-action-save-btn">Add action</button>
-                </div>
-              </form>
-            </div>
-
-            <div id="today-actions-list" class="today-actions-list"></div>
-            <div id="today-actions-footer" class="today-actions-footer"></div>
-          </section>
-
-            <section class="card today-schedule-card today-agenda-card" aria-labelledby="today-agenda-title">
-              <div class="today-card-header">
-                <h2 class="today-brief-section-title" id="today-agenda-title">Today's agenda</h2>
-                <span class="micro-label" id="today-schedule-count"></span>
-              </div>
-              <div id="today-schedule-list"></div>
-              <div class="today-tomorrow" id="today-tomorrow" hidden>
-                <div class="micro-label" style="margin-bottom:10px">Tomorrow</div>
-                <div id="today-tomorrow-row"></div>
-              </div>
-              <footer class="today-agenda-footer"><a href="#" class="btn-link" onclick="switchNavTab('calendar');return false">View full day →</a></footer>
+                <div id="today-homework-list"></div>
+              </section>
             </section>
+
+            <div class="today-region today-home-region">
+              <!-- Meals "Tonight" (Meals §7 integration) — best-effort: a fetch
+                   failure must never break Today, see famRenderTodayMeals(). -->
+              <section class="today-meals-card" id="today-meals-card" aria-labelledby="today-meals-title" hidden>
+                <div class="today-section-head">
+                  <h2 id="today-meals-title">Tonight</h2>
+                  <div class="today-section-actions"><a href="/meals" class="today-link">Meals<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></div>
+                </div>
+                <div id="today-meals-body"></div>
+              </section>
+              <section class="today-habits" aria-labelledby="today-habits-title">
+                <div class="today-section-head">
+                  <h2 id="today-habits-title">Habits</h2>
+                  <span class="today-count" id="today-habits-count"></span>
+                  <div class="today-section-actions"><a href="#" class="today-link" onclick="switchNavTab('goals');return false">Goals<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></div>
+                </div>
+                <div id="today-habits-list" class="habits-list"></div>
+              </section>
+            </div>
           </div>
 
-          <div class="today-brief-support">
-            <section class="card today-fams-card" aria-labelledby="today-fams-title">
-              <div class="today-card-header"><h2 id="today-fams-title">Fams</h2><span class="today-fams-value">1 fam = ฿1</span></div>
-              <div id="today-fams-body" aria-live="polite"><p>Loading rewards…</p></div>
-            </section>
-            <!-- Meals "Tonight" card (Meals §7 integration) — best-effort: a
-                 fetch failure here must never break Today, see famRenderTodayMeals()
-                 in app.js. Hidden until that fetch resolves successfully. -->
-            <section class="card today-meals-card" id="today-meals-card" hidden>
-              <div class="today-card-header">
-                <span class="micro-label">Tonight's dinner</span>
-                <a href="/meals" class="btn-link" style="font-size:12px">Meals →</a>
-              </div>
-              <div id="today-meals-body"></div>
-            </section>
-
-            <section class="card today-homework-card">
-              <div class="today-card-header">
-                <span class="micro-label">Homework due</span>
-                <span class="today-support-meta"><span class="micro-label" id="today-homework-count"></span><a href="#" class="btn-link" onclick="switchNavTab('homework');return false" style="font-size:12px">All →</a></span>
-              </div>
-              <div id="today-homework-list"></div>
-            </section>
-
-
-
-            <section class="card">
-              <div class="today-card-header">
-                <span class="micro-label">Today's habits</span>
-                <span class="today-support-meta"><span class="micro-label" id="today-habits-count"></span><a href="#" class="btn-link" onclick="switchNavTab('goals');return false" style="font-size:12px">View habits →</a></span>
-              </div>
-              <div id="today-habits-list" class="habits-list"></div>
-              <div class="momentum-block">
-                <div class="momentum-labels">
-                  <span class="momentum-label" id="today-momentum-label">Week momentum</span>
-                  <span class="momentum-value" id="today-momentum-value"></span>
-                </div>
-                <div class="momentum-track"><div class="momentum-fill" id="today-momentum-fill" style="width:0%"></div></div>
-              </div>
-            </section>
-          </div>
-
-              <section class="card daily5-card" aria-labelledby="daily5-title">
-                <div class="daily5-brief-header">
-                  <div>
-                    <h2 id="daily5-title">Daily 3</h2>
-                    <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">One small thing to explore.</p>
+          <!-- Band 3: Daily 3 beside the weekly challenge. Learning band —
+               owned by Agent B. Styles in today-learning.css. -->
+          <div class="today-band today-band-learn">
+              <section class="today-region daily5-card today-daily3" aria-labelledby="daily5-title">
+                <div class="today-section-head">
+                  <h2 id="daily5-title">Daily 3</h2>
+                  <div class="today-section-actions">
+                    <span class="daily5-streak">
+                      <svg class="streak-flame" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>
+                      <span class="streak-count"><span id="daily5-streak-count">0</span>-day streak</span>
+                      <span class="streak-zero">Start a streak</span>
+                    </span>
                   </div>
-                  <span class="daily5-streak">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>
-                    <span id="daily5-streak-count">0</span>d streak
-                  </span>
                 </div>
+                <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">News, Quote &amp; Word · 0 of 3 complete</p>
+
                 <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 3 activities">
                   <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')">News</button>
                   <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')">Quote</button>
@@ -364,31 +377,29 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 </div>
 
                 <!-- Quote of the Day — flips to a reflection composer that saves
-                     as a note (source:"quote"). See renderWidgets/flipQuoteCard. -->
+                     as a note (source:"quote"). See renderWidgets/flipQuoteCard.
+                     The two faces swap via display, not a 3D transform. -->
                 <section class="daily5-panel" id="daily5-panel-quote" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-quote" hidden>
-                <div class="widget widget-quote fam-enrich-card" id="widget-quote">
+                <div class="widget-quote" id="widget-quote">
                   <div class="fam-enrich-lock" id="lock-quote" hidden></div>
-                  <div class="widget-flip-inner" id="quote-flip-inner">
-                    <div class="widget-flip-front">
-                      <div class="widget-header">
-                        <span class="widget-icon">💬</span>
-                        <span class="widget-label">Quote</span>
-                        <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinQuote()">📌</button>
+                  <div id="quote-flip-inner">
+                    <div class="quote-face quote-face-front">
+                      <div class="daily3-panel-top">
+                        <p class="puzzle-instructions" id="quote-theme"></p>
+                        <button type="button" class="today-mini-btn icon-only" title="Pin to notes" aria-label="Pin to notes" onclick="handlePinQuote()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"></path><path d="M12 14v7"></path></svg></button>
                       </div>
-                      <p class="puzzle-instructions" id="quote-theme"></p>
+                      <svg class="quote-mark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11H4.5A1.5 1.5 0 0 1 3 9.5v-3A1.5 1.5 0 0 1 4.5 5h3A1.5 1.5 0 0 1 9 6.5V12a6 6 0 0 1-4 5.6"></path><path d="M18 11h-2.5A1.5 1.5 0 0 1 14 9.5v-3A1.5 1.5 0 0 1 15.5 5h3A1.5 1.5 0 0 1 20 6.5V12a6 6 0 0 1-4 5.6"></path></svg>
                       <blockquote class="quote-text" id="quote-text"></blockquote>
                       <cite class="quote-author" id="quote-author"></cite>
-                      <button type="button" class="btn-link fam-reflect-btn" onclick="flipQuoteCard(true)">✍️ Write a reflection</button>
+                      <button type="button" class="today-link" onclick="flipQuoteCard(true)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"></path><path d="M13.5 6.5l4 4"></path></svg>Write a reflection</button>
                     </div>
-                    <div class="widget-flip-back">
-                      <div class="widget-header">
-                        <span class="widget-icon">💬</span>
-                        <span class="widget-label">Your reflection</span>
-                        <button type="button" class="fam-pin-btn" title="Back to quote" onclick="flipQuoteCard(false)">↩️</button>
-                      </div>
+                    <div class="quote-face quote-face-back">
                       <p class="fam-reflect-prompt" id="quote-reflect-prompt"></p>
                       <textarea id="quote-reflect-text" class="fam-reflect-textarea" rows="3" placeholder="What does this quote mean to you today?"></textarea>
-                      <button type="button" class="btn-primary fam-save-btn" onclick="saveQuoteReflection()">Save reflection</button>
+                      <div class="quote-back-actions">
+                        <button type="button" class="btn-primary fam-save-btn" onclick="saveQuoteReflection()">Save reflection</button>
+                        <button type="button" class="today-mini-btn" onclick="flipQuoteCard(false)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>Back to quote</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -396,14 +407,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
                 <!-- SAT Word — interactive daily activity + word bank + pop quiz. -->
                 <section class="daily5-panel" id="daily5-panel-word" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-word" hidden>
-                <div class="widget widget-word fam-enrich-card" id="widget-word">
+                <div class="widget-word" id="widget-word">
                   <div class="fam-enrich-lock" id="lock-sat" hidden></div>
-                  <div class="widget-header">
-                    <span class="widget-icon">📖</span>
-                    <span class="widget-label">Word</span>
-                    <button type="button" class="fam-pin-btn" title="Pin to notes" onclick="handlePinSatWord()">📌</button>
+                  <div class="daily3-panel-top">
+                    <p class="puzzle-instructions" id="word-root"></p>
+                    <button type="button" class="today-mini-btn icon-only" title="Pin to notes" aria-label="Pin to notes" onclick="handlePinSatWord()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"></path><path d="M12 14v7"></path></svg></button>
                   </div>
-                  <p class="puzzle-instructions" id="word-root"></p>
                   <div class="sat-word" id="sat-word"></div>
                   <div class="sat-pos" id="sat-pos"></div>
                   <div class="sat-def" id="sat-def"></div>
@@ -411,8 +420,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   <details id="sat-placement" class="fam-sat-placement" hidden></details>
                   <div id="sat-activity" class="fam-sat-activity"></div>
                   <div class="fam-sat-footer">
-                    <button type="button" class="btn-link" onclick="toggleWordBank()">🔤 Word bank</button>
-                    <button type="button" class="btn-secondary" id="sat-quiz-btn" onclick="startWordQuiz()" disabled>🎯 Pop quiz</button>
+                    <button type="button" class="today-link" onclick="toggleWordBank()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>Word bank</button>
+                    <button type="button" class="today-mini-btn" id="sat-quiz-btn" onclick="startWordQuiz()" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>Pop quiz</button>
                   </div>
                   <div id="sat-wordbank-panel" class="fam-sat-wordbank" hidden></div>
                   <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
@@ -420,33 +429,24 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 </section>
 
                 <!-- Interesting News — headline is a real link straight to the
-                     article; a separate chevron expands the summary +
-                     reflection composer in place (toggleNewsDetails()). -->
+                     article; the summary + reflection composer show under the
+                     list as soon as a story is selected (toggleNewsDetails()
+                     stays wired for compatibility but #news-more-btn is
+                     visually retired — see today-learning.css). -->
                 <section class="daily5-panel" id="daily5-panel-news" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-news">
-                <div class="widget widget-news fam-enrich-card" id="widget-news">
+                <div class="widget-news" id="widget-news">
                   <div class="fam-enrich-lock" id="lock-news" hidden></div>
-                  <div class="widget-header">
-                    <span class="widget-icon">📰</span>
-                    <span class="widget-label">Interesting news</span>
-                    <span class="news-badge" id="news-badge"></span>
+                  <div class="news-helper-row">
+                    <p class="news-helper-line" id="news-helper-line">Pick any of today's stories — read one or all three.</p>
+                    <button type="button" class="today-mini-btn" onclick="renderNewsLoading(); loadRecentNews(++newsRequestToken, new Date())"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>Refresh stories</button>
                   </div>
-                  <p class="text-muted">Choose any or all of today’s stories.</p>
+                  <span class="news-badge" id="news-badge"></span>
                   <div id="news-choices" class="news-choices" aria-label="Today’s news choices"></div>
-                  <style>
-                    .news-choices { display: grid; gap: 8px; margin-block: 12px; }
-                    .news-choice { display: grid; gap: 5px; min-height: 44px; text-align: left; white-space: normal; width: 100%; }
-                    .news-choice[aria-pressed="true"] { border-color: var(--accent, #6f43d6); }
-                    .news-choice small { font-weight: normal; }
-                    #sat-activity .fam-sat-opt { min-height: 44px; white-space: normal; text-align: left; }
-                  </style>
-                  <div class="news-headline-row">
-                    <a class="news-headline" id="news-headline" href="#" target="_blank" rel="noopener noreferrer"></a>
-                    <button type="button" class="news-more-btn" id="news-more-btn" onclick="toggleNewsDetails()" aria-label="Show summary">▾</button>
-                  </div>
-                  <button type="button" class="btn-secondary" onclick="renderNewsLoading(); loadRecentNews(++newsRequestToken, new Date())">Refresh stories</button>
-                  <div id="news-details">
+                  <a id="news-headline" href="#" target="_blank" rel="noopener noreferrer"></a>
+                  <button type="button" class="news-more-btn" id="news-more-btn" onclick="toggleNewsDetails()" aria-label="Show summary" hidden>▾</button>
+                  <div id="news-details" hidden>
                     <div class="news-summary" id="news-summary"></div>
-                    <a class="news-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">🔗 Read the full story</a>
+                    <a class="news-link today-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">Read the full story</a>
                     <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
                     <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…" aria-label="Your news reflection" oninput="rememberNewsDraft()"></textarea>
                     <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save response</button>
@@ -454,34 +454,41 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 </div>
                 </section>
               </section>
-              <section class="card daily5-card" aria-labelledby="daily-challenge-title">
-                <h2 id="daily-challenge-title">Brain Teaser / Puzzle</h2>
-                <p class="puzzle-instructions">Mon–Tue · Brain teaser / Wed · Sudoku + mental math / Thu · News data / Fri · SAT-style question / Weekend · Crossword</p>
+              <section class="today-region daily5-card today-challenge" aria-labelledby="daily-challenge-title">
+                <div class="today-section-head">
+                  <h2 id="daily-challenge-title">Brain teaser &amp; puzzle</h2>
+                </div>
+                <div class="challenge-chip-row" aria-hidden="true">
+                  <span class="challenge-chip" data-days="1,2">Mon–Tue · Brain teaser</span>
+                  <span class="challenge-chip" data-days="3">Wed · Sudoku + math</span>
+                  <span class="challenge-chip" data-days="4">Thu · News data</span>
+                  <span class="challenge-chip" data-days="5">Fri · SAT question</span>
+                  <span class="challenge-chip" data-days="6,0">Sat–Sun · Crossword</span>
+                </div>
+                <p class="today-sr" id="challenge-today-sr"></p>
                 <!-- Daily Brain Teaser — always visible in-card; day-ramped
                      question count from the brainteaser API, resurfacing
                      previously-wrong ones. -->
                 <section class="daily5-panel" id="daily5-panel-quiz" aria-label="Brain teaser" hidden>
-                <div class="widget widget-quiz fam-enrich-card" id="widget-quiz">
+                <div class="widget-quiz" id="widget-quiz">
                   <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
-                  <div class="widget-header">
-                    <span class="widget-icon">🧠</span>
-                    <span class="widget-label">Brain teaser</span>
+                  <div class="bt-head">
                     <span class="fam-bt-progress" id="bt-progress"></span>
                   </div>
                   <div class="quiz-question" id="quiz-question"></div>
                   <div class="quiz-options" id="quiz-options"></div>
                   <div class="quiz-feedback" id="quiz-feedback"></div>
-                  <button class="btn-next-q" id="btn-next-q" onclick="nextQuestion()" style="display:none">Next Question →</button>
+                  <button class="btn-primary" id="btn-next-q" onclick="nextQuestion()" hidden>Next question →</button>
                 </div>
-                <p id="daily5-quiz-done" role="status" hidden>Brain teaser complete for today. Come back tomorrow for a new challenge.</p>
+                <p id="daily5-quiz-done" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Brain teaser complete for today. Come back tomorrow for a new challenge.</p>
                 </section>
 
                 <section class="daily5-panel" id="daily5-panel-puzzle" aria-label="Scheduled puzzle">
-                <div class="widget widget-puzzle fam-enrich-card" id="widget-puzzle" hidden>
+                <div class="widget-puzzle" id="widget-puzzle" hidden>
                   <div class="fam-enrich-lock" id="lock-puzzle" hidden></div>
-                  <div class="widget-header">
-                    <span class="widget-icon" id="puzzle-icon">🧩</span>
-                    <span class="widget-label" id="puzzle-title">Today's puzzle</span>
+                  <div class="puzzle-head">
+                    <span class="puzzle-icon" id="puzzle-icon" aria-hidden="true"></span>
+                    <span class="puzzle-title" id="puzzle-title">Today's puzzle</span>
                   </div>
                   <p class="puzzle-instructions" id="puzzle-instructions"></p>
                   <div id="puzzle-mental-math"></div>
@@ -489,14 +496,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   <div class="puzzle-clues" id="puzzle-clues"></div>
                   <p class="puzzle-status" id="puzzle-status" role="status" aria-live="polite"></p>
                   <div class="puzzle-actions">
-                    <button type="button" class="btn-secondary" id="puzzle-retry-btn" onclick="loadDailyPuzzle(new Date())" hidden>Retry</button>
-                    <button type="button" class="btn-secondary" id="puzzle-clear-btn" onclick="clearDailyPuzzle()">Clear</button>
+                    <button type="button" class="today-mini-btn" id="puzzle-retry-btn" onclick="loadDailyPuzzle(new Date())" hidden>Retry</button>
+                    <button type="button" class="today-mini-btn" id="puzzle-clear-btn" onclick="clearDailyPuzzle()">Clear</button>
                     <button type="button" class="btn-primary" id="puzzle-check-btn" onclick="checkDailyPuzzle()">Check puzzle</button>
                   </div>
                 </div>
                 </section>
 
               </section>
+          </div>
         </div>
 
         <!-- Calendar Tab (canvas 1b) — one calendar surface with the header

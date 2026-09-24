@@ -60,6 +60,8 @@ test('parent homework rows review Ryshi’s assignment while child and manual ac
     todayActionAssigneeLabel: () => 'Ryshi',
     kidNameFor: (id) => id === 'ryshi' ? 'Ryshi' : '',
     todayActionSnoozeOptions: () => '<button>Snooze</button>',
+    kidAvatarMarkup: () => '<span class="kid-profile-avatar"></span>',
+    todayIcon: () => '<svg class="today-icon"></svg>',
   };
   vm.runInNewContext(extractFunction('renderTodayActionRow'), context);
   const action = { id: 'action1', title: 'Fractions worksheet', kidId: 'ryshi', assigneeId: 'ryshi', assigneeType: 'kid', sourceType: 'homework', sourceId: 'hw1' };

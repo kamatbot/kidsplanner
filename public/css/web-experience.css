@@ -1,14 +1,3 @@
-/* Focused Family Actions preview. Existing navigation and design tokens stay intact. */
-.today-actions-card { padding: 24px; }
-.today-actions-header { align-items: center; }
-.today-actions-heading h2 { font-size: clamp(22px, 2vw, 28px); margin: 0; letter-spacing: -.035em; }
-.today-actions-list { margin-top: 16px; }
-.today-actions-card .today-action-row { padding: 16px 0; gap: 14px; }
-.today-actions-card .today-action-title { font-size: 15px; line-height: 1.5; }
-.today-actions-card .today-action-check { border-radius: 50%; width: 34px; height: 34px; font-size: 20px; }
-.today-actions-card .today-action-assignee, .today-actions-card .today-action-source { border: 0; background: transparent; padding: 0; font-size: 12px; }
-.today-actions-card .today-action-assignee::before, .today-actions-card .today-action-source::before { content: '·'; margin-right: 7px; color: var(--muted); }
-.today-actions-card .today-action-notes { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .today-action-menu { position: relative; }
 .today-action-menu summary { list-style: none; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 8px 10px; border-radius: 12px; color: var(--text-2); cursor: pointer; font-size: 12px; font-weight: 600; }
 .today-action-menu summary::-webkit-details-marker { display: none; }
@@ -29,18 +18,7 @@
 .family-actions-dialog .today-action-row { padding: 14px 0; }
 #family-actions-dialog-list { padding-bottom: 200px; }
 @media (max-width: 600px) {
-  .today-actions-card { padding: 18px; }
-  .today-actions-card .today-action-row { gap: 10px; }
   .today-action-menu summary > span { display: none; }
-  .today-actions-header-actions .btn-primary { padding: 10px 12px; font-size: 12px; }
-}
-@media (max-width: 600px) {
-  .today-actions-header { flex-direction: row; align-items: center; }
-  .today-actions-header-actions { width: auto; }
-  .today-actions-header-actions .btn-primary { width: auto; }
-  .today-actions-card .today-action-row { grid-template-columns: 34px minmax(0, 1fr) 44px; align-items: center; }
-  .today-actions-card .today-action-controls { grid-column: auto; }
-  .today-actions-card .today-action-check { min-height: 34px; width: 34px; height: 34px; }
 }
 
 /* Homework: full-width planning workspace, not an 880px list on a wide canvas. */

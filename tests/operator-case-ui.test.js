@@ -15,8 +15,10 @@ test("Today action queue bundle mounts parent-facing Hermes case cards", () => {
   assert.match(source, /Activity ·/);
   assert.match(source, /renderActionDetails/);
   assert.match(source, /aria-live="polite"/);
-  assert.match(source, /role="alert"/);
-  assert.match(source, /Try again/);
+  assert.match(source, /setAttribute\("role", "alert"\)/);
+  // Today shows Hermes only when it has cases: a failed load never renders an error card.
+  assert.match(source, /if \(!list\.querySelector\("\.hermes-op-case"\)\) panel\.hidden = true;/);
+  assert.doesNotMatch(source, /temporarily unavailable|hermes-op-retry/);
   assert.match(source, /actionHash/);
   assert.doesNotMatch(source, /executionToken/);
 });

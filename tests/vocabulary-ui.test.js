@@ -7,7 +7,10 @@ const source = fs.readFileSync('public/js/sat.js', 'utf8');
 
 function harness(getDailyVocabulary) {
   const elements = Object.fromEntries(['sat-activity', 'sat-word', 'sat-pos', 'sat-def', 'sat-example', 'sat-activity-feedback'].map(id => [id, {}]));
-  const buttons = Array.from({ length: 3 }, () => ({ disabled: false }));
+  // answerSatActivity now marks the correct/misuse option with a class
+  // (green/red state, per the redesign) — a no-op classList keeps this
+  // sandbox self-contained since the suite doesn't assert on it.
+  const buttons = Array.from({ length: 3 }, () => ({ disabled: false, classList: { add() {} } }));
   let credits = 0;
   const sandbox = {
     document: { getElementById: id => elements[id], querySelector: () => null, querySelectorAll: () => buttons },
