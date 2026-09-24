@@ -444,6 +444,13 @@ function rememberNewsDraft() {
 function renderNewsChoices() {
   const container = document.getElementById('news-choices');
   if (!container) return;
+  const helper = document.getElementById('news-helper-line');
+  const stories = newsChoices.filter((choice) => choice.article).length;
+  if (helper) {
+    helper.textContent = stories >= 3 ? 'Pick any of today’s stories — read one or all three.'
+      : stories === 2 ? 'Pick either of today’s stories — read one or both.'
+      : stories === 1 ? 'Today’s story is ready to read.' : '';
+  }
   container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}>${choice.article ? `<span class="news-choice-headline">${esc(choice.article.headline)}</span><span class="news-choice-meta">${esc(choice.label)} · ${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</span>` : `<span class="news-choice-empty">No recent ${esc(choice.label)} story today.</span>`}</button>`).join('');
 }
 
@@ -2506,7 +2513,8 @@ function renderAcademicChallenge(result) {
   const grid = document.getElementById('puzzle-grid-wrap');
   const max = chart ? Math.max(1, ...chart.values) : 1;
   const chartMarkup = chart ? `<table class="challenge-chart"><caption>${esc(chart.title)} (${esc(chart.unit)})</caption><tbody>${chart.labels.map((label, index) => `<tr><th scope="row">${esc(label)}</th><td><span class="challenge-bar-row"><span class="challenge-bar" role="img" aria-label="${esc(label)}: ${esc(chart.values[index])} ${esc(chart.unit)}"><span style="width:${Math.max(0, Math.min(100, chart.values[index] / max * 100))}%"></span></span><span class="challenge-bar-value">${esc(chart.values[index])}</span></span></td></tr>`).join('')}</tbody></table><p class="challenge-source"><a href="${esc(chart.source.url)}" target="_blank" rel="noopener noreferrer">${esc(chart.source.title)}</a> · ${esc(chart.source.publishedAt.slice(0, 10))}</p>` : '';
-  grid.innerHTML = `${chartMarkup}<p class="challenge-passage">${esc(question.passage)}</p><h3 class="challenge-question">${esc(question.prompt)}</h3><div class="quiz-options challenge-options">${question.options.map((option, index) => `<button type="button" class="quiz-option" onclick="answerAcademicChallenge(${index})"><span class="challenge-opt-letter">${String.fromCharCode(65 + index)}.</span> ${esc(option)}</button>`).join('')}</div>${question.attribution ? `<p class="puzzle-instructions">${esc(question.attribution)}</p>` : ''}<div id="academic-feedback" role="status"></div>`;
+  const passageRepeatsSource = !!chart && String(question.passage || '').trim() === `Data reported by ${chart.source.title}.`;
+  grid.innerHTML = `${chartMarkup}${question.passage && !passageRepeatsSource ? `<p class="challenge-passage">${esc(question.passage)}</p>` : ''}<h3 class="challenge-question">${esc(question.prompt)}</h3><div class="quiz-options challenge-options">${question.options.map((option, index) => `<button type="button" class="quiz-option" onclick="answerAcademicChallenge(${index})"><span class="challenge-opt-letter">${String.fromCharCode(65 + index)}.</span> ${esc(option)}</button>`).join('')}</div>${question.attribution ? `<p class="puzzle-instructions">${esc(question.attribution)}</p>` : ''}<div id="academic-feedback" role="status"></div>`;
   const progress = load(currentPuzzleProgressKey);
   if (Number.isInteger(progress?.choice)) answerAcademicChallenge(progress.choice, true);
 }
@@ -4803,7 +4811,9 @@ function snoozeTodayAction(id, preset, button) {
   return snoozeTodayActionFromSelect({ value: preset }, id);
 }
 
-function renderTodayActionRow(action, now) {
+// Today's preview rows carry one control (the ring, or Review homework);
+// the all-actions dialog passes withMenu to add snooze/delete.
+function renderTodayActionRow(action, now, withMenu = false) {
   const reviewHomework = !isKidSession() && action.sourceType === 'homework';
   const canManage = todayActionCanManage(action);
   const id = todayActionIdArg(action.id);
@@ -4834,7 +4844,7 @@ function renderTodayActionRow(action, now) {
 
   const controls = reviewHomework
     ? `<button type="button" class="btn-secondary today-mini-btn today-review-btn" onclick="reviewTodayHomework('${todayActionIdArg(action.sourceId || '')}')">Review homework ${todayIcon('arrow', 14)}</button>`
-    : canManage ? todayActionSnoozeOptions(action) : '';
+    : canManage && withMenu ? todayActionSnoozeOptions(action) : '';
 
   return `<article class="today-action-row" data-action-id="${idAttr}">
     ${lead}
@@ -4862,7 +4872,7 @@ function renderTodayActionSection(title, entries, now, id, laterCount) {
       <span class="today-action-section-count">${entries.length}</span>
     </div>
     ${laterCount ? `<div class="today-actions-later-note">${laterCount} action${laterCount === 1 ? '' : 's'} due later</div>` : ''}
-    <div class="today-action-list">${entries.map((entry) => renderTodayActionRow(entry.action || entry, now, !!entry.later)).join('')}</div>
+    <div class="today-action-list">${entries.map((entry) => renderTodayActionRow(entry.action || entry, now, true)).join('')}</div>
   </section>`;
 }
 
@@ -4903,7 +4913,7 @@ function renderAllFamilyActions() {
   const now = new Date();
   const groups = window.famActionQueue.groupActions(todayActionItems, now);
   const rows = groups.now.concat(groups.next7, groups.sharedNoDate, groups.later);
-  list.innerHTML = rows.map((action) => renderTodayActionRow(action, now, false)).join('') + renderTodayCompletedSection(groups.completed);
+  list.innerHTML = rows.map((action) => renderTodayActionRow(action, now, true)).join('') + renderTodayCompletedSection(groups.completed);
   if (!todayActionItems.length) list.innerHTML = '<p class="today-actions-empty">No family actions yet.</p>';
 }
 

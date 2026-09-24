@@ -40,7 +40,7 @@
 #tab-today .today-greeting-col { flex: 1 1 320px; min-width: 0; }
 #tab-today .today-greeting { margin: 0; color: var(--text); font: 650 34px/1.05 var(--today-font); letter-spacing: -.035em; text-wrap: balance; }
 #tab-today .today-summary { margin: 9px 0 0; color: var(--text-2); font: var(--t-lede); font-variant-numeric: tabular-nums; }
-#tab-today .today-summary > span { white-space: nowrap; }
+#tab-today .today-summary > span { display: inline-block; white-space: nowrap; }
 #tab-today .today-summary > span:not(:empty) ~ span:not(:empty)::before { content: "·"; margin: 0 .5em; }
 #tab-today .today-summary strong { color: var(--text); font-weight: 600; }
 #tab-today .today-summary .is-overdue { color: var(--c-red); font-weight: 600; }
@@ -66,6 +66,9 @@
 }
 @container today (max-width: 520px) {
   #tab-today .today-greeting { font-size: 28px; }
+  /* Phones: the summary's three phrases stack as clean lines, no separators. */
+  #tab-today .today-summary > span:not(:empty) { display: block; }
+  #tab-today .today-summary > span::before { content: none !important; }
   #tab-today .today-region { padding: 18px 16px 20px; }
   #tab-today .today-band { border-radius: 16px; }
 }
@@ -225,9 +228,9 @@
 #tab-today .schedule-kid { display: flex; align-items: center; }
 #tab-today .schedule-kid .kid-profile-avatar { width: 20px; height: 20px; font-size: .625rem; }
 #tab-today .today-now { display: grid; grid-template-columns: 72px 14px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: calc(100% + 16px); margin: 0 -8px; padding: 4px 8px; }
-#tab-today .today-now span { grid-column: 1; text-align: right; padding-right: 2px; color: var(--coral); font: var(--t-mono); text-transform: uppercase; letter-spacing: .06em; }
-#tab-today .today-now::before { content: ""; grid-column: 2; justify-self: center; width: 9px; height: 9px; border-radius: 50%; background: var(--coral); }
-#tab-today .today-now::after { content: ""; grid-column: 3 / -1; align-self: center; height: 2px; background: var(--coral); }
+#tab-today .today-now span { grid-column: 1; grid-row: 1; text-align: right; padding-right: 2px; color: var(--coral); font: var(--t-mono); text-transform: uppercase; letter-spacing: .06em; }
+#tab-today .today-now::before { content: ""; grid-column: 2; grid-row: 1; justify-self: center; width: 9px; height: 9px; border-radius: 50%; background: var(--coral); }
+#tab-today .today-now::after { content: ""; grid-column: 3 / -1; grid-row: 1; align-self: center; height: 2px; background: var(--coral); }
 #tab-today .today-tomorrow-label { font: var(--t-label); color: var(--text-2); }
 #tab-today .today-tomorrow-btn { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 8px 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
 #tab-today .today-tomorrow-btn .schedule-time { padding-top: 0; }
