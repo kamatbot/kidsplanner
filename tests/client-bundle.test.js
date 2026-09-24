@@ -74,9 +74,9 @@ test("meal status stays in Today and meal chat cards", () => {
   const source = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
   assert.match(source, /card\.type === 'menu' \|\| card\.type === 'meal' \|\| card\.sourceType === 'meal'/);
   assert.match(source, /href="\/meals"/);
-  assert.match(source, /Prep due today:/);
-  assert.match(source, /Shopping: \$\{pendingShoppingCount\} pending/);
-  assert.match(source, /Pantry low\/out:/);
+  assert.match(source, /Prep today:/);
+  assert.match(source, /\$\{pendingShoppingCount\} on the shopping list/);
+  assert.match(source, /pantry items low or out/);
 });
 
 test("Calendar keeps one main surface and header utility actions", () => {
