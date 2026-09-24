@@ -4550,6 +4550,7 @@ const TODAY_ICONS = {
   news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7.5 9h6M7.5 12.5h6M7.5 16h3.5"/>',
   puzzle: '<path d="M9 4.5a2 2 0 0 1 4 0V6h3a1 1 0 0 1 1 1v3h-1.5a2 2 0 0 0 0 4H17v3a1 1 0 0 1-1 1h-3v-1.5a2 2 0 0 0-4 0V18H6a1 1 0 0 1-1-1v-3h1.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h3z"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  bowl: '<path d="M4 13h16a1 1 0 0 1 1 1 7 7 0 0 1-7 7h-4a7 7 0 0 1-7-7 1 1 0 0 1 1-1Z"/><path d="M9 8c0-1 1-1.5 1-2.5S9 4 9 3"/><path d="M14 8c0-1 1-1.5 1-2.5S14 4 14 3"/>',
 };
 function todayIcon(name, size = 16) {
   const paths = TODAY_ICONS[name];
@@ -5359,6 +5360,9 @@ function renderTodayScheduleRow(ev, now) {
   const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
   const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const isPast = !!ev.time && (ev.endTime || ev.time) < nowHM;
+  const isMeal = ev.source === 'menu';
+  const title = isMeal ? String(ev.title || '').replace(/^\u{1F37D}\uFE0F?\s*/u, '') : ev.title;
+  const lead = isMeal ? `${todayIcon('bowl', 14)}<span class="today-sr">Dinner:</span>` : '';
   const icons = (ev.recurring ? `${todayIcon('repeat', 12)}<span class="today-sr">Repeats</span>` : '') +
     (ev.source === 'school' ? `${todayIcon('lock', 12)}<span class="today-sr">School event</span>` : '');
   const metaParts = [];
@@ -5370,7 +5374,7 @@ function renderTodayScheduleRow(ev, now) {
     <span class="schedule-time">${ev.time ? esc(fmt12(ev.time)) : 'All day'}</span>
     <span class="schedule-node" aria-hidden="true"></span>
     <span class="schedule-main">
-      <span class="schedule-title">${esc(ev.title)}${icons}</span>
+      <span class="schedule-title">${lead}${esc(title)}${icons}</span>
       ${meta ? `<span class="schedule-meta">${meta}</span>` : ''}
     </span>
     ${kidName ? `<span class="schedule-kid">${kidAvatarMarkup(ev.kidId)}<span class="today-sr">${kidName}</span></span>` : ''}
@@ -5512,7 +5516,7 @@ function renderTodayHabitsAndMomentum() {
 
   if (listEl) {
     if (!habitGoals.length) {
-      listEl.innerHTML = `<p class="today-empty-cta">Set a first goal — reading, practice, anything worth a streak. <a href="#" class="today-link" onclick="switchNavTab('goals');return false">Add one →</a></p>`;
+      listEl.innerHTML = `<p class="today-empty-cta">Set a first goal — reading, practice, anything worth a streak. <a href="#" class="today-link" onclick="switchNavTab('goals');return false">Add one ${todayIcon('arrow', 14)}</a></p>`;
     } else {
       const visible = habitGoals.slice(0, 4);
       listEl.innerHTML = visible.map(renderTodayHabitRow).join('') +

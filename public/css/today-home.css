@@ -152,6 +152,8 @@
 #tab-today .today-actions-list > .today-action-row:first-child .today-action-title { font: var(--t-title-lg); letter-spacing: -.01em; }
 #tab-today .today-action-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 4px; color: var(--text-2); font: var(--t-meta); font-variant-numeric: tabular-nums; }
 #tab-today .today-action-meta > *:not(:empty) ~ *:not(:empty)::before { content: "·"; margin: 0 .5em; }
+/* styles.css draws assignee/source as bordered pills; in the stack they are plain metadata. */
+#tab-today .today-action-meta > span { min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; }
 #tab-today .today-action-due { font-weight: 500; }
 #tab-today .today-action-due.overdue { color: var(--c-red); font-weight: 600; }
 #tab-today .today-action-due.today { color: var(--warn); font-weight: 600; }
@@ -206,6 +208,7 @@
 #tab-today .schedule-row.is-past .schedule-node::before { background: var(--panel); border: 2px solid var(--row-color, var(--accent)); }
 #tab-today .schedule-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 #tab-today .schedule-title { display: flex; align-items: center; gap: 6px; font: var(--t-title); letter-spacing: -.01em; }
+#tab-today .schedule-title > svg { color: var(--text-2); }
 #tab-today .schedule-row.is-past .schedule-title { color: var(--text-2); }
 #tab-today .schedule-meta { font: var(--t-meta); color: var(--text-2); }
 #tab-today .schedule-kid { display: flex; align-items: center; }
@@ -224,10 +227,11 @@
 #tab-today .today-fams-value { font: var(--t-meta); color: var(--text-2); }
 #tab-today .today-kid-row {
   display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 16px; column-gap: 12px; align-items: center;
-  width: 100%; padding: 12px 8px; border: 0; border-top: 1px solid var(--border); border-radius: 12px; background: none;
+  position: relative; width: 100%; padding: 12px 8px; border: 0; border-radius: 12px; background: none;
   color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: background-color .16s;
 }
-#tab-today #today-fams-body > .today-kid-row:first-child { border-top: 0; }
+/* Straight hairline between rows (a border-top would curve with the hover radius). */
+#tab-today .today-kid-row + .today-kid-row::before { content: ""; position: absolute; top: 0; left: 8px; right: 8px; height: 1px; background: var(--border); }
 #tab-today .today-kid-row:hover { background: var(--hover); }
 #tab-today .today-kid-row .kid-profile-avatar, #tab-today .today-fams-coin { width: 40px; height: 40px; font-size: 1rem; }
 #tab-today .today-fams-coin { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
