@@ -4526,6 +4526,37 @@ async function toggleHomeworkDone(id) {
    empty state instead of invented numbers. The Daily 5 card below reuses
    the existing quote/word/quiz/news widgets verbatim (see index.html).
 ============================================================ */
+/* Today icon set — one 24px grid, 2px round strokes, matching the sidebar.
+   Icons are decorative (aria-hidden); the control text or aria-label names
+   the action. Use these instead of emoji in Today chrome. */
+const TODAY_ICONS = {
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  chevron: '<path d="M9 6l6 6-6 6"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  cart: '<path d="M3 4h2.2l2.1 10.2a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.1L20.5 8H6.3"/><circle cx="9.5" cy="19.5" r="1.3"/><circle cx="17" cy="19.5" r="1.3"/>',
+  jar: '<path d="M8 3h8M7 6h10M7.5 6v12.5A2.5 2.5 0 0 0 10 21h4a2.5 2.5 0 0 0 2.5-2.5V6"/><path d="M7.5 11h9"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/>',
+  flame: '<path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z" fill="currentColor" stroke="none"/>',
+  pin: '<path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"/><path d="M12 14v7"/>',
+  pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  book: '<path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"/><path d="M4 21a2 2 0 0 1 2-2h14"/>',
+  quote: '<path d="M7 11H4.5A1.5 1.5 0 0 1 3 9.5v-3A1.5 1.5 0 0 1 4.5 5h3A1.5 1.5 0 0 1 9 6.5V12a6 6 0 0 1-4 5.6"/><path d="M18 11h-2.5A1.5 1.5 0 0 1 14 9.5v-3A1.5 1.5 0 0 1 15.5 5h3A1.5 1.5 0 0 1 20 6.5V12a6 6 0 0 1-4 5.6"/>',
+  news: '<path d="M4 5h13v14H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v8a2 2 0 0 1-2 2"/><path d="M7.5 9h6M7.5 12.5h6M7.5 16h3.5"/>',
+  puzzle: '<path d="M9 4.5a2 2 0 0 1 4 0V6h3a1 1 0 0 1 1 1v3h-1.5a2 2 0 0 0 0 4H17v3a1 1 0 0 1-1 1h-3v-1.5a2 2 0 0 0-4 0V18H6a1 1 0 0 1-1-1v-3h1.5a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1h3z"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+};
+function todayIcon(name, size = 16) {
+  const paths = TODAY_ICONS[name];
+  if (!paths) return '';
+  return `<svg class="today-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths}</svg>`;
+}
+
 function todaySetupFocusTarget(selector) {
   const target = document.querySelector(selector);
   if (!target) return;
