@@ -11,9 +11,14 @@
   max-width: 1280px;
   margin: 0 auto;
   padding-bottom: 40px;
-  /* One type scale for every Today module. Text rules use these tokens via
-     `font: var(--t-…)`; the only other sizes are the greeting (34px), the
-     quote of the day (20px) and the word of the day (26px). */
+  font: var(--t-body);
+  color: var(--text);
+}
+/* One type scale for every Today module, shared with the all-actions dialog
+   (it lives outside #tab-today). Text rules use these tokens via
+   `font: var(--t-…)`; the only other sizes are the greeting (34px), the
+   quote of the day (20px) and the word of the day (26px). */
+:is(#tab-today, #family-actions-dialog) {
   --today-font: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
   --today-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --t-h2: 650 18px/1.2 var(--today-font);
@@ -25,8 +30,6 @@
   --t-meta: 500 12.5px/1.45 var(--today-font);
   --t-tag: 600 11.5px/1 var(--today-font);
   --t-mono: 500 12px/1.4 var(--today-mono);
-  font: var(--t-body);
-  color: var(--text);
 }
 /* Legacy widget markup (h3/h4, tables, captions, blockquotes, cite) must not
    bring browser-default sizes into Today; modules restyle them explicitly. */
@@ -81,10 +84,10 @@
 #tab-today .today-count { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); color: var(--text-2); font: var(--t-tag); white-space: nowrap; font-variant-numeric: tabular-nums; }
 #tab-today .today-count:empty,
 #tab-today .today-count[hidden] { display: none; }
-#tab-today .today-mini-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: var(--t-label); cursor: pointer; transition: border-color .15s, color .15s, background-color .15s; }
-#tab-today .today-mini-btn { white-space: nowrap; }
+:is(#tab-today, #family-actions-dialog) .today-mini-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: var(--t-label); cursor: pointer; transition: border-color .15s, color .15s, background-color .15s; }
+:is(#tab-today, #family-actions-dialog) .today-mini-btn { white-space: nowrap; }
 #tab-today .today-mini-btn svg { flex: none; }
-#tab-today .today-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+:is(#tab-today, #family-actions-dialog) .today-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
 #tab-today .today-mini-btn[aria-expanded="true"] { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
 #tab-today .today-link { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--accent); font: var(--t-label); text-decoration: none; cursor: pointer; }
 #tab-today .today-link svg { flex: none; transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
@@ -133,48 +136,49 @@
 
 /* ---------- Family Actions stack (Band 1 left) ---------- */
 #tab-today .today-actions-list { display: flex; flex-direction: column; }
-#tab-today .today-action-row {
+:is(#tab-today, #family-actions-dialog) .today-action-row {
   display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 14px; align-items: start;
   padding: 14px 0; border: 0; border-top: 1px solid var(--border); margin: 0; min-height: 0; background: none;
   max-height: 400px; opacity: 1;
   transition: max-height .28s cubic-bezier(.2, .8, .2, 1), opacity .28s cubic-bezier(.2, .8, .2, 1), padding .28s cubic-bezier(.2, .8, .2, 1), border-color .28s cubic-bezier(.2, .8, .2, 1);
 }
 #tab-today .today-actions-list > .today-action-row:first-child,
-#tab-today #family-actions-dialog-list > .today-action-row:first-child { border-top: 0; }
-#tab-today .today-action-row.is-completing { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-color: transparent; }
-#tab-today .today-action-row.is-completing .today-action-check { background: var(--c-green); border-color: var(--c-green); color: var(--on-accent); }
-#tab-today .today-action-row.is-completing .today-action-title { text-decoration: line-through; color: var(--text-2); }
-#tab-today .today-action-check {
+:is(#tab-today, #family-actions-dialog) .today-action-row.is-completing { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-color: transparent; }
+:is(#tab-today, #family-actions-dialog) .today-action-row.is-completing .today-action-check { background: var(--c-green); border-color: var(--c-green); color: var(--on-accent); }
+:is(#tab-today, #family-actions-dialog) .today-action-row.is-completing .today-action-title { text-decoration: line-through; color: var(--text-2); }
+:is(#tab-today, #family-actions-dialog) .today-action-check {
   justify-self: start; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--text-2);
   background: none; color: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer;
   transition: border-color .16s, color .16s, background-color .16s;
 }
-#tab-today .today-action-check:hover, #tab-today .today-action-check:focus-visible { border-color: var(--accent); color: var(--accent); }
+:is(#tab-today, #family-actions-dialog) .today-action-check:hover, :is(#tab-today, #family-actions-dialog) .today-action-check:focus-visible { border-color: var(--accent); color: var(--accent); }
 /* 26px circle, 44px hit area; styles.css's narrow-screen min-height would stretch it into an oval. */
-#tab-today .today-action-check { position: relative; min-height: 0; flex: none; }
-#tab-today .today-action-check::after { content: ""; position: absolute; inset: -9px; }
-#tab-today .today-action-lead { display: flex; align-items: center; width: 26px; height: 26px; }
-#tab-today .today-action-lead .kid-profile-avatar { width: 26px; height: 26px; font-size: .75rem; }
-#tab-today .today-action-lead.is-static::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--border); margin-left: 10px; }
-#tab-today .today-action-body { min-width: 0; }
-#tab-today .today-action-context { font: var(--t-meta); color: var(--text-2); margin-bottom: 2px; }
-#tab-today .today-action-title { font: var(--t-title); letter-spacing: -.01em; }
+:is(#tab-today, #family-actions-dialog) .today-action-check { position: relative; min-height: 0; flex: none; }
+:is(#tab-today, #family-actions-dialog) .today-action-check::after { content: ""; position: absolute; inset: -9px; }
+:is(#tab-today, #family-actions-dialog) .today-action-lead { display: flex; align-items: center; width: 26px; height: 26px; }
+:is(#tab-today, #family-actions-dialog) .today-action-lead .kid-profile-avatar { width: 26px; height: 26px; font-size: .75rem; }
+:is(#tab-today, #family-actions-dialog) .today-action-lead.is-static::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--border); margin-left: 10px; }
+:is(#tab-today, #family-actions-dialog) .today-action-body { min-width: 0; }
+:is(#tab-today, #family-actions-dialog) .today-action-context { font: var(--t-meta); color: var(--text-2); margin-bottom: 2px; }
+:is(#tab-today, #family-actions-dialog) .today-action-title { font: var(--t-title); letter-spacing: -.01em; }
 #tab-today .today-actions-list > .today-action-row:first-child .today-action-title { font: var(--t-title-lg); letter-spacing: -.01em; }
-#tab-today .today-action-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 4px; color: var(--text-2); font: var(--t-meta); font-variant-numeric: tabular-nums; }
-#tab-today .today-action-meta > *:not(:empty) ~ *:not(:empty)::before { content: "·"; margin: 0 .5em; }
+:is(#tab-today, #family-actions-dialog) .today-action-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 4px; color: var(--text-2); font: var(--t-meta); font-variant-numeric: tabular-nums; }
+:is(#tab-today, #family-actions-dialog) .today-action-meta > *:not(:empty) ~ *:not(:empty)::before { content: "·"; margin: 0 .5em; }
 /* styles.css draws assignee/source as bordered pills; in the stack they are plain metadata. */
-#tab-today .today-action-meta > span { min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; }
-#tab-today .today-action-due { font-weight: 500; }
-#tab-today .today-action-due.overdue { color: var(--c-red); font-weight: 600; }
-#tab-today .today-action-due.today { color: var(--warn); font-weight: 600; }
-#tab-today .today-action-snoozed { color: var(--text-2); font-weight: 600; }
-#tab-today .today-action-notes { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; font: var(--t-meta); color: var(--text-2); white-space: normal; }
-#tab-today .today-action-controls { grid-column: auto; justify-self: end; }
+:is(#tab-today, #family-actions-dialog) .today-action-meta > span { min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; }
+:is(#tab-today, #family-actions-dialog) .today-action-due { font-weight: 500; }
+:is(#tab-today, #family-actions-dialog) .today-action-due.overdue { color: var(--c-red); font-weight: 600; }
+:is(#tab-today, #family-actions-dialog) .today-action-due.today { color: var(--warn); font-weight: 600; }
+:is(#tab-today, #family-actions-dialog) .today-action-snoozed { color: var(--text-2); font-weight: 600; }
+:is(#tab-today, #family-actions-dialog) .today-action-notes { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; font: var(--t-meta); color: var(--text-2); white-space: normal; }
+:is(#tab-today, #family-actions-dialog) .today-action-controls { grid-column: auto; justify-self: end; }
 #tab-today .today-actions-list > .today-action-row:first-child .today-review-btn { border-color: transparent; background: var(--accent); color: var(--on-accent); }
 #tab-today .today-actions-list > .today-action-row:first-child .today-action-check { border: 2px solid var(--accent); }
-/* Snooze is a quiet icon button; the completion ring is the row's control. */
-#tab-today .today-action-menu summary { min-height: 34px; min-width: 34px; padding: 0; justify-content: center; border-radius: 10px; }
-#tab-today .today-action-menu summary > span { display: none; }
+/* Snooze lives in the all-actions dialog as a labelled quiet button. */
+#family-actions-dialog .today-action-menu summary { min-height: 40px; padding: 0 12px; gap: 6px; border-radius: 10px; font: var(--t-label); white-space: nowrap; }
+#family-actions-dialog .today-action-menu summary > span { display: inline; }
+#family-actions-dialog .today-action-row:first-child { border-top: 0; }
+#family-actions-dialog > header h2 { font: var(--t-h2); letter-spacing: -.02em; }
 #tab-today .today-actions-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 28px 0; }
 #tab-today .today-actions-empty-icon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
 #tab-today .today-actions-empty strong { font: var(--t-title); color: var(--text); }
@@ -302,8 +306,6 @@
   #tab-today .today-band-now .today-action-menu summary { min-height: 44px; }
   /* Snooze stays beside the title as a 44px icon button; only the wide
      Review homework button drops under the text. */
-  #tab-today .today-action-menu summary { min-width: 44px; padding: 0; justify-content: center; }
-  #tab-today .today-action-menu summary > span { display: none; }
   #tab-today .today-action-row:has(.today-review-btn) { grid-template-columns: 28px minmax(0, 1fr); }
   #tab-today .today-action-row:has(.today-review-btn) .today-action-controls { grid-column: 2 / -1; justify-self: start; margin-top: 10px; }
   #tab-today .today-kid-row { grid-template-columns: 40px minmax(0, 1fr) 16px; }
