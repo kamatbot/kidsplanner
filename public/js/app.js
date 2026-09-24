@@ -444,7 +444,7 @@ function rememberNewsDraft() {
 function renderNewsChoices() {
   const container = document.getElementById('news-choices');
   if (!container) return;
-  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}><span class="news-choice-cat">${esc(choice.label)}</span>${choice.article ? `<span class="news-choice-headline">${esc(choice.article.headline)}</span><span class="news-choice-meta">${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</span>` : '<span class="news-choice-empty">No recent story available in this category.</span>'}</button>`).join('');
+  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}>${choice.article ? `<span class="news-choice-headline">${esc(choice.article.headline)}</span><span class="news-choice-meta">${esc(choice.label)} · ${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</span>` : `<span class="news-choice-empty">No recent ${esc(choice.label)} story today.</span>`}</button>`).join('');
 }
 
 function selectNewsStory(index) {
@@ -2841,6 +2841,8 @@ function setStreakDisplays(count) {
     const el = document.getElementById(id);
     if (el) el.textContent = count;
   });
+  // Today shows "Start a streak" instead of a zero-day count.
+  document.querySelector('#tab-today .daily5-streak')?.classList.toggle('is-zero', !Number(count));
 }
 
 function renderStreak() {
@@ -4653,16 +4655,16 @@ function renderTodaySetupCard() {
   const skipBtn = document.getElementById('today-setup-skip-btn');
   if (skipBtn) skipBtn.hidden = false;
 
-  content.innerHTML = `<ol class="today-setup-steps">${state.steps.map((step) => {
-    const status = step.complete
-      ? '<span class="today-setup-step-status is-complete" aria-hidden="true"></span><span>Done</span>'
-      : step.pending
-        ? '<span class="today-setup-step-status is-pending" aria-hidden="true"></span><span>Checking…</span>'
-        : '<span class="today-setup-step-status" aria-hidden="true"></span><span>Not yet</span>';
-    const action = `<button type="button" class="today-mini-btn today-setup-step-action" onclick="takeTodaySetupStep('${step.id}')">${step.id === 'action' ? 'Add action' : step.id === 'parent' ? 'Invite parent' : step.id === 'school' ? 'Connect calendar' : 'Add kid'}</button>`;
-    return `<li class="today-setup-step${step.complete ? ' is-complete' : ''}">
+  // Only what is left to do; progress lives in the card's head.
+  const progress = document.getElementById('today-setup-progress');
+  if (progress) progress.textContent = `${state.steps.filter((step) => step.complete).length} of ${state.steps.length} set up`;
+  content.innerHTML = `<ol class="today-setup-steps">${state.steps.filter((step) => !step.complete).map((step) => {
+    const control = step.pending
+      ? '<span class="today-setup-step-pending">Checking…</span>'
+      : `<button type="button" class="today-mini-btn today-setup-step-action" onclick="takeTodaySetupStep('${step.id}')">${step.id === 'action' ? 'Add action' : step.id === 'parent' ? 'Invite parent' : step.id === 'school' ? 'Connect calendar' : 'Add kid'}</button>`;
+    return `<li class="today-setup-step">
       <div class="today-setup-step-copy"><div class="today-setup-step-title">${step.label}</div><p>${step.description}</p></div>
-      <div class="today-setup-step-meta">${status}${step.complete ? '' : action}</div>
+      <div class="today-setup-step-meta">${control}</div>
     </li>`;
   }).join('')}</ol>`;
 }
@@ -4818,16 +4820,17 @@ function renderTodayActionRow(action, now) {
       ? `<span class="today-action-lead">${kidAvatarMarkup(kidId)}</span>`
       : '<span class="today-action-lead is-static" aria-hidden="true"></span>';
 
-  const context = reviewHomework
-    ? `<div class="today-action-context">Homework due for ${esc(kidNameFor(kidId) || 'your child')}</div>`
-    : '';
-
-  const meta = [
-    `<span class="today-action-due ${due.className}">${esc(due.text)}</span>`,
-    `<span class="today-action-assignee">${esc(todayActionAssigneeLabel(action))}</span>`,
-    snoozed ? '<span class="today-action-snoozed">Snoozed</span>' : '',
-    source ? `<span class="today-action-source">${esc(source)}</span>` : '',
-  ].filter(Boolean).join('');
+  const meta = (reviewHomework
+    ? [
+      `<span class="today-action-due ${due.className}">${esc(due.text)}</span>`,
+      `<span class="today-action-context">Homework due for ${esc(kidNameFor(kidId) || 'your child')}</span>`,
+    ]
+    : [
+      `<span class="today-action-due ${due.className}">${esc(due.text)}</span>`,
+      `<span class="today-action-assignee">${esc(todayActionAssigneeLabel(action))}</span>`,
+      snoozed ? '<span class="today-action-snoozed">Snoozed</span>' : '',
+      source ? `<span class="today-action-source">${esc(source)}</span>` : '',
+    ]).filter(Boolean).join('');
 
   const controls = reviewHomework
     ? `<button type="button" class="btn-secondary today-mini-btn today-review-btn" onclick="reviewTodayHomework('${todayActionIdArg(action.sourceId || '')}')">Review homework ${todayIcon('arrow', 14)}</button>`
@@ -4836,7 +4839,6 @@ function renderTodayActionRow(action, now) {
   return `<article class="today-action-row" data-action-id="${idAttr}">
     ${lead}
     <div class="today-action-body">
-      ${context}
       <div class="today-action-title">${title}</div>
       <div class="today-action-meta">${meta}</div>
       ${action.notes ? `<div class="today-action-notes">${esc(action.notes)}</div>` : ''}
@@ -4953,10 +4955,13 @@ function renderTodayActionQueue() {
   const now = new Date();
   const preview = window.famActionQueue.previewActions(todayActionItems, now);
   const canShowContents = todayActionQueueState === 'ready' || todayActionItems.length > 0;
+  const eligible = todayActionItems.filter((item) => item && item.status !== 'done' &&
+    !(item.status === 'snoozed' && Date.parse(item.snoozedUntil) > now.getTime()));
+  const nowGroup = window.famActionQueue.groupActions(eligible, now).now;
   const count = document.getElementById('today-actions-count');
   if (count) {
-    count.textContent = `${preview.length} to do`;
-    count.hidden = !canShowContents;
+    count.textContent = nowGroup.length ? `${nowGroup.length} need${nowGroup.length === 1 ? 's' : ''} you` : '';
+    count.hidden = !canShowContents || !nowGroup.length;
   }
   listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now)).join('') ||
     (canShowContents ? `<div class="today-actions-empty"><span class="today-actions-empty-icon" aria-hidden="true">${todayIcon('check', 18)}</span><strong>Nothing waiting right now.</strong><p>Enjoy a little breathing room.</p></div>` : '');
@@ -4971,9 +4976,6 @@ function renderTodayActionQueue() {
     if (!canShowContents) {
       summaryNeedsEl.innerHTML = '';
     } else {
-      const eligible = todayActionItems.filter((item) => item && item.status !== 'done' &&
-        !(item.status === 'snoozed' && Date.parse(item.snoozedUntil) > now.getTime()));
-      const nowGroup = window.famActionQueue.groupActions(eligible, now).now;
       const todayIso = isoDate(now);
       const overdueCount = nowGroup.filter((action) => {
         const due = window.famActionQueue.effectiveDue(action, now);
@@ -5388,7 +5390,7 @@ function todayScheduleMeta(ev) {
 }
 
 function renderTodayScheduleRow(ev, now) {
-  const color = ev.kidId ? (kidColorFor(ev.kidId) || 'var(--accent)') : 'var(--accent)';
+  const color = ev.kidId ? (kidColorFor(ev.kidId) || 'var(--text-2)') : 'var(--text-2)';
   const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
   const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const isPast = !!ev.time && (ev.endTime || ev.time) < nowHM;
@@ -5439,26 +5441,21 @@ function renderTodaySchedule(todayIso) {
     summaryEventsEl.textContent = todays.length === 0 ? 'No events today' : todays.length === 1 ? '1 event today' : `${todays.length} events today`;
   }
 
+  const now = new Date();
+  const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  // The day is over once every event has a time and it has ended; the
+  // evening view then looks ahead to tomorrow as a full timeline.
+  const dayOver = todays.length > 0 && todays.every((ev) => ev.time && (ev.endTime || ev.time) < nowHM);
   if (!todays.length) {
     listEl.innerHTML = `<p class="today-empty">Nothing on the calendar today. <button type="button" class="today-link" onclick="openAddEventModal()">Add an event</button></p>`;
   } else {
-    const now = new Date();
-    const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const timed = todays.filter((ev) => ev.time);
-    const lastTimed = timed[timed.length - 1];
-    const showNowLine = !!lastTimed && nowHM < (lastTimed.endTime || lastTimed.time);
-    const nowLineIndex = showNowLine ? todays.findIndex((ev) => ev.time && ev.time > nowHM) : -1;
-
+    const nowMarker = '<div class="today-now" aria-hidden="true"><span>Now</span></div>';
+    const hasTimed = todays.some((ev) => ev.time);
+    const nowLineIndex = hasTimed ? todays.findIndex((ev) => ev.time && ev.time > nowHM) : -1;
     const visible = todays.slice(0, 6);
-    let rowsHtml = visible.map((ev, index) => {
-      const marker = index === nowLineIndex ? '<div class="today-now" aria-hidden="true"><span>Now</span></div>' : '';
-      return marker + renderTodayScheduleRow(ev, now);
-    }).join('');
-    // Nothing left to start before the last event ends — the line belongs
-    // after the final row rather than nowhere at all.
-    if (showNowLine && nowLineIndex === -1 && visible.length === todays.length) {
-      rowsHtml += '<div class="today-now" aria-hidden="true"><span>Now</span></div>';
-    }
+    let rowsHtml = visible.map((ev, index) => (index === nowLineIndex ? nowMarker : '') + renderTodayScheduleRow(ev, now)).join('');
+    // Everything has started: the line sits after the last row.
+    if (hasTimed && nowLineIndex === -1 && visible.length === todays.length) rowsHtml += nowMarker;
     if (todays.length > 6) {
       rowsHtml += `<a href="#" class="today-link today-schedule-more" onclick="switchNavTab('calendar');return false">+${todays.length - 6} more today</a>`;
     }
@@ -5469,9 +5466,17 @@ function renderTodaySchedule(todayIso) {
   const tomorrowEvents = eventsOnDay(events, tomorrowIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   if (tomorrowWrap) tomorrowWrap.hidden = !tomorrowEvents.length;
   if (tomorrowRow && tomorrowEvents.length) {
-    const first = tomorrowEvents[0];
-    const more = tomorrowEvents.length > 1 ? ` +${tomorrowEvents.length - 1} more` : '';
-    tomorrowRow.innerHTML = `<button type="button" class="today-tomorrow-btn" onclick="showDetail('${first.id}','${first.occurrenceDate || first.date}')"><span class="schedule-time">${first.time ? esc(fmt12(first.time)) : 'All day'}</span><span>${esc(first.title)}${esc(more)}</span></button>`;
+    if (dayOver || !todays.length) {
+      // Nothing left today: tomorrow gets the timeline treatment (up to 3).
+      const startOfTomorrow = parseIso(tomorrowIso);
+      const more = tomorrowEvents.length > 3
+        ? `<a href="#" class="today-link today-schedule-more" onclick="switchNavTab('calendar');return false">+${tomorrowEvents.length - 3} more tomorrow</a>` : '';
+      tomorrowRow.innerHTML = `<div class="today-timeline">${tomorrowEvents.slice(0, 3).map((ev) => renderTodayScheduleRow(ev, startOfTomorrow)).join('')}</div>${more}`;
+    } else {
+      const first = tomorrowEvents[0];
+      const more = tomorrowEvents.length > 1 ? ` +${tomorrowEvents.length - 1} more` : '';
+      tomorrowRow.innerHTML = `<button type="button" class="today-tomorrow-btn" onclick="showDetail('${first.id}','${first.occurrenceDate || first.date}')"><span class="schedule-time">${first.time ? esc(fmt12(first.time)) : 'All day'}</span><span>${esc(first.title)}${esc(more)}</span></button>`;
+    }
   }
 }
 

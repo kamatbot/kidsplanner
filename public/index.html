@@ -217,19 +217,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </div>
           </header>
 
-          <section class="today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
-            <div class="today-setup-header">
-              <div>
-                <h2 id="today-setup-title">Make Fam ETC useful this week</h2>
-                <p id="today-setup-intro">A few small connections now will save time later. You can come back whenever you're ready.</p>
-              </div>
-              <div class="today-setup-header-actions">
-                <button type="button" class="today-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Dismiss</button>
-              </div>
-            </div>
-            <div id="today-setup-content"></div>
-          </section>
-
           <!-- Band 1: what needs you (the stack) beside today's schedule.
                action-queue.js inserts the Hermes case panel before
                #today-actions-card, so it stays inside the stack region. -->
@@ -313,6 +300,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </section>
           </div>
 
+          <section class="today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
+            <div class="today-setup-header">
+              <div>
+                <h2 id="today-setup-title">Make Fam ETC useful this week <span class="today-count" id="today-setup-progress"></span></h2>
+                <p id="today-setup-intro">A few small connections now will save time later. You can come back whenever you're ready.</p>
+              </div>
+              <div class="today-setup-header-actions">
+                <button type="button" class="today-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Dismiss</button>
+              </div>
+            </div>
+            <div id="today-setup-content"></div>
+          </section>
+
           <!-- Band 2: each child at a glance (homework load, habits, fams)
                beside tonight's dinner and the family's habits. -->
           <div class="today-band today-band-home">
@@ -363,7 +363,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   <div class="today-section-actions">
                     <span class="daily5-streak">
                       <svg class="streak-flame" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>
-                      <span><span id="daily5-streak-count">0</span>-day streak</span>
+                      <span class="streak-count"><span id="daily5-streak-count">0</span>-day streak</span>
+                      <span class="streak-zero">Start a streak</span>
                     </span>
                   </div>
                 </div>
