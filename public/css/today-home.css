@@ -19,9 +19,11 @@
   --t-h2: 650 18px/1.2 var(--today-font);
   --t-title-lg: 650 17px/1.35 var(--today-font);
   --t-title: 600 15px/1.4 var(--today-font);
+  --t-lede: 400 15px/1.5 var(--today-font);
   --t-body: 400 14px/1.55 var(--today-font);
   --t-label: 600 13px/1.35 var(--today-font);
   --t-meta: 500 12.5px/1.45 var(--today-font);
+  --t-tag: 600 11.5px/1 var(--today-font);
   --t-mono: 500 12px/1.4 var(--today-mono);
   font: var(--t-body);
   color: var(--text);
@@ -36,12 +38,12 @@
 /* ---------- Header: greeting + one-line day summary ---------- */
 #tab-today .today-header { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px 24px; margin: 2px 0 20px; }
 #tab-today .today-greeting-col { flex: 1 1 320px; min-width: 0; }
-#tab-today .today-greeting { margin: 0; color: var(--text); font-size: 34px; font-weight: 650; line-height: 1.05; letter-spacing: -.035em; text-wrap: balance; }
-#tab-today .today-summary { margin: 9px 0 0; color: var(--text-2); font-size: 14.5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+#tab-today .today-greeting { margin: 0; color: var(--text); font: 650 34px/1.05 var(--today-font); letter-spacing: -.035em; text-wrap: balance; }
+#tab-today .today-summary { margin: 9px 0 0; color: var(--text-2); font: var(--t-lede); font-variant-numeric: tabular-nums; }
 #tab-today .today-summary > span:not(:empty) ~ span:not(:empty)::before { content: "·"; margin: 0 .5em; }
 #tab-today .today-summary strong { color: var(--text); font-weight: 600; }
 #tab-today .today-summary .is-overdue { color: var(--c-red); font-weight: 600; }
-#tab-today .today-sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 0 0 5px; color: var(--text-2); font-size: 12.5px; line-height: 1.3; }
+#tab-today .today-sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 0 0 5px; color: var(--text-2); font: var(--t-meta); }
 #tab-today .today-sync-status[hidden] { display: none; }
 #tab-today .today-sync-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c-green); }
 #tab-today .today-sync-dot.is-stale { background: var(--c-amber); }
@@ -69,21 +71,21 @@
 
 /* ---------- Section heads, counts, quiet buttons, links ---------- */
 #tab-today .today-section-head { display: flex; align-items: center; gap: 10px; min-height: 36px; margin: 0 0 12px; }
-#tab-today .today-section-head h2 { margin: 0; color: var(--text); font-size: 18px; font-weight: 650; line-height: 1.2; letter-spacing: -.02em; }
-#tab-today .today-section-head h3 { margin: 0; color: var(--text); font-size: 15px; font-weight: 650; line-height: 1.25; letter-spacing: -.01em; }
+#tab-today .today-section-head h2 { margin: 0; color: var(--text); font: var(--t-h2); letter-spacing: -.02em; }
+#tab-today .today-section-head h3 { margin: 0; color: var(--text); font: var(--t-title); letter-spacing: -.01em; }
 #tab-today .today-section-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-#tab-today .today-count { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); color: var(--text-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#tab-today .today-count { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); color: var(--text-2); font: var(--t-tag); white-space: nowrap; font-variant-numeric: tabular-nums; }
 #tab-today .today-count:empty,
 #tab-today .today-count[hidden] { display: none; }
-#tab-today .today-mini-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: border-color .15s, color .15s, background-color .15s; }
+#tab-today .today-mini-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: var(--t-label); cursor: pointer; transition: border-color .15s, color .15s, background-color .15s; }
 #tab-today .today-mini-btn svg { flex: none; }
 #tab-today .today-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
 #tab-today .today-mini-btn[aria-expanded="true"] { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
-#tab-today .today-link { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+#tab-today .today-link { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--accent); font: var(--t-label); text-decoration: none; cursor: pointer; }
 #tab-today .today-link svg { flex: none; transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
 #tab-today .today-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 #tab-today .today-link:hover svg { transform: translateX(2px); }
-#tab-today .today-empty { margin: 0; padding: 4px 0 2px; color: var(--text-2); font-size: 14px; line-height: 1.5; }
+#tab-today .today-empty { margin: 0; padding: 4px 0 2px; color: var(--text-2); font: var(--t-body); }
 #tab-today .today-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 #tab-today .today-icon { flex: none; }
 
