@@ -267,7 +267,7 @@
 #tab-today .today-band-learn .btn-primary { font: var(--t-label); min-height: 40px; padding: 0 18px; border-radius: 10px; }
 
 /* ---------- 9. News-data / SAT academic challenge ---------- */
-#tab-today .challenge-chart { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
+#tab-today .challenge-chart { width: 100%; border-collapse: collapse; margin: 14px 0 4px; }
 #tab-today .challenge-chart caption { font: var(--t-label); color: var(--text); text-align: left; margin-bottom: 10px; }
 #tab-today .challenge-chart th { font: var(--t-body); font-weight: 500; color: var(--text); text-align: left; width: 38%; padding: 6px 12px 6px 0; vertical-align: middle; }
 #tab-today .challenge-chart td { padding: 6px 0; vertical-align: middle; }

@@ -143,6 +143,9 @@
   transition: border-color .16s, color .16s, background-color .16s;
 }
 #tab-today .today-action-check:hover, #tab-today .today-action-check:focus-visible { border-color: var(--accent); color: var(--accent); }
+/* 26px circle, 44px hit area; styles.css's narrow-screen min-height would stretch it into an oval. */
+#tab-today .today-action-check { position: relative; min-height: 0; flex: none; }
+#tab-today .today-action-check::after { content: ""; position: absolute; inset: -9px; }
 #tab-today .today-action-lead { display: flex; align-items: center; width: 26px; height: 26px; }
 #tab-today .today-action-lead .kid-profile-avatar { width: 26px; height: 26px; font-size: .75rem; }
 #tab-today .today-action-lead.is-static::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--border); margin-left: 10px; }
@@ -159,7 +162,7 @@
 #tab-today .today-action-due.today { color: var(--warn); font-weight: 600; }
 #tab-today .today-action-snoozed { color: var(--accent); font-weight: 600; }
 #tab-today .today-action-notes { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; font: var(--t-meta); color: var(--text-2); white-space: normal; }
-#tab-today .today-action-controls { justify-self: end; }
+#tab-today .today-action-controls { grid-column: auto; justify-self: end; }
 #tab-today .today-actions-list > .today-action-row:first-child .today-review-btn { border-color: transparent; background: var(--accent); color: var(--on-accent); }
 #tab-today .today-action-menu summary { min-height: 34px; min-width: 0; padding: 0 12px; gap: 6px; font: var(--t-label); border-radius: 10px; white-space: nowrap; }
 #tab-today .today-actions-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 28px 0; }
@@ -173,6 +176,7 @@
   padding: 0; margin-top: 4px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--accent);
   font: var(--t-label); cursor: pointer;
 }
+#tab-today .today-actions-footer { border-top: 0; padding-top: 0; }
 #tab-today .family-actions-view-all:hover { text-decoration: underline; text-underline-offset: 3px; }
 #tab-today .family-actions-view-all svg { transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
 #tab-today .family-actions-view-all:hover svg { transform: translateX(2px); }
@@ -286,10 +290,13 @@
 @container today (max-width: 520px) {
   #tab-today .today-band-now .today-review-btn,
   #tab-today .today-band-now .today-action-menu summary { min-height: 44px; }
-  #tab-today .today-action-row { grid-template-columns: 28px minmax(0, 1fr); }
-  #tab-today .today-action-controls { grid-column: 1 / -1; justify-self: stretch; margin-top: 8px; }
-  #tab-today .today-action-controls .today-review-btn,
-  #tab-today .today-action-controls .today-action-menu summary { width: 100%; justify-content: center; }
+  /* Snooze stays beside the title as a 44px icon button; only the wide
+     Review homework button drops under the text. */
+  #tab-today .today-action-menu summary { min-width: 44px; padding: 0; justify-content: center; }
+  #tab-today .today-action-menu summary > span { display: none; }
+  #tab-today .today-action-row:has(.today-review-btn) { grid-template-columns: 28px minmax(0, 1fr); }
+  #tab-today .today-action-row:has(.today-review-btn) .today-action-controls { grid-column: 2 / -1; justify-self: start; margin-top: 10px; }
   #tab-today .today-kid-row { grid-template-columns: 40px minmax(0, 1fr) 16px; }
-  #tab-today .today-kid-fams { grid-column: 1 / -1; align-items: flex-start; text-align: left; margin-top: 8px; padding-left: 52px; }
+  #tab-today .today-kid-row > svg.today-icon { grid-column: 3; grid-row: 1; }
+  #tab-today .today-kid-fams { grid-column: 2 / -1; grid-row: 2; align-items: flex-start; text-align: left; margin-top: 8px; }
 }

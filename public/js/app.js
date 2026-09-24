@@ -444,7 +444,7 @@ function rememberNewsDraft() {
 function renderNewsChoices() {
   const container = document.getElementById('news-choices');
   if (!container) return;
-  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="btn-secondary news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}><strong>${esc(choice.label)}</strong><span>${esc(choice.article ? choice.article.headline : 'No recent story available in this category.')}</span>${choice.article ? `<small>${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</small>` : ''}</button>`).join('');
+  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}><span class="news-choice-cat">${esc(choice.label)}</span>${choice.article ? `<span class="news-choice-headline">${esc(choice.article.headline)}</span><span class="news-choice-meta">${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</span>` : '<span class="news-choice-empty">No recent story available in this category.</span>'}</button>`).join('');
 }
 
 function selectNewsStory(index) {
