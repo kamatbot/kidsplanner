@@ -18,6 +18,10 @@ function setup() {
     daily5DoneKey: () => `${context.sessionUser.id}_${context.day}`,
     load: (key) => storage.get(key), save: (key, value) => storage.set(key, value),
     applyDaily5Done() {},
+    // loadDailyPuzzle now renders the puzzle-icon via todayIcon() (Horizon
+    // icon set) instead of an emoji; this suite doesn't assert on icon
+    // markup, so a no-op stub is enough to keep the sandbox self-contained.
+    todayIcon: () => '',
     markDaily5Done: (part) => { storage.set(context.daily5DoneKey(), { ...storage.get(context.daily5DoneKey()), [part]: true }); },
     renderDailyPuzzle: () => { inputs = ['1', '2'].map((solution) => ({ value: '', dataset: { solution }, classList: { add() {}, remove() {} } })); },
     window: { auth: { getDailyPuzzle: async () => ({ available: true, date: context.day, type: 'sudoku', sudoku: { puzzle: '00', solution: '12' } }) } },
@@ -130,7 +134,7 @@ test('Wednesday completion requires both the Sudoku and the mental math answer',
 test('scheduled multiple choice requires a correct answer and rejects stale-account answers', async () => {
   const h=setup(); h.context.esc=String;
   h.elements['academic-feedback']={};
-  const buttons=Array.from({length:4},()=>({setAttribute(){}}));
+  const buttons=Array.from({length:4},()=>({setAttribute(){}, classList:{toggle(){}}}));
   h.context.document.querySelectorAll=()=>buttons;
   h.context.window.auth.getDailyPuzzle=async()=>({available:true,date:h.context.day,type:'sat',question:{id:'one',passage:'Evidence',prompt:'Which?',options:['A','B','C','D'],answerIndex:2,explanations:['No','No','Yes','No']}});
   await h.context.loadDailyPuzzle();

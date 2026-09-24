@@ -41,7 +41,7 @@ async function renderSatActivity() {
       <div class="fam-sat-placement-list">
         ${sample.map((s) => `<label class="fam-sat-placement-item"><input type="checkbox" data-word="${esc(s.word)}"> ${esc(s.word)}</label>`).join('')}
       </div>
-      <button type="button" class="btn-secondary" onclick="submitSatPlacement()">Continue</button>`;
+      <button type="button" class="today-mini-btn" onclick="submitSatPlacement()">Continue</button>`;
   } else if (placementEl) {
     placementEl.hidden = true;
   }
@@ -76,7 +76,7 @@ async function renderSatActivity() {
     if (typeof applyWeeklyQuote === 'function') applyWeeklyQuote(null);
     const word = document.getElementById('sat-word');
     if (word) word.textContent = 'Vocabulary unavailable';
-    container.innerHTML = '<p role="status">Could not load today’s shared word. Please try again.</p><button type="button" class="btn-secondary" onclick="renderSatActivity()">Retry</button>';
+    container.innerHTML = '<p role="status">Could not load today’s shared word. Please try again.</p><button type="button" class="today-mini-btn" onclick="renderSatActivity()">Retry</button>';
   }
 }
 
@@ -98,7 +98,11 @@ async function answerSatActivity(chosenIndex) {
   const correct = chosenIndex === challenge.answerIndex;
   window.famChildProgress?.report('word', 'started');
   const btns = document.querySelectorAll('#sat-activity .fam-sat-opt');
-  btns.forEach((b) => { b.disabled = true; });
+  btns.forEach((b, index) => {
+    b.disabled = true;
+    if (index === challenge.answerIndex) b.classList.add('correct');
+    else if (index === chosenIndex) b.classList.add('wrong');
+  });
   const fb = document.getElementById('sat-activity-feedback');
   if (fb) {
     fb.innerHTML = `<p>${correct ? 'You found the misuse.' : 'Not quite. Here is how each sentence uses the word.'}</p>${challenge.options.map((option, index) => `<p><strong>${index + 1}. ${index === challenge.answerIndex ? 'Misuse' : 'Correct use'}:</strong> ${esc(option.explanation)}</p>`).join('')}`;
@@ -152,7 +156,7 @@ function renderWordBankPanel() {
     return;
   }
   const rows = wordBankState.words.map((w) => {
-    const stateLabel = w.state === 'mastered' ? '⭐ Mastered' : w.state === 'known' ? '✅ Known' : `📖 Learning (${w.correctCount || 0}/3)`;
+    const stateLabel = w.state === 'mastered' ? 'Mastered' : w.state === 'known' ? 'Known' : `Learning (${w.correctCount || 0}/3)`;
     return `<div class="fam-wb-row"><span class="fam-wb-word">${esc(w.word)}</span><span class="fam-wb-state">${stateLabel}</span></div>`;
   }).join('');
   panel.innerHTML = header + rows;
@@ -195,7 +199,7 @@ function renderWordQuizQuestion() {
     return;
   }
   if (index >= questions.length) {
-    panel.innerHTML = '<p class="fam-wb-quiz-done">🎉 Pop quiz complete — great work!</p>';
+    panel.innerHTML = '<p class="fam-wb-quiz-done">Pop quiz complete — great work!</p>';
     return;
   }
   const q = questions[index];
@@ -219,7 +223,7 @@ async function answerWordQuiz(chosenIndex) {
     else if (i === chosenIndex) b.classList.add('wrong');
   });
   const fb = document.getElementById('word-quiz-feedback');
-  if (fb) { fb.textContent = correct ? '✅ Correct!' : '❌ Not quite.'; fb.className = 'fam-sat-feedback ' + (correct ? 'correct' : 'wrong'); }
+  if (fb) { fb.textContent = correct ? 'Correct!' : 'Not quite.'; fb.className = 'fam-sat-feedback ' + (correct ? 'correct' : 'wrong'); }
   try {
     const res = await window.auth.wordBankInteract(q.word, correct);
     if (res && res.entry) mergeWordBankEntry(res.entry);

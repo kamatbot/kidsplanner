@@ -422,7 +422,7 @@ function renderNewsItem(n, now) {
   if (summary) summary.textContent = typeof n.summary === 'string' ? n.summary : '';
   const link = document.getElementById('news-link');
   if (link) {
-    link.textContent = '🔗 Read the full story';
+    link.textContent = 'Read the full story';
     setNewsLinkState(link, newsArticleLink(n));
   }
   const prompt = document.getElementById('news-reflect-prompt');
@@ -472,7 +472,10 @@ async function loadRecentNews(requestToken, now) {
       const choice = data && Array.isArray(data.choices) && data.choices.find((item) => item.category === category);
       return { category, label, article: choice && isRecentNewsItem(choice.article, currentTime) ? choice.article : null };
     });
-    clearNewsState(newsChoices.some((choice) => choice.article) ? 'Choose a story above. Read any or all three.' : NEWS_EMPTY_STATE);
+    // A fake headline while nothing is picked is exactly what the redesign
+    // removed (#news-headline:empty collapses to nothing in CSS) — only the
+    // true empty-state gets a visible message here.
+    clearNewsState(newsChoices.some((choice) => choice.article) ? '' : NEWS_EMPTY_STATE);
     renderNewsChoices();
   } catch (e) {
     if (requestToken === newsRequestToken && scope === daily5DoneKey()) {
@@ -2279,12 +2282,19 @@ function markDaily5Done(part) {
 }
 function applyDaily5Done() {
   const s = load(daily5DoneKey()) || {};
+  const parts = [['news', 'News reflection'], ['quote', 'Quote reflection'], ['word', 'Word activity']];
   const quest = document.getElementById('daily-quest-summary');
   if (quest) {
-    const parts = [['news', 'News reflection'], ['quote', 'Quote reflection'], ['word', 'Word activity']];
     quest.textContent = `News, Quote & Word · ${parts.filter(([key]) => s[key]).length} of 3 complete`;
     quest.title = parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
   }
+  // CSS shows a small check after a tab's label when it carries data-done.
+  parts.forEach(([key]) => {
+    const tab = document.getElementById(`daily5-tab-${key}`);
+    if (!tab) return;
+    if (s[key]) tab.setAttribute('data-done', 'true');
+    else tab.removeAttribute('data-done');
+  });
   // Brain teaser completion belongs to the separate challenge section.
   const bt = document.getElementById('widget-quiz');
   if (bt) bt.hidden = !!s.bt;
@@ -2346,10 +2356,27 @@ function applyWeeklyQuote(quote) {
   document.getElementById('quote-reflect-prompt').textContent = currentQuote ? `How could you practise ${quote.theme.toLowerCase()} today?` : 'What matters to you today?';
 }
 
+// Marks today's chip in the challenge region's day-schedule row and fills
+// the matching .today-sr sentence for screen readers (the chips themselves
+// are aria-hidden). Chip day membership lives in each chip's data-days
+// attribute so this never needs to be kept in sync with a parallel list.
+function markTodayChallengeChip() {
+  const day = String(new Date().getDay()); // 0=Sun..6=Sat
+  let name = '';
+  document.querySelectorAll('#tab-today .challenge-chip').forEach((chip) => {
+    const isToday = (chip.dataset.days || '').split(',').includes(day);
+    chip.classList.toggle('is-today', isToday);
+    if (isToday) name = (chip.textContent.split('·')[1] || '').trim();
+  });
+  const sr = document.getElementById('challenge-today-sr');
+  if (sr) sr.textContent = name ? `Today: ${name}` : '';
+}
+
 function renderWidgets() {
   const now = new Date();
   const requestToken = ++newsRequestToken;
   renderNewsLoading();
+  markTodayChallengeChip();
 
   // Quote and word share the server's Monday-based weekly edition.
   currentQuote = null;
@@ -2402,7 +2429,7 @@ async function loadDailyPuzzle(now) {
     const puzzlePanel = document.getElementById('daily5-panel-puzzle');
     if (teaserPanel) teaserPanel.hidden = result.type !== 'brainteaser';
     if (puzzlePanel) puzzlePanel.hidden = result.type === 'brainteaser';
-    if (result.type === 'brainteaser') { applyDaily5Done(); return; }
+    if (result.type === 'brainteaser') { document.getElementById('puzzle-status').textContent = ''; applyDaily5Done(); return; }
     if (!result.available) throw new Error(result.instructions || 'Puzzle unavailable');
     currentDailyPuzzle = result;
     // The complete board identity prevents restoring answers into a changed puzzle.
@@ -2411,8 +2438,8 @@ async function loadDailyPuzzle(now) {
     const title = document.getElementById('puzzle-title');
     const icon = document.getElementById('puzzle-icon');
     const instructions = document.getElementById('puzzle-instructions');
-    if (title) title.textContent = result.title || "Today's puzzle";
-    if (icon) icon.textContent = result.type === 'sudoku' ? '🔢' : '🧩';
+    if (title) title.textContent = result.title ? result.title.charAt(0).toUpperCase() + result.title.slice(1).toLowerCase() : "Today's puzzle";
+    if (icon) icon.innerHTML = todayIcon(result.question ? 'target' : 'puzzle', 16);
     if (instructions) instructions.textContent = result.instructions || '';
     for (const id of ['puzzle-clear-btn', 'puzzle-check-btn']) {
       const button = document.getElementById(id);
@@ -2440,7 +2467,7 @@ async function loadDailyPuzzle(now) {
 function renderMentalMath(math) {
   const root = document.getElementById('puzzle-mental-math');
   if (!root) return;
-  root.innerHTML = math ? `<section aria-label="Mental math shortcut"><h3>${esc(math.title)}</h3><p>${esc(math.prompt)}</p><label>Your answer <input id="mental-math-answer" inputmode="decimal" autocomplete="off" oninput="resetMentalMath()"></label> <button type="button" class="btn-secondary" onclick="checkMentalMath()">Check shortcut</button><p id="mental-math-feedback" role="status"></p></section>` : '';
+  root.innerHTML = math ? `<section class="challenge-mental-math" aria-label="Mental math shortcut"><h3>${esc(math.title)}</h3><p>${esc(math.prompt)}</p><label>Your answer <input id="mental-math-answer" inputmode="decimal" autocomplete="off" oninput="resetMentalMath()"></label> <button type="button" class="today-mini-btn" onclick="checkMentalMath()">Check shortcut</button><p id="mental-math-feedback" role="status"></p></section>` : '';
   const progress = load(currentPuzzleProgressKey);
   if (math && progress?.mathAnswer) document.getElementById('mental-math-answer').value = progress.mathAnswer;
   if (math && progress?.mathSolved) document.getElementById('mental-math-feedback').textContent = `Correct. ${math.explanation}`;
@@ -2472,11 +2499,14 @@ function checkMentalMath() {
 }
 
 function renderAcademicChallenge(result) {
+  const status = document.getElementById('puzzle-status');
+  if (status) status.textContent = '';
   const question = result.question;
   const chart = result.chart;
   const grid = document.getElementById('puzzle-grid-wrap');
-  const chartMarkup = chart ? `<table class="news-data-chart"><caption>${esc(chart.title)} (${esc(chart.unit)})</caption><tbody>${chart.labels.map((label, index) => `<tr><th scope="row">${esc(label)}</th><td><meter min="0" max="${Math.max(1, ...chart.values)}" value="${chart.values[index]}" aria-label="${esc(label)}">${chart.values[index]}</meter> ${esc(chart.values[index])} ${esc(chart.unit)}</td></tr>`).join('')}</tbody></table><p><a href="${esc(chart.source.url)}" target="_blank" rel="noopener noreferrer">${esc(chart.source.title)}</a> · ${esc(chart.source.publishedAt.slice(0, 10))}</p>` : '';
-  grid.innerHTML = `${chartMarkup}<p>${esc(question.passage)}</p><h3>${esc(question.prompt)}</h3><div class="quiz-options">${question.options.map((option, index) => `<button type="button" class="quiz-opt quiz-option" onclick="answerAcademicChallenge(${index})">${String.fromCharCode(65 + index)}. ${esc(option)}</button>`).join('')}</div>${question.attribution ? `<p class="puzzle-instructions">${esc(question.attribution)}</p>` : ''}<div id="academic-feedback" role="status"></div>`;
+  const max = chart ? Math.max(1, ...chart.values) : 1;
+  const chartMarkup = chart ? `<table class="challenge-chart"><caption>${esc(chart.title)} (${esc(chart.unit)})</caption><tbody>${chart.labels.map((label, index) => `<tr><th scope="row">${esc(label)}</th><td><span class="challenge-bar-row"><span class="challenge-bar" role="img" aria-label="${esc(label)}: ${esc(chart.values[index])} ${esc(chart.unit)}"><span style="width:${Math.max(0, Math.min(100, chart.values[index] / max * 100))}%"></span></span><span class="challenge-bar-value">${esc(chart.values[index])}</span></span></td></tr>`).join('')}</tbody></table><p class="challenge-source"><a href="${esc(chart.source.url)}" target="_blank" rel="noopener noreferrer">${esc(chart.source.title)}</a> · ${esc(chart.source.publishedAt.slice(0, 10))}</p>` : '';
+  grid.innerHTML = `${chartMarkup}<p class="challenge-passage">${esc(question.passage)}</p><h3 class="challenge-question">${esc(question.prompt)}</h3><div class="quiz-options challenge-options">${question.options.map((option, index) => `<button type="button" class="quiz-option" onclick="answerAcademicChallenge(${index})"><span class="challenge-opt-letter">${String.fromCharCode(65 + index)}.</span> ${esc(option)}</button>`).join('')}</div>${question.attribution ? `<p class="puzzle-instructions">${esc(question.attribution)}</p>` : ''}<div id="academic-feedback" role="status"></div>`;
   const progress = load(currentPuzzleProgressKey);
   if (Number.isInteger(progress?.choice)) answerAcademicChallenge(progress.choice, true);
 }
@@ -2490,8 +2520,10 @@ function answerAcademicChallenge(choice, restoring = false) {
   buttons.forEach((button, index) => {
     button.disabled = correct;
     button.setAttribute('aria-pressed', String(index === choice));
+    button.classList.toggle('correct', correct && index === choice);
+    button.classList.toggle('wrong', !correct && index === choice);
   });
-  document.getElementById('academic-feedback').innerHTML = `<p>${correct ? 'Correct — challenge complete.' : 'Not quite. Read the explanations and try again.'}</p>${question.explanations.map((explanation, index) => `<p><strong>${String.fromCharCode(65 + index)}.</strong> ${esc(explanation)}</p>`).join('')}`;
+  document.getElementById('academic-feedback').innerHTML = `<p>${correct ? 'Correct — challenge complete.' : 'Not quite. Read the explanations and try again.'}</p>${question.explanations.map((explanation, index) => `<p class="challenge-explain"><strong>${String.fromCharCode(65 + index)}.</strong> ${esc(explanation)}</p>`).join('')}`;
   if (!restoring) {
     save(currentPuzzleProgressKey, { choice, solved: correct });
     if (correct) markDaily5Done('puzzle');
@@ -2685,7 +2717,7 @@ function checkDailyPuzzle() {
     return;
   }
   status.textContent = correct === inputs.length
-    ? 'You did it — every answer is correct! 🎉'
+    ? 'You did it — every answer is correct!'
     : unanswered
       ? `${unanswered} square${unanswered === 1 ? '' : 's'} still need an answer.`
       : `${correct} of ${inputs.length} squares are correct — take another look.`;
@@ -2737,7 +2769,7 @@ function renderBrainTeaser() {
     document.getElementById('quiz-question').textContent = 'No brain teasers to show right now — check back tomorrow!';
     document.getElementById('quiz-options').innerHTML = '';
     document.getElementById('quiz-feedback').textContent = '';
-    document.getElementById('btn-next-q').style.display = 'none';
+    document.getElementById('btn-next-q').hidden = true;
     if (progressEl) progressEl.textContent = '';
     return;
   }
@@ -2745,13 +2777,13 @@ function renderBrainTeaser() {
   const q = brainTeaserQuestions[brainTeaserIndex];
   if (progressEl) progressEl.textContent = `${brainTeaserIndex + 1}/${total}`;
   document.getElementById('quiz-question').innerHTML =
-    (q.resurfaced ? '<span class="fam-bt-hint">👀 seen before</span> ' : '') + esc(q.q);
+    (q.resurfaced ? '<span class="fam-bt-hint">Seen before</span> ' : '') + esc(q.q);
   document.getElementById('quiz-options').innerHTML = q.options.map((opt, i) =>
     `<button class="quiz-opt" onclick="answerBrainTeaserQ(${i})">${esc(opt)}</button>`
   ).join('');
   document.getElementById('quiz-feedback').textContent = '';
   document.getElementById('quiz-feedback').className   = 'quiz-feedback';
-  document.getElementById('btn-next-q').style.display  = 'none';
+  document.getElementById('btn-next-q').hidden = true;
 }
 
 async function answerBrainTeaserQ(chosen) {
@@ -2771,14 +2803,14 @@ async function answerBrainTeaserQ(chosen) {
   const fb = document.getElementById('quiz-feedback');
   const exp = q.exp || q._exp || '';
   if (correct) {
-    fb.textContent = `✅ Correct! ${exp}`;
+    fb.textContent = `Correct. ${exp}`;
     fb.className   = 'quiz-feedback correct';
     incrementStreak();
   } else {
-    fb.textContent = `❌ Not quite. ${exp}`;
+    fb.textContent = `Not quite. ${exp}`;
     fb.className   = 'quiz-feedback wrong';
   }
-  document.getElementById('btn-next-q').style.display = '';
+  document.getElementById('btn-next-q').hidden = false;
 
   if (!String(q.qid || '').startsWith('local_')) {
     try { await window.auth.answerBrainTeaser(q.qid, correct); } catch (e) { /* best effort */ }
@@ -2792,10 +2824,10 @@ function nextQuestion() {
     brainTeaserIndex++;
     renderBrainTeaser();
   } else {
-    document.getElementById('quiz-question').textContent = "🎉 That's today's brain teasers done — nice work!";
+    document.getElementById('quiz-question').textContent = "That's today's brain teasers done — nice work!";
     document.getElementById('quiz-options').innerHTML = '';
     document.getElementById('quiz-feedback').textContent = '';
-    document.getElementById('btn-next-q').style.display = 'none';
+    document.getElementById('btn-next-q').hidden = true;
     const scope = brainTeaserScope;
     setTimeout(() => { if (scope === brainTeaserScope && scope === daily5DoneKey()) markDaily5Done('bt'); }, 1500);
   }

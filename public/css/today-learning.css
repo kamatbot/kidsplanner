@@ -1,0 +1,326 @@
+/* Today — Band 3 "learning" region (Daily 3 + Brain teaser/puzzle).
+   Owned by Agent B. Horizon tokens only; every text rule uses the
+   #tab-today type scale from today-home.css (--t-h2 … --t-mono). This file
+   only overrides legacy styles.css/app.css rules with #tab-today-scoped
+   selectors — it never edits those files.
+   Two small CSS-mask icons (external link, check) are used for the few
+   places JS sets plain text via .textContent (headline, "read the full
+   story", chart source) where an inline <svg> child would be wiped out by
+   that assignment; everywhere else icons are literal inline SVG (static
+   markup) or todayIcon() (loadDailyPuzzle only). */
+
+#tab-today .today-band-learn {
+  --icon-ext: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 4h6v6'/%3E%3Cpath d='M20 4l-9 9'/%3E%3Cpath d='M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'/%3E%3C/svg%3E");
+  --icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+
+/* today-home.css's shared controls set `display` unconditionally under an
+   #tab-today-scoped rule (e.g. .today-mini-btn{display:inline-flex}), which
+   outranks the browser's own [hidden]{display:none} — an ID beats a bare
+   attribute selector. Every hidden-toggled control reusing those primitives
+   needs display re-asserted here at higher specificity, or JS setting
+   .hidden=true silently does nothing. */
+#tab-today .today-band-learn :is(.today-mini-btn, .today-link, .btn-primary)[hidden] { display: none; }
+#tab-today #daily5-quiz-done[hidden] { display: none; }
+
+/* ---------- 1. Region shells ---------- */
+#tab-today .daily5-card { display: block; overflow: visible; overflow-y: visible; min-height: auto; flex: none; }
+
+/* Shared by daily-quest-summary / quote-theme / word-root / puzzle-instructions. */
+#tab-today .puzzle-instructions { font: var(--t-meta); color: var(--text-2); margin: 0; }
+
+/* ---------- 2. Daily 3 head + streak + tabs ---------- */
+#tab-today .today-daily3 .daily5-streak { display: inline-flex; align-items: center; gap: 6px; font: var(--t-label); color: var(--text-2); }
+#tab-today .streak-flame { color: var(--coral); flex: none; }
+#tab-today #daily-quest-summary { margin: 2px 0 0; }
+
+#tab-today .daily5-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 3px;
+  gap: 2px;
+  margin: 14px 0 16px;
+}
+#tab-today .daily5-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-2);
+  font: var(--t-label);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color .2s cubic-bezier(.2,.8,.2,1), color .2s cubic-bezier(.2,.8,.2,1);
+}
+#tab-today .daily5-tabs button[aria-selected="true"] {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent);
+}
+#tab-today .daily5-tabs button[data-done="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 12px; height: 12px;
+  background-color: var(--c-green);
+  -webkit-mask: var(--icon-check) center / contain no-repeat;
+  mask: var(--icon-check) center / contain no-repeat;
+}
+@container today (max-width: 520px) { #tab-today .daily5-tabs button { min-height: 44px; } }
+@media (pointer: coarse) { #tab-today .daily5-tabs button { min-height: 44px; } }
+
+/* Shared "panel top row" (small utility icon button beside a meta line). */
+#tab-today .daily3-panel-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+#tab-today .today-mini-btn.icon-only { width: 34px; padding: 0; justify-content: center; flex: none; }
+
+/* ---------- 3. News panel ---------- */
+#tab-today .news-helper-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; }
+#tab-today .news-helper-line { font: var(--t-meta); color: var(--text-2); margin: 0; }
+#tab-today #news-badge { display: none; }
+
+#tab-today .news-choices { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+#tab-today .news-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color .2s cubic-bezier(.2,.8,.2,1);
+}
+#tab-today .news-choice:hover:not(:disabled) { background: var(--hover); }
+#tab-today .news-choice:disabled { cursor: default; }
+#tab-today .news-choice[aria-pressed="true"] { background: var(--accent-soft); }
+#tab-today .news-choice-cat { font: var(--t-meta); color: var(--text-2); }
+#tab-today .news-choice-headline { font: var(--t-title); color: var(--text); }
+#tab-today .news-choice[aria-pressed="true"] .news-choice-headline { color: var(--accent); }
+#tab-today .news-choice-meta { font: var(--t-meta); color: var(--text-2); }
+#tab-today .news-choice-empty { font: var(--t-body); color: var(--text-2); }
+
+/* Headline doubles as the loading/empty-state line (plain text, no href) —
+   :empty hides it when nothing is selected yet but stories exist, so no fake
+   headline shows; .news-link-disabled (set by setNewsLinkState) styles the
+   loading/empty text as a muted status line instead of a title link. */
+#tab-today #news-headline {
+  display: block;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font: var(--t-title);
+  color: var(--text);
+  text-decoration: none;
+}
+#tab-today #news-headline:hover { color: var(--accent); text-decoration: underline; }
+#tab-today #news-headline.news-link-disabled { font: var(--t-body); color: var(--text-2); cursor: default; }
+#tab-today #news-headline.news-link-disabled:hover { color: var(--text-2); text-decoration: none; }
+#tab-today #news-headline:empty { display: none; }
+#tab-today #news-more-btn { display: none; }
+
+#tab-today #news-details { display: block; margin: 16px 0 0; padding: 0; }
+#tab-today #news-details[hidden] { display: none; }
+#tab-today .news-summary { font: var(--t-body); color: var(--text); margin: 0 0 10px; }
+#tab-today .news-link { margin: 0 0 14px; }
+#tab-today #news-reflect-prompt.fam-reflect-prompt { font: var(--t-label); color: var(--text-2); margin: 0 0 8px; }
+#tab-today #news-reflect-text.fam-reflect-textarea { min-height: 88px; border-radius: 12px; border: 1px solid var(--border); font: var(--t-body); padding: 10px 12px; }
+
+#tab-today #news-headline:not(.news-link-disabled)::after,
+#tab-today #news-link::after,
+#tab-today .challenge-source a::after {
+  content: "";
+  display: inline-block;
+  width: 12px; height: 12px;
+  margin-left: 5px;
+  vertical-align: -1px;
+  background-color: currentColor;
+  -webkit-mask: var(--icon-ext) center / contain no-repeat;
+  mask: var(--icon-ext) center / contain no-repeat;
+}
+
+/* ---------- 4. Quote panel (flip via display, not 3D transform) ---------- */
+#tab-today .quote-mark { color: var(--text-2); margin: 0 0 10px; display: block; }
+#tab-today .quote-text {
+  font: 500 20px/1.45 var(--today-font);
+  font-style: normal;
+  color: var(--text);
+  margin: 0 0 10px;
+  quotes: none;
+}
+#tab-today .quote-text::before, #tab-today .quote-text::after { content: none; }
+#tab-today .quote-author { font: var(--t-meta); font-style: normal; color: var(--text-2); display: block; margin: 0 0 16px; }
+#tab-today #quote-flip-inner { position: relative; }
+#tab-today .quote-face-back { display: none; }
+#tab-today #quote-flip-inner.flipped .quote-face-front { display: none; }
+#tab-today #quote-flip-inner.flipped .quote-face-back { display: block; }
+#tab-today #quote-reflect-prompt.fam-reflect-prompt { font: var(--t-label); color: var(--text-2); margin: 0 0 8px; }
+#tab-today #quote-reflect-text.fam-reflect-textarea { min-height: 88px; border-radius: 12px; border: 1px solid var(--border); font: var(--t-body); padding: 10px 12px; }
+#tab-today .quote-back-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+
+/* ---------- 5. Word panel ---------- */
+#tab-today #sat-word { font: 650 26px/1.1 var(--today-font); letter-spacing: -.02em; color: var(--text); margin: 0 0 4px; }
+#tab-today #sat-pos { font: var(--t-meta); font-style: normal; color: var(--text-2); margin: 0 0 8px; }
+#tab-today #sat-def { font: var(--t-body); color: var(--text); margin: 0 0 8px; }
+#tab-today #sat-example { display: block; font: var(--t-body); color: var(--text-2); font-style: normal; margin: 0 0 12px; }
+
+#tab-today .fam-sat-placement,
+#tab-today .fam-sat-wordbank,
+#tab-today .fam-sat-quiz {
+  background: none;
+  border-radius: 0;
+  padding: 12px 0 0;
+  margin: 12px 0 0;
+  border-top: 1px solid var(--border);
+  max-height: none;
+}
+#tab-today .fam-sat-placement > summary { font: var(--t-label); color: var(--accent); }
+#tab-today .fam-sat-placement-title,
+#tab-today .fam-sat-task-title,
+#tab-today .fam-wb-quiz-prompt { font: var(--t-label); color: var(--text); margin-bottom: 8px; }
+#tab-today .fam-sat-placement-list,
+#tab-today .fam-sat-options { font: var(--t-body); }
+#tab-today .fam-wb-stats,
+#tab-today .fam-wb-quiz-progress { font: var(--t-meta); color: var(--text-2); }
+#tab-today .fam-wb-row { font: var(--t-body); border-color: var(--border); }
+#tab-today .fam-wb-word { font-weight: 600; }
+#tab-today .fam-wb-state { font: var(--t-meta); color: var(--text-2); }
+#tab-today .fam-wb-quiz-done { font: var(--t-body); color: var(--text-2); }
+#tab-today .fam-sat-feedback { font: var(--t-body); font-weight: 400; }
+#tab-today .fam-sat-footer { margin-top: 16px; }
+
+/* Weekly word lesson (rendered inside #sat-activity). */
+#tab-today .weekly-word-lesson { margin-bottom: 12px; }
+#tab-today .weekly-word-lesson h3 { font: var(--t-title); color: var(--text); }
+#tab-today .weekly-word-lesson h4 { font: var(--t-label); color: var(--text); }
+#tab-today .weekly-word-lesson p,
+#tab-today .weekly-word-lesson li { font: var(--t-body); color: var(--text); }
+#tab-today .weekly-word-lesson ul { margin: 6px 0; padding-left: 20px; }
+
+/* ---------- 6. Shared option-button look (Word / brain teaser / challenge) ---------- */
+#tab-today :is(.quiz-opt, .quiz-option, .fam-sat-opt) {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  font: var(--t-body);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s cubic-bezier(.2,.8,.2,1), background-color .2s cubic-bezier(.2,.8,.2,1);
+}
+#tab-today :is(.quiz-opt, .quiz-option, .fam-sat-opt):hover:not(:disabled) { border-color: var(--accent); }
+#tab-today :is(.quiz-opt, .quiz-option, .fam-sat-opt):disabled { cursor: default; }
+/* #puzzle-grid-wrap .quiz-option[aria-pressed="true"] in styles.css (legacy,
+   pre-dates this redesign) ties this rule's specificity under :is() — the
+   #puzzle-grid-wrap anchor on the .quiz-option branch below guarantees this
+   wins regardless. */
+#tab-today #puzzle-grid-wrap .quiz-option.correct,
+#tab-today .quiz-opt.correct,
+#tab-today .fam-sat-opt.correct { border-color: var(--c-green); background: color-mix(in srgb, var(--c-green) 10%, var(--panel)); }
+#tab-today #puzzle-grid-wrap .quiz-option.wrong,
+#tab-today .quiz-opt.wrong,
+#tab-today .fam-sat-opt.wrong { border-color: var(--c-red); background: color-mix(in srgb, var(--c-red) 10%, var(--panel)); }
+/* Check icon is scoped to the news-data/SAT challenge options only — the
+   Word panel and brain teaser correct states are color-only, per spec. */
+#tab-today .quiz-option.correct::after {
+  content: "";
+  display: inline-block;
+  width: 14px; height: 14px;
+  margin-left: 6px;
+  vertical-align: -2px;
+  background-color: var(--c-green);
+  -webkit-mask: var(--icon-check) center / contain no-repeat;
+  mask: var(--icon-check) center / contain no-repeat;
+}
+#tab-today .challenge-opt-letter { font: var(--t-label); color: var(--text-2); }
+#tab-today .quiz-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@container today (max-width: 520px) { #tab-today .quiz-options { grid-template-columns: 1fr; } }
+
+#tab-today .quiz-feedback { font: var(--t-body); font-weight: 400; margin-top: 12px; }
+#tab-today .fam-bt-hint { font: var(--t-tag); color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 2px 6px; margin-right: 4px; }
+
+/* ---------- 7. Challenge region: head + day chips ---------- */
+#tab-today .challenge-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+#tab-today .challenge-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text-2); font: var(--t-tag); white-space: nowrap; }
+#tab-today .challenge-chip.is-today { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
+/* ---------- 8. Puzzle header + status ---------- */
+#tab-today .puzzle-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+#tab-today .puzzle-icon { display: inline-flex; color: var(--text-2); flex: none; }
+#tab-today .puzzle-icon svg { display: block; }
+#tab-today .puzzle-title { font: var(--t-title); color: var(--text); }
+#tab-today .puzzle-status { font: var(--t-meta); color: var(--text-2); margin: 9px 0 0; font-weight: inherit; }
+#tab-today .puzzle-actions .today-mini-btn,
+#tab-today .puzzle-actions .btn-primary { min-height: 40px; }
+#tab-today .today-band-learn .btn-primary { font: var(--t-label); min-height: 40px; padding: 0 18px; border-radius: 10px; }
+
+/* ---------- 9. News-data / SAT academic challenge ---------- */
+#tab-today .challenge-chart { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
+#tab-today .challenge-chart caption { font: var(--t-label); color: var(--text); text-align: left; margin-bottom: 10px; }
+#tab-today .challenge-chart th { font: var(--t-body); font-weight: 500; color: var(--text); text-align: left; width: 38%; padding: 6px 12px 6px 0; vertical-align: middle; }
+#tab-today .challenge-chart td { padding: 6px 0; vertical-align: middle; }
+#tab-today .challenge-bar-row { display: flex; align-items: center; gap: 8px; }
+#tab-today .challenge-bar { flex: 1; display: block; height: 8px; border-radius: 999px; background: var(--grid); overflow: hidden; }
+#tab-today .challenge-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+#tab-today .challenge-bar-value { flex: none; font: var(--t-mono); color: var(--text-2); font-variant-numeric: tabular-nums; }
+#tab-today .challenge-source { font: var(--t-meta); color: var(--text-2); margin: 10px 0 0; }
+#tab-today .challenge-source a { color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
+#tab-today .challenge-source a:hover { color: var(--accent); }
+#tab-today .challenge-passage { font: var(--t-body); color: var(--text); margin: 12px 0; }
+#tab-today .challenge-question { font: var(--t-title); color: var(--text); margin: 14px 0 10px; }
+#tab-today #academic-feedback { font: var(--t-body); color: var(--text); margin-top: 12px; }
+#tab-today .challenge-explain { font: var(--t-meta); color: var(--text-2); margin-top: 6px; }
+
+/* ---------- 10. Mental math (Wed) ---------- */
+#tab-today .challenge-mental-math { margin: 0 0 16px; padding: 0 0 16px; border-bottom: 1px solid var(--border); }
+#tab-today .challenge-mental-math h3 { font: var(--t-title); color: var(--text); margin: 0 0 8px; }
+#tab-today .challenge-mental-math p { font: var(--t-body); color: var(--text); margin: 0 0 10px; }
+#tab-today .challenge-mental-math label { display: flex; align-items: center; gap: 8px; font: var(--t-label); color: var(--text-2); margin: 0 0 10px; }
+#tab-today .challenge-mental-math input {
+  min-height: 40px;
+  width: 130px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font: var(--t-mono);
+  font-variant-numeric: tabular-nums;
+}
+#tab-today .challenge-mental-math #mental-math-feedback { font: var(--t-body); color: var(--text); margin: 10px 0 0; }
+
+/* ---------- 11. Sudoku / crossword grids ---------- */
+#tab-today .sudoku-cell,
+#tab-today .crossword-cell input,
+#tab-today .sudoku-cell input {
+  font: var(--t-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-transform: uppercase;
+}
+/* Documented exception: at 28px (24px narrow) the crossword cell has no
+   room for an 11.5px --t-tag clue number, so it keeps the pre-existing 8px
+   size rather than the type scale. */
+#tab-today .crossword-cell > span { font-size: 8px; font-weight: 600; font-family: var(--today-font); }
+#tab-today .puzzle-clues h4 { font: var(--t-label); color: var(--text); text-transform: capitalize; }
+#tab-today .crossword-clue { font: var(--t-meta); }
+
+/* ---------- 12. Brain teaser (Mon–Tue) ---------- */
+#tab-today .bt-head { display: flex; justify-content: flex-end; margin: 0 0 8px; }
+#tab-today .fam-bt-progress { font: var(--t-tag); color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; height: 26px; padding: 0 10px; display: inline-flex; align-items: center; }
+#tab-today .quiz-question { font: var(--t-title); color: var(--text); margin: 0 0 12px; }
+#tab-today #daily5-quiz-done { display: flex; align-items: center; gap: 6px; font: var(--t-body); color: var(--text-2); }
+#tab-today #daily5-quiz-done svg { flex: none; color: var(--c-green); }
