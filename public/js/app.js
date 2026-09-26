@@ -3987,23 +3987,22 @@ async function loadHermesMessages() {
   if (!hermesAvailable) { if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice(); return; }
   try {
     const data = await hermesApi('/api/hermes/thread/messages?limit=50');
+    const first = !hermesLoaded;
     hermesLoaded = true;
-    mergeHermesMessages((data && data.messages) || []);
+    // History on first load isn't news: no unread dot for it.
+    mergeHermesMessages((data && data.messages) || [], { quiet: first });
     if (chatActiveRoom === 'hermes') renderHermesMessages();
   } catch (err) {
-    // ponytail: any failure here (404 pre-launch, network blip, 500) marks
-    // the thread unavailable for the rest of this session rather than
-    // retrying with backoff like family chat does. Swap in a real retry once
-    // the server contract has shipped and failures are known to be
-    // transient rather than "not built yet".
-    hermesAvailable = false;
+    // 404 = this account has no Hermes thread; anything else is transient and
+    // the next navigation or poll retries.
+    if (err.status === 404) hermesAvailable = false;
     if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice();
   }
 }
 
 // Same id-dedupe merge as mergeChatMessages, kept separate so a family-room
 // change can never touch hermesMessages or vice versa.
-function mergeHermesMessages(msgs) {
+function mergeHermesMessages(msgs, { quiet = false } = {}) {
   if (!msgs.length) return;
   const byId = new Map(hermesMessages.map((m) => [m.id, m]));
   let changed = false;
@@ -4014,20 +4013,21 @@ function mergeHermesMessages(msgs) {
   hermesMessages = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   hermesLastId = hermesMessages[hermesMessages.length - 1].id;
   if (chatActiveRoom === 'hermes') renderHermesMessages();
-  else { chatRoomDot.hermes = true; renderChatRoomTabs(); }
+  else if (!quiet) { chatRoomDot.hermes = true; renderChatRoomTabs(); }
 }
 
 async function hermesLongPollFetch(afterId = hermesLastId) {
   const qs = `?afterId=${encodeURIComponent(afterId || '')}&wait=1`;
   hermesPollAbort = new AbortController();
   const res = await fetch('/api/hermes/thread/messages' + qs, { credentials: 'same-origin', signal: hermesPollAbort.signal });
-  if (!res.ok) throw new Error(`poll failed (${res.status})`);
+  if (!res.ok) { const err = new Error(`poll failed (${res.status})`); err.status = res.status; throw err; }
   const data = await res.json().catch(() => null);
   return (data && data.messages) || [];
 }
 
 async function hermesLongPollLoop(lifetime) {
   let cursor = hermesLastId; // sends may update the display, never the receive cursor
+  let failures = 0;
   while (hermesPollTimer === lifetime && !lifetime.signal.aborted) {
     if (document.hidden) { await chatReceivePause(lifetime.signal); continue; }
     const started = Date.now();
@@ -4036,6 +4036,7 @@ async function hermesLongPollLoop(lifetime) {
       const msgs = await hermesLongPollFetch(cursor);
       if (hermesPollTimer !== lifetime || lifetime.signal.aborted) break;
       mergeHermesMessages(msgs);
+      failures = 0;
       cursor = msgs.length ? msgs[msgs.length - 1].id : cursor;
       if (cursor === previousId && Date.now() - started < 1000) {
         await chatReceivePause(lifetime.signal, 1000 - (Date.now() - started));
@@ -4043,9 +4044,13 @@ async function hermesLongPollLoop(lifetime) {
     } catch (err) {
       if (hermesPollTimer !== lifetime || lifetime.signal.aborted) break;
       if (err.name === 'AbortError') continue;
-      hermesAvailable = false; // see the ponytail note in loadHermesMessages
-      if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice();
-      break;
+      if (err.status === 404) {
+        hermesAvailable = false;
+        if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice();
+        break;
+      }
+      // Transient (network, deploy restart): back off like family chat.
+      await chatReceivePause(lifetime.signal, CHAT_BACKOFF_MS[Math.min(failures++, CHAT_BACKOFF_MS.length - 1)]);
     }
   }
 }
@@ -4125,10 +4130,14 @@ function renderHermesNudgeButton(messageId, action) {
   const style = action && action.style === 'primary' ? 'primary' : 'secondary';
   const done = !!(action && action.done);
   const label = done ? ((action && action.doneLabel) || `${(action && action.label) || ''} ✓`) : ((action && action.label) || '');
-  const onclick = action && action.open
-    ? `handleHermesNudgeOpen('${action.open}')`
-    : `handleHermesNudgeAction('${messageId}','${action && action.id}',this)`;
-  return `<button type="button" class="hermes-nudge-btn hermes-nudge-btn-${style}"${done ? ' disabled' : ''} onclick="${onclick}">${esc(label)}</button>`;
+  // Ids travel as escaped data attributes, never inside an inline script string.
+  return `<button type="button" class="hermes-nudge-btn hermes-nudge-btn-${style}"${done ? ' disabled' : ''} data-message-id="${esc(messageId)}" data-action-id="${esc((action && action.id) || '')}" data-open="${esc((action && action.open) || '')}" onclick="handleHermesNudgeButton(this)">${esc(label)}</button>`;
+}
+
+function handleHermesNudgeButton(btn) {
+  const data = (btn && btn.dataset) || {};
+  if (data.open) return handleHermesNudgeOpen(data.open);
+  return handleHermesNudgeAction(data.messageId, data.actionId, btn);
 }
 
 function renderHermesNudgeCard(m) {

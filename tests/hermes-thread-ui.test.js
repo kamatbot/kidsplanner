@@ -62,8 +62,8 @@ test('hermes-nudge card renders violet/outline buttons while open, and a quiet c
   };
   const openHtml = c.renderHermesNudgeCard({ id: 'm1', card: openCard });
   assert.match(openHtml, /chat-card-title">Dinner tonight/);
-  assert.match(openHtml, /hermes-nudge-btn-primary[^>]*onclick="handleHermesNudgeOpen\('homework'\)">Open homework/);
-  assert.match(openHtml, /hermes-nudge-btn-secondary[^>]*onclick="handleHermesNudgeAction\('m1','later',this\)">In 30 min/);
+  assert.match(openHtml, /hermes-nudge-btn-primary[^>]*data-action-id="open-homework" data-open="homework" onclick="handleHermesNudgeButton\(this\)">Open homework/);
+  assert.match(openHtml, /hermes-nudge-btn-secondary[^>]*data-message-id="m1" data-action-id="later" data-open="" onclick="handleHermesNudgeButton\(this\)">In 30 min/);
   assert.doesNotMatch(openHtml, /disabled/);
   assert.doesNotMatch(openHtml, /hermes-nudge-resolved/);
 
@@ -73,8 +73,8 @@ test('hermes-nudge card renders violet/outline buttons while open, and a quiet c
     { id: 'skip', label: 'Skip', style: 'secondary', done: true },
   ] };
   const doneActionHtml = c.renderHermesNudgeCard({ id: 'm1', card: doneActionCard });
-  assert.match(doneActionHtml, /disabled[^>]*onclick="handleHermesNudgeAction\('m1','later',this\)">Snoozed</);
-  assert.match(doneActionHtml, /disabled[^>]*onclick="handleHermesNudgeAction\('m1','skip',this\)">Skip ✓</);
+  assert.match(doneActionHtml, /disabled[^>]*data-action-id="later"[^>]*>Snoozed</);
+  assert.match(doneActionHtml, /disabled[^>]*data-action-id="skip"[^>]*>Skip ✓</);
 
   // Resolved state: no buttons, just the quiet label chip.
   const resolvedCard = { ...openCard, state: { status: 'done', label: 'Dinner planned' } };
@@ -232,4 +232,18 @@ test('openHermesChat (the ?chat=hermes deep link target) selects the Hermes chip
   assert.equal(loads, 1); // not yet loaded -> fetched
   assert.equal(seen, 1);
   assert.equal(scrolls, 1);
+});
+
+test('nudge button ids are escaped data attributes and dispatch through one handler', () => {
+  const c = { esc, calls: [] };
+  vm.createContext(c);
+  vm.runInContext(fn('renderHermesNudgeButton') + fn('handleHermesNudgeButton'), c);
+  c.handleHermesNudgeOpen = (target) => c.calls.push(['open', target]);
+  c.handleHermesNudgeAction = (messageId, actionId) => c.calls.push(['action', messageId, actionId]);
+  const html = c.renderHermesNudgeButton('m1"x', { id: "cook:a'b", label: 'Cook <b>' });
+  assert.ok(!html.includes('m1"x') && html.includes('m1&quot;x'), html);
+  assert.ok(html.includes('Cook &lt;b&gt;'));
+  c.handleHermesNudgeButton({ dataset: { messageId: 'm1', actionId: 'later', open: '' } });
+  c.handleHermesNudgeButton({ dataset: { messageId: 'm1', actionId: 'open-homework', open: 'homework' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(c.calls)), [['action', 'm1', 'later'], ['open', 'homework']]);
 });
