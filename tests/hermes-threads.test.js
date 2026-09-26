@@ -363,3 +363,15 @@ test("family clock converts wall time in the family zone regardless of server TZ
   assert.equal(hermesProactive.nextMonday("2026-09-28"), "2026-10-05");
   assert.equal(hermesProactive.formatClock(new Date("2026-09-25T09:20:00Z"), "Asia/Bangkok"), "4:20 pm");
 });
+
+test("tonight's ideas fit the time left before dinner", () => {
+  const { fam } = setup("TimeLeft");
+  const dinnerAt = Date.parse(hermesProactive.dinnerFacts(fam, hermesProactive.dateKey(new Date(), "Asia/Bangkok"), "Asia/Bangkok").at);
+  const today = hermesProactive.dateKey(new Date(), "Asia/Bangkok");
+  const tight = hermesThreads.suggestDinners(fam, { count: 3, today, maxMinutes: 30 });
+  assert.equal(tight.length, 3);
+  assert.ok(tight.every(({ recipe }) => !(Number(recipe.timeMins) > 30)), tight.map((i) => `${i.recipe.title} ${i.recipe.timeMins}`).join(", "));
+  const none = hermesThreads.suggestDinners(fam, { count: 2, today, maxMinutes: 1 });
+  assert.equal(none.length, 2, "falls back to the quickest when nothing fits");
+  assert.ok(Number.isFinite(dinnerAt));
+});
