@@ -37,7 +37,7 @@
 | Decision | Value |
 |---|---|
 | Language | Family Rings: the parent's Needs You ring and three action previews, then each child's concentric Homework/Daily 4/Habits rings, day strip, and learning tiles. Existing sidebar → content → docked chat structure; phone bottom navigation. Every metric comes from recorded work, no sibling ranking. |
-| Palette | Web `--fr-*` tokens in `public/css/horizon.css`: cool grey `#F4F5F7`, white cards, violet actions `#7B4DFF`, orange homework `#EF6A12`, mint Daily 4 `#0EA58C`, fuchsia habits `#D946EF`, gold fams `#D99A00` (owner decision 2026-09-26: kid rings run outer→inner Homework, Daily 4, Habits, matching the stats beside them; shared chat, trip and meal colours keep their own values). Dark mode resolves the same semantic tokens. Profile colors identify children, never metric categories. |
+| Palette | Web `--fr-*` tokens in `public/css/horizon.css`: cool grey `#F4F5F7`, white cards, violet actions `#7B4DFF`, orange homework `#F5821F`, mint Daily 4 `#0EA58C`, fuchsia habits `#D946EF`, gold fams `#D99A00` (owner decision 2026-09-26: kid rings run outer→inner Homework, Daily 4, Habits, matching the stats beside them; shared chat, trip and meal colours keep their own values). Dark mode resolves the same semantic tokens. Profile colors identify children, never metric categories. |
 | Hero | A progress ring, with empty dashed tracks for zero denominators; no decorative fill or momentum gradient. |
 | Dark mode | Auto/Light/Dark in Settings; matching Family Rings light and dark palettes. |
 | Typography | Self-hosted Geist variable 100–900 on the web, tabular numerals throughout; 30px greeting, 64px hero count, 30px child stats, 14px body. |

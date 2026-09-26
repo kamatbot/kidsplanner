@@ -82,9 +82,9 @@ Define these in `public/css/horizon.css`, rewritten; §7 P1 covers the migration
 | Actions text | `--fr-you-ink` | `#5B2EE6` | `#C3B1FF` | 7.0 |
 | Actions tint | `--fr-you-soft` | `#EFEAFF` | `rgba(166,140,255,.16)` | — |
 | On violet | `--fr-on-you` | `#FFFFFF` | `#15121F` | 4.8 / 6.9 |
-| **Homework ring** | `--fr-hw` | `#EF6A12` | `#FF8A3D` | 3.1 (graphic) |
-| Homework text | `--fr-hw-ink` | `#C2410C` | `#FFB27A` | 5.2 |
-| Homework tint | `--fr-hw-soft` | `#FFEDD5` | `rgba(255,138,61,.14)` | — |
+| **Homework ring** | `--fr-hw` | `#F5821F` | `#FF9A3C` | 2.6 (graphic; numbers always beside) |
+| Homework text | `--fr-hw-ink` | `#B0540A` | `#FFC185` | 5.1 |
+| Homework tint | `--fr-hw-soft` | `#FFF3E3` | `rgba(255,154,60,.14)` | — |
 | **Daily 4 ring** | `--fr-d3` | `#0EA58C` | `#2FD3B4` | 3.1 (graphic) |
 | Daily 4 text | `--fr-d3-ink` | `#0B7866` | `#74E6CF` | 5.4 |
 | Daily 4 tint | `--fr-d3-soft` | `#DDF4EF` | `rgba(47,211,180,.14)` | — |

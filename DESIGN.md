@@ -12,7 +12,7 @@ colors:
   ink-secondary: '#6B7280'
   action: '#7B4DFF'
   action-ink: '#5B2EE6'
-  homework: '#EF6A12'
+  homework: '#F5821F'
   habits: '#D946EF'
   daily3: '#0EA58C'
   fams: '#D99A00'
