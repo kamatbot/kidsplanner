@@ -393,6 +393,7 @@ struct FamilyRingsKidCard: View {
                 }
             }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+                .contentShape(Rectangle())   // the whole row, not just its text
         }.buttonStyle(.plain).disabled(!interactive)
             .accessibilityIdentifier("today.kidcard.\(kidID).\(id)")
     }
