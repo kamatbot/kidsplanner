@@ -1,11 +1,12 @@
 name: fametc-platform
 label: FamETC
 kind: platform
-version: 1.5.0
+version: 1.6.0
 description: >
   Family-scoped FamETC REST adapter for Hermes Agent with signed family-room
-  authority, a Hermes v0.21 Action Capability skill, read-only ambient Trip
-  context and structured browser-research results.
+  authority, private one-to-one Hermes threads for every family member, a
+  proactive reminder loop, a Hermes v0.21 Action Capability skill, read-only
+  ambient Trip context and structured browser-research results.
 author: FamETC
 requires_env:
   - name: FAMETC_HERMES_API_URL
@@ -20,4 +21,8 @@ optional_env:
   - name: FAMETC_HERMES_POLL_SECONDS
     description: "How often to refresh the authorized room list"
     prompt: "Room refresh interval in seconds"
+    password: false
+  - name: FAMETC_HERMES_PROACTIVE
+    description: "Proactive reminders from this Mac (on by default; set to off to pause them)"
+    prompt: "Proactive reminders (on/off)"
     password: false

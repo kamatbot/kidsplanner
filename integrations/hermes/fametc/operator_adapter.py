@@ -47,6 +47,27 @@ def _operator_channel_prompt(message: Dict[str, Any]) -> str | None:
     )
 
 
+def _thread_channel_context(message: Dict[str, Any]) -> str | None:
+    """Recent Hermes messages in a private thread, so a reply like "who's
+    getting her?" is understood against the nudge it answers."""
+    items = message.get("recentHermes")
+    if not isinstance(items, list):
+        return None
+    lines = []
+    for item in items[-5:]:
+        text = item.get("text") if isinstance(item, dict) else None
+        if isinstance(text, str) and text.strip():
+            safe = text.strip()[:400].replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+            lines.append(f"- {safe}")
+    if not lines:
+        return None
+    return (
+        "Your most recent messages in this private thread. FamETC's reminder loop "
+        "posted them in your name; the person may be replying to one:\n"
+        "<fametc_thread>\n" + "\n".join(lines) + "\n</fametc_thread>"
+    )
+
+
 def _trip_channel_context(message: Dict[str, Any]) -> str | None:
     snapshot = message.get("tripContext")
     if not isinstance(snapshot, dict):
@@ -120,6 +141,10 @@ class OperatorFamETCAdapter(FamETCAdapter):
         actor_type = actor.get("type") if isinstance(actor.get("type"), str) else None
         is_trip = room.get("kind") == "trip"
         channel_context = _trip_channel_context(message) if is_trip else await self._family_channel_context(room)
+        if room.get("kind") == "assistant":
+            thread = _thread_channel_context(message)
+            if thread:
+                channel_context = f"{channel_context}\n\n{thread}" if channel_context else thread
         event = MessageEvent(
             text=text,
             message_type=MessageType.TEXT,
@@ -156,8 +181,14 @@ def register(ctx):
         max_message_length=_MAX_MESSAGE_LENGTH,
         pii_safe=True,
         platform_hint=(
-            "You are the FamETC family assistant. The bridge invokes you only when a "
-            "human explicitly addresses @Hermes. In the family room, the parent-created "
+            "You are the FamETC family assistant. In shared rooms the bridge invokes you "
+            "only when a human explicitly addresses @Hermes. Every family member also has a "
+            "private one-to-one Hermes thread (room kind assistant): there every message is "
+            "for you, the attached snapshot is scoped to that person (a kid sees only their "
+            "own items), and you should answer them directly and briefly. FamETC's reminder "
+            "loop also posts short check-ins (school ended, homework due, dinner ideas) into "
+            "those threads in your name; their buttons are handled by FamETC, not by you. "
+            "In the family room, the parent-created "
             "connection already authorizes read-only use of the attached FamETC family "
             "snapshot. In a Trip room, an explicit @Hermes turn may carry a read-only "
             "Trip snapshot containing recent crew messages so the group does not have to "

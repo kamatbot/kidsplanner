@@ -9,6 +9,42 @@ Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
+## What changed in v1.6
+
+Hermes now speaks first. Every family member (parents, and kids signed in on
+their own device) has a private one-to-one Hermes thread in FamETC, and this
+plugin runs the family's proactive loop from the always-on Mac.
+
+- **Private threads.** Rooms of kind `assistant` (`hermes:<userId>`) appear in
+  the room list. Every message there is for Hermes, with no `@Hermes`
+  needed. The attached snapshot is scoped to that person, so a kid sees only
+  their own items. The last few Hermes messages ride along, so a reply is
+  understood against the nudge it answers.
+- **Proactive loop** (`proactive.py`). About once a minute the supervisor
+  reads `GET /proactive/state` and posts what's due via
+  `POST /proactive/nudges`:
+  - to parents: "Ryshi's school ended now. Arya finishes Chess in 30 min.";
+  - to kids: a welcome-home list of tonight's homework, habits and Daily 3,
+    with one evening follow-up;
+  - to parents: a 17:30 "tonight" check-in and a dinner-ideas offer 3 hours
+    before dinner;
+  - to parents on Sunday: an offer to draft next week's dinners.
+- **Stateless and safe to restart.** FamETC makes posts idempotent and records
+  button presses, and the loop keeps no state. Buttons are handled by FamETC
+  itself, so they work even if this Mac is briefly offline. Quiet hours are
+  21:30–07:00 for parents and 20:30–07:00 for kids, and daily caps apply.
+- **Off switch.** Set `FAMETC_HERMES_PROACTIVE=off` to pause the loop.
+- **Tests.**
+  `python3 -m unittest discover -s integrations/hermes/fametc/tests`
+
+**Update an existing install:** copy the plugin again, then restart the Hermes gateway:
+
+```bash
+cp -R integrations/hermes/fametc/. ~/.hermes/plugins/fametc/
+```
+
+The contract is [docs/HERMES-THREADS-CONTRACT.md](../../../docs/HERMES-THREADS-CONTRACT.md).
+
 ## What changed in v1.5
 
 Parent-approved calendar/reminder creates now complete without another chat
