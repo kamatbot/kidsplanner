@@ -125,12 +125,14 @@ test('a non-open hermes-nudge action POSTs to the actions endpoint, replaces the
   const updated = { ...original, card: { type: 'hermes-nudge', state: { status: 'snoozed', label: 'Snoozed 30 min' } } };
   const followUp = { id: 'm2', senderType: 'agent', senderId: 'hermes', createdAt: '2026-09-26T08:30:00.000Z', text: 'Following up' };
   let renders = 0;
-  let stripRenders = 0;
+  let badgeUpdates = 0;
+  let pageRenders = 0;
   const c = {
     hermesMessages: [original, followUp], // followUp already shown — must not be duplicated
     fetch: async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 200, json: async () => ({ message: updated, messages: [followUp] }) }; },
     renderHermesMessages: () => renders++,
-    renderTodayHermesStrip: () => stripRenders++, // Today strip (contract §8) picks up the resolved card
+    updateHermesBadge: () => badgeUpdates++, // nav badge (contract §8) picks up the resolved card
+    renderHermesPage: () => pageRenders++, // Hermes tab's "Waiting on you" list, same reason
     toast: () => assert.fail('should not toast on success'),
   };
   vm.createContext(c);
@@ -147,7 +149,8 @@ test('a non-open hermes-nudge action POSTs to the actions endpoint, replaces the
   assert.deepEqual(c.hermesMessages.map((m) => m.id), ['m1', 'm2']); // replaced, no duplicate append
   assert.equal(c.hermesMessages[0].card.state.status, 'snoozed');
   assert.equal(renders, 1);
-  assert.equal(stripRenders, 1);
+  assert.equal(badgeUpdates, 1);
+  assert.equal(pageRenders, 1);
 });
 
 test('a failed hermes-nudge action re-enables the button and surfaces the error', async () => {
@@ -214,30 +217,28 @@ test('the Family dot lights only for new family messages while Hermes is open', 
   assert.equal(tabsCalls, 1);
 });
 
-test('openHermesChat (the ?chat=hermes deep link target) selects the Hermes chip and opens the dock/slide-over', () => {
+test('switchChatRoom(\'hermes\') (still used by the chat dock\'s Family|Hermes chips) selects the Hermes chip and loads on first entry', () => {
   const store = new Map();
   ['chat-room-tab-family', 'chat-room-tab-hermes', 'chat-room-dot-family', 'chat-room-dot-hermes',
     'chat-emoji-btn', 'chat-gif-btn', 'chat-media-btn', 'chat-input'].forEach((id) => store.set(id, makeEl()));
   store.get('chat-room-tab-family').classList.add('active');
-  store.set('chat-dock', makeEl({ classes: ['chat-collapsed'] }));
 
-  let loads = 0, seen = 0, scrolls = 0;
+  let loads = 0, scrolls = 0;
   const c = {
     chatActiveRoom: 'family',
     chatRoomDot: { family: false, hermes: true },
     hermesLoaded: false,
     document: { getElementById: (id) => store.get(id) || null },
     closeChatPickers: () => {},
-    renderChatMessages: () => assert.fail('family should not re-render when opening Hermes'),
+    renderChatMessages: () => assert.fail('family should not re-render when switching to Hermes'),
     renderHermesMessages: () => {},
     loadHermesMessages: () => loads++,
     scrollChatToBottom: () => scrolls++,
-    markChatSeen: () => seen++,
   };
   vm.createContext(c);
-  vm.runInContext(fn('renderChatRoomTabs') + fn('switchChatRoom') + fn('openHermesChat'), c);
+  vm.runInContext(fn('renderChatRoomTabs') + fn('switchChatRoom'), c);
 
-  c.openHermesChat();
+  c.switchChatRoom('hermes');
 
   assert.equal(c.chatActiveRoom, 'hermes');
   assert.equal(c.chatRoomDot.hermes, false); // cleared on entering the room
@@ -248,10 +249,7 @@ test('openHermesChat (the ?chat=hermes deep link target) selects the Hermes chip
   assert.equal(store.get('chat-gif-btn').hidden, true);
   assert.equal(store.get('chat-media-btn').hidden, true);
   assert.equal(store.get('chat-input').placeholder, 'Message Hermes…');
-  assert.equal(store.get('chat-dock').classList.contains('chat-force-open'), true); // desktop slim-rail case
-  assert.equal(store.get('chat-dock').classList.contains('chat-open'), true); // mobile/kid slide-over case
   assert.equal(loads, 1); // not yet loaded -> fetched
-  assert.equal(seen, 1);
   assert.equal(scrolls, 1);
 });
 

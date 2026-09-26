@@ -36,22 +36,6 @@
 #tab-today .today-sync-dot.is-stale { background: var(--fr-fams); }
 #tab-today .today-sync-dot.is-never { background: transparent; border: 1px solid var(--fr-ink-2); }
 #tab-today :is(.fr-hero,.fr-kid-card,.today-agenda-card,.today-region,.today-setup-card,.today-homework-card) { background: var(--fr-card); border: 0; border-radius: 24px; box-shadow: var(--fr-shadow); }
-
-/* Hermes strip (docs/HERMES-THREADS-CONTRACT.md §8): up to 2 open hermes-nudge
-   / status cards from the signed-in person's own thread, between the header
-   and the Needs-you hero. Buttons reuse the chat nudge classes (styles.css)
-   so a row looks identical to its card in the Hermes thread. */
-#tab-today .fr-hermes-strip { display: flex; flex-direction: column; margin: 0; padding: 0 20px; border: 0; border-radius: 20px; background: var(--fr-card); box-shadow: var(--fr-shadow); }
-#tab-today .fr-hermes-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--fr-rule); }
-#tab-today .fr-hermes-row:last-child { border-bottom: 0; }
-#tab-today .fr-hermes-open { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; font-family: inherit; color: inherit; }
-#tab-today .fr-hermes-label { display: flex; align-items: center; gap: 5px; font: 600 12px/1.35 var(--today-font); letter-spacing: .08em; text-transform: uppercase; color: var(--fr-you-ink); }
-#tab-today .fr-hermes-mark { color: var(--fr-you); }
-#tab-today .fr-hermes-text { font-size: 15px; line-height: 1.4; color: var(--fr-ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-#tab-today .fr-hermes-lines { display: flex; flex-direction: column; font-size: 13px; line-height: 1.4; color: var(--fr-ink-2); }
-#tab-today .fr-hermes-lines span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-#tab-today .fr-hermes-row .hermes-nudge-actions { margin: 0; flex: none; }
-#tab-today .fr-hermes-open:focus-visible { outline: 2px solid var(--fr-you); outline-offset: 2px; }
 #tab-today .today-section-head { display: flex; align-items: center; gap: 10px; margin: 0; min-height: 32px; flex-wrap: wrap; }
 #tab-today .today-section-head h2 { font: 600 12px/1.4 var(--today-font); color: var(--fr-ink-2); letter-spacing: .08em; text-transform: uppercase; }
 #tab-today .today-section-head h3 { font: var(--t-title); }
@@ -180,8 +164,7 @@
 #tab-today .today-band-learn { display: flex; flex-direction: column; gap: 20px; }
 #tab-today .today-region { padding: 24px; }
 #tab-today.fr-kid-today .fr-learning-tiles { order: -1; }
-#tab-today.fr-kid-today .today-header { order: -4; }
-#tab-today.fr-kid-today .fr-hermes-strip { order: -3; }
+#tab-today.fr-kid-today .today-header { order: -3; }
 #tab-today.fr-kid-today .fr-hero { order: -2; }
 @container today (min-width: 900px) { #tab-today .fr-kids { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @container today (max-width: 700px) {
@@ -204,9 +187,6 @@
   #tab-today .today-action-controls button { min-height: 44px; }
   #tab-today .today-agenda-card, #tab-today .today-region { padding: 16px; }
   #tab-today .fr-tonight { margin-left: 0; }
-  #tab-today .fr-hermes-strip { border-radius: 16px; padding: 0 16px; }
-  #tab-today .fr-hermes-row { flex-wrap: wrap; padding: 12px 0; }
-  #tab-today .fr-hermes-row .hermes-nudge-actions { flex-basis: 100%; margin-top: 2px; }
 }
 @container today (max-width: 300px) {
   #tab-today .fr-stat { grid-template-columns: 1fr; gap: 4px; }
