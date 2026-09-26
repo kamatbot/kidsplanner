@@ -247,6 +247,7 @@ struct FamilyAction: Codable, Identifiable {
     var createdAt: String
     var updatedAt: String?
     var snoozedUntil: String?
+    var completedAt: String? = nil
 
     var isDone: Bool { status == "done" }
 }

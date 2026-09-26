@@ -934,3 +934,19 @@ final class ModelDecodingTests: XCTestCase {
         )
     }
 }
+
+extension ModelDecodingTests {
+    func testGoalNullChecksAndMissingProgress() throws {
+        let response = try JSONDecoder().decode(GoalsResponse.self, from: Data(#"{"goals":[{"id":"g1","kidId":"k1","title":"Read","type":"habit","target":7,"checks":null},{"id":"g2","kidId":"k1","title":"Finish","type":"milestone","target":5,"checks":null,"progress":null}]}"#.utf8))
+        XCTAssertEqual(response.goals.count, 2)
+        XCTAssertNil(response.goals[0].checks)
+        XCTAssertNil(response.goals[0].progress)
+        XCTAssertNil(response.goals[1].progress)
+    }
+
+    func testLegacyActionWithoutCompletedAtDecodes() throws {
+        let action = try JSONDecoder().decode(FamilyAction.self, from: Data(#"{"id":"a1","familyId":"f1","title":"Legacy","status":"done","assigneeType":"family","sourceType":"manual","createdAt":"2026-09-01T00:00:00Z","updatedAt":"2026-09-23T00:00:00Z"}"#.utf8))
+        XCTAssertNil(action.completedAt)
+        XCTAssertTrue(action.isDone)
+    }
+}

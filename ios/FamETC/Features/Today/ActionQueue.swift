@@ -157,6 +157,10 @@ enum ActionQueue {
         return due.isSnoozed ? String(format: "Snoozed until %@", withTime) : withTime
     }
 
+    static func isDueNow(_ action: FamilyAction, now: Date = Date()) -> Bool {
+        bucket(for: action, now: now) == 0
+    }
+
     private static func bucket(for action: FamilyAction, now: Date) -> Int {
         guard let due = effectiveDue(action, now: now) else { return 2 }
         let today = DateFmt.ymd.string(from: now)

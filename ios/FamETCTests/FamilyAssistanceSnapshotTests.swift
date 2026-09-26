@@ -114,8 +114,16 @@ final class FamilyAssistanceSnapshotTests: XCTestCase {
             let json = "{\"daily5\":{\"date\":\"\(date)\",\"parts\":{\"news\":{\"status\":\"completed\"},\"word\":{\"status\":\"started\"},\"puzzle\":{\"status\":\"started\"},\"bt\":{\"status\":\"completed\"}}}}"
             let progress = try DailyFiveSnapshotDecoder.decode(Data(json.utf8), expectedDate: date)
             XCTAssertEqual(progress.daily3Completed, 1)
+            XCTAssertEqual(progress.daily3Started, 1)
             XCTAssertEqual(progress.scheduledChallengeStatus, expected)
         }
+    }
+
+    func testLegacyDailyFiveCacheWithoutDailyThreeStartedDecodes() throws {
+        let progress = try JSONDecoder().decode(FamilyDailyFiveProgress.self,
+            from: Data(#"{"completed":1,"started":2,"total":5,"daily3Completed":1}"#.utf8))
+        XCTAssertNil(progress.daily3Started)
+        XCTAssertEqual(progress.daily3Completed, 1)
     }
 
     func testDailyFiveRejectsUnknownStatusKeyDateAndMissingParts() throws {
@@ -123,6 +131,7 @@ final class FamilyAssistanceSnapshotTests: XCTestCase {
         let progress = try DailyFiveSnapshotDecoder.decode(valid, expectedDate: "2026-09-16")
         XCTAssertEqual(progress.completed, 1)
         XCTAssertEqual(progress.started, 1)
+        XCTAssertEqual(progress.daily3Started, 0)
         XCTAssertEqual(progress.total, 5)
 
         let unknownKey = Data(#"{"daily5":{"date":"2026-09-16","parts":{"mystery":{"status":"completed"}}}}"#.utf8)

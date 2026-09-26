@@ -89,6 +89,7 @@ struct FamilyDailyFiveProgress: Codable, Equatable {
     /// Additive child-overview fields. The wire-compatible Daily 5 record
     /// still carries all legacy parts; Today presents only the Daily 3 trio.
     let daily3Completed: Int?
+    let daily3Started: Int?
     let scheduledChallengeStatus: String?
 
     init(
@@ -96,12 +97,14 @@ struct FamilyDailyFiveProgress: Codable, Equatable {
         started: Int,
         total: Int,
         daily3Completed: Int? = nil,
+        daily3Started: Int? = nil,
         scheduledChallengeStatus: String? = nil
     ) {
         self.completed = completed
         self.started = started
         self.total = total
         self.daily3Completed = daily3Completed
+        self.daily3Started = daily3Started
         self.scheduledChallengeStatus = scheduledChallengeStatus
     }
 
