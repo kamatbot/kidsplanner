@@ -100,6 +100,10 @@ final class AppStore {
     /// §3) — client navigation only, no server call. `RootView` observes and
     /// clears this the same way it consumes `pendingChatRoomId`.
     var pendingHermesOpen: HermesNudgeOpenTarget?
+    /// Throttles `loadHermesThreadIfNeeded()` (docs/HERMES-THREADS-CONTRACT.md
+    /// §8) to at most once a minute — Today calls it on every appearance and
+    /// on pull-to-refresh.
+    private var hermesThreadRequestedAt: Date?
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
@@ -1679,6 +1683,26 @@ final class AppStore {
             mergeIncoming(result.followUps, roomId: roomId)
             persist()
         } catch { handle(error) }
+    }
+
+    /// Loads the private Hermes thread for the Today strip
+    /// (docs/HERMES-THREADS-CONTRACT.md §8): a no-op unless the Hermes room is
+    /// already in `chatRooms` (no family, or an older server, means there's
+    /// nothing to show) and it hasn't been fetched in the last 60s. Merges into
+    /// `messagesByRoom["hermes"]` through the same dedupe every other chat
+    /// fetch uses — safe to call alongside an already-open Hermes chat
+    /// screen's own long-poll loop.
+    func loadHermesThreadIfNeeded() async {
+        guard chatRooms.contains(where: { $0.roomId == "hermes" }) else { return }
+        if let requestedAt = hermesThreadRequestedAt, Date().timeIntervalSince(requestedAt) < 60 { return }
+        hermesThreadRequestedAt = Date()
+        do {
+            let fresh = try await chatService.chatMessages(roomId: "hermes", since: nil, limit: 30, afterId: nil, wait: false)
+            mergeIncoming(fresh, roomId: "hermes")
+            persist()
+        } catch {
+            _ = requireAuthentication(for: error)
+        }
     }
 
     // MARK: Persistence / errors

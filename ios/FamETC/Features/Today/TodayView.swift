@@ -37,7 +37,11 @@ struct TodayScreen: View {
         }
         .background(ScreenBackground())
         .scrollDismissesKeyboard(.interactively)
-        .refreshable { await store.refreshDashboard() }
+        .task { await store.loadHermesThreadIfNeeded() }
+        .refreshable {
+            await store.refreshDashboard()
+            await store.loadHermesThreadIfNeeded()
+        }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
     }
@@ -64,6 +68,7 @@ private struct ParentTodayStack: View {
     let onDaily3: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+            TodayHermesStrip()
             FamilyRingsHero(onSeeAll: { showActions = true })
             FamilyRingsKidGrid(onOpenHomework: onOpenHomework, onDaily3: onDaily3)
             FamilyRingsDayStrip(onOpenMeals: onOpenMeals)
@@ -455,6 +460,7 @@ private struct KidTodayStack: View {
     let onDaily3: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+            TodayHermesStrip()
             FamilyRingsHero(onSeeAll: { showActions = true })
             if let kidID = store.me?.kidId {
                 FamilyRingsKidCard(kidID: kidID, onOpenHomework: onOpenHomework, onDaily3: onDaily3)

@@ -166,6 +166,14 @@ struct RootView: View {
             case .goals: showHermesGoals = true
             }
         }
+        // The Today Hermes strip (docs/HERMES-THREADS-CONTRACT.md §8) sets
+        // `pendingChatRoomId` directly, with no push/NotificationHandler
+        // involved — switch to Chat the same way `routeToChat` does for a
+        // live notification; `ChatTabHost` selects the exact room itself.
+        .onChange(of: store.pendingChatRoomId) { _, roomId in
+            guard roomId != nil else { return }
+            selection = .chat
+        }
         .sheet(isPresented: $showHermesGoals) { RingsWebSheet(title: "Goals", path: "/?tab=goals") }
         .overlay { if store.needsAuth && !signingOut { ReauthOverlay() } }
         .onAppear {

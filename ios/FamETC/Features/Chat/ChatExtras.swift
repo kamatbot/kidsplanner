@@ -49,6 +49,83 @@ struct HelperTag: View {
     }
 }
 
+// MARK: - Hermes-nudge action buttons (docs/HERMES-THREADS-CONTRACT.md §3)
+
+/// The button row for a `hermes-nudge` card — shared by `ChatMessageRow` and
+/// the Today strip (docs/HERMES-THREADS-CONTRACT.md §8) so a tap looks and
+/// behaves identically on both surfaces: a violet filled primary / outline
+/// secondary capsule, 44pt min height, a `done` action disabled and showing
+/// its `doneLabel`, and an `open` action navigating client-side with no
+/// server call. Owns its own per-button in-flight state, keyed by action id
+/// (a card can carry more than one action).
+struct HermesNudgeActionsRow: View {
+    let actions: [HermesNudgeAction]
+    let messageId: String
+    let roomId: String
+
+    @Environment(AppStore.self) private var store
+    @State private var pendingActionIds: Set<String> = []
+
+    /// Tries the buttons side by side first; wraps to one per line when they
+    /// don't fit (many actions, or large Dynamic Type) — no fixed heights.
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Space.sm) { ForEach(actions) { button($0) } }
+            VStack(alignment: .leading, spacing: Space.sm) { ForEach(actions) { button($0) } }
+        }
+    }
+
+    @ViewBuilder
+    private func button(_ action: HermesNudgeAction) -> some View {
+        let isDone = action.done == true
+        let isPending = pendingActionIds.contains(action.id)
+        let isPrimary = action.style == "primary"
+        let doneText = (action.doneLabel?.isEmpty == false) ? action.doneLabel! : action.label + " ✓"
+        Button {
+            perform(action)
+        } label: {
+            HStack(spacing: 6) {
+                if isPending {
+                    ProgressView().tint(isPrimary ? Palette.onAccent : Palette.accent).controlSize(.small)
+                }
+                Text(isDone ? doneText : action.label)
+                    .font(Typography.body.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .frame(minHeight: 44)
+            .padding(.horizontal, Space.lg)
+            .foregroundStyle(isDone ? Palette.textSecond : (isPrimary ? Palette.onAccent : Palette.accent))
+            .background {
+                Capsule().fill(isDone ? AnyShapeStyle(Palette.panel2) : (isPrimary ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.clear)))
+            }
+            .overlay {
+                Capsule().strokeBorder(isDone ? Palette.border : (isPrimary ? Color.clear : Palette.accent), lineWidth: isPrimary ? 0 : 1.5)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isDone || isPending)
+        .accessibilityLabel(isDone ? doneText : action.label)
+    }
+
+    /// `open` actions navigate client-side only (no server call); an
+    /// unrecognized `open` value is treated as plain text — the button still
+    /// renders, but tapping it does nothing (contract §3). Everything else
+    /// posts to the thread's `/actions` endpoint via `AppStore`.
+    private func perform(_ action: HermesNudgeAction) {
+        Haptics.selection()
+        if let open = action.open {
+            store.pendingHermesOpen = HermesNudgeOpenTarget(rawValue: open)
+            return
+        }
+        guard !pendingActionIds.contains(action.id) else { return }
+        pendingActionIds.insert(action.id)
+        Task {
+            await store.performHermesNudgeAction(messageId, action: action.id, roomId: roomId)
+            pendingActionIds.remove(action.id)
+        }
+    }
+}
+
 // MARK: - System card messages
 
 struct SystemCardRow: View {

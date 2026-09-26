@@ -1833,10 +1833,6 @@ struct ChatMessageRow: View, Equatable {
     var onImportMealPlan: (ChatMessage) -> Void = { _ in }
     var canImportTripItinerary: Bool = false
     var onImportTripItinerary: (ChatMessage) -> Void = { _ in }
-    /// hermes-nudge action ids currently in flight (docs/HERMES-THREADS-CONTRACT.md
-    /// §3) — disables that button until the server replies. Keyed by action id,
-    /// not message id, since a card can carry more than one action.
-    @State private var pendingNudgeActionIds: Set<String> = []
 
     static func == (lhs: ChatMessageRow, rhs: ChatMessageRow) -> Bool {
         lhs.message == rhs.message
@@ -2024,7 +2020,7 @@ struct ChatMessageRow: View, Equatable {
             .accessibilityElement(children: .combine)
 
             if card.state?.status == "open", let actions = card.actions, !actions.isEmpty {
-                nudgeActionsRow(actions)
+                HermesNudgeActionsRow(actions: actions, messageId: message.id, roomId: message.roomId ?? "hermes")
             } else if let label = card.state?.label, !label.isEmpty {
                 Text(label)
                     .font(Typography.caption.weight(.semibold))
@@ -2036,67 +2032,6 @@ struct ChatMessageRow: View, Equatable {
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
         .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
-    }
-
-    /// Tries the buttons side by side first; wraps to one per line when they
-    /// don't fit (many actions, or large Dynamic Type) — no fixed heights.
-    private func nudgeActionsRow(_ actions: [HermesNudgeAction]) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: Space.sm) { ForEach(actions) { nudgeActionButton($0) } }
-            VStack(alignment: .leading, spacing: Space.sm) { ForEach(actions) { nudgeActionButton($0) } }
-        }
-    }
-
-    @ViewBuilder
-    private func nudgeActionButton(_ action: HermesNudgeAction) -> some View {
-        let isDone = action.done == true
-        let isPending = pendingNudgeActionIds.contains(action.id)
-        let isPrimary = action.style == "primary"
-        let doneText = (action.doneLabel?.isEmpty == false) ? action.doneLabel! : action.label + " ✓"
-        Button {
-            performNudgeAction(action)
-        } label: {
-            HStack(spacing: 6) {
-                if isPending {
-                    ProgressView().tint(isPrimary ? Palette.onAccent : Palette.accent).controlSize(.small)
-                }
-                Text(isDone ? doneText : action.label)
-                    .font(Typography.body.weight(.semibold))
-                    .lineLimit(1)
-            }
-            .frame(minHeight: 44)
-            .padding(.horizontal, Space.lg)
-            .foregroundStyle(isDone ? Palette.textSecond : (isPrimary ? Palette.onAccent : Palette.accent))
-            .background {
-                Capsule().fill(isDone ? AnyShapeStyle(Palette.panel2) : (isPrimary ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.clear)))
-            }
-            .overlay {
-                Capsule().strokeBorder(isDone ? Palette.border : (isPrimary ? Color.clear : Palette.accent), lineWidth: isPrimary ? 0 : 1.5)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(isDone || isPending)
-        .accessibilityLabel(isDone ? doneText : action.label)
-    }
-
-    /// `open` actions navigate client-side only (no server call); an
-    /// unrecognized `open` value is treated as plain text — the button still
-    /// renders, but tapping it does nothing (contract §3). Everything else
-    /// posts to the thread's `/actions` endpoint via `AppStore`.
-    private func performNudgeAction(_ action: HermesNudgeAction) {
-        Haptics.selection()
-        if let open = action.open {
-            store.pendingHermesOpen = HermesNudgeOpenTarget(rawValue: open)
-            return
-        }
-        guard !pendingNudgeActionIds.contains(action.id) else { return }
-        pendingNudgeActionIds.insert(action.id)
-        let messageId = message.id
-        let roomId = message.roomId ?? "hermes"
-        Task {
-            await store.performHermesNudgeAction(messageId, action: action.id, roomId: roomId)
-            pendingNudgeActionIds.remove(action.id)
-        }
     }
 
     @ViewBuilder private var bubble: some View {
@@ -2329,13 +2264,19 @@ enum ChatTime {
         let f = DateFormatter(); f.dateStyle = .medium; f.doesRelativeDateFormatting = true; return f
     }()
 
+    /// Parses a message's `createdAt` into a `Date` — shared by the day/time
+    /// labels below and by `TodayHermesStrip`'s age-based selector.
+    static func date(_ createdAt: String) -> Date? {
+        iso.date(from: createdAt) ?? isoNoFrac.date(from: createdAt)
+    }
+
     static func day(_ createdAt: String) -> String {
-        guard let date = iso.date(from: createdAt) ?? isoNoFrac.date(from: createdAt) else { return "Chat" }
+        guard let date = date(createdAt) else { return "Chat" }
         return dateLabel.string(from: date)
     }
 
     static func short(_ createdAt: String) -> String {
-        guard let date = iso.date(from: createdAt) ?? isoNoFrac.date(from: createdAt) else { return "" }
+        guard let date = date(createdAt) else { return "" }
         return time.string(from: date)
     }
 }
