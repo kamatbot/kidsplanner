@@ -251,6 +251,10 @@ struct ChatComposerAddMenu: View {
     let canBuzz: Bool
     let canSend: Bool
     let sendingMessage: Bool
+    /// False for the Hermes room (text only, docs/HERMES-THREADS-CONTRACT.md
+    /// §3/§4): hides the "+" menu entirely, so Buzz/GIF/photos/camera/files
+    /// are all unreachable together rather than gated one by one.
+    var attachmentsEnabled: Bool = true
     let inputBottom: CGFloat
     let onSubmit: () -> Void
     let onGif: () -> Void
@@ -283,33 +287,35 @@ struct ChatComposerAddMenu: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .bottom, spacing: Space.sm) {
-                Button {
-                    Haptics.selection()
-                    if showsAttachments {
-                        returningToKeyboard = true
-                        showsAttachments = false
-                        fieldFocused = true
-                    } else {
-                        if keyboardHeight > 0 { lastKeyboardHeight = keyboardHeight }
-                        showsAttachments = true
-                        fieldFocused = false
-                    }
-                    isFocused = true
-                } label: {
-                    Group {
-                        if isSending { ProgressView().tint(Palette.accent) }
-                        else {
-                            Image(systemName: showsAttachments ? "keyboard" : "plus")
-                                .font(.system(size: 19, weight: .semibold))
-                                .foregroundStyle(Palette.accent)
+                if attachmentsEnabled {
+                    Button {
+                        Haptics.selection()
+                        if showsAttachments {
+                            returningToKeyboard = true
+                            showsAttachments = false
+                            fieldFocused = true
+                        } else {
+                            if keyboardHeight > 0 { lastKeyboardHeight = keyboardHeight }
+                            showsAttachments = true
+                            fieldFocused = false
                         }
+                        isFocused = true
+                    } label: {
+                        Group {
+                            if isSending { ProgressView().tint(Palette.accent) }
+                            else {
+                                Image(systemName: showsAttachments ? "keyboard" : "plus")
+                                    .font(.system(size: 19, weight: .semibold))
+                                    .foregroundStyle(Palette.accent)
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                        .background(Palette.accentSoft, in: Circle())
                     }
-                    .frame(width: 44, height: 44)
-                    .background(Palette.accentSoft, in: Circle())
+                    .buttonStyle(PressableStyle())
+                    .accessibilityLabel(showsAttachments ? "Show keyboard" : "More chat actions")
+                    .accessibilityIdentifier("chat.attachments.toggle")
                 }
-                .buttonStyle(PressableStyle())
-                .accessibilityLabel(showsAttachments ? "Show keyboard" : "More chat actions")
-                .accessibilityIdentifier("chat.attachments.toggle")
 
                 TextField(placeholder, text: $text, axis: .vertical)
                     .font(.body)
@@ -341,7 +347,7 @@ struct ChatComposerAddMenu: View {
             .overlay(Divider().overlay(Palette.border), alignment: .top)
 
             ZStack(alignment: .top) {
-                if showsAttachments {
+                if attachmentsEnabled && showsAttachments {
                     ChatAttachmentPanel(canBuzz: canBuzz, isSending: isSending, onAction: selectAction)
                 }
             }

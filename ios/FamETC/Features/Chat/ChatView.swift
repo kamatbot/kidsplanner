@@ -63,6 +63,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
     }
     private var bottomInset: CGFloat { keyboardVisible ? 0 : baseInset }
     private var isFamilyRoom: Bool { roomId == familyRoomId }
+    /// The private per-user Hermes thread (docs/HERMES-THREADS-CONTRACT.md §1) — text only, no Buzz/GIF/attachments.
+    private var isHermesRoom: Bool { roomId == "hermes" }
     private var currentMessages: [ChatMessage] { store.messagesByRoom[roomId] ?? [] }
     private var draft: String {
         get { drafts[roomId, default: ""] }
@@ -172,8 +174,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
     private var header: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                MicroLabel(text: isFamilyRoom ? "Family chat" : "Trip chat")
-                Text(title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : "Trip"))
+                MicroLabel(text: isFamilyRoom ? "Family chat" : (isHermesRoom ? "Private thread" : "Trip chat"))
+                Text(title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : (isHermesRoom ? "Hermes" : "Trip")))
                     .font(Typography.cardTitle).foregroundStyle(Palette.text)
             }
             Spacer()
@@ -278,6 +280,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
             if store.isRefreshing { ProgressView().tint(Palette.accent) }
             else if isFamilyRoom {
                 emptyState(icon: "bubble.left.and.bubble.right", title: "No messages yet", detail: "Say hi to the family! 👋")
+            } else if isHermesRoom {
+                emptyState(icon: "sparkles", title: "Your private thread", detail: "Ask Hermes anything — just the two of you.")
             } else {
                 emptyState(icon: "airplane", title: "No messages yet", detail: "Say hi to the crew! ✈️")
             }
@@ -374,17 +378,22 @@ struct ChatScreen<HeaderAccessory: View>: View {
     // MARK: Composer (+ menu + wide input + circular send)
 
     private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !sendingRooms.contains(roomId) && !isSendingBuzz }
-    private var canBuzz: Bool { canSend && !isSendingBuzz }
+    private var canBuzz: Bool { canSend && !isSendingBuzz && !isHermesRoom }
 
     private var composer: some View {
         ChatComposerAddMenu(
             text: Binding(get: { draft }, set: { draft = $0 }),
             isFocused: $composerFocused,
             keyboardDocked: $keyboardVisible,
-            placeholder: isFamilyRoom ? "Message the family…" : "Message the trip…",
+            placeholder: isHermesRoom ? "Message Hermes…" : (isFamilyRoom ? "Message the family…" : "Message the trip…"),
             canBuzz: canBuzz,
             canSend: canSend,
             sendingMessage: sendingRooms.contains(roomId),
+            // Hermes is text only (docs/HERMES-THREADS-CONTRACT.md §3/§4):
+            // no Buzz, GIF, media/attachments, or emoji-style pickers — hiding
+            // the "+" menu removes all of them in one place (Buzz's own gate
+            // below is defense in depth, not the only guard).
+            attachmentsEnabled: !isHermesRoom,
             inputBottom: inputBottom,
             onSubmit: send,
             onGif: {
@@ -549,8 +558,17 @@ struct ChatRoomSwitcher: View {
     let rooms: [ChatRoom]
     @Binding var selection: String
 
+    /// Family and Hermes get their own icons; everything else (trips) keeps
+    /// the airplane. Checks `roomId` first ("hermes" always means the private
+    /// thread) and falls back to `kind` for forward compatibility.
+    private static func icon(for room: ChatRoom) -> String {
+        if room.roomId == familyRoomId { return "person.2.fill" }
+        if room.roomId == "hermes" || room.kind == "assistant" { return "sparkles" }
+        return "airplane"
+    }
+
     private var currentRoom: ChatRoom? { rooms.first { $0.roomId == selection } }
-    private var currentIcon: String { selection == familyRoomId ? "person.2.fill" : "airplane" }
+    private var currentIcon: String { currentRoom.map(Self.icon) ?? "person.2.fill" }
 
     var body: some View {
         Menu {
@@ -560,9 +578,7 @@ struct ChatRoomSwitcher: View {
                     selection = room.roomId
                 } label: {
                     Label(room.title,
-                          systemImage: room.roomId == selection
-                            ? "checkmark.circle.fill"
-                            : (room.roomId == familyRoomId ? "person.2.fill" : "airplane"))
+                          systemImage: room.roomId == selection ? "checkmark.circle.fill" : Self.icon(for: room))
                 }
             }
         } label: {
@@ -1817,6 +1833,10 @@ struct ChatMessageRow: View, Equatable {
     var onImportMealPlan: (ChatMessage) -> Void = { _ in }
     var canImportTripItinerary: Bool = false
     var onImportTripItinerary: (ChatMessage) -> Void = { _ in }
+    /// hermes-nudge action ids currently in flight (docs/HERMES-THREADS-CONTRACT.md
+    /// §3) — disables that button until the server replies. Keyed by action id,
+    /// not message id, since a card can carry more than one action.
+    @State private var pendingNudgeActionIds: Set<String> = []
 
     static func == (lhs: ChatMessageRow, rhs: ChatMessageRow) -> Bool {
         lhs.message == rhs.message
@@ -1843,6 +1863,8 @@ struct ChatMessageRow: View, Equatable {
             bubbleRow
         } else if message.deleted || message.card?.type == "news" || message.card?.type == "meal-plan-draft" || message.card?.type == "trip-itinerary-draft" {
             bubbleRow
+        } else if message.card?.type == "hermes-nudge" {
+            hermesNudgeRow
         } else if message.card != nil {
             SystemCardRow(message: message, senderName: senderName, onTapCard: onTapCard)
         } else {
@@ -1856,7 +1878,15 @@ struct ChatMessageRow: View, Equatable {
             if !isMine || senderKid != nil { avatar }
             VStack(alignment: isMine ? .trailing : .leading, spacing: 3) {
                 if !isMine {
-                    Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderTextColor).padding(.horizontal, 6)
+                    HStack(spacing: 4) {
+                        Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderTextColor)
+                        // HELPER tag for any Hermes message, in every room it
+                        // appears (docs/HERMES-THREADS-CONTRACT.md §2), not just
+                        // the private Hermes thread.
+                        if message.senderType == "agent" { HelperTag() }
+                    }
+                    .padding(.horizontal, 6)
+                    .accessibilityElement(children: .combine)
                 }
                 bubble
                 if canImportMealPlan {
@@ -1942,6 +1972,131 @@ struct ChatMessageRow: View, Equatable {
         .buttonStyle(PressableStyle())
         .accessibilityLabel("Review and add to Itinerary")
         .accessibilityHint("Opens a preview before adding new activities to this Trip")
+    }
+
+    // MARK: Hermes nudge (docs/HERMES-THREADS-CONTRACT.md §3)
+
+    @ViewBuilder
+    private var hermesNudgeRow: some View {
+        if let card = message.card {
+            HStack(alignment: .bottom, spacing: Space.sm) {
+                avatar
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        Text(senderName).font(Typography.caption.weight(.bold)).foregroundStyle(senderTextColor)
+                        HelperTag()
+                    }
+                    .padding(.horizontal, 6)
+                    .accessibilityElement(children: .combine)
+                    nudgeBubble(card)
+                    Text(ChatTime.short(message.createdAt)).font(Typography.mono(10.5)).foregroundStyle(Palette.textSecond).padding(.horizontal, 6)
+                }
+                Spacer(minLength: typeSize.isAccessibilitySize ? 8 : 36)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func nudgeBubble(_ card: ChatCard) -> some View {
+        VStack(alignment: .leading, spacing: Space.md) {
+            VStack(alignment: .leading, spacing: 4) {
+                if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(ChatLinkText.attributed(message.text))
+                        .font(.body)
+                        .foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let title = card.title, !title.isEmpty {
+                    Text(title).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
+                }
+                // Up to 7 one-line rows with tail truncation (contract §3 step 3 —
+                // a dinner week-draft card lists all seven nights).
+                ForEach(Array((card.lines ?? []).prefix(7).enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            // Text/title/lines read as one VoiceOver stop; buttons below stay
+            // individually accessible (their own labels, disabled state, etc).
+            .accessibilityElement(children: .combine)
+
+            if card.state?.status == "open", let actions = card.actions, !actions.isEmpty {
+                nudgeActionsRow(actions)
+            } else if let label = card.state?.label, !label.isEmpty {
+                Text(label)
+                    .font(Typography.caption.weight(.semibold))
+                    .foregroundStyle(Palette.textSecond)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Palette.panel2, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
+        .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
+    }
+
+    /// Tries the buttons side by side first; wraps to one per line when they
+    /// don't fit (many actions, or large Dynamic Type) — no fixed heights.
+    private func nudgeActionsRow(_ actions: [HermesNudgeAction]) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Space.sm) { ForEach(actions) { nudgeActionButton($0) } }
+            VStack(alignment: .leading, spacing: Space.sm) { ForEach(actions) { nudgeActionButton($0) } }
+        }
+    }
+
+    @ViewBuilder
+    private func nudgeActionButton(_ action: HermesNudgeAction) -> some View {
+        let isDone = action.done == true
+        let isPending = pendingNudgeActionIds.contains(action.id)
+        let isPrimary = action.style == "primary"
+        let doneText = (action.doneLabel?.isEmpty == false) ? action.doneLabel! : action.label + " ✓"
+        Button {
+            performNudgeAction(action)
+        } label: {
+            HStack(spacing: 6) {
+                if isPending {
+                    ProgressView().tint(isPrimary ? Palette.onAccent : Palette.accent).controlSize(.small)
+                }
+                Text(isDone ? doneText : action.label)
+                    .font(Typography.body.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .frame(minHeight: 44)
+            .padding(.horizontal, Space.lg)
+            .foregroundStyle(isDone ? Palette.textSecond : (isPrimary ? Palette.onAccent : Palette.accent))
+            .background {
+                Capsule().fill(isDone ? AnyShapeStyle(Palette.panel2) : (isPrimary ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.clear)))
+            }
+            .overlay {
+                Capsule().strokeBorder(isDone ? Palette.border : (isPrimary ? Color.clear : Palette.accent), lineWidth: isPrimary ? 0 : 1.5)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isDone || isPending)
+        .accessibilityLabel(isDone ? doneText : action.label)
+    }
+
+    /// `open` actions navigate client-side only (no server call); an
+    /// unrecognized `open` value is treated as plain text — the button still
+    /// renders, but tapping it does nothing (contract §3). Everything else
+    /// posts to the thread's `/actions` endpoint via `AppStore`.
+    private func performNudgeAction(_ action: HermesNudgeAction) {
+        Haptics.selection()
+        if let open = action.open {
+            store.pendingHermesOpen = HermesNudgeOpenTarget(rawValue: open)
+            return
+        }
+        guard !pendingNudgeActionIds.contains(action.id) else { return }
+        pendingNudgeActionIds.insert(action.id)
+        let messageId = message.id
+        let roomId = message.roomId ?? "hermes"
+        Task {
+            await store.performHermesNudgeAction(messageId, action: action.id, roomId: roomId)
+            pendingNudgeActionIds.remove(action.id)
+        }
     }
 
     @ViewBuilder private var bubble: some View {
