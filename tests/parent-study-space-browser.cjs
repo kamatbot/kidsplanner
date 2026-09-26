@@ -9,12 +9,10 @@ const assert = require('node:assert/strict');
       const context = await browser.newContext({viewport:{width,height:900}, serviceWorkers:'block'});
       await context.addCookies(sessions.parent.split('; ').map(s=>({name:s.slice(0,s.indexOf('=')),value:s.slice(s.indexOf('=')+1),url:base})));
       const page = await context.newPage(); await page.goto(base);
-      const pal = page.locator('#today-study-pal');
-      await pal.getByRole('button', {name:/Koko/}).waitFor();
-      const toggle = pal.getByRole('button', {name:/Koko/});
-      if (await toggle.textContent() === 'Show Koko') await toggle.click();
-      await toggle.click(); assert.equal(await toggle.textContent(),'Show Koko'); await toggle.click();
+      // Koko and My Corner are iOS-only; the web offers neither.
       const mood = page.locator('#mood-check-in');
+      await mood.waitFor();
+      assert.equal(await page.locator('#today-study-pal').count(), 0);
       const count = async () => (await (await context.request.get(base+'/api/chat/messages')).json()).messages.length;
       const before = await count();
       await mood.getByRole('button',{name:'Full',exact:true}).click();
@@ -32,6 +30,6 @@ const assert = require('node:assert/strict');
       await page.screenshot({path:'.dev-data/daily-four/parent-koko-'+width+'.png'});
       await context.close();
     }
-    console.log('PASS parent Koko, explicit emotion preview/cancel/send, no web My Corner at 390/1024px');
+    console.log('PASS parent: no web Koko or My Corner; explicit emotion preview/cancel/send at 390/1024px');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

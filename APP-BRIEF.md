@@ -43,7 +43,7 @@
 | Typography | Self-hosted Geist variable 100–900 on the web, tabular numerals throughout; 30px greeting, 64px hero count, 30px child stats, 14px body. |
 | Native and marketing scope | Native Family Rings follows `docs/design/family-rings/IOS-BRIEF.md`: shared adaptive colors, bundled Geist, native Today and pure count formulas. Five native tabs stay native; secondary surfaces use HybridWebView. Widget/watch visual changes await device approval. Marketing keeps its existing Horizon type and palette. |
 | Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). The native contract supersedes the earlier native Today design; marketing remains separate. |
-| Personal study space | Koko opens a child’s next homework task or a parent’s Needs you actions, an energy check-in and My Corner. Available to kids and parents, primarily on iPad. Mood sharing requires explicit preview/send. Each account owns a private Corner; parents cannot open children’s or other parents’ Corners. My Corner and its stickers are iOS-only; the web has neither (owner decision 2026-09-26). |
+| Personal study space | Koko opens a child’s next homework task or a parent’s Needs you actions, an energy check-in and My Corner. Available to kids and parents, primarily on iPad. Mood sharing requires explicit preview/send. Each account owns a private Corner; parents cannot open children’s or other parents’ Corners. Koko, My Corner and its stickers are iOS-only; the web has none of them, and keeps only the explicit energy check-in (owner decisions 2026-09-26). |
 
 ## Monetization
 | Decision | Value | → Components |
