@@ -185,29 +185,20 @@ When Hermes requests an Operator approval (MCP `fametc_approvals_request`), the 
 - Whichever surface decides first wins. A later tap on a stale card resolves it with the current state, for example "Already approved".
 - `approval` is server-only: the Mac cannot post it.
 
-## 8. Today strip (web and iOS)
+## 8. The Hermes tab (web)
 
-A slim "Hermes" strip at the top of Today, above the Needs-you hero, for both parent and kid Today.
+**Owner decision (2026-09-26):** Hermes gets its own tab in the left nav and stays off the Today homescreen ("so it doesn't disturb the newly built homescreen").
 
-**What it shows.** Candidates are messages in the signed-in person's Hermes thread that have all of:
-- `senderType: "agent"`;
-- a `card.type` of `"hermes-nudge"`;
-- a `card.state.status` of `"open"`;
-- not deleted.
+**Where the tab appears**
+- The desktop sidebar, right after Today, with a badge counting the actionable open cards.
+- The kid top bar, right after Today.
+- First item in the phone "More" sheet.
 
-A candidate is shown when either:
-- it has at least one action without `open` that isn't `done` (it is **actionable**), and it was posted within the last **18 hours**; or
-- it has no such action, and it was posted within the last **2 hours** (a status like "school ended now").
+**What the page shows**
+- A "Waiting on you" section, listing up to 3 open cards that are **actionable** (an action with no `open` that isn't `done`) and were posted within the last 18 hours, newest first. Approval rows also show the card's `lines`.
+- Then the full private conversation, with its composer.
 
-Show at most **2**, newest first. Hide the strip entirely when there are none: no empty state, no placeholder.
-
-**How each row works**
-- A small "Hermes" label with the sparkles mark in violet.
-- The message text, at most 2 lines.
-- The card's buttons, behaving exactly as in chat (§3).
-- Tapping the text opens the Hermes chat room.
-- Buttons share state with the chat thread. A tap in the strip updates the same message in the chat, and a resolved row leaves the strip.
-
-**Where the data comes from**
-- **Web:** the already-loaded Hermes thread state.
-- **iOS:** load the `"hermes"` room when Today appears and on pull-to-refresh, unless it's already loaded.
+**Where else Hermes appears**
+- **Deep link:** `/app?chat=hermes` opens the tab.
+- **Chat dock:** it keeps its Family | Hermes switch.
+- **iOS:** Hermes is the "Hermes" room in the Chat tab. There's no Today strip and no extra tab bar entry.
