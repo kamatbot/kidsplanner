@@ -334,11 +334,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <div class="today-tomorrow" id="today-tomorrow" hidden><h3>Tomorrow</h3><div id="today-tomorrow-row" class="fr-day-scroll"></div></div>
           </section>
           <div class="fr-learning-tiles">
-                <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 3 activities">
-                  <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')"><span class="fr-learning-ring" id="fr-learning-news"></span><span><b>News</b><small>Stories today</small></span></button>
-                  <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')"><span class="fr-learning-ring" id="fr-learning-quote"></span><span><b>Quote</b><small>This week’s theme</small></span></button>
-                  <button type="button" id="daily5-tab-word" role="tab" aria-controls="daily5-panel-word" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('word')"><span class="fr-learning-ring" id="fr-learning-word"></span><span><b>Word</b><small>Word of the week</small></span></button>
-                </div>
+            <div class="daily5-launchers" role="group" aria-label="Daily 3 shortcuts">
+              <button type="button" onclick="selectDaily5Activity('news',true)"><span class="fr-learning-ring" id="fr-learning-news"></span><span><b>News</b><small>Stories today</small></span></button>
+              <button type="button" onclick="selectDaily5Activity('quote',true)"><span class="fr-learning-ring" id="fr-learning-quote"></span><span><b>Quote</b><small>This week’s theme</small></span></button>
+              <button type="button" onclick="selectDaily5Activity('word',true)"><span class="fr-learning-ring" id="fr-learning-word"></span><span><b>Word</b><small>Word of the week</small></span></button>
+            </div>
 
             <button type="button" class="fr-challenge-tile" onclick="openTodayChallenge()"><span class="fr-learning-ring" id="fr-learning-challenge"></span><span><b>Challenge</b><small id="fr-challenge-status">Today's puzzle</small></span></button>
           </div>
@@ -357,6 +357,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   </div>
                 </div>
                 <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">News, Quote &amp; Word · 0 of 3 complete</p>
+                <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 3 activities">
+                  <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')">News</button>
+                  <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')">Quote</button>
+                  <button type="button" id="daily5-tab-word" role="tab" aria-controls="daily5-panel-word" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('word')">Word</button>
+                </div>
 
                 <!-- Quote of the Day — flips to a reflection composer that saves
                      as a note (source:"quote"). See renderWidgets/flipQuoteCard.
