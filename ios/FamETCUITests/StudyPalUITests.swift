@@ -55,6 +55,11 @@ final class StudyPalUITests: XCTestCase {
         openStudy.tap()
         let homework = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Next homework.")).firstMatch
         XCTAssertTrue(homework.waitForExistence(timeout: 5))
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            XCTAssertLessThanOrEqual(app.navigationBars["Koko"].frame.width, 440, "Koko should stay a compact anchored panel")
+        }
+        let corner = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "My Corner.")).firstMatch
+        XCTAssertTrue(corner.isHittable, "All three starting points should fit at standard text size")
         screenshot(app, "koko-study-panel")
         homework.tap()
         XCTAssertTrue(app.staticTexts["Visual coral field notes"].waitForExistence(timeout: 10))

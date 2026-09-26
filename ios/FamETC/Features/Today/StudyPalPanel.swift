@@ -5,8 +5,10 @@ import SwiftUI
 struct StudyPalPanel: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var textSize
 
     let ownerID: String
+    var usesPopover = false
 
     private enum Destination: Identifiable {
         case homework(String)
@@ -43,7 +45,7 @@ struct StudyPalPanel: View {
             Group {
                 if isAuthorized {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: Space.lg) {
+                        VStack(alignment: .leading, spacing: Space.md) {
                             header
                             nextHomeworkButton
                             panelButton(
@@ -59,8 +61,7 @@ struct StudyPalPanel: View {
                                 action: { destination = .corner }
                             )
                         }
-                        .padding(Space.lg)
-                        .frame(maxWidth: 680, alignment: .leading)
+                        .padding(Space.md)
                         .frame(maxWidth: .infinity, alignment: .center)
                     }
                 } else {
@@ -76,7 +77,10 @@ struct StudyPalPanel: View {
                 }
             }
         }
-        .presentationSizing(.page)
+        .frame(width: usesPopover ? 400 : nil,
+               height: usesPopover ? (textSize.isAccessibilitySize ? 580 : 440) : nil)
+        .presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(480), .large])
+        .presentationDragIndicator(usesPopover ? .hidden : .visible)
         .tint(Palette.frYou)
         .onAppear {
             if !isAuthorized { dismiss() }
@@ -100,13 +104,13 @@ struct StudyPalPanel: View {
             Image("KokoStudyPal")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 88, height: 88)
+                .frame(width: 64, height: 64)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text("Let’s take one step")
                     .font(Typography.cardTitle)
                     .foregroundStyle(Palette.frInk)
-                Text("Koko can help you choose where to begin.")
+                Text("Pick one small step.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.frInk2)
             }
@@ -154,9 +158,9 @@ struct StudyPalPanel: View {
         } label: {
             HStack(alignment: .top, spacing: Space.md) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Palette.frYou)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                     .background(Palette.frYouSoft, in: Circle())
                 VStack(alignment: .leading, spacing: Space.xs) {
                     Text(title)
@@ -173,8 +177,8 @@ struct StudyPalPanel: View {
                     .foregroundStyle(Palette.frInk2)
                     .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .padding(Space.md)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(12)
             .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
             .contentShape(Rectangle())
         }

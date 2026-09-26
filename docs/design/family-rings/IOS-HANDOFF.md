@@ -8,7 +8,7 @@ Open `ios/FamETC.xcodeproj` in the isolated `ios-family-rings` worktree. The pro
 
 - Exact adaptive Family Rings palette, bundled Geist, borderless cards and reusable accessible rings without the zero-progress cap dot.
 - Native parent/kid Today, scoped counts in `FamilyRingsMath`, action Review/Done flows, native habits, child cards, calendar strip, Tonight and four learning tiles. Challenge remains separate from the Daily 3 count.
-- Child-only Koko panel with the next homework task, Energy check-in and My Corner. Energy requires preview/send to share; private notes and six sticker choices persist only for the owning child. Save failures retain the draft.
+- Child-only Koko panel with the next homework task, Energy check-in and My Corner. It opens as a compact anchored iPad popover or a smaller iPhone sheet; full activities open only after selection. Energy requires preview/send to share; private notes and six sticker choices persist only for the owning child. Save failures retain the draft.
 - Account-switch protections: private views/state clear immediately; native and WebKit session cookies clear before onboarding. Cookie cleanup retains its WebKit data store through asynchronous work.
 - Completed native chat changes from the separate chat task, integrated using three-way merges against `07d8ae2`: receive-loop fixes, article cards, family bubbles/avatars and keyboard-height attachment picker with draft recovery. The original shared changes were preserved through integration, with input hashes retained in the local receipt.
 

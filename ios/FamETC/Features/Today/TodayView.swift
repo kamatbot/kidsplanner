@@ -465,15 +465,14 @@ private struct KidTodayStack: View {
             StudyStartCard()
             if let user = store.me, user.role == "kid", !store.needsAuth {
                 StudyPalCard(userID: user.id, onOpenStudy: { showStudy = true })
+                    .popover(isPresented: $showStudy, arrowEdge: .bottom) {
+                        StudyPalPanel(ownerID: user.id, usesPopover: sizeClass == .regular).id(user.id)
+                            .presentationCompactAdaptation(.sheet)
+                    }
             }
             KidHomeworkCard(onOpenHomework: onOpenHomework)
         }
         .sheet(isPresented: $showActions) { FamilyRingsActionsSheet() }
-        .sheet(isPresented: $showStudy) {
-            if let user = store.me, user.role == "kid", !store.needsAuth {
-                StudyPalPanel(ownerID: user.id).id(user.id)
-            }
-        }
         .onChange(of: store.me?.id) { _, _ in showStudy = false; showActions = false }
         .onChange(of: store.needsAuth) { _, needsAuth in
             if needsAuth { showStudy = false; showActions = false }

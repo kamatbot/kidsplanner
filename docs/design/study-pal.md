@@ -20,7 +20,7 @@ Koko homework's order and places it after homework in document order. Native
 `KidTodayStack` inserts `StudyPalCard(userID:onOpenStudy:)` after StudyStartCard
 only for explicit kid roles. Keep this ordering when integrating newer Today
 layouts. XcodeGen discovers the new Swift source and image set automatically.
-On the Family Rings iOS branch, the visible card opens `StudyPalPanel`: next homework from the existing priority selector, an optional energy check-in, and My Corner. The panel and its sheets dismiss when the child account/family changes. Hide/Show remains independent of these activities. Energy only posts after an explicit preview/send; My Corner uses its existing child-scoped endpoint. CSP and service-worker behavior are unchanged.
+On the Family Rings iOS branch, the visible card opens a compact `StudyPalPanel` popover on iPad (a smaller sheet on iPhone): next homework from the existing priority selector, an optional energy check-in, and My Corner. The panel and its sheets dismiss when the child account/family changes. Hide/Show remains independent of these activities. Energy only posts after an explicit preview/send; My Corner uses its existing child-scoped endpoint. CSP and service-worker behavior are unchanged.
 
 The native asset is available offline. The web service worker is intentionally
 network-only; this feature preserves that architecture and does not promise
