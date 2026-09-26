@@ -32,8 +32,10 @@ The owner has revoked deployment authorization for this task and reserved merge/
 
 The release worker had already initiated a Hostinger upload/build before the stop reached it. That build completed: `01a0dd3f-6bfb-7277-8426-5bdc01a67377`. Last observed live commit was `25b47623c2e22f8f68eda26289ef7d0fd1629e5e`, marker `20260926-102234Z-25b4762`; health 200, private API 401, passkey RP fametc.com, zero pending builds. No rollback was performed. Main was never merged or pushed by this task.
 
-## Security issue requiring resolution before another release
+## Archive access observation — exposure unconfirmed
 
-The release worker reported that its uploaded archive is publicly downloadable and contains `.env.hostinger` and an APNs `.p8` key. Do not reuse that archive or publish its URL. The owner was informed and authorized removing the exposed archive without changing the running app. The worker subsequently verified GET 404 for the exact archive URL and its absence from the Hostinger file listing. It had already disappeared before deletion was needed; no deletion API, rebuild or rollback was performed. The running app remains unchanged. Previously exposed credentials still require rotation. Credential rotation and a safe private-file provisioning/upload path need resolution with the owner before further deployment. Do not expose secret values in logs, messages or commits.
+The worker initially reported a publicly downloadable archive, but its original remote evidence captured only HTTP 200, without Content-Type, Content-Length, ZIP magic or downloaded bytes. That did not establish ZIP or credential exposure; it could have been an HTML fallback. The local deployment archive did contain the packer's `.env.hostinger` and APNs `.p8` runtime files. No secret values or download URL are included here.
 
-The private local incident receipt (including exact provider archive path) is `.dev-data/daily-four/release/deploy-revoked-20260926.json`. Archive unavailability is verified; credential rotation remains outstanding. This document contains no credentials or download URL.
+The owner authorized removing the archive while leaving the running app unchanged. Follow-up exact URL checks returned HEAD and GET 404 (`text/html`), and the Hostinger file listing omitted it. No deletion API, rebuild, rollback or configuration change was performed. The app remains at the earlier implementation release. Credential exposure and a need for rotation are not established by these observations; review the upload access guarantees before another release.
+
+Private local evidence: `.dev-data/daily-four/release/deploy-revoked-20260926.json`, corrected with `remoteZipExposureConfirmed: false`. The owner was explicitly informed of this correction.
