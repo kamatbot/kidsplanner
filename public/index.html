@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f1efec">
+  <meta name="theme-color" content="#F4F5F7">
   <title>Fam ETC — Family Planner</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -38,13 +38,12 @@
   <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
 </head>
 <body>
-<!-- Today seed 694b4b4f — Needs-You Stack.
-THESIS: Today is a queue, not a widget wall: one prioritised stack of what needs a parent now, with the day and the children beside it; it refuses the equal-card grid.
-OWN-WORLD: Horizon — greige ground, three white bands split by hairline rules, violet only for actions, kid profile colours as identity dots, Space Grotesk text, JetBrains Mono for times and counts.
-STORY: A parent sees how many things need them, clears the top one in a tap, scans the day and each child's load, then plays Daily 3.
-FIRST VIEWPORT: Greeting with a one-line day summary; band one splits 3:2 — Family Actions stack left (top item emphasised, one control per row), Schedule timeline with a now-line right; Children and Tonight/Habits band below.
-FORM: Needs-You Stack, structure 4 of 7, seed 694b4b4f.
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance -->
+<!-- Family Rings seed 19a71449.
+THESIS: Every child's day is rings to close, and the parent's ring is what needs you.
+OWN-WORLD: Cool grey, white cards, violet actions, rose/teal/azure rings, gold fams, Geist.
+STORY: Glance, act, watch rings close.
+FIRST VIEWPORT: The parent ring and actions hero, then kid ring cards.
+FORM: Family Rings, seed 19a71449. -->
 <!-- Child view seed f65d002f.
 THESIS: The child page connects parental help with observed progress, without a timetable or sibling ranking.
 OWN-WORLD: Existing Horizon type, neutral panels, violet actions, circular child avatars and status marks.
@@ -86,14 +85,37 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════
-     APP SHELL — sidebar nav (parents) / top bar (kids) + main content +
-     docked family chat. isKidSession() adds .kid-view to #dashboard-screen
-     at boot (see applyKidViewClass() in app.js) which swaps the sidebar for
-     a slim top bar and the docked chat for a floating slide-over button —
-     see styles.css "KID VIEW".
+     APP SHELL — desktop rail, tablet kid top bar, Family Rings phone
+     navigation, main content, and docked family chat. isKidSession() adds
+     .kid-view to #dashboard-screen at boot; phones use the shared Family
+     Rings top and bottom navigation for every role.
 ═══════════════════════════════════════════════════════════ -->
 <div id="dashboard-screen" class="screen active">
   <div class="app-shell">
+
+    <!-- Family Rings phone shell. It is deliberately separate from the
+         desktop rail so every role gets the same compact navigation. -->
+    <header class="fr-mobile-topbar" aria-label="Fam ETC">
+      <div class="fr-mobile-brand"><span class="fr-mobile-mark" aria-hidden="true">F</span><span>Fam ETC</span></div>
+      <button type="button" class="fr-mobile-avatar" id="mobile-user-avatar" aria-label="Open more navigation" onclick="document.getElementById('mobile-more-dialog').showModal()">F</button>
+    </header>
+    <nav class="fr-mobile-tabbar" aria-label="Primary navigation">
+      <button type="button" class="sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')" aria-label="Today"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg><span>Today</span></button>
+      <button type="button" class="sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')" aria-label="Calendar"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg><span>Calendar</span></button>
+      <button type="button" class="sidebar-nav-item" data-tab="homework" onclick="switchNavTab('homework')" aria-label="Homework"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg><span>Homework</span></button>
+      <button type="button" class="sidebar-nav-item" data-tab="goals" onclick="switchNavTab('goals')" aria-label="Goals"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg><span>Goals</span></button>
+      <button type="button" class="sidebar-nav-item" onclick="document.getElementById('mobile-more-dialog').showModal()" aria-label="More"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg><span>More</span></button>
+    </nav>
+    <dialog class="fr-mobile-more" id="mobile-more-dialog" aria-label="More navigation">
+      <div class="fr-mobile-more-header"><strong>More</strong><button type="button" aria-label="Close menu" onclick="this.closest('dialog').close()">×</button></div>
+      <button type="button" data-tab="activities" onclick="this.closest('dialog').close();switchNavTab('activities')">Activities</button>
+      <a href="/trips">Trips</a>
+      <a class="parent-only" href="/meals">Meals</a>
+      <button type="button" data-tab="notes" onclick="this.closest('dialog').close();switchNavTab('notes')">Notes</button>
+      <button type="button" data-tab="settings" onclick="this.closest('dialog').close();switchNavTab('settings')">Settings</button>
+      <a class="parent-only" href="/security">Account &amp; passkeys</a>
+      <button type="button" class="fr-mobile-logout" onclick="this.closest('dialog').close();handleLogout()">Log out</button>
+    </dialog>
 
     <!-- Kid top bar (kid sessions only — CSS-gated via .kid-view) -->
     <div class="kid-topbar">
@@ -217,24 +239,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </div>
           </header>
 
-          <!-- Band 1: what needs you (the stack) beside today's schedule.
-               action-queue.js inserts the Hermes case panel before
-               #today-actions-card, so it stays inside the stack region. -->
-          <div class="today-band today-band-now">
-            <div class="today-region today-needs">
-              <section class="today-actions-card" id="today-actions-card" aria-labelledby="today-actions-title">
-                <div class="today-section-head">
-                  <h2 id="today-actions-title">Family Actions</h2>
-                  <span id="today-actions-count" class="today-count"></span>
-                  <div class="today-section-actions">
-                    <button type="button" class="today-mini-btn parent-only" id="today-action-add-btn"
-                            onclick="openTodayActionComposer()" aria-expanded="false"
-                            aria-controls="today-action-composer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add</button>
-                  </div>
-                </div>
-
-                <div id="today-actions-status" class="today-actions-status" role="status" aria-live="polite"></div>
-
+          <section class="today-actions-card fr-hero" id="today-actions-card" aria-labelledby="today-actions-title">
+            <div id="today-parent-ring" class="fr-you-ring" aria-live="polite"></div>
+            <div class="fr-hero-actions">
+              <div class="today-section-head">
+                <h2 id="today-actions-title">Needs you</h2>
+                <button type="button" id="today-actions-count" class="today-link" onclick="openAllFamilyActions()">See all</button>
+              </div>
+              <div id="today-actions-status" class="today-actions-status" role="status" aria-live="polite"></div>
+              <div id="today-actions-list" class="today-actions-list"></div>
+              <div id="today-actions-footer" class="today-actions-footer"></div>
+            </div>
+            <div class="fr-composer-wrap">
                 <div id="today-action-composer" class="today-action-composer" hidden>
                   <div class="today-action-composer-header">
                     <div>
@@ -278,28 +294,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   </form>
                 </div>
 
-                <div id="today-actions-list" class="today-actions-list"></div>
-                <div id="today-actions-footer" class="today-actions-footer"></div>
-              </section>
             </div>
-
-            <section class="today-region today-day today-agenda-card" aria-labelledby="today-agenda-title">
-              <div class="today-section-head">
-                <h2 id="today-agenda-title">Schedule</h2>
-                <span class="today-count" id="today-schedule-count"></span>
-                <div class="today-section-actions">
-                  <button type="button" class="today-mini-btn" id="today-add-event-btn" onclick="openAddEventModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Event</button>
-                </div>
-              </div>
-              <div id="today-schedule-list" class="today-timeline"></div>
-              <div class="today-tomorrow" id="today-tomorrow" hidden>
-                <span class="today-tomorrow-label">Tomorrow</span>
-                <div id="today-tomorrow-row"></div>
-              </div>
-              <a href="#" class="today-link today-agenda-footer" onclick="switchNavTab('calendar');return false">Open calendar<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
-            </section>
-          </div>
-
+          </section>
           <section class="today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
             <div class="today-setup-header">
               <div>
@@ -313,16 +309,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <div id="today-setup-content"></div>
           </section>
 
-          <!-- Band 2: each child at a glance (homework load, habits, fams)
-               beside tonight's dinner and the family's habits. -->
-          <div class="today-band today-band-home">
-            <section class="today-region today-people" aria-labelledby="today-fams-title">
-              <div class="today-section-head">
-                <h2 id="today-fams-title">Children</h2>
-                <div class="today-section-actions"><span class="today-fams-value">1 fam = ฿1</span></div>
-              </div>
-              <div id="today-fams-body" aria-live="polite"><p class="today-fams-note">Loading…</p></div>
-              <!-- Kid sessions only: their own homework list (renderTodayHomework). -->
+          <section class="today-people" aria-label="Children's progress">
+            <h2 id="today-fams-title" class="today-sr">Children</h2>
+            <div id="today-fams-body" class="fr-kids" aria-live="polite"></div>
+            <div class="fr-legend" aria-label="Ring legend">
+              <span><i class="fr-legend-hw"></i>Homework (outer)</span><span><i class="fr-legend-hab"></i>Habits (middle)</span><span><i class="fr-legend-d3"></i>Daily 3 (inner)</span><span><i class="fr-legend-fams"></i>Fams this week</span>
+            </div>
               <section class="today-homework-card" id="today-homework-card" aria-labelledby="today-homework-title" hidden>
                 <div class="today-section-head">
                   <h3 id="today-homework-title">Your homework</h3>
@@ -331,29 +323,25 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 </div>
                 <div id="today-homework-list"></div>
               </section>
-            </section>
-
-            <div class="today-region today-home-region">
-              <!-- Meals "Tonight" (Meals §7 integration) — best-effort: a fetch
-                   failure must never break Today, see famRenderTodayMeals(). -->
-              <section class="today-meals-card" id="today-meals-card" aria-labelledby="today-meals-title" hidden>
-                <div class="today-section-head">
-                  <h2 id="today-meals-title">Tonight</h2>
-                  <div class="today-section-actions"><a href="/meals" class="today-link">Meals<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></div>
-                </div>
-                <div id="today-meals-body"></div>
-              </section>
-              <section class="today-habits" aria-labelledby="today-habits-title">
-                <div class="today-section-head">
-                  <h2 id="today-habits-title">Habits</h2>
-                  <span class="today-count" id="today-habits-count"></span>
-                  <div class="today-section-actions"><a href="#" class="today-link" onclick="switchNavTab('goals');return false">Goals<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></div>
-                </div>
-                <div id="today-habits-list" class="habits-list"></div>
-              </section>
+          </section>
+          <section class="today-agenda-card" aria-labelledby="today-agenda-title">
+            <div class="today-section-head">
+              <h2 id="today-agenda-title">Today <span id="today-schedule-count"></span></h2>
+              <a href="/meals" class="fr-tonight" id="today-meals-card" hidden><span id="today-meals-body"></span></a>
+              <button type="button" id="today-add-event-btn" class="today-link" onclick="openAddEventModal()" aria-label="Add event">+ Event</button>
             </div>
-          </div>
+            <div id="today-schedule-list" class="fr-day-scroll"></div>
+            <div class="today-tomorrow" id="today-tomorrow" hidden><h3>Tomorrow</h3><div id="today-tomorrow-row" class="fr-day-scroll"></div></div>
+          </section>
+          <div class="fr-learning-tiles">
+                <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 3 activities">
+                  <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')"><span class="fr-learning-ring" id="fr-learning-news"></span><span><b>News</b><small>Stories today</small></span></button>
+                  <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')"><span class="fr-learning-ring" id="fr-learning-quote"></span><span><b>Quote</b><small>This week’s theme</small></span></button>
+                  <button type="button" id="daily5-tab-word" role="tab" aria-controls="daily5-panel-word" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('word')"><span class="fr-learning-ring" id="fr-learning-word"></span><span><b>Word</b><small>Word of the week</small></span></button>
+                </div>
 
+            <button type="button" class="fr-challenge-tile" onclick="openTodayChallenge()"><span class="fr-learning-ring" id="fr-learning-challenge"></span><span><b>Challenge</b><small id="fr-challenge-status">Today's puzzle</small></span></button>
+          </div>
           <!-- Band 3: Daily 3 beside the weekly challenge. Learning band —
                owned by Agent B. Styles in today-learning.css. -->
           <div class="today-band today-band-learn">
@@ -369,12 +357,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   </div>
                 </div>
                 <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">News, Quote &amp; Word · 0 of 3 complete</p>
-
-                <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 3 activities">
-                  <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')">News</button>
-                  <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')">Quote</button>
-                  <button type="button" id="daily5-tab-word" role="tab" aria-controls="daily5-panel-word" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('word')">Word</button>
-                </div>
 
                 <!-- Quote of the Day — flips to a reflection composer that saves
                      as a note (source:"quote"). See renderWidgets/flipQuoteCard.
@@ -833,7 +815,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div class="chat-dock-resize-handle" id="chat-dock-resize-handle"
              role="separator" tabindex="0" aria-label="Resize family chat"
              aria-orientation="vertical" aria-valuemin="296" aria-valuemax="520"
-             aria-valuenow="360" aria-controls="chat-dock" title="Drag to resize family chat"
+             aria-valuenow="340" aria-controls="chat-dock" title="Drag to resize family chat"
              onpointerdown="startChatDockResize(event)"
              onkeydown="handleChatDockResizeKeydown(event)"
              onclick="event.stopPropagation()"></div>
@@ -866,7 +848,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     </div>
 
-    <!-- Floating chat button — kid sessions only (chat becomes a slide-over) -->
+    <!-- Floating chat button — every phone session uses the same slide-over. -->
     <button type="button" class="chat-fab" id="chat-fab" onclick="toggleKidChat()" aria-label="Family chat">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1-5.3A8.5 8.5 0 1 1 21 11.5z"></path></svg>
       <span class="chat-fab-badge" id="chat-fab-badge" hidden>0</span>
@@ -1207,6 +1189,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <dialog id="family-actions-dialog" class="family-actions-dialog" aria-labelledby="family-actions-dialog-title">
   <header><h2 id="family-actions-dialog-title">All family actions</h2><form method="dialog"><button type="submit" class="btn-secondary" aria-label="Close all family actions">Close</button></form></header>
+  <button type="button" class="btn-primary parent-only" id="today-action-add-btn" onclick="document.getElementById('family-actions-dialog').close();openTodayActionComposer()" aria-expanded="false" aria-controls="today-action-composer">Add action</button>
   <div id="family-actions-dialog-list"></div>
 </dialog>
 

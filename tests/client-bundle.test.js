@@ -74,9 +74,38 @@ test("meal status stays in Today and meal chat cards", () => {
   const source = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
   assert.match(source, /card\.type === 'menu' \|\| card\.type === 'meal' \|\| card\.sourceType === 'meal'/);
   assert.match(source, /href="\/meals"/);
-  assert.match(source, /Prep today:/);
-  assert.match(source, /\$\{pendingShoppingCount\} on the shopping list/);
-  assert.match(source, /pantry items low or out/);
+  assert.match(source, /Tonight:/);
+  assert.match(source, /dinner not planned · Plan tonight/);
+});
+
+test("Tonight chip escapes dinner content, retains planning fallback, and never fetches for kids", async () => {
+  const source = fs.readFileSync(path.join(PUBLIC, "js", "app.js"), "utf8");
+  const card = {}, body = {};
+  let calls = 0;
+  const ctx = {
+    kid: false, sessionUser: { id: 'parent' }, menu: [],
+    document: { getElementById: id => ({ 'today-meals-card': card, 'today-meals-body': body })[id] },
+    isKidSession: () => ctx.kid,
+    todayIcon: () => '<svg></svg>',
+    esc: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+    window: { auth: { getMeals: async () => { calls++; return { menu: ctx.menu }; } } },
+  };
+  vm.runInNewContext(source.slice(source.indexOf('async function famRenderTodayMeals('), source.indexOf('function famMealCardCount(')), ctx);
+  ctx.menu = [{ date: '2026-09-26', slot: 'lunch', title: 'Lunch' }, { date: '2026-09-26', slot: 'dinner', title: '<img src=x> & rice' }];
+  await ctx.famRenderTodayMeals('2026-09-26');
+  assert.equal(card.hidden, false);
+  assert.match(body.innerHTML, /Tonight: &lt;img src=x&gt; &amp; rice/);
+  assert.doesNotMatch(body.innerHTML, /<img|Lunch/);
+  await ctx.famRenderTodayMeals('2026-09-27');
+  assert.match(body.innerHTML, /dinner not planned · Plan tonight/);
+  ctx.kid = true;
+  await ctx.famRenderTodayMeals('2026-09-26');
+  assert.equal(card.hidden, true);
+  assert.equal(calls, 2);
+  ctx.kid = false;
+  ctx.window.auth.getMeals = async () => { throw new Error('offline'); };
+  await ctx.famRenderTodayMeals('2026-09-26');
+  assert.equal(card.hidden, true);
 });
 
 test("Calendar keeps one main surface and header utility actions", () => {
@@ -167,7 +196,7 @@ test("Meals uses the shared canvas while Trips retains its feature canvas", () =
   assert.match(mealHeaderInnerRule, /padding:\s*26px 30px 0/);
   assert.match(mealHouseholdRule, /max-width:\s*none/);
   assert.match(mealTabsRule, /max-width:\s*none/);
-  assert.match(stylesCss, /\.main-content\s*\{[^}]*padding:\s*26px 30px/);
+  assert.match(stylesCss, /\.main-content\s*\{[^}]*padding:\s*30px 32px/);
   assert.match(mealsCss, /@media \(max-width: 900px\)[\s\S]*?\.meal-main\s*\{[^}]*padding:\s*16px 16px 60px/);
   assert.match(mealsCss, /@media \(max-width: 640px\)[\s\S]*?\.meal-main\s*\{[^}]*padding:\s*18px 14px 60px/);
   assert.match(tripsCss, /\.trip-main\s*\{[\s\S]*?max-width:\s*1320px/);

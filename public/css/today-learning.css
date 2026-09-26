@@ -330,3 +330,24 @@
 #tab-today .daily5-streak.is-zero .streak-zero { display: inline; }
 #tab-today .daily5-streak.is-zero .streak-flame,
 #tab-today .daily5-streak.is-zero .streak-count { display: none; }
+
+/* Family Rings activity tiles. The accessible tablist stays separate from
+   Challenge; its three mounted panels preserve every draft and interaction. */
+#tab-today .fr-learning-tiles { display: grid; grid-template-columns: 3fr 1.2fr; gap: 16px; }
+#tab-today .fr-learning-tiles .daily5-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin: 0; padding: 0; border: 0; background: none; border-radius: 0; }
+#tab-today .fr-learning-tiles :is(.daily5-tabs button,.fr-challenge-tile) { display: flex; align-items: center; gap: 14px; padding: 14px 18px; min-height: 88px; background: var(--fr-card); color: var(--fr-ink); border: 0; border-radius: 24px; box-shadow: var(--fr-shadow); text-align: left; cursor: pointer; font-family: inherit; }
+#tab-today .fr-learning-tiles button[aria-selected="true"] { box-shadow: var(--fr-shadow); }
+#tab-today .fr-learning-tiles .daily5-tabs button::after { content: none; }
+#tab-today .fr-learning-tiles button:hover { background: var(--fr-card-2); }
+#tab-today .fr-learning-ring { display: block; width: 44px; height: 44px; flex: none; }
+#tab-today .fr-learning-tiles b { display: block; font-size: 16px; font-weight: 700; }
+#tab-today .fr-learning-tiles small { display: block; font-size: 12px; font-weight: 400; color: var(--fr-ink-2); margin-top: 2px; }
+#tab-today .today-daily3 .today-section-head { margin-bottom: 8px; }
+#tab-today .today-daily3 .daily5-panel { margin-top: 16px; }
+#tab-today .today-challenge .challenge-chip-row { margin: 12px 0; }
+#tab-today .streak-flame { color: var(--fr-d3); }
+@container today (max-width: 700px) {
+  #tab-today .fr-learning-tiles { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+  #tab-today .fr-learning-tiles .daily5-tabs { display: contents; }
+  #tab-today .fr-learning-tiles :is(.daily5-tabs button,.fr-challenge-tile) { padding: 14px; min-height: 76px; border-radius: 20px; gap: 10px; }
+}

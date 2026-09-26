@@ -1,314 +1,220 @@
-/* Today — the Needs-You Stack (seed 694b4b4f). Horizon tokens only.
-   Three bands on the greige ground: what needs you beside today's schedule,
-   the children beside dinner and habits, Daily 3 beside the weekly challenge.
-   Flat at rest: hairline rules separate regions, no ambient shadows.
-   The shell (sidebar) and the docked family chat are outside this scope. */
-
+/* Family Rings · seed 19a71449. The reference values live in
+   docs/design/family-rings/today-reference.html. */
 #tab-today {
   container: today / inline-size;
-  width: 100%;
-  min-width: 0;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding-bottom: 40px;
-  font: var(--t-body);
-  color: var(--text);
+  width: 100%; min-width: 0; max-width: 1440px; margin: 0 auto; padding-bottom: 40px;
+  color: var(--fr-ink); font: var(--t-body);
 }
-/* One type scale for every Today module, shared with the all-actions dialog
-   (it lives outside #tab-today). Text rules use these tokens via
-   `font: var(--t-…)`; the only other sizes are the greeting (34px), the
-   quote of the day (20px) and the word of the day (26px). */
 :is(#tab-today, #family-actions-dialog) {
-  --today-font: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
-  --today-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --t-h2: 650 18px/1.2 var(--today-font);
-  --t-title-lg: 650 17px/1.35 var(--today-font);
+  --today-font: "Geist", system-ui, -apple-system, sans-serif;
+  --today-mono: var(--today-font);
+  --t-h2: 700 20px/1.25 var(--today-font);
+  --t-title-lg: 600 17px/1.35 var(--today-font);
   --t-title: 600 15px/1.4 var(--today-font);
-  --t-lede: 400 15px/1.5 var(--today-font);
-  --t-body: 400 14px/1.55 var(--today-font);
+  --t-lede: 400 14px/1.5 var(--today-font);
+  --t-body: 400 14px/1.5 var(--today-font);
   --t-label: 600 13px/1.35 var(--today-font);
-  --t-meta: 500 12.5px/1.45 var(--today-font);
-  --t-tag: 600 11.5px/1 var(--today-font);
-  --t-mono: 500 12px/1.4 var(--today-mono);
+  --t-meta: 400 13px/1.4 var(--today-font);
+  --t-tag: 700 10px/1.2 var(--today-font);
+  --t-mono: 500 12px/1.4 var(--today-font);
 }
-/* Legacy widget markup (h3/h4, tables, captions, blockquotes, cite) must not
-   bring browser-default sizes into Today; modules restyle them explicitly. */
-#tab-today :is(h3, h4, p, table, caption, th, td, blockquote, cite) { font: inherit; color: inherit; margin: 0; }
-#tab-today.active { display: block; }
+#tab-today.active { display: flex; flex-direction: column; gap: 20px; }
 #tab-today:not(.active) { display: none; }
-.app-shell:has(#tab-today.active) .main-content { scrollbar-gutter: stable; }
-
-/* ---------- Header: greeting + one-line day summary ---------- */
-#tab-today .today-header { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 10px 24px; margin: 2px 0 20px; }
-#tab-today .today-greeting-col { flex: 1 1 320px; min-width: 0; }
-#tab-today .today-greeting { margin: 0; color: var(--text); font: 650 34px/1.05 var(--today-font); letter-spacing: -.035em; text-wrap: balance; }
-#tab-today .today-summary { margin: 9px 0 0; color: var(--text-2); font: var(--t-lede); font-variant-numeric: tabular-nums; }
-#tab-today .today-summary > span { display: inline-block; white-space: nowrap; }
-#tab-today .today-summary > span:not(:empty) ~ span:not(:empty)::before { content: "·"; margin: 0 .5em; }
-#tab-today .today-summary strong { color: var(--text); font-weight: 600; }
-#tab-today .today-summary .is-overdue { color: var(--c-red); font-weight: 600; }
-#tab-today .today-sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 0 0 5px; color: var(--text-2); font: var(--t-meta); }
-#tab-today .today-sync-status[hidden] { display: none; }
-#tab-today .today-sync-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c-green); }
-#tab-today .today-sync-dot.is-stale { background: var(--c-amber); }
-#tab-today .today-sync-dot.is-never { background: var(--border); box-shadow: inset 0 0 0 1px var(--text-2); }
-
-/* ---------- Bands and regions ---------- */
-#tab-today .today-band { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 18px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); }
-#tab-today .today-region { min-width: 0; padding: 22px 24px 24px; }
-#tab-today .today-band > .today-region + .today-region { border-top: 1px solid var(--border); }
-@container today (min-width: 760px) {
-  #tab-today .today-band-now,
-  #tab-today .today-band-home { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-  #tab-today .today-band-now > .today-region + .today-region,
-  #tab-today .today-band-home > .today-region + .today-region { border-top: 0; border-left: 1px solid var(--border); }
-}
-@container today (min-width: 1060px) {
-  #tab-today .today-band-learn { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  #tab-today .today-band-learn > .today-region + .today-region { border-top: 0; border-left: 1px solid var(--border); }
-}
-@container today (max-width: 520px) {
-  #tab-today .today-greeting { font-size: 28px; }
-  /* Phones: the summary's three phrases stack as clean lines, no separators. */
-  #tab-today .today-summary > span:not(:empty) { display: block; }
-  #tab-today .today-summary > span::before { content: none !important; }
-  #tab-today .today-region { padding: 18px 16px 20px; }
-  #tab-today .today-band { border-radius: 16px; }
-}
-
-/* ---------- Section heads, counts, quiet buttons, links ---------- */
-#tab-today .today-section-head { display: flex; align-items: center; gap: 10px; min-height: 36px; margin: 0 0 12px; }
-#tab-today .today-section-head h2 { margin: 0; color: var(--text); font: var(--t-h2); letter-spacing: -.02em; }
-#tab-today .today-section-head h3 { margin: 0; color: var(--text); font: var(--t-title); letter-spacing: -.01em; }
-#tab-today .today-section-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-#tab-today .today-count { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); color: var(--text-2); font: var(--t-tag); white-space: nowrap; font-variant-numeric: tabular-nums; }
-#tab-today .today-count:empty,
-#tab-today .today-count[hidden] { display: none; }
-:is(#tab-today, #family-actions-dialog) .today-mini-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); font: var(--t-label); cursor: pointer; transition: border-color .15s, color .15s, background-color .15s; }
-:is(#tab-today, #family-actions-dialog) .today-mini-btn { white-space: nowrap; }
-#tab-today .today-mini-btn svg { flex: none; }
-:is(#tab-today, #family-actions-dialog) .today-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
-#tab-today .today-mini-btn[aria-expanded="true"] { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
-#tab-today .today-link { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--accent); font: var(--t-label); text-decoration: none; cursor: pointer; }
-#tab-today .today-link svg { flex: none; transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
-#tab-today .today-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-#tab-today .today-link:hover svg { transform: translateX(2px); }
-#tab-today .today-empty { margin: 0; padding: 4px 0 2px; color: var(--text-2); font: var(--t-body); }
-#tab-today .today-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-#tab-today .today-icon { flex: none; }
-
-/* Mounted learning panels stay in the DOM; only the selected one shows. */
+#tab-today [hidden], #family-actions-dialog [hidden] { display: none !important; }
 #tab-today .daily5-panel[hidden] { display: none; }
+.app-shell:has(#tab-today.active) .main-content { scrollbar-gutter: stable; }
+#tab-today :is(h2,h3,h4,p) { margin: 0; }
+#tab-today .today-header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+#tab-today .today-greeting { font: 700 30px/1.15 var(--today-font); letter-spacing: -.02em; margin: 0; }
+#tab-today .today-summary { margin-top: 6px; font: var(--t-body); color: var(--fr-ink-2); }
+#tab-today .today-summary > span:not(:empty) ~ span:not(:empty)::before { content: " · "; }
+#tab-today .today-summary .is-overdue { color: var(--fr-danger); }
+#tab-today .today-sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--fr-rule); border-radius: 999px; background: var(--fr-card); color: var(--fr-ink-2); font-size: 12px; }
+#tab-today .today-sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fr-hab); flex: none; }
+#tab-today .today-sync-dot.is-stale { background: var(--fr-fams); }
+#tab-today .today-sync-dot.is-never { background: transparent; border: 1px solid var(--fr-ink-2); }
+#tab-today :is(.fr-hero,.fr-kid-card,.today-agenda-card,.today-region,.today-setup-card,.today-homework-card) { background: var(--fr-card); border: 0; border-radius: 24px; box-shadow: var(--fr-shadow); }
+#tab-today .today-section-head { display: flex; align-items: center; gap: 10px; margin: 0; min-height: 32px; flex-wrap: wrap; }
+#tab-today .today-section-head h2 { font: 600 12px/1.4 var(--today-font); color: var(--fr-ink-2); letter-spacing: .08em; text-transform: uppercase; }
+#tab-today .today-section-head h3 { font: var(--t-title); }
+#tab-today .today-section-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+#tab-today .today-icon { flex: none; }
+:is(#tab-today,#family-actions-dialog) .today-link { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0; border: 0; background: none; color: var(--fr-you-ink); text-decoration: none; font: 600 14px/1.4 var(--today-font); cursor: pointer; }
+:is(#tab-today,#family-actions-dialog) .today-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+:is(#tab-today,#family-actions-dialog) .today-mini-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--fr-rule); border-radius: 999px; background: var(--fr-card); color: var(--fr-you-ink); font: var(--t-label); cursor: pointer; }
+#tab-today .today-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#tab-today :is(button,a,summary,input,select,textarea,[tabindex]):focus-visible { outline: 2px solid var(--fr-you); outline-offset: 2px; }
+#tab-today .today-empty { color: var(--fr-ink-2); font: var(--t-meta); padding-top: 8px; }
 
-/* ---------- Browser surfaces ---------- */
-#tab-today ::selection { background: color-mix(in srgb, var(--accent) 24%, transparent); }
-#tab-today :is(input, textarea) { caret-color: var(--accent); }
-#tab-today a { text-underline-offset: 3px; }
-#tab-today :is(button, a, summary, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#tab-today :is(button, a, input, select, textarea) { -webkit-tap-highlight-color: transparent; }
+/* Parent hero and the same role-scoped action list on kid Today. */
+#tab-today .fr-hero { display: grid; grid-template-columns: 250px minmax(0,1fr); align-items: center; padding: 22px 26px 22px 20px; min-height: 232px; margin: 0; }
+#tab-today .fr-you-ring { position: relative; width: 188px; height: 188px; margin: 0 auto; }
+.fr-ring { display: block; max-width: 100%; overflow: visible; }
+.fr-ring-track { stroke-opacity: var(--fr-track); }
+.fr-ring-fill { transition: stroke-dasharray 700ms cubic-bezier(.2,.8,.2,1); }
+.fr-ring-spark { animation: fr-spark 1.2s ease-out both; }
+.fr-ring-completed { animation: fr-glow 600ms ease-out; }
+@keyframes fr-spark { from { opacity: .9; } to { opacity: 0; } }
+@keyframes fr-glow { 40% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--fr-hab) 35%, transparent)); } }
+#tab-today .fr-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; pointer-events: none; }
+#tab-today .fr-ring-center b { font-size: 64px; font-weight: 800; letter-spacing: -.04em; line-height: .95; }
+#tab-today .fr-ring-center span { font-size: 13px; font-weight: 600; color: var(--fr-you-ink); margin-top: 4px; }
+#tab-today .fr-ring-center small { font-size: 11px; color: var(--fr-ink-2); margin-top: 4px; }
+#tab-today .fr-hero-actions { min-width: 0; }
+#tab-today #today-actions-count { margin-left: auto; }
+:is(#tab-today,#family-actions-dialog) .today-action-row { display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 14px; min-height: 70px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--fr-rule); background: transparent; border-radius: 0; margin: 0; }
+:is(#tab-today,#family-actions-dialog) .today-action-row:last-child { border-bottom: 0; }
+:is(#tab-today,#family-actions-dialog) .today-action-lead { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; }
+:is(#tab-today,#family-actions-dialog) .today-action-lead .kid-profile-avatar { width: 40px; height: 40px; font-size: 15px; }
+.fr-family-badge { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--fr-you); color: var(--fr-on-you); font-weight: 800; }
+:is(#tab-today,#family-actions-dialog) .today-action-body { min-width: 0; }
+:is(#tab-today,#family-actions-dialog) .today-action-title { font: var(--t-title-lg); letter-spacing: -.01em; color: var(--fr-ink); overflow-wrap: anywhere; }
+:is(#tab-today,#family-actions-dialog) .today-action-meta { display: flex; flex-wrap: wrap; gap: 0; color: var(--fr-ink-2); font: var(--t-meta); margin-top: 3px; }
+:is(#tab-today,#family-actions-dialog) .today-action-meta > span { border: 0; padding: 0; background: none; font: inherit; color: inherit; }
+:is(#tab-today,#family-actions-dialog) .today-action-meta > span + span::before { content: " · "; white-space: pre; }
+:is(#tab-today,#family-actions-dialog) .today-action-due.overdue { color: var(--fr-danger); }
+:is(#tab-today,#family-actions-dialog) .today-action-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+:is(#tab-today,#family-actions-dialog) .today-review-btn { min-height: 40px; padding: 0 18px; border-radius: 999px; white-space: nowrap; }
+:is(#tab-today,#family-actions-dialog) .today-action-notes { font: var(--t-meta); color: var(--fr-ink-2); }
+#tab-today .today-actions-footer { margin-top: 4px; }
+#tab-today .today-actions-empty { padding: 20px 0; color: var(--fr-ink-2); }
+#tab-today .today-actions-empty strong { color: var(--fr-ink); font-size: 20px; }
+#tab-today .today-actions-empty p { margin: 4px 0; }
+#tab-today .fr-composer-wrap { grid-column: 1 / -1; }
+#tab-today .today-action-composer { margin-top: 16px; padding: 18px; background: var(--fr-card-2); border: 1px solid var(--fr-rule); border-radius: 12px; }
+#tab-today .today-setup-card { padding: 24px; margin: 0; }
+#tab-today .today-setup-header h2 { font: var(--t-h2); }
+#tab-today .today-setup-header p { color: var(--fr-ink-2); margin-top: 6px; }
+#tab-today #hermes-operator-cases-card { margin: 0; padding: 16px 20px; border: 0; border-radius: 24px; background: var(--fr-card); box-shadow: var(--fr-shadow); }
+#tab-today #hermes-operator-cases-card .hermes-op-header h2 { font: var(--t-title); }
+#tab-today #hermes-operator-cases-card .hermes-op-header p { font: var(--t-meta); }
+#tab-today.fr-kid-today #hermes-operator-cases-card { display: none; }
+.fr-ring-skeleton { width: 100%; height: 100%; border: 18px solid var(--fr-you-soft); border-radius: 50%; }
+.fr-ring-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--fr-ink-2); }
+.fr-row-skeleton { height: 50px; margin: 12px 0; background: var(--fr-card-2); border-radius: 12px; }
 
+/* Fixed metric colors, with profile color confined to identity badges. */
+#tab-today .fr-kids { display: grid; grid-template-columns: minmax(0,1fr); gap: 20px; }
+#tab-today .fr-kid-card { padding: 20px 22px; min-width: 0; display: grid; gap: 14px; }
+#tab-today .fr-kid-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#tab-today .fr-kid-identity { display: flex; align-items: center; gap: 12px; border: 0; background: none; color: var(--fr-ink); padding: 0; min-height: 34px; cursor: pointer; text-align: left; }
+#tab-today .fr-kid-identity b { font-size: 20px; font-weight: 700; letter-spacing: -.01em; overflow-wrap: anywhere; }
+#tab-today .fr-kid-identity .kid-profile-avatar { width: 34px; height: 34px; font-size: 14px; flex: none; }
+#tab-today .fr-kid-chip { margin-left: auto; border-radius: 999px; font-size: 12px; font-weight: 600; padding: 6px 12px; }
+#tab-today .fr-kid-chip.is-overdue { color: var(--fr-danger); background: color-mix(in srgb,var(--fr-danger) 10%,transparent); }
+#tab-today .fr-kid-chip.is-due { color: var(--fr-hw-ink); background: var(--fr-hw-soft); }
+#tab-today .fr-kid-chip.is-clear { color: var(--fr-hab-ink); background: var(--fr-hab-soft); }
+#tab-today .fr-kid-body { display: grid; grid-template-columns: 156px minmax(0,1fr); gap: 18px; align-items: center; }
+#tab-today .fr-kid-rings { border: 0; padding: 0; width: 156px; height: 156px; background: none; cursor: pointer; }
+#tab-today .fr-kid-stats { display: grid; gap: 12px; min-width: 0; }
+#tab-today .fr-stat { display: grid; grid-template-columns: 60px minmax(0,1fr); gap: 10px; align-items: baseline; padding: 0; border: 0; background: none; text-align: left; font-family: inherit; cursor: pointer; min-height: 44px; width: 100%; }
+#tab-today .fr-stat b { font-size: 30px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+#tab-today .fr-stat span { font-size: 13px; font-weight: 400; line-height: 1.3; color: var(--fr-ink-2); }
+#tab-today .fr-stat em { font-style: normal; color: var(--fr-hab-ink); font-weight: 600; }
+#tab-today .fr-stat-hw b { color: var(--fr-hw-ink); }
+#tab-today .fr-stat-d3 b { color: var(--fr-d3-ink); }
+#tab-today .fr-stat-hab b { color: var(--fr-hab-ink); }
+#tab-today .fr-habit-details { position: relative; min-width: 0; }
+#tab-today .fr-habit-details summary { list-style: none; }
+#tab-today .fr-habit-details summary::-webkit-details-marker { display: none; }
+#tab-today .fr-habit-popover { position: absolute; z-index: 12; right: 0; top: 100%; width: min(320px,70cqw); padding: 16px; background: var(--fr-card); border: 1px solid var(--fr-rule); border-radius: 16px; box-shadow: var(--fr-shadow); }
+#tab-today .habit-row { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+#tab-today .habit-title { min-width: 0; flex: 1; }
+#tab-today .habit-check { width: 44px; height: 44px; border: 1px solid var(--fr-hab); border-radius: 50%; flex: none; background: var(--fr-card); }
+#tab-today .habit-check.done { background: var(--fr-hab); color: var(--fr-card); }
+#tab-today .habit-kid { display: none; }
+#tab-today .habit-streak { color: var(--fr-hab-ink); }
+#tab-today .fr-kid-fams { display: flex; align-items: center; gap: 14px; padding-top: 14px; border-top: 1px solid var(--fr-rule); text-decoration: none; color: var(--fr-ink); }
+#tab-today .fr-kid-fams b { font-size: 22px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
+#tab-today .fr-kid-fams small { font-size: 13px; font-weight: 600; color: var(--fr-ink-2); }
+#tab-today .fr-kid-fams > span:last-child { font-size: 12px; color: var(--fr-ink-2); }
+#tab-today .fr-fams-bar { flex: 1; min-width: 50px; height: 8px; border-radius: 999px; background: var(--fr-fams-soft); overflow: hidden; }
+#tab-today .fr-fams-bar i { display: block; height: 100%; background: var(--fr-fams); border-radius: inherit; }
+#tab-today .fr-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 14px; font-size: 12px; color: var(--fr-ink-2); }
+#tab-today .fr-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.fr-legend-hw { background: var(--fr-hw); }.fr-legend-hab { background: var(--fr-hab); }.fr-legend-d3 { background: var(--fr-d3); }.fr-legend-fams { background: var(--fr-fams); }
+#tab-today .today-homework-card { padding: 20px; margin-top: 20px; }
+
+/* Seven to nine day strip, with an inner horizontal scroll on small screens. */
+#tab-today .today-agenda-card { padding: 18px 24px 22px; }
+#tab-today .today-agenda-card .today-section-head { gap: 12px; }
+#tab-today .fr-tonight { margin-left: auto; padding: 6px 12px; border-radius: 999px; background: var(--fr-fams-soft); color: var(--fr-fams-ink); font-size: 12px; font-weight: 600; text-decoration: none; }
+#tab-today .fr-tonight > span { display: flex; align-items: center; gap: 8px; }
+#tab-today .fr-day-scroll { width: 100%; overflow-x: auto; padding: 25px 3px 28px; }
+#tab-today .fr-day-track { position: relative; min-width: 620px; margin: 0 5px; border-radius: 12px; background: var(--fr-card-2); }
+#tab-today .fr-day-tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--fr-rule); }
+#tab-today .fr-day-tick > span { position: absolute; top: calc(100% + 7px); font-size: 11px; color: var(--fr-ink-2); transform: translateX(-50%); white-space: nowrap; }
+#tab-today .fr-day-tick:first-child > span { transform: none; }
+#tab-today .fr-day-tick:last-child > span { transform: translateX(-100%); }
+#tab-today .fr-day-event { position: absolute; min-height: 34px; border: 0; border-radius: 9px; padding: 6px 10px; background: color-mix(in srgb,var(--event-color) 16%,var(--fr-card)); color: var(--fr-ink); font: 600 12.5px/1.3 var(--today-font); cursor: pointer; text-align: left; overflow-wrap: anywhere; display: flex; align-items: center; gap: 5px; }
+#tab-today .fr-day-event:hover { outline: 2px solid var(--fr-you); }
+#tab-today .fr-day-untimed { position: static; }
+#tab-today .fr-day-extra { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 30px; }
+#tab-today .today-now { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--fr-you); border-radius: 2px; pointer-events: none; }
+#tab-today .today-now span { position: absolute; top: -18px; left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--fr-you); color: var(--fr-on-you); font-size: 11px; font-weight: 700; white-space: nowrap; }
+#tab-today .today-tomorrow { border-top: 1px solid var(--fr-rule); padding-top: 12px; }
+#tab-today .today-tomorrow h3 { font: var(--t-label); color: var(--fr-ink-2); }
+
+#tab-today .today-band-learn { display: flex; flex-direction: column; gap: 20px; }
+#tab-today .today-region { padding: 24px; }
+#tab-today.fr-kid-today .fr-learning-tiles { order: -1; }
+#tab-today.fr-kid-today .today-header { order: -3; }
+#tab-today.fr-kid-today .fr-hero { order: -2; }
+@container today (min-width: 900px) { #tab-today .fr-kids { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@container today (max-width: 700px) {
+  #tab-today .today-greeting { font-size: 26px; }
+  #tab-today .fr-hero { grid-template-columns: minmax(0,1fr); padding: 18px; gap: 12px; }
+  #tab-today .fr-you-ring { width: 150px; height: 150px; }
+  #tab-today .fr-you-ring svg { width: 150px; height: 150px; }
+  #tab-today .fr-ring-center b { font-size: 52px; }
+  #tab-today :is(.fr-hero,.fr-kid-card,.today-agenda-card,.today-region) { border-radius: 20px; }
+  #tab-today .fr-kids { gap: 14px; }
+  #tab-today .fr-kid-card { padding: 18px; }
+  #tab-today .fr-kid-body { grid-template-columns: 120px minmax(0,1fr); gap: 14px; }
+  #tab-today .fr-kid-rings, #tab-today .fr-kid-rings svg { width: 120px; height: 120px; }
+  #tab-today .fr-stat b { font-size: 26px; }
+  #tab-today .fr-stat { grid-template-columns: 56px minmax(0,1fr); gap: 8px; }
+  #tab-today .fr-kid-fams { flex-wrap: wrap; gap: 8px 12px; }
+  #tab-today .fr-fams-bar { flex: 1 1 100px; }
+  #tab-today .today-action-row { grid-template-columns: 36px minmax(0,1fr); padding: 10px 0; }
+  #tab-today .today-action-controls { grid-column: 2; justify-self: start; }
+  #tab-today .today-action-controls button { min-height: 44px; }
+  #tab-today .today-agenda-card, #tab-today .today-region { padding: 16px; }
+  #tab-today .fr-tonight { margin-left: 0; }
+}
+@container today (max-width: 300px) {
+  #tab-today .fr-stat { grid-template-columns: 1fr; gap: 4px; }
+  #tab-today .fr-kid-chip { font-size: 11px; padding: 6px 10px; }
+}
+@media (max-width: 700px) {
+  #tab-today.active { gap: 14px; }
+  #family-actions-dialog .today-action-row { grid-template-columns: 36px minmax(0,1fr); }
+  #family-actions-dialog .today-action-controls { grid-column: 2; }
+  :is(#tab-today,#family-actions-dialog) .today-link { min-height: 44px; }
+}
 @media (prefers-reduced-motion: reduce) {
-  #tab-today *, #tab-today *::before, #tab-today *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  .fr-ring-spark { display: none; }
+  .fr-ring-metric { animation: none; }
+  #tab-today *, #tab-today *::before, #tab-today *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
 
-/* ============================================================
-   Agent A modules: header summary, setup card, Family Actions,
-   Hermes panel flush-in, Schedule timeline, Children, homework
-   preview, Tonight, Habits. Band-3 (Daily 3 / brain teaser) is
-   owned by Agent B — not touched here.
-============================================================ */
+#tab-today .today-actions-list { margin-top: 0; }
+#tab-today .family-actions-view-all { width: auto; justify-content: flex-start; }
+#tab-today .fr-composer-wrap:has(> [hidden]) { display: none; }
+#tab-today .fr-day-event[style*="--event-color:var(--fr-you)"] { color: var(--fr-you-ink); }
+.fr-homework-rings { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.fr-homework-kid { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--fr-card); box-shadow: var(--fr-shadow); border: 0; border-radius: 24px; color: var(--fr-ink); cursor: pointer; text-align: left; }
+.fr-homework-kid b { display: block; font-size: 17px; }
+.fr-homework-kid > span > span { display: block; color: var(--fr-hw-ink); font-size: 13px; margin-top: 3px; }
+.goal-progress-fill { background: var(--fr-fams); }
+.goal-progress-track { background: var(--fr-fams-soft); }
+.goal-card-streak { color: var(--fr-hab-ink); }
 
-/* ---------- Setup card (parent-only, full width above Band 1) ---------- */
-#tab-today .today-setup-card { margin: 18px 0 0; border: 1px solid var(--border); border-radius: 18px; padding: 20px 24px; background: var(--panel); }
-#tab-today .today-setup-header h2 { font: var(--t-h2); letter-spacing: -.02em; margin-top: 0; }
-#tab-today .today-setup-header p { font: var(--t-body); color: var(--text-2); margin-top: 6px; }
-#tab-today .today-setup-steps { margin-top: 16px; }
-#tab-today .today-setup-header h2 .today-count { margin-left: 8px; vertical-align: 2px; }
-#tab-today .today-setup-step-pending { font: var(--t-meta); color: var(--text-2); }
-@container today (min-width: 760px) {
-  #tab-today .today-setup-steps { grid-template-columns: 1fr 1fr; column-gap: 24px; }
-}
-#tab-today .today-setup-step-title { font: var(--t-title); letter-spacing: -.01em; }
-#tab-today .today-setup-step-copy p { font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-setup-step-meta span:not(.today-setup-step-status) { font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-setup-step-status { display: inline-block; width: 10px; min-width: 10px; height: 10px; border-radius: 50%; box-sizing: border-box; border: 1.5px solid var(--border); background: var(--panel); }
-#tab-today .today-setup-step-status.is-complete { border-color: var(--c-green); background: var(--c-green); }
-
-/* ---------- Family Actions stack (Band 1 left) ---------- */
-#tab-today .today-actions-list { display: flex; flex-direction: column; }
-:is(#tab-today, #family-actions-dialog) .today-action-row {
-  display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 14px; align-items: start;
-  padding: 14px 0; border: 0; border-top: 1px solid var(--border); margin: 0; min-height: 0; background: none;
-  max-height: 400px; opacity: 1;
-  transition: max-height .28s cubic-bezier(.2, .8, .2, 1), opacity .28s cubic-bezier(.2, .8, .2, 1), padding .28s cubic-bezier(.2, .8, .2, 1), border-color .28s cubic-bezier(.2, .8, .2, 1);
-}
-#tab-today .today-actions-list > .today-action-row:first-child,
-:is(#tab-today, #family-actions-dialog) .today-action-row.is-completing { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; border-color: transparent; }
-:is(#tab-today, #family-actions-dialog) .today-action-row.is-completing .today-action-check { background: var(--c-green); border-color: var(--c-green); color: var(--on-accent); }
-:is(#tab-today, #family-actions-dialog) .today-action-row.is-completing .today-action-title { text-decoration: line-through; color: var(--text-2); }
-:is(#tab-today, #family-actions-dialog) .today-action-check {
-  justify-self: start; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--text-2);
-  background: none; color: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer;
-  transition: border-color .16s, color .16s, background-color .16s;
-}
-:is(#tab-today, #family-actions-dialog) .today-action-check:hover, :is(#tab-today, #family-actions-dialog) .today-action-check:focus-visible { border-color: var(--accent); color: var(--accent); }
-/* 26px circle, 44px hit area; styles.css's narrow-screen min-height would stretch it into an oval. */
-:is(#tab-today, #family-actions-dialog) .today-action-check { position: relative; min-height: 0; flex: none; }
-:is(#tab-today, #family-actions-dialog) .today-action-check::after { content: ""; position: absolute; inset: -9px; }
-:is(#tab-today, #family-actions-dialog) .today-action-lead { display: flex; align-items: center; width: 26px; height: 26px; }
-:is(#tab-today, #family-actions-dialog) .today-action-lead .kid-profile-avatar { width: 26px; height: 26px; font-size: .75rem; }
-:is(#tab-today, #family-actions-dialog) .today-action-lead.is-static::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--border); margin-left: 10px; }
-:is(#tab-today, #family-actions-dialog) .today-action-body { min-width: 0; }
-:is(#tab-today, #family-actions-dialog) .today-action-context { font: var(--t-meta); color: var(--text-2); margin-bottom: 2px; }
-:is(#tab-today, #family-actions-dialog) .today-action-title { font: var(--t-title); letter-spacing: -.01em; }
-#tab-today .today-actions-list > .today-action-row:first-child .today-action-title { font: var(--t-title-lg); letter-spacing: -.01em; }
-:is(#tab-today, #family-actions-dialog) .today-action-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0; margin-top: 4px; color: var(--text-2); font: var(--t-meta); font-variant-numeric: tabular-nums; }
-:is(#tab-today, #family-actions-dialog) .today-action-meta > *:not(:empty) ~ *:not(:empty)::before { content: "·"; margin: 0 .5em; }
-/* styles.css draws assignee/source as bordered pills; in the stack they are plain metadata. */
-:is(#tab-today, #family-actions-dialog) .today-action-meta > span { min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; font: inherit; }
-:is(#tab-today, #family-actions-dialog) .today-action-due { font-weight: 500; }
-:is(#tab-today, #family-actions-dialog) .today-action-due.overdue { color: var(--c-red); font-weight: 600; }
-:is(#tab-today, #family-actions-dialog) .today-action-due.today { color: var(--warn); font-weight: 600; }
-:is(#tab-today, #family-actions-dialog) .today-action-snoozed { color: var(--text-2); font-weight: 600; }
-:is(#tab-today, #family-actions-dialog) .today-action-notes { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; font: var(--t-meta); color: var(--text-2); white-space: normal; }
-:is(#tab-today, #family-actions-dialog) .today-action-controls { grid-column: auto; justify-self: end; }
-#tab-today .today-actions-list > .today-action-row:first-child .today-review-btn { border-color: transparent; background: var(--accent); color: var(--on-accent); }
-#tab-today .today-actions-list > .today-action-row:first-child .today-action-check { border: 2px solid var(--accent); }
-/* Snooze lives in the all-actions dialog as a labelled quiet button. */
-#family-actions-dialog .today-action-menu summary { min-height: 40px; padding: 0 12px; gap: 6px; border-radius: 10px; font: var(--t-label); white-space: nowrap; }
+:is(#tab-today,#family-actions-dialog) .today-action-row { transition: max-height .28s cubic-bezier(.2,.8,.2,1), opacity .28s, padding .28s; }
+:is(#tab-today,#family-actions-dialog) .today-action-row.is-completing { min-height: 0; max-height: 0 !important; opacity: 0; padding-top: 0; padding-bottom: 0; border-color: transparent; overflow: hidden; }
 #family-actions-dialog .today-action-menu summary > span { display: inline; }
-#family-actions-dialog .today-action-row:first-child { border-top: 0; }
-#family-actions-dialog > header h2 { font: var(--t-h2); letter-spacing: -.02em; }
-#tab-today .today-actions-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 28px 0; }
-#tab-today .today-actions-empty-icon { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
-#tab-today .today-actions-empty strong { font: var(--t-title); color: var(--text); }
-#tab-today .today-actions-empty p { margin: 0; font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-actions-state, #tab-today .today-actions-error { font: var(--t-meta); color: var(--text-2); padding: 12px 0; }
-#tab-today .today-actions-error { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-#tab-today .family-actions-view-all {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px;
-  padding: 0; margin-top: 4px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--accent);
-  font: var(--t-label); cursor: pointer;
-}
-#tab-today .today-actions-footer { border-top: 0; padding-top: 0; }
-#tab-today .family-actions-view-all:hover { text-decoration: underline; text-underline-offset: 3px; }
-#tab-today .family-actions-view-all svg { transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
-#tab-today .family-actions-view-all:hover svg { transform: translateX(2px); }
-
-/* Composer surface (the one allowed bordered box inside the region). */
-#tab-today .today-action-composer { margin-top: 0; margin-bottom: 12px; border-radius: 14px; }
-#tab-today .today-action-composer-header h3 { font: var(--t-title); letter-spacing: -.01em; }
-#tab-today .today-action-composer-header p { font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-action-composer .form-group label { font: var(--t-label); text-transform: none; letter-spacing: 0; font-family: var(--today-font); color: var(--text); }
-#tab-today .today-action-composer .form-group label span { font: var(--t-meta); color: var(--text-2); text-transform: none; font-family: var(--today-font); }
-#tab-today .today-action-composer .form-group input,
-#tab-today .today-action-composer .form-group select,
-#tab-today .today-action-composer .form-group textarea { min-height: 40px; border: 1px solid var(--border); border-radius: 10px; font: var(--t-body); }
-
-/* Hermes case panel (action-queue.js injects it before #today-actions-card;
-   shown only when it has cases) — sit flush in the region, no card chrome. */
-#tab-today #hermes-operator-cases-card { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none; background: transparent; padding: 0 0 18px; margin: 0 0 18px; }
-#tab-today #hermes-operator-cases-card h2 { font: var(--t-h2); letter-spacing: -.02em; }
-#tab-today #hermes-operator-cases-card p { font: var(--t-meta); color: var(--text-2); }
-
-/* ---------- Schedule timeline (Band 1 right) ---------- */
-#tab-today .today-timeline { position: relative; }
-#tab-today .today-timeline::before { content: ""; position: absolute; top: 0; bottom: 0; left: 91px; width: 1px; background: var(--border); }
-#tab-today .schedule-row {
-  position: relative; display: grid; grid-template-columns: 72px 14px minmax(0, 1fr) auto; column-gap: 12px; align-items: start;
-  width: calc(100% + 16px); padding: 10px 8px; border: 0; border-radius: 10px; background: none; margin: 0 -8px; min-height: 0;
-  cursor: pointer; text-align: left; transition: background-color .16s;
-}
-#tab-today .schedule-row:hover { background: var(--hover); }
-#tab-today .schedule-time { width: auto; padding-top: 2px; color: var(--text-2); font: var(--t-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-#tab-today .schedule-node { position: relative; display: flex; align-items: center; justify-content: center; }
-#tab-today .schedule-node::before { content: ""; box-sizing: border-box; width: 9px; height: 9px; border-radius: 50%; background: var(--row-color, var(--accent)); box-shadow: 0 0 0 3px var(--panel); }
-#tab-today .schedule-row.is-past .schedule-node::before { background: var(--panel); border: 2px solid var(--row-color, var(--accent)); }
-#tab-today .schedule-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-#tab-today .schedule-title { display: flex; align-items: center; gap: 6px; font: var(--t-title); letter-spacing: -.01em; }
-#tab-today .schedule-title > svg { color: var(--text-2); }
-#tab-today .schedule-row.is-past .schedule-title { color: var(--text-2); }
-#tab-today .schedule-meta { font: var(--t-meta); color: var(--text-2); }
-#tab-today .schedule-kid { display: flex; align-items: center; }
-#tab-today .schedule-kid .kid-profile-avatar { width: 20px; height: 20px; font-size: .625rem; }
-#tab-today .today-now { display: grid; grid-template-columns: 72px 14px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: calc(100% + 16px); margin: 0 -8px; padding: 4px 8px; }
-#tab-today .today-now span { grid-column: 1; grid-row: 1; text-align: right; padding-right: 2px; color: var(--coral); font: var(--t-mono); text-transform: uppercase; letter-spacing: .06em; }
-#tab-today .today-now::before { content: ""; grid-column: 2; grid-row: 1; justify-self: center; width: 9px; height: 9px; border-radius: 50%; background: var(--coral); }
-#tab-today .today-now::after { content: ""; grid-column: 3 / -1; grid-row: 1; align-self: center; height: 2px; background: var(--coral); }
-#tab-today .today-tomorrow-label { font: var(--t-label); color: var(--text-2); }
-#tab-today .today-tomorrow-btn { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 8px 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
-#tab-today .today-tomorrow-btn .schedule-time { padding-top: 0; }
-#tab-today .today-tomorrow-btn:hover { color: var(--accent); }
-#tab-today .today-schedule-more { display: inline-block; margin-top: 4px; }
-
-/* ---------- Children (Band 2 left) ---------- */
-#tab-today .today-fams-value { font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-kid-row {
-  display: grid; grid-template-columns: 40px minmax(0, 1fr) auto 16px; column-gap: 12px; align-items: center;
-  position: relative; width: calc(100% + 16px); margin: 0 -8px; padding: 12px 8px; border: 0; border-radius: 12px; background: none;
-  color: inherit; font: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: background-color .16s;
-}
-/* Straight hairline between rows (a border-top would curve with the hover radius). */
-#tab-today .today-kid-row + .today-kid-row::before { content: ""; position: absolute; top: 0; left: 8px; right: 8px; height: 1px; background: var(--border); }
-#tab-today .today-kid-row:hover { background: var(--hover); }
-#tab-today .today-kid-row .kid-profile-avatar, #tab-today .today-fams-coin { width: 40px; height: 40px; font-size: 1rem; }
-#tab-today .today-fams-coin { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
-#tab-today .today-fams-coin svg { width: 22px; height: 22px; }
-#tab-today .today-kid-main { min-width: 0; }
-#tab-today .today-kid-name { display: block; font: var(--t-title); letter-spacing: -.01em; }
-#tab-today .today-kid-facts { margin-top: 2px; color: var(--text-2); font: var(--t-meta); }
-#tab-today .today-kid-facts .is-overdue { color: var(--c-red); font-weight: 600; }
-#tab-today .today-kid-fams { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
-#tab-today .today-kid-fams-balance { font: var(--t-meta); color: var(--text-2); font-variant-numeric: tabular-nums; }
-#tab-today .today-kid-fams-balance strong { font: var(--t-title); color: var(--text); }
-#tab-today .today-kid-fams-balance.is-error { color: var(--c-red); }
-#tab-today .today-kid-fams-track { display: block; width: 96px; height: 4px; border-radius: 2px; background: var(--grid); overflow: hidden; }
-#tab-today .today-kid-fams-track span { display: block; height: 100%; background: var(--coral); }
-#tab-today .today-kid-fams-week { font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-kid-row > svg.today-icon { color: var(--text-2); }
-#tab-today .today-fams-retry { display: block; margin: 4px 0 0; }
-#tab-today .today-fams-note { font: var(--t-meta); color: var(--text-2); }
-#tab-today .today-fams-footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-
-/* ---------- Your homework preview (kid sessions only) ---------- */
-#tab-today .homework-due-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; column-gap: 10px; align-items: center; width: 100%; min-height: 44px; padding: 6px 0; border: 0; background: none; text-align: left; cursor: pointer; }
-#tab-today .homework-due-check { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--panel); display: flex; align-items: center; justify-content: center; }
-#tab-today .homework-due-check.overdue { border-color: var(--c-red); }
-#tab-today .homework-due-check.done { background: var(--c-green); border-color: var(--c-green); }
-#tab-today .homework-due-title { font: var(--t-title); color: var(--text); }
-#tab-today .homework-due-row.done .homework-due-title { text-decoration: line-through; color: var(--text-2); opacity: 1; }
-#tab-today .homework-due-when { font: var(--t-meta); color: var(--text-2); white-space: nowrap; }
-#tab-today .homework-due-when.overdue { color: var(--c-red); font-weight: 600; }
-#tab-today .homework-due-when.today { color: var(--warn); font-weight: 600; }
-
-/* ---------- Tonight (Band 2 right) ---------- */
-#tab-today .today-dinner-title { font: var(--t-title-lg); letter-spacing: -.01em; }
-#tab-today .today-dinner-facts { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-#tab-today .today-dinner-facts li { display: flex; align-items: center; gap: 8px; color: var(--text-2); font: var(--t-meta); }
-#tab-today .today-dinner-facts svg { flex: none; color: var(--text-2); }
-
-/* ---------- Habits (Band 2 right) ---------- */
-#tab-today .habits-list { display: flex; flex-direction: column; gap: 4px; }
-#tab-today .habit-row { display: flex; align-items: center; gap: 10px; min-height: 44px; }
-#tab-today .habit-check { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--text-2); background: var(--panel); flex: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color .16s, border-color .16s; }
-#tab-today .habit-check.done { background: var(--c-teal); border-color: var(--c-teal); }
-#tab-today .habit-kid .kid-profile-avatar { width: 22px; height: 22px; font-size: .7rem; }
-#tab-today .habit-title { flex: 1; min-width: 0; font: var(--t-body); color: var(--text); }
-#tab-today .habit-streak { display: inline-flex; align-items: center; gap: 3px; color: var(--coral); font: var(--t-tag); flex: none; }
-#tab-today .today-habits-more { display: inline-block; margin-top: 6px; }
-
-/* ---------- Band 2 right region rhythm ---------- */
-#tab-today .today-home-region > section:not([hidden]) + section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
-
-/* ---------- Responsive: stack controls under content, keep targets tappable ---------- */
-@container today (max-width: 520px) {
-  #tab-today .today-band-now .today-review-btn,
-  #tab-today .today-band-now .today-action-menu summary { min-height: 44px; }
-  /* Snooze stays beside the title as a 44px icon button; only the wide
-     Review homework button drops under the text. */
-  #tab-today .today-action-row:has(.today-review-btn) { grid-template-columns: 28px minmax(0, 1fr); }
-  #tab-today .today-action-row:has(.today-review-btn) .today-action-controls { grid-column: 2 / -1; justify-self: start; margin-top: 10px; }
-  #tab-today .today-kid-row { grid-template-columns: 40px minmax(0, 1fr) 16px; }
-  #tab-today .today-kid-row > svg.today-icon { grid-column: 3; grid-row: 1; }
-  #tab-today .today-kid-fams { grid-column: 2 / -1; grid-row: 2; align-items: flex-start; text-align: left; margin-top: 8px; }
-}
+#family-actions-dialog .today-action-menu summary { min-height: 44px; }
+#family-actions-dialog { border-radius: 24px; box-shadow: var(--fr-shadow); }
+#family-actions-dialog > header h2 { font: var(--t-h2); }
+.fr-helper-tag { display: inline-block; padding: 2px 7px; border-radius: 999px; color: var(--fr-you-ink); background: var(--fr-you-soft); font: 700 10px/1.3 "Geist",sans-serif; letter-spacing: .06em; }
+@media (prefers-reduced-motion: reduce) { :is(#tab-today,#family-actions-dialog) .today-action-row { transition: none; } }

@@ -37,14 +37,14 @@ test("kid action affordances are limited to their own actions", () => {
   assert.equal(todayActionCanDeleteForViewer(true), false);
 });
 
-test("parent action affordances and single Family Actions heading remain explicit", () => {
+test("parent action affordances and role-specific Needs you heading remain explicit", () => {
   const { todayActionCanManageForViewer, todayActionCanDeleteForViewer } = sandbox.helpers;
   assert.equal(todayActionCanManageForViewer({ assigneeType: "family" }, false, null), true);
   assert.equal(todayActionCanDeleteForViewer(false), true);
   assert.match(appSource, /renderTodayActionRoleCopy\(\)/);
-  assert.match(appSource, /titleEl.textContent = 'Family Actions'/);
+  assert.match(appSource, /titleEl.textContent = isKidSession\(\) \? 'Your day' : 'Needs you'/);
   const html = fs.readFileSync(path.join(__dirname, '..', 'public/index.html'), 'utf8');
-  assert.match(html, /id="today-actions-title">Family Actions<\/h2>/);
+  assert.match(html, /id="today-actions-title">Needs you<\/h2>/);
   assert.doesNotMatch(html, /What matters next|Small next steps, together/);
 });
 

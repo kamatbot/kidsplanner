@@ -2307,6 +2307,18 @@ function applyDaily5Done() {
   if (bt) bt.hidden = !!s.bt;
   const completed = document.getElementById('daily5-quiz-done');
   if (completed) completed.hidden = !s.bt;
+  if (typeof renderTodayLearningRings === 'function') renderTodayLearningRings(s);
+  if (typeof paintTodayKidCards === 'function') paintTodayKidCards();
+}
+
+function renderTodayLearningRings(done = load(daily5DoneKey()) || {}) {
+  ['news','quote','word','challenge'].forEach(key => {
+    const target = document.getElementById('fr-learning-' + key);
+    if (!target) return;
+    const complete = key === 'challenge' ? !!(done.bt || done.puzzle) : !!done[key];
+    target.innerHTML = famRing({ size:44,stroke:6,key:`learning-${key}`,rings:[{ value:complete ? 1 : 0,total:1,color:'var(--fr-d3)',radius:17 }],label:`${key}: ${complete ? 'Done' : 'Not completed'}` });
+    if (key === 'challenge') document.getElementById('fr-challenge-status').textContent = complete ? 'Done ✓' : 'Brain teaser & puzzle';
+  });
 }
 
 // Daily 3 tabs preserve drafts. The separate challenge stays mounted.
@@ -3716,7 +3728,7 @@ function renderChatMessages() {
       </div>`;
     return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}${m.senderType === 'kid' ? ' chat-msg-kid' : ''}">
       ${m.senderType === 'kid' ? kidAvatarMarkup(m.senderId) : ''}
-      ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}</div>` : ''}
+      ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}${m.senderType === 'agent' ? ' <span class="fr-helper-tag">HELPER</span>' : ''}</div>` : ''}
       <div class="chat-msg-bubble" style="--sender-color:${color}">
         ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
         ${renderChatMedia(m.media)}
@@ -4438,7 +4450,11 @@ function renderHomeworkHub() {
   if (!visible.some(item => item.id === homeworkWorkspaceSelection)) homeworkWorkspaceSelection = visible[0]?.id || null;
   const error = homeworkLoadState === 'error' ? `<div class="homework-load-error" role="alert">Couldn't refresh homework. ${homeworkItems.length ? 'Showing the last loaded assignments.' : ''}<button type="button" class="btn-link" onclick="loadHomework().then(renderHomeworkHub)">Try again</button></div>` : '';
   const empty = homeworkLoadState === 'loading' ? 'Loading assignments…' : homeworkLoadState === 'error' ? 'Assignments are temporarily unavailable.' : homeworkWorkspaceStatus === 'done' ? 'No completed assignments in this view yet.' : (homeworkItems.length ? 'No open assignments match these filters.' : 'No homework yet. Add an assignment or connect a school feed in Settings.');
-  list.innerHTML = `${error}
+  const ringKids = (currentFamily?.kids || []).filter(kid => !isKidSession() || kid.id === sessionUser.kidId);
+  const ringSummary = ringKids.map(kid => { const hw = todayKidProgress(kid.id,isoDate(new Date())).homework;
+    return `<button type="button" class="fr-homework-kid" onclick="setActiveKid('${todayActionIdArg(kid.id)}','homework')">${famRing({size:52,stroke:6,key:`homework-${kid.id}`,rings:[{value:hw.done,total:hw.total,color:'var(--fr-hw)'}],label:`${kid.name}: ${hw.done} of ${hw.total} homework done this week`})}<span><b>${esc(kid.name)}</b><span>${hw.left} left this week${hw.overdue ? ` · ${hw.overdue} overdue` : ''}</span></span></button>`;
+  }).join('');
+  list.innerHTML = `${error}<div class="fr-homework-rings">${ringSummary}</div>
     <section class="homework-overview" aria-label="Homework summary for current filters">
       <div><span>Open assignments</span><strong>${counts.open}</strong></div>
       <div><span>Due in the next 7 days</span><strong>${counts.soon}</strong></div>
@@ -4597,7 +4613,7 @@ const TODAY_ICONS = {
 function todayIcon(name, size = 16) {
   const paths = TODAY_ICONS[name];
   if (!paths) return '';
-  return `<svg class="today-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths}</svg>`;
+  return `<svg class="today-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths}</svg>`;
 }
 
 function todaySetupFocusTarget(selector) {
@@ -4824,34 +4840,23 @@ function renderTodayActionRow(action, now, withMenu = false) {
   const snoozed = action.status === 'snoozed' && due.text.indexOf('Snoozed until') === 0;
   const kidId = action.kidId || action.assigneeId;
 
-  const lead = canManage
-    ? `<button type="button" class="today-action-check" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete" title="Mark complete">${todayIcon('check', 14)}</button>`
-    : reviewHomework
-      ? `<span class="today-action-lead">${kidAvatarMarkup(kidId)}</span>`
-      : '<span class="today-action-lead is-static" aria-hidden="true"></span>';
-
-  const meta = (reviewHomework
-    ? [
-      `<span class="today-action-due ${due.className}">${esc(due.text)}</span>`,
-      `<span class="today-action-context">Homework due for ${esc(kidNameFor(kidId) || 'your child')}</span>`,
-    ]
-    : [
-      `<span class="today-action-due ${due.className}">${esc(due.text)}</span>`,
-      `<span class="today-action-assignee">${esc(todayActionAssigneeLabel(action))}</span>`,
-      snoozed ? '<span class="today-action-snoozed">Snoozed</span>' : '',
-      source ? `<span class="today-action-source">${esc(source)}</span>` : '',
-    ]).filter(Boolean).join('');
-
+  const lead = `<span class="today-action-lead">${kidNameFor(kidId) ? kidAvatarMarkup(kidId) : '<span class="fr-family-badge" aria-hidden="true">F</span>'}</span>`;
+  const meta = [
+    `<span class="today-action-context">${reviewHomework ? `Homework due for ${esc(kidNameFor(kidId) || 'your child')}` : esc(todayActionAssigneeLabel(action))}</span>`,
+    !reviewHomework && source ? `<span class="today-action-source">${esc(source)}</span>` : '',
+    `<span class="today-action-due ${due.className}">${esc(due.text)}</span>`,
+    snoozed ? '<span class="today-action-snoozed">Snoozed</span>' : ''
+  ].filter(Boolean).join('');
   const controls = reviewHomework
-    ? `<button type="button" class="btn-secondary today-mini-btn today-review-btn" onclick="reviewTodayHomework('${todayActionIdArg(action.sourceId || '')}')">Review homework ${todayIcon('arrow', 14)}</button>`
-    : canManage && withMenu ? todayActionSnoozeOptions(action) : '';
+    ? `<button type="button" class="btn-primary today-review-btn" onclick="reviewTodayHomework('${todayActionIdArg(action.sourceId || '')}')" aria-label="Review homework">Review</button>`
+    : canManage ? `<button type="button" class="btn-secondary today-action-done" onclick="completeTodayAction('${id}')" aria-label="Mark ${title} complete">Done ${todayIcon('check',14)}</button>${withMenu ? todayActionSnoozeOptions(action) : ''}` : '';
 
   return `<article class="today-action-row" data-action-id="${idAttr}">
     ${lead}
     <div class="today-action-body">
       <div class="today-action-title">${title}</div>
       <div class="today-action-meta">${meta}</div>
-      ${action.notes ? `<div class="today-action-notes">${esc(action.notes)}</div>` : ''}
+      ${withMenu && action.notes ? `<div class="today-action-notes">${esc(action.notes)}</div>` : ''}
     </div>
     ${controls ? `<div class="today-action-controls">${controls}</div>` : ''}
   </article>`;
@@ -4898,7 +4903,7 @@ function renderTodayCompletedSection(items) {
 
 function renderTodayActionRoleCopy() {
   const titleEl = document.getElementById('today-actions-title');
-  if (titleEl) titleEl.textContent = 'Family Actions';
+  if (titleEl) titleEl.textContent = isKidSession() ? 'Your day' : 'Needs you';
 }
 
 function openAllFamilyActions() {
@@ -4963,21 +4968,27 @@ function renderTodayActionQueue() {
     return;
   }
   const now = new Date();
-  const preview = window.famActionQueue.previewActions(todayActionItems, now);
+  const viewerItems = isKidSession() ? todayActionItems.filter(todayActionCanManage) : todayActionItems;
+  const preview = window.famActionQueue.previewActions(viewerItems, now);
   const canShowContents = todayActionQueueState === 'ready' || todayActionItems.length > 0;
-  const eligible = todayActionItems.filter((item) => item && item.status !== 'done' &&
+  const eligible = viewerItems.filter((item) => item && item.status !== 'done' &&
     !(item.status === 'snoozed' && Date.parse(item.snoozedUntil) > now.getTime()));
   const nowGroup = window.famActionQueue.groupActions(eligible, now).now;
   const count = document.getElementById('today-actions-count');
-  if (count) {
-    count.textContent = nowGroup.length ? `${nowGroup.length} need${nowGroup.length === 1 ? 's' : ''} you` : '';
-    count.hidden = !canShowContents || !nowGroup.length;
+  if (count) { count.innerHTML = `See all ${eligible.length} ${todayIcon('arrow',14)}`; count.hidden = !canShowContents; }
+  const cleared = viewerItems.filter(item => item.status === 'done' && (item.completedAt || item.updatedAt) && isoDate(new Date(item.completedAt || item.updatedAt)) === isoDate(now)).length;
+  const ring = document.getElementById('today-parent-ring');
+  if (ring) {
+    ring.innerHTML = !canShowContents
+      ? `<div class="fr-ring-skeleton" aria-label="${loadingWithoutData ? 'Loading actions' : 'Actions unavailable'}"></div><span class="fr-ring-loading">${loadingWithoutData ? 'Loading…' : 'Unavailable'}</span>`
+      : famRing({ size:188, stroke:18, key:'needs-you', rings:[{ value:cleared,total:cleared + nowGroup.length,color:'var(--fr-you)',radius:80 }], label:`${eligible.length} ${isKidSession() ? 'things to do' : 'things need you'}, ${cleared} cleared today` }) +
+        `<div class="fr-ring-center"><b>${eligible.length || (cleared ? '✓' : '0')}</b><span>${eligible.length ? isKidSession() ? 'to do' : 'need you' : 'All clear'}</span><small>${cleared} cleared today</small></div>`;
   }
   listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now)).join('') ||
-    (canShowContents ? `<div class="today-actions-empty"><span class="today-actions-empty-icon" aria-hidden="true">${todayIcon('check', 18)}</span><strong>Nothing waiting right now.</strong><p>Enjoy a little breathing room.</p></div>` : '');
+    (canShowContents ? `<div class="today-actions-empty"><strong>All clear.</strong><p>Nothing waiting right now.</p><button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>` : loadingWithoutData ? '<div class="fr-row-skeleton"></div><div class="fr-row-skeleton"></div>' : '');
   const footer = document.getElementById('today-actions-footer');
-  if (footer) footer.innerHTML = todayActionItems.length > preview.length
-    ? `<button type="button" class="family-actions-view-all" onclick="openAllFamilyActions()">View all ${todayActionItems.length} actions ${todayIcon('arrow', 14)}</button>` : '';
+  if (footer) footer.innerHTML = eligible.length > preview.length
+    ? `<button type="button" class="family-actions-view-all today-link" onclick="openAllFamilyActions()">+${eligible.length - preview.length} more ${todayIcon('arrow',14)}</button>` : '';
   const dialog = document.getElementById('family-actions-dialog');
   if (dialog && dialog.open) renderAllFamilyActions();
 
@@ -4991,9 +5002,7 @@ function renderTodayActionQueue() {
         const due = window.famActionQueue.effectiveDue(action, now);
         return due && due.date < todayIso;
       }).length;
-      const n = nowGroup.length;
-      const needsText = n === 0 ? 'Nothing urgent' : n === 1 ? '<strong>1 thing</strong> needs you' : `<strong>${n} things</strong> need you`;
-      summaryNeedsEl.innerHTML = needsText + (overdueCount ? ` <span class="is-overdue">(${overdueCount} overdue)</span>` : '');
+      summaryNeedsEl.innerHTML = overdueCount ? `<span class="is-overdue">${overdueCount} overdue</span>` : 'Nothing overdue';
     }
   }
 }
@@ -5138,6 +5147,8 @@ async function completeTodayAction(id) {
   const listEl = document.getElementById('today-actions-list');
   const row = listEl && Array.from(listEl.children).find((el) => el.dataset && el.dataset.actionId === String(id));
   if (row) {
+    row.style.maxHeight = row.getBoundingClientRect().height + 'px';
+    void row.offsetHeight;
     row.classList.add('is-completing');
     if (!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
       await new Promise((resolve) => setTimeout(resolve, 280));
@@ -5148,7 +5159,7 @@ async function completeTodayAction(id) {
     toast('Nice work — action complete.');
     await loadFamilyActions();
   } catch (err) {
-    if (row) row.classList.remove('is-completing');
+    if (row) { row.classList.remove('is-completing'); row.style.maxHeight = ''; }
     toast(`❌ ${(err && err.message) || 'Could not complete that action.'}`);
   } finally {
     todayActionMutationIds.delete(id);
@@ -5191,56 +5202,159 @@ async function deleteTodayAction(id) {
   }
 }
 
-// Children band facts line: homework load (via the same grouping Homework
-// uses) plus habit check-ins, for one kid. Returns ready-to-insert HTML.
-function todayKidFacts(kidId, todayIso) {
-  const hw = groupHomeworkByDueDate(homeworkItems.filter((item) => item.kidId === kidId && item.status !== 'done'));
-  const parts = [];
-  if (hw.overdue.length) parts.push(`<span class="is-overdue">${hw.overdue.length} overdue</span>`);
-  if (hw.today.length) parts.push(`${hw.today.length} due today`);
-  if (hw.thisWeek.length) parts.push(`${hw.thisWeek.length} this week`);
-  if (!parts.length) parts.push('No homework due');
-
-  const habitGoals = goalsItems.filter((g) => g.type === 'habit' && g.kidId === kidId);
-  if (habitGoals.length) {
-    const checkedToday = habitGoals.filter((g) => (g.checks || []).includes(todayIso)).length;
-    parts.push(`Habits ${checkedToday}/${habitGoals.length}`);
-  }
-  return parts.join(' · ');
+// SVG-only metric rings. History is scoped to this account/family/day so a
+// re-render animates a recorded change, never another person's progress.
+const famRingHistory = new Map();
+function famRing({ size = 156, stroke = 14, rings, label, key = '' }) {
+  const center = size / 2;
+  const scope = typeof sessionUser === 'undefined' ? '' : `${sessionUser?.id}:${currentFamily?.id}:${isoDate(new Date())}`;
+  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const description = label || rings.map(r => `${r.label || 'Progress'}: ${r.total > 0 ? `${r.value} of ${r.total}` : 'none yet'}`).join(', ');
+  const circles = rings.map((ring, index) => {
+    const radius = ring.radius ?? center - stroke / 2 - 5 - index * (stroke + 4);
+    const circumference = 2 * Math.PI * radius;
+    const fraction = ring.total > 0 ? Math.min(1, Math.max(0, ring.value / ring.total)) : 0;
+    const historyKey = `${scope}:${key}:${size}:${radius}:${ring.color}`;
+    const previous = key ? famRingHistory.get(historyKey) : undefined;
+    if (key) famRingHistory.set(historyKey, fraction);
+    const changed = previous !== undefined && previous !== fraction && !reduced;
+    const increased = changed && fraction > previous;
+    const color = esc(ring.color);
+    const dash = `${(fraction * circumference).toFixed(3)} ${circumference.toFixed(3)}`;
+    const angle = fraction * 2 * Math.PI - Math.PI / 2;
+    const x = center + radius * Math.cos(angle), y = center + radius * Math.sin(angle);
+    return `<g class="fr-ring-metric${increased && fraction === 1 ? ' fr-ring-completed' : ''}">
+      <circle class="fr-ring-track" cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${color}" stroke-width="${stroke}"${ring.total > 0 ? '' : ' stroke-dasharray="4 7"'}/>
+      ${ring.total > 0 ? `<circle class="fr-ring-fill" cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="${fraction === 0 ? 'butt' : 'round'}" stroke-dasharray="${dash}" transform="rotate(-90 ${center} ${center})"${fraction === 0 && !changed ? ' visibility="hidden"' : ''}>
+        ${changed ? `<animate attributeName="stroke-dasharray" from="${(previous * circumference).toFixed(3)} ${circumference.toFixed(3)}" to="${dash}" dur="700ms" calcMode="spline" keyTimes="0;1" keySplines=".2 .8 .2 1"/>` : ''}
+      </circle>` : ''}
+      ${increased ? `<g class="fr-ring-spark" aria-hidden="true"><circle cx="${x}" cy="${y}" r="4" fill="var(--fr-card)"/><circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${color}" stroke-width="2"/></g>` : ''}
+    </g>`;
+  }).join('');
+  return `<svg class="fr-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(description)}">${circles}</svg>`;
 }
 
-// One Children-band row. `state` is 'loading', 'error', or the resolved
-// /api/fams value ({ balance, weekly: { earned, limit } }).
-function todayKidRowHtml(kid, parent, state, todayIso) {
-  const fmt = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
-  const name = parent ? esc(kid.name) : 'Your fams';
-  const emblem = parent
-    ? kidAvatarMarkup(kid.id)
-    : '<span class="today-fams-coin" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="17" stroke="currentColor" stroke-width="2"/><path d="M15 29V11h12M15 19h9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>';
-  let famsBlock;
-  if (state === 'loading') {
-    famsBlock = '<span class="today-kid-fams-balance">—</span>';
-  } else if (state === 'error') {
-    famsBlock = '<span class="today-kid-fams-balance is-error">Fams unavailable</span>';
-  } else {
-    const pct = Math.min(100, Math.max(0, (state.weekly.limit ? state.weekly.earned / state.weekly.limit : 0) * 100));
-    famsBlock = `<span class="today-kid-fams-balance"><strong>${fmt(state.balance)}</strong> fams</span>` +
-      `<span class="today-kid-fams-track" aria-hidden="true"><span style="width:${pct}%"></span></span>` +
-      `<span class="today-kid-fams-week">${fmt(state.weekly.earned)} of ${fmt(state.weekly.limit)} this week</span>`;
+function todayKidProgress(kidId, todayIso) {
+  const today = parseIso(todayIso);
+  const monday = new Date(today); monday.setDate(today.getDate() - (today.getDay() + 6) % 7);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  const start = isoDate(monday), end = isoDate(sunday);
+  const own = homeworkItems.filter(item => item.kidId === kidId);
+  const week = own.filter(item => item.dueDate && ((item.dueDate >= start && item.dueDate <= end) || (item.dueDate < start && item.status !== 'done')));
+  const done = week.filter(item => item.status === 'done').length;
+  const habits = goalsItems.filter(goal => goal.type === 'habit' && goal.kidId === kidId);
+  return {
+    homework: { done, total: week.length, left: week.length - done,
+      overdue: own.filter(item => item.status !== 'done' && item.dueDate && item.dueDate < todayIso).length,
+      dueToday: own.filter(item => item.status !== 'done' && item.dueDate === todayIso).length },
+    habits: { done: habits.filter(goal => (goal.checks || []).includes(todayIso)).length, total: habits.length }
+  };
+}
+
+function todayKidFacts(kidId, todayIso) {
+  const hw = todayKidProgress(kidId, todayIso).homework;
+  return hw.overdue ? `${hw.overdue} overdue` : hw.dueToday ? `${hw.dueToday} due today` : 'Nothing due today';
+}
+
+function todayDaily3Progress(data, todayIso, own = false) {
+  if (!data || data === 'loading' || data === 'error' || data.date !== todayIso) return null;
+  const local = own ? load(daily5DoneKey()) || {} : {};
+  const parts = ['news', 'quote', 'word'].map(key => ({ key, ...data.parts?.[key], ...(local[key] ? { status: 'completed' } : {}) }));
+  const done = parts.filter(part => part.status === 'completed').length;
+  const latest = parts.filter(part => part.status === 'completed').sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0];
+  return { done, total: 3, parts, status: done === 3 ? 'Done ✓' : latest ? `${latest.key[0].toUpperCase() + latest.key.slice(1)} done${latest.updatedAt ? ' ' + timeAgo(latest.updatedAt) : ''}` : parts.some(part => part.status === 'started') ? 'In progress' : 'Not started' };
+}
+
+let todayRingData = new Map();
+function todayRingDataKey(kidId, date) { return `${sessionUser?.id}:${currentFamily?.id}:${kidId}:${date}`; }
+
+function openTodayKidHomework(kidId) {
+  if (isKidSession() && kidId !== sessionUser.kidId) return;
+  activeKidId = kidId;
+  switchNavTab('homework');
+  renderKidSwitcher();
+  renderHomeworkHub();
+}
+
+function openTodayLearning() {
+  document.querySelector('.fr-learning-tiles')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+  document.getElementById(`daily5-tab-${daily5Activity}`)?.focus({ preventScroll: true });
+}
+
+function openTodayChallenge() {
+  document.querySelector('.today-challenge')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
+  const title = document.getElementById('daily-challenge-title');
+  if (title) { title.tabIndex = -1; title.focus({ preventScroll: true }); }
+}
+
+function todayKidRowHtml(kid, parent, state, todayIso, progressState = 'loading') {
+  const p = todayKidProgress(kid.id, todayIso), hw = p.homework, hab = p.habits;
+  const hwState = typeof homeworkLoadState === 'undefined' ? 'ready' : homeworkLoadState;
+  const habState = typeof goalsLoadState === 'undefined' ? 'ready' : goalsLoadState;
+  const hwKnown = hwState === 'ready', habKnown = habState === 'ready';
+  const hwUnknown = hwState === 'error' ? 'Homework unavailable' : 'Loading homework…';
+  const habUnknown = habState === 'error' ? 'Habits unavailable' : 'Loading habits…';
+  const daily3 = todayDaily3Progress(progressState, todayIso, !parent);
+  const id = todayActionIdArg(kid.id), name = esc(kid.name || sessionUser.name || 'Your day');
+  const open = parent ? `openChildView('${id}')` : `openTodayKidHomework('${id}')`;
+  const fmt = n => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
+  const rings = [
+    ...(hwKnown ? [{ value: hw.done, total: hw.total, color: 'var(--fr-hw)', label: 'Homework done this week', radius:66 }] : []),
+    ...(habKnown ? [{ value: hab.done, total: hab.total, color: 'var(--fr-hab)', label: 'Habits checked today', radius:48 }] : []),
+    ...(daily3 ? [{ value: daily3.done, total: 3, color: 'var(--fr-d3)', label: 'Daily 3 today', radius:30 }] : [])
+  ];
+  const summary = `${kid.name || 'Your day'}: ${hwKnown ? `homework ${hw.done} of ${hw.total} done this week` : hwUnknown}, ${habKnown ? hab.total ? `habits ${hab.done} of ${hab.total} today` : 'no habits yet' : habUnknown}, Daily 3 ${daily3 ? `${daily3.done} of 3 today` : progressState === 'loading' ? 'loading' : 'unavailable'}`;
+  let fams = state === 'error' ? '<span>Fams unavailable</span>' : '<span>Loading fams…</span>';
+  if (state && typeof state === 'object') {
+    const earned = state.weekly?.earned || 0, limit = state.weekly?.limit || 0;
+    fams = `<b>${fmt(state.balance)} <small>fams</small></b><span class="fr-fams-bar" aria-hidden="true"><i style="width:${limit > 0 ? Math.max(0, Math.min(100, earned / limit * 100)) : 0}%"></i></span><span>${fmt(earned)} of ${fmt(limit)} this week</span>`;
   }
-  const facts = parent ? `<div class="today-kid-facts">${todayKidFacts(kid.id, todayIso)}</div>` : '';
-  return parent
-    ? `<button type="button" class="today-kid-row" data-kid-id="${esc(kid.id)}" onclick="openChildView('${todayActionIdArg(kid.id)}')" aria-label="Open ${name}'s page">${emblem}<span class="today-kid-main"><span class="today-kid-name">${name}</span>${facts}</span><span class="today-kid-fams">${famsBlock}</span>${todayIcon('chevron', 16)}</button>`
-    : `<a class="today-kid-row" href="/finance">${emblem}<span class="today-kid-main"><span class="today-kid-name">${name}</span></span><span class="today-kid-fams">${famsBlock}</span>${todayIcon('chevron', 16)}</a>`;
+  const habits = goalsItems.filter(goal => goal.type === 'habit' && goal.kidId === kid.id);
+  return `<article class="fr-kid-card" data-kid-id="${esc(kid.id)}">
+    <header class="fr-kid-head"><button type="button" class="fr-kid-identity" onclick="${open}" aria-label="${parent ? `Open ${name}'s page` : 'Open your homework'}">${kidAvatarMarkup(kid.id)}<b>${name}</b></button><span class="fr-kid-chip ${!hwKnown ? 'is-unknown' : hw.overdue ? 'is-overdue' : hw.dueToday ? 'is-due' : 'is-clear'}">${hwKnown ? todayKidFacts(kid.id,todayIso) : hwUnknown}</span></header>
+    <div class="fr-kid-body"><button type="button" class="fr-kid-rings" onclick="${open}" aria-label="${parent ? `Open ${name}'s progress` : 'Open your homework'}">${famRing({ rings, key: `kid-${kid.id}`, label: summary })}</button>
+      <div class="fr-kid-stats">
+        <button type="button" class="fr-stat fr-stat-hw" onclick="openTodayKidHomework('${id}')"><b>${hwKnown ? hw.left : '—'}</b><span>${hwKnown ? `homework left<br>this week${hw.total && !hw.left ? ' · Done ✓' : ''}` : hwUnknown}</span></button>
+        <button type="button" class="fr-stat fr-stat-d3" onclick="openTodayLearning()"><b>${daily3 ? `${daily3.done}/3` : '—'}</b><span>Daily 3 today<br>${daily3 ? esc(daily3.status) : progressState === 'loading' ? 'Loading…' : 'Unavailable'}</span></button>
+        ${!habKnown ? `<div class="fr-stat fr-stat-hab"><b>—</b><span>${habUnknown}</span></div>` : hab.total ? `<details class="fr-habit-details"><summary class="fr-stat fr-stat-hab"><b>${hab.done}/${hab.total}</b><span>habits today<br>${hab.done === hab.total ? 'Done ✓' : 'Check in'}</span></summary><div class="fr-habit-popover"><h3>${name}’s habits</h3>${habits.map(renderTodayHabitRow).join('')}<button class="today-link" type="button" onclick="switchNavTab('goals')">All goals ${todayIcon('arrow')}</button></div></details>` : `<button type="button" class="fr-stat fr-stat-hab" onclick="switchNavTab('goals')"><b>—</b><span>No habits yet<br><em>Set a first habit</em></span></button>`}
+      </div>
+    </div>
+    <a class="fr-kid-fams" href="/finance${parent ? '?kidId=' + encodeURIComponent(kid.id) : ''}">${fams}</a>
+  </article>`;
+}
+
+function paintTodayKidCards() {
+  const root = document.getElementById('today-fams-body');
+  if (!root || !sessionUser || !currentFamily) return;
+  const parent = !isKidSession(), date = isoDate(new Date());
+  const kids = (currentFamily.kids || []).filter(kid => parent || kid.id === sessionUser.kidId);
+  if (!kids.length) { root.innerHTML = '<p class="today-fams-note">Add a child in Settings to start.</p>'; return; }
+  const openHabits = Array.from(root.querySelectorAll('.fr-habit-details[open]')).map(el => el.closest('[data-kid-id]').dataset.kidId);
+  const focusedGoal = root.querySelector(':focus')?.getAttribute('onclick');
+  root.innerHTML = kids.map(kid => { const entry = todayRingData.get(todayRingDataKey(kid.id,date)); return todayKidRowHtml(kid,parent,entry?.fams || 'loading',date,entry?.progress || 'loading'); }).join('');
+  root.querySelectorAll('[data-kid-id]').forEach(card => { if (openHabits.includes(card.dataset.kidId)) card.querySelector('.fr-habit-details')?.setAttribute('open',''); });
+  if (focusedGoal) Array.from(root.querySelectorAll('[onclick]')).find(el => el.getAttribute('onclick') === focusedGoal)?.focus({ preventScroll: true });
+  if (homeworkLoadState === 'error' || goalsLoadState === 'error' || kids.some(kid => { const data = todayRingData.get(todayRingDataKey(kid.id,date)); return data?.fams === 'error' || data?.progress === 'error'; })) root.insertAdjacentHTML('beforeend','<button type="button" class="today-link fr-progress-retry" onclick="retryTodayProgress()">Retry unavailable progress</button>');
+}
+
+async function retryTodayProgress() {
+  await Promise.all([homeworkLoadState === 'error' ? loadHomework() : null, goalsLoadState === 'error' ? loadGoals() : null]);
+  await renderTodayFams(true);
 }
 
 function renderTodayScreen() {
   if (!sessionUser) return;
+  const mobileAvatar = document.getElementById('mobile-user-avatar');
+  if (mobileAvatar) {
+    mobileAvatar.textContent = (sessionUser.name || 'F').slice(0,1).toUpperCase();
+    mobileAvatar.style.background = isKidSession() ? kidColorFor(sessionUser.kidId) || 'var(--fr-you)' : 'var(--fr-you)';
+    mobileAvatar.style.color = 'var(--fr-on-you)';
+  }
   const now = new Date();
   const todayIso = isoDate(now);
 
   const dateLabel = document.getElementById('today-date-label');
-  if (dateLabel) dateLabel.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  if (dateLabel) dateLabel.textContent = now.toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' });
 
   const greetingEl = document.getElementById('today-greeting');
   if (greetingEl) {
@@ -5272,9 +5386,11 @@ function renderTodayScreen() {
     }
   }
 
+  document.getElementById('tab-today')?.classList.toggle('fr-kid-today', isKidSession());
   renderTodaySetupCard();
   renderTodayFams();
   initDaily5Tabs();
+  renderTodayLearningRings();
   renderTodayActionQueue();
   renderTodaySchedule(todayIso);
   renderTodayHomework(todayIso);
@@ -5283,43 +5399,31 @@ function renderTodayScreen() {
 }
 
 let famsHomeGeneration = 0;
-async function renderTodayFams() {
+async function renderTodayFams(force = false) {
   const root = document.getElementById('today-fams-body');
-  const titleEl = document.getElementById('today-fams-title');
   if (!root || !sessionUser || !currentFamily) return;
-  const parent = !isKidSession();
-  if (titleEl) titleEl.textContent = parent ? 'Children' : 'Your fams';
-
-  const token = ++famsHomeGeneration, account = sessionUser, familyId = currentFamily.id;
-  const current = () => token === famsHomeGeneration && account === sessionUser && familyId === currentFamily?.id;
-  const kids = parent ? currentFamily.kids || [] : [{ id: sessionUser.kidId || '' }];
-  const todayIso = isoDate(new Date());
-  const footerText = parent ? 'Chores, school points & savings · Open a child to manage' : 'Learn, save and grow · Explore your money';
-  if (!kids.length) { root.innerHTML = '<p class="today-fams-note">Add a child in Settings to start earning fams.</p>'; return; }
-
-  const paint = (states) => {
-    let anyError = false;
-    const rows = kids.map((kid, index) => {
-      const state = states ? states[index] : 'loading';
-      if (state === 'error') anyError = true;
-      return todayKidRowHtml(kid, parent, state, todayIso);
-    }).join('');
-    root.innerHTML = rows +
-      (anyError ? '<button type="button" class="today-link today-fams-retry" onclick="renderTodayFams()">Retry fams</button>' : '') +
-      `<p class="today-fams-note today-fams-footer">${esc(footerText)}</p>`;
-  };
-
-  // Rows paint synchronously first — no network wait — then fill in with
-  // real fams values once the per-kid fetch resolves.
-  paint(null);
-
-  const results = await Promise.allSettled(kids.map(async (kid) => {
-    const response = await fetch('/api/fams?kidId=' + encodeURIComponent(kid.id), { credentials: 'same-origin' });
-    if (!response.ok) throw new Error('Rewards unavailable');
-    return response.json();
+  const parent = !isKidSession(), account = sessionUser, familyId = currentFamily.id;
+  const date = isoDate(new Date()), token = ++famsHomeGeneration;
+  const kids = (currentFamily.kids || []).filter(kid => parent || kid.id === sessionUser.kidId);
+  const current = () => token === famsHomeGeneration && account === sessionUser && familyId === currentFamily?.id && date === isoDate(new Date());
+  paintTodayKidCards();
+  await Promise.all(kids.map(async kid => {
+    const key = todayRingDataKey(kid.id, date), cached = todayRingData.get(key);
+    if (!force && cached && Date.now() - cached.fetchedAt < 60000) return;
+    const get = async url => { const res = await fetch(url, { credentials: 'same-origin' }); if (!res.ok) throw new Error('Progress unavailable'); return res.json(); };
+    const [fams, progress] = await Promise.allSettled([
+      get('/api/fams?kidId=' + encodeURIComponent(kid.id)),
+      get(parent ? '/api/children/' + encodeURIComponent(kid.id) + '/insights?date=' + date : '/api/daily5/progress?date=' + date)
+    ]);
+    if (!current()) return;
+    const observed = progress.status === 'fulfilled' ? (parent ? progress.value.daily5 : progress.value) : null;
+    todayRingData.set(key, {
+      fams: fams.status === 'fulfilled' ? fams.value : 'error',
+      progress: observed?.date === date && observed.parts && typeof observed.parts === 'object' ? observed : 'error',
+      fetchedAt: Date.now()
+    });
   }));
-  if (!current()) return;
-  paint(results.map((result) => (result.status === 'fulfilled' ? result.value : 'error')));
+  if (current()) paintTodayKidCards();
 }
 
 // Meals "Tonight" card (docs/MEALS-PLAN.md §7 "Today" integration). Best-
@@ -5332,39 +5436,15 @@ async function famRenderTodayMeals(todayIso) {
   if (!card || !body) return;
   // Parent tool — don't even call /api/meals on a kid session (it 403s).
   if (isKidSession()) { card.hidden = true; return; }
+  const account = sessionUser;
   try {
     const data = await window.auth.getMeals();
-    const menu = (data && data.menu) || [];
-    const tonight = menu.find((e) => e.date === todayIso && e.slot === 'dinner');
-    if (!tonight) {
-      body.innerHTML = '<p class="today-empty">No dinner planned yet. <a class="today-link" href="/meals">Plan tonight</a></p>';
-      card.hidden = false;
-      return;
-    }
-    const prefs = (data && data.prefs) || {};
-    const prepDue = famTonightPrepDue(menu, prefs, todayIso);
-    const shopping = Array.isArray(data && data.shopping) ? data.shopping : [];
-    const pantry = Array.isArray(data && data.pantry) ? data.pantry : [];
-    const pendingShoppingCount = famMealCardCount(
-      shopping.filter((item) => item && item.done !== true).length
-    );
-    const lowPantryCount = famMealCardCount(
-      pantry.filter((item) => item && (item.level === 'low' || item.level === 'out')).length
-    );
-    const prepDueCount = famMealCardCount(prepDue.length);
-    const prepLabels = prepDue.slice(0, 3).map((p) => p && p.label).filter(Boolean).join(' · ');
-    const facts = [];
-    if (prepDueCount) facts.push(`${todayIcon('clock', 14)}<span>Prep today: ${esc(prepLabels)}</span>`);
-    if (pendingShoppingCount) facts.push(`${todayIcon('cart', 14)}<span>${pendingShoppingCount} on the shopping list</span>`);
-    if (lowPantryCount) facts.push(`${todayIcon('jar', 14)}<span>${lowPantryCount} pantry items low or out</span>`);
-    const factsHtml = facts.length
-      ? facts.map((fact) => `<li>${fact}</li>`).join('')
-      : `<li>${todayIcon('check', 14)}<span>Nothing to prep or buy</span></li>`;
-    body.innerHTML = `<div class="today-dinner-title">${esc(tonight.title)}</div><ul class="today-dinner-facts">${factsHtml}</ul>`;
+    if (account !== sessionUser || isKidSession()) return;
+    const tonight = (data?.menu || []).find(entry => entry.date === todayIso && entry.slot === 'dinner');
+    body.innerHTML = `${todayIcon('bowl',16)}<span>Tonight: ${tonight ? esc(tonight.title) : 'dinner not planned · Plan tonight'}</span>`;
     card.hidden = false;
-  } catch (err) {
-    card.hidden = true; // Meals unavailable/unset-up — Today keeps working fine without it
-  }
+  } catch (err) { card.hidden = true; }
+
 }
 
 function famMealCardCount(value) {
@@ -5399,95 +5479,64 @@ function todayScheduleMeta(ev) {
   return 'Imported item needs review — open to check the details';
 }
 
-function renderTodayScheduleRow(ev, now) {
-  const color = ev.kidId ? (kidColorFor(ev.kidId) || 'var(--text-2)') : 'var(--text-2)';
-  const kidName = ev.kidId ? esc(kidNameFor(ev.kidId)) : '';
-  const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const isPast = !!ev.time && (ev.endTime || ev.time) < nowHM;
+function renderTodayScheduleRow(ev, now, placement = null) {
+  const color = ev.kidId ? kidColorFor(ev.kidId) : 'var(--fr-you)';
   const isMeal = ev.source === 'menu';
   const title = isMeal ? String(ev.title || '').replace(/^\u{1F37D}\uFE0F?\s*/u, '') : ev.title;
-  const lead = isMeal ? `${todayIcon('bowl', 14)}<span class="today-sr">Dinner:</span>` : '';
-  const icons = (ev.recurring ? `${todayIcon('repeat', 12)}<span class="today-sr">Repeats</span>` : '') +
-    (ev.source === 'school' ? `${todayIcon('lock', 12)}<span class="today-sr">School event</span>` : '');
-  const metaParts = [];
-  if (ev.endTime) metaParts.push(`Until ${esc(fmt12(ev.endTime))}`);
-  const extra = todayScheduleMeta(ev);
-  if (extra) metaParts.push(esc(extra));
-  const meta = metaParts.join(' · ');
-  return `<button type="button" class="schedule-row${isPast ? ' is-past' : ''}" style="--row-color:${color}" onclick="showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')">
-    <span class="schedule-time">${ev.time ? esc(fmt12(ev.time)) : 'All day'}</span>
-    <span class="schedule-node" aria-hidden="true"></span>
-    <span class="schedule-main">
-      <span class="schedule-title">${lead}${esc(title)}${icons}</span>
-      ${meta ? `<span class="schedule-meta">${meta}</span>` : ''}
-    </span>
-    ${kidName ? `<span class="schedule-kid">${kidAvatarMarkup(ev.kidId)}<span class="today-sr">${kidName}</span></span>` : ''}
-  </button>`;
+  const time = ev.time ? `${fmt12(ev.time)}${ev.endTime ? '–' + fmt12(ev.endTime) : ''}` : 'All day';
+  const text = `${title} · ${time}`;
+  const style = placement ? `left:${placement.left}%;width:${placement.width}%;top:${placement.top}px;` : '';
+  return `<button type="button" class="fr-day-event${placement ? '' : ' fr-day-untimed'}" style="${style}--event-color:${esc(color)}" onclick="showDetail('${todayActionIdArg(ev.id)}','${todayActionIdArg(ev.occurrenceDate || ev.date)}')" aria-label="${esc(text + (ev.kidId ? ' · ' + kidNameFor(ev.kidId) : '') + (todayScheduleMeta(ev) ? ' · ' + todayScheduleMeta(ev) : ''))}">${isMeal ? todayIcon('bowl',14) : ''}<span>${esc(text)}</span></button>`;
 }
 
-// An event is "today" if today falls anywhere in its date..endDate span.
 function eventsOnDay(events, ds) {
   return events.filter((e) => e.date <= ds && (e.endDate || e.date) >= ds);
 }
 
+function todayDayStrip(events, date, showNow) {
+  const minutes = value => { const [h,m] = value.split(':').map(Number); return h * 60 + m; };
+  const start = 7 * 60, end = 21 * 60, span = end - start;
+  const now = new Date(), currentMinute = now.getHours() * 60 + now.getMinutes();
+  const lanes = [];
+  const timed = [], outside = [];
+  events.forEach(ev => {
+    if (!ev.time || minutes(ev.time) >= end || (ev.endTime && minutes(ev.endTime) <= start)) { outside.push(ev); return; }
+    const from = Math.max(start, minutes(ev.time));
+    const to = Math.min(end, Math.max(ev.endTime ? minutes(ev.endTime) : from + 60, from + 140));
+    let lane = lanes.findIndex(until => until <= from);
+    if (lane === -1) lane = lanes.length;
+    lanes[lane] = to;
+    timed.push({ ev, from, to, lane });
+  });
+  // Every title remains readable; overlapping events get their own lane.
+  const rowHeight = timed.some(({ev}) => String(ev.title).length > 32) ? 76 : 44;
+  const ticks = Array.from({length:15},(_,i) => `<span class="fr-day-tick" style="left:${i / 14 * 100}%"><span>${i % 2 === 0 ? `${(i+7)%12 || 12}${i===0 ? ' AM' : i===14 ? ' PM' : ''}` : ''}</span></span>`).join('');
+  const marker = showNow && currentMinute >= start && currentMinute <= end ? `<div class="today-now" style="left:${(currentMinute-start)/span*100}%"><span>Now ${esc(fmt12(`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`))}</span></div>` : '';
+  return `<div class="fr-day-track" style="height:${Math.max(44,lanes.length * rowHeight)}px">${ticks}${timed.map(({ev,from,to,lane}) => renderTodayScheduleRow(ev,now,{left:(from-start)/span*100,width:(to-from)/span*100,top:lane*rowHeight+5})).join('')}${marker}</div>${outside.length ? `<div class="fr-day-extra">${outside.map(ev=>renderTodayScheduleRow(ev,now)).join('')}</div>` : ''}`;
+}
+
 function renderTodaySchedule(todayIso) {
   const listEl = document.getElementById('today-schedule-list');
-  const countEl = document.getElementById('today-schedule-count');
-  const tomorrowWrap = document.getElementById('today-tomorrow');
-  const tomorrowRow = document.getElementById('today-tomorrow-row');
-  const summaryEventsEl = document.getElementById('today-summary-events');
   if (!listEl) return;
-
-  // Today shows the whole family merged. A kid sees family (unscoped) events
-  // plus their own — never a sibling's — matching the calendar visibility
-  // model (see visibleEvents).
-  const events = allEvents()
-    .filter((e) => !isKidSession() || e.kidId == null || e.kidId === sessionUser.kidId);
-  // Empty-time events sort first, so all-day events lead the timed ones.
-  const todays = eventsOnDay(events, todayIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-
-  if (countEl) countEl.textContent = todays.length ? `${todays.length} event${todays.length === 1 ? '' : 's'}` : '';
-  if (summaryEventsEl) {
-    summaryEventsEl.textContent = todays.length === 0 ? 'No events today' : todays.length === 1 ? '1 event today' : `${todays.length} events today`;
+  const events = allEvents().filter(e => !isKidSession() || e.kidId == null || e.kidId === sessionUser.kidId);
+  const todays = eventsOnDay(events,todayIso).sort((a,b)=>(a.time || '').localeCompare(b.time || ''));
+  const count = document.getElementById('today-schedule-count');
+  if (count) count.textContent = `· ${todays.length} event${todays.length === 1 ? '' : 's'}`;
+  const summary = document.getElementById('today-summary-events');
+  if (summary) summary.textContent = `${todays.length || 'No'} event${todays.length === 1 ? '' : 's'} today`;
+  listEl.innerHTML = todayDayStrip(todays,todayIso,true) + (!todays.length ? '<p class="today-empty">Nothing on the calendar today.</p>' : '');
+  if (listEl.dataset.centered !== todayIso) {
+    requestAnimationFrame(() => { const marker = listEl.querySelector('.today-now'); if (marker) listEl.scrollLeft = Math.max(0,marker.offsetLeft - listEl.clientWidth/2); });
+    listEl.dataset.centered = todayIso;
   }
-
-  const now = new Date();
-  const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  // The day is over once every event has a time and it has ended; the
-  // evening view then looks ahead to tomorrow as a full timeline.
-  const dayOver = todays.length > 0 && todays.every((ev) => ev.time && (ev.endTime || ev.time) < nowHM);
-  if (!todays.length) {
-    listEl.innerHTML = `<p class="today-empty">Nothing on the calendar today. <button type="button" class="today-link" onclick="openAddEventModal()">Add an event</button></p>`;
-  } else {
-    const nowMarker = '<div class="today-now" aria-hidden="true"><span>Now</span></div>';
-    const hasTimed = todays.some((ev) => ev.time);
-    const nowLineIndex = hasTimed ? todays.findIndex((ev) => ev.time && ev.time > nowHM) : -1;
-    const visible = todays.slice(0, 6);
-    let rowsHtml = visible.map((ev, index) => (index === nowLineIndex ? nowMarker : '') + renderTodayScheduleRow(ev, now)).join('');
-    // Everything has started: the line sits after the last row.
-    if (hasTimed && nowLineIndex === -1 && visible.length === todays.length) rowsHtml += nowMarker;
-    if (todays.length > 6) {
-      rowsHtml += `<a href="#" class="today-link today-schedule-more" onclick="switchNavTab('calendar');return false">+${todays.length - 6} more today</a>`;
-    }
-    listEl.innerHTML = rowsHtml;
-  }
-
-  const tomorrowIso = isoDate(new Date(Date.now() + 86400000));
-  const tomorrowEvents = eventsOnDay(events, tomorrowIso).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-  if (tomorrowWrap) tomorrowWrap.hidden = !tomorrowEvents.length;
-  if (tomorrowRow && tomorrowEvents.length) {
-    if (dayOver || !todays.length) {
-      // Nothing left today: tomorrow gets the timeline treatment (up to 3).
-      const startOfTomorrow = parseIso(tomorrowIso);
-      const more = tomorrowEvents.length > 3
-        ? `<a href="#" class="today-link today-schedule-more" onclick="switchNavTab('calendar');return false">+${tomorrowEvents.length - 3} more tomorrow</a>` : '';
-      tomorrowRow.innerHTML = `<div class="today-timeline">${tomorrowEvents.slice(0, 3).map((ev) => renderTodayScheduleRow(ev, startOfTomorrow)).join('')}</div>${more}`;
-    } else {
-      const first = tomorrowEvents[0];
-      const more = tomorrowEvents.length > 1 ? ` +${tomorrowEvents.length - 1} more` : '';
-      tomorrowRow.innerHTML = `<button type="button" class="today-tomorrow-btn" onclick="showDetail('${first.id}','${first.occurrenceDate || first.date}')"><span class="schedule-time">${first.time ? esc(fmt12(first.time)) : 'All day'}</span><span>${esc(first.title)}${esc(more)}</span></button>`;
-    }
-  }
+  const now = new Date(), nowHM = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const dayOver = !todays.length || todays.every(ev => ev.time && (ev.endTime || ev.time) < nowHM);
+  const tomorrow = new Date(now); tomorrow.setDate(now.getDate()+1);
+  const tomorrowIso = isoDate(tomorrow), next = eventsOnDay(events,tomorrowIso).sort((a,b)=>(a.time || '').localeCompare(b.time || ''));
+  const wrap = document.getElementById('today-tomorrow');
+  if (wrap) wrap.hidden = !dayOver || !next.length;
+  const row = document.getElementById('today-tomorrow-row');
+  if (row && next.length && dayOver) row.innerHTML = todayDayStrip(next,tomorrowIso,false);
 }
 
 // Keep the "Now" line accurate without a full Today reload.
@@ -5557,6 +5606,7 @@ function renderTodayHabitRow(goal) {
 }
 
 function renderTodayHabitsAndMomentum() {
+  paintTodayKidCards();
   const listEl = document.getElementById('today-habits-list');
   const countEl = document.getElementById('today-habits-count');
   const habitGoals = goalsItems.filter((g) => g.type === 'habit' && (!isKidSession() || g.kidId === sessionUser.kidId));
@@ -5875,9 +5925,12 @@ function celebrateHomeworkDone() {
    missed day is never flagged, streaks just start counting again.
 ============================================================ */
 let goalsItems = []; // last-loaded list from GET /api/goals
+let goalsLoadState = 'idle';
 
 async function loadGoals() {
-  try { goalsItems = await window.auth.getGoals({}); } catch (e) { goalsItems = []; }
+  goalsLoadState = 'loading';
+  try { goalsItems = await window.auth.getGoals({}); goalsLoadState = 'ready'; }
+  catch (e) { goalsItems = []; goalsLoadState = 'error'; }
   return goalsItems;
 }
 
@@ -5903,10 +5956,10 @@ function goalRingSvg(goal) {
   const weekChecks = goalChecksThisWeek(goal);
   const frac = Math.min(1, goal.target ? weekChecks / goal.target : 0);
   const dash = (frac * c).toFixed(1);
-  const color = kidColorFor(goal.kidId) || 'var(--accent)';
+  const color = 'var(--fr-hab)';
   const checkedToday = (goal.checks || []).includes(isoDate(new Date()));
-  return `<button type="button" class="goal-ring-btn" onclick="toggleGoalCheckIn('${goal.id}')" title="${checkedToday ? 'Checked in today — tap to undo' : 'Check in for today'}" aria-label="Check in">
-    <svg viewBox="0 0 66 66" width="66" height="66">
+  return `<button type="button" class="goal-ring-btn" onclick="toggleGoalCheckIn('${goal.id}')" title="${checkedToday ? 'Checked in today — tap to undo' : 'Check in for today'}" aria-pressed="${checkedToday}" aria-label="${checkedToday ? 'Undo check-in' : 'Check in'}: ${esc(goal.title)}">
+    <svg viewBox="0 0 66 66" width="66" height="66" role="img" aria-label="${esc(goal.title)}: ${weekChecks} of ${goal.target} check-ins this week">
       <circle class="goal-ring-track" cx="33" cy="33" r="${r}"></circle>
       <circle class="goal-ring-fill" cx="33" cy="33" r="${r}" style="stroke:${color};stroke-dasharray:${dash} ${c.toFixed(1)}"></circle>
       <text x="33" y="38" class="goal-ring-text">${esc(String(weekChecks))}/${esc(String(goal.target))}</text>
