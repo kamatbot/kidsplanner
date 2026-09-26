@@ -67,7 +67,11 @@ test("interact: wrong answers increment wrongCount without promoting", () => {
   wordbank.interact(kid.id, { word, correct: false });
   const result = wordbank.interact(kid.id, { word, correct: false });
   assert.equal(result.entry.wrongCount, 2);
+  assert.ok(Number.isFinite(Date.parse(result.entry.lastWrongAt)));
   assert.equal(result.entry.correctCount, 0);
+  const wrongAt = result.entry.lastWrongAt;
+  wordbank.interact(kid.id, { word, correct: true });
+  assert.equal(result.entry.lastWrongAt, wrongAt);
   assert.equal(result.entry.state, "learning");
 });
 

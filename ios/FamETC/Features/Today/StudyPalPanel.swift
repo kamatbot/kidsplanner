@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Child-only Koko panel. It owns only sheet presentation; homework, energy,
-/// and corner data remain owned by their established native surfaces.
+/// Koko's panel owns only sheet presentation; homework, energy, and corner
+/// data remain owned by their established native surfaces.
 struct StudyPalPanel: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -14,12 +14,14 @@ struct StudyPalPanel: View {
         case homework(String)
         case energy
         case corner
+        case actions
 
         var id: String {
             switch self {
             case .homework(let id): "homework-\(id)"
             case .energy: "energy"
             case .corner: "corner"
+            case .actions: "actions"
             }
         }
     }
@@ -27,15 +29,21 @@ struct StudyPalPanel: View {
     @State private var destination: Destination?
 
     private var isAuthorized: Bool {
-        !store.needsAuth && store.me?.role == "kid" && store.me?.id == ownerID
+        guard !store.needsAuth, let user = store.me, user.id == ownerID, let family = store.family else { return false }
+        if user.role == "kid" {
+            guard let kidID = user.kidId else { return false }
+            return family.kids.contains { $0.id == kidID }
+        }
+        return family.parentIds.contains(user.id)
     }
 
     private var identity: String {
         guard isAuthorized else { return "" }
-        return "\(store.me?.id ?? "")|\(store.me?.kidId ?? "")|\(store.family?.id ?? "")"
+        return "\(store.me?.id ?? "")|\(store.me?.role ?? "")|\(store.me?.kidId ?? "")|\(store.family?.id ?? "")"
     }
 
     private var nextHomework: HomeworkItem? {
+        guard store.me?.role == "kid" else { return nil }
         guard let kidID = store.me?.kidId else { return nil }
         return StudyStartPriority.select(from: store.homework.filter { $0.kidId == kidID })
     }
@@ -47,7 +55,7 @@ struct StudyPalPanel: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: Space.md) {
                             header
-                            nextHomeworkButton
+                            if store.isParent { familyActionsButton } else { nextHomeworkButton }
                             panelButton(
                                 title: "Energy check-in",
                                 detail: "Choose how your energy feels today",
@@ -93,7 +101,8 @@ struct StudyPalPanel: View {
             switch destination {
             case .homework(let id): HomeworkDetailSheet(homeworkId: id)
             case .energy: MoodCheckInView()
-            case .corner: MyCornerScreen(ownerID: ownerID).id(ownerID)
+            case .corner: MyCornerScreen(ownerID: ownerID, familyID: store.family?.id, role: store.me?.role).id(identity)
+            case .actions: FamilyRingsActionsSheet()
             }
         }
         .onDisappear { destination = nil }
@@ -144,6 +153,15 @@ struct StudyPalPanel: View {
             )
             .disabled(true)
         }
+    }
+
+    private var familyActionsButton: some View {
+        panelButton(
+            title: "Needs you",
+            detail: "Review family next steps",
+            systemImage: "checklist",
+            action: { destination = .actions }
+        )
     }
 
     private func panelButton(

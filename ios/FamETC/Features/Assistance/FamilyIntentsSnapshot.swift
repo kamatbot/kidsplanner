@@ -304,9 +304,16 @@ enum DailyFiveSnapshotDecoder {
             }
         }
         let values = payload.daily5.parts.values
+        // Keep the stored daily3 fields so existing snapshots remain decodable,
+        // while giving Daily 4 one challenge credit even when both legacy
+        // challenge records happen to be present.
         let daily3Parts = ["news", "quote", "word"]
-        let daily3Completed = daily3Parts.filter { payload.daily5.parts[$0]?.status == "completed" }.count
-        let daily3Started = daily3Parts.filter { payload.daily5.parts[$0]?.status == "started" }.count
+        let coreCompleted = daily3Parts.filter { payload.daily5.parts[$0]?.status == "completed" }.count
+        let coreStarted = daily3Parts.filter { payload.daily5.parts[$0]?.status == "started" }.count
+        let challengeCompleted = ["puzzle", "bt"].contains { payload.daily5.parts[$0]?.status == "completed" } ? 1 : 0
+        let challengeStarted = ["puzzle", "bt"].contains { payload.daily5.parts[$0]?.status == "started" } ? 1 : 0
+        let daily3Completed = coreCompleted + challengeCompleted
+        let daily3Started = coreStarted + challengeStarted
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         guard let date = ISO8601DateFormatter().date(from: expectedDate + "T12:00:00Z") else {

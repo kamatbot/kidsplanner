@@ -43,7 +43,7 @@
 | Typography | Self-hosted Geist variable 100–900 on the web, tabular numerals throughout; 30px greeting, 64px hero count, 30px child stats, 14px body. |
 | Native and marketing scope | Native Family Rings follows `docs/design/family-rings/IOS-BRIEF.md`: shared adaptive colors, bundled Geist, native Today and pure count formulas. Five native tabs stay native; secondary surfaces use HybridWebView. Widget/watch visual changes await device approval. Marketing keeps its existing Horizon type and palette. |
 | Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). The native contract supersedes the earlier native Today design; marketing remains separate. |
-| Child study space | Koko opens the next homework task, an energy check-in and My Corner. Available only in child sessions, primarily on iPad. Mood sharing requires explicit preview/send; My Corner notes and stickers remain private to the owning child account. |
+| Personal study space | Koko opens a child’s next homework task or a parent’s Needs you actions, an energy check-in and My Corner. Available to kids and parents, primarily on iPad. Mood sharing requires explicit preview/send. Each account owns a private Corner; parents cannot open children’s or other parents’ Corners. |
 
 ## Monetization
 | Decision | Value | → Components |
@@ -130,3 +130,7 @@ row changes. Full decisions + contract: [docs/TRIPS-PLAN.md](docs/TRIPS-PLAN.md)
 - [ ] Stripe test-mode checkout round-trip
 - [ ] Tests green · dark mode pass · (recommend /security-review before public)
 - [ ] App Store assets (iPhone + iPad) · TestFlight round
+
+### Daily 4 and crossword practice — 2026-09-26
+
+Daily 4 comprises News, Quote, Word, and one Challenge. A completed brain teaser or puzzle counts as the Challenge; completing both still counts once. Legacy daily5 routes/storage and daily3 component identifiers stay compatible. iOS shows a single Daily 4 heading. Crossword clues offer a first-letter hint and an explicit answer reveal without filling cells or completing the puzzle. Optional weekly recall cards show recorded mistakes and unattempted words, scoped to the signed-in player. Older aggregate mistake counts do not establish a weekly mistake date. My Corner offers 48 stickers across Moods, Activities and Little things, with an All filter and the existing 18-placement limit. Parents and kids each have a private account/family/role-scoped Corner. Emotion check-ins remain unsaved unless explicitly sent to family chat.

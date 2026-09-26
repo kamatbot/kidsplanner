@@ -68,8 +68,8 @@
         <div data-preview hidden><p id="mood-visibility">Family chat members can see the message you send. It stays in chat.</p><label for="mood-draft">Message preview — edit before sending</label><textarea id="mood-draft" rows="3" maxlength="2000" autocomplete="off" aria-describedby="mood-visibility"></textarea><button type="button" data-action="send">Send to family</button></div><p role="status" aria-live="polite" data-status></p>`;
       const draft = host.querySelector('textarea');
       model = createMoodCheckIn({ identity,
-        verifyIdentity: async () => { const me = await root.auth.getMe(); return me?.user?.role === 'kid' && identity().split(':')[0] === me.user.id ? identity() : ''; },
-        send: (text, id) => { const [userId, familyId] = identity().split(':'); return root.auth.sendChatMessage(text, undefined, id, { userId, familyId }); },
+        verifyIdentity: async () => { const me = await root.auth.getMe(); return ['kid', 'parent'].includes(me?.user?.role) && identity().split(':')[0] === me.user.id && identity().split(':')[2] === me.user.role ? identity() : ''; },
+        send: (text, id) => { const [userId, familyId, role] = identity().split(':'); return root.auth.sendChatMessage(text, undefined, id, { userId, familyId, role }); },
         changed(state) {
           host.querySelector('[data-preview]').hidden = !state.preview;
           if (draft.value !== state.draft) draft.value = state.draft;

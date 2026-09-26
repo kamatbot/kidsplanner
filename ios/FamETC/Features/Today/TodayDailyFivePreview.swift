@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The three Daily 3 activities keep their existing sheets and completion records.
+/// Daily 4 retains the existing activity and progress identifiers for continuity.
 enum DailyFiveActivity: String, CaseIterable, Identifiable {
     case news
     case quote
@@ -70,8 +70,8 @@ struct TodayDailyFivePreview: View {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: Space.xs) {
-                        MicroLabel(text: isKid ? "Your day" : "Daily 3")
-                        Text("Daily 3")
+                        MicroLabel(text: isKid ? "Your day" : "Today")
+                        Text("Daily 4")
                             .font(Typography.cardTitle)
                             .foregroundStyle(Palette.frInk)
                     }

@@ -51,7 +51,7 @@
 .cv-day i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--text-2); }
 .cv-day i.is-done { background: var(--accent); border-color: var(--accent); }
 .cv-daily { margin-top: 4px; }
-.cv-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.cv-parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
 .cv-part { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .cv-part .cv-symbol { width: 34px; height: 34px; background: var(--panel-2); color: var(--text-2); }
 .cv-part .is-complete { background: var(--accent); color: var(--on-accent); }

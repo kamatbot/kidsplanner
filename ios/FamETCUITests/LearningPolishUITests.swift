@@ -90,6 +90,37 @@ final class LearningPolishUITests: XCTestCase {
                                  "Typing must not send one network request per letter")
     }
 
+    func testDailyFourPracticeAndCrosswordAssistanceDoNotChangeGridAnswers() throws {
+        let app = launch()
+        let heading = app.staticTexts["Daily 4"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 12))
+        reveal(heading, app)
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Daily 4")).count, 1,
+                       "Today must present one Daily 4 heading before opening a sheet")
+        tap("today.daily3.challenge", in: app)
+
+        let practiceAnswer = element("puzzle.practice.Pragmatic.answer", in: app)
+        reveal(practiceAnswer, app)
+        practiceAnswer.tap()
+        XCTAssertEqual(practiceAnswer.label, "Hide answer")
+        let practiceRecall = element("puzzle.practice.Pragmatic.recall", in: app)
+        practiceRecall.tap()
+        XCTAssertEqual(practiceRecall.label, "Recalled it ✓")
+
+        tap("puzzle.clear", in: app)
+        app.alerts.buttons["Clear"].tap()
+        let firstCell = element("puzzle.cell.0.0", in: app)
+        XCTAssertEqual(firstCell.value as? String, "")
+        tap("puzzle.clue.1-across.hint", in: app)
+        XCTAssertTrue(app.staticTexts["Starts with P · 9 letters"].waitForExistence(timeout: 8))
+        XCTAssertEqual(firstCell.value as? String, "", "A clue hint must not fill a square")
+
+        tap("puzzle.clue.1-across.answer", in: app)
+        XCTAssertTrue(app.staticTexts["PRAGMATIC"].waitForExistence(timeout: 8))
+        XCTAssertEqual(firstCell.value as? String, "", "Showing an answer must not fill a square")
+        capture(app, "daily-four-hints-and-practice")
+    }
+
     func testFailedChatSendKeepsDraftUntilConfirmed() throws {
         let app = launch(failure: true, screen: "chat")
         let field = element("chat.composer", in: app)
@@ -138,7 +169,7 @@ final class LearningPolishUITests: XCTestCase {
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {
-        let attachment = XCTAttachment(screenshot: app.screenshot())
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "SYNTHETIC native polish — \(name)"
         attachment.lifetime = .keepAlways
         add(attachment)

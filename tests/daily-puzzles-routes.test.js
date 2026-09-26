@@ -6,7 +6,7 @@ const assert = require("node:assert/strict");
 const learningRoutes = require("../lib/routes/learning");
 const dailyPuzzles = require("../lib/daily-puzzles");
 
-function buildRoute(news = {}) {
+function buildRoute(news = {}, records = {}) {
   const routes = {};
   const app = {
     get(route, ...handlers) { routes[`GET ${route}`] = handlers; },
@@ -25,19 +25,19 @@ function buildRoute(news = {}) {
     dailyPuzzles,
     news,
     notes: {},
-    wordbank: {},
+    wordbank: { listWords: player => ({ words: records[player] || [] }) },
     brainteaser: {},
     family: {},
     requireAuth,
     requireFamily,
-    userRole: () => "parent",
-    kidIdForUser: () => null,
+    userRole: user => user.role || "parent",
+    kidIdForUser: req => req.user.kidId,
   });
   return routes["GET /api/enrichment/puzzle/today"];
 }
 
-async function call(handlers, { user = null, family = null, date, schedule } = {}) {
-  const req = { user, family, query: { date, schedule } };
+async function call(handlers, { user = null, family = null, date, schedule, kidId } = {}) {
+  const req = { user, family, query: { date, schedule, kidId } };
   const res = {
     statusCode: 200,
     headers: {},
@@ -146,4 +146,19 @@ test('weekly-capable clients get scheduled questions while installed older clien
   assert.equal(current.body.question.options.length, 4);
   const monday = await call(route, {...scope, date:'2026-09-21', schedule:'weekly'});
   assert.equal(monday.body.type, 'brainteaser');
+});
+
+
+test("crossword practice ignores supplied kid identity and keeps each player scoped", async () => {
+  const word = require('../lib/vocabulary-challenges').getDailyVocabulary('2026-09-21').word.word;
+  const route = buildRoute({}, { child: [{ word, seenCount: 1, lastSeen: '2026-09-21T12:00:00Z', lastWrongAt: '2026-09-21T12:00:00Z' }] });
+  const common = { family: {id:'family'}, date:'2026-09-26', schedule:'weekly', kidId:'child' };
+  const child = await call(route, {...common,user:{id:'child-user',role:'kid',kidId:'child'},kidId:'sibling'});
+  assert.equal(child.body.practiceWords.find(item=>item.word===word).reason,'missed');
+  const sibling = await call(route,{...common,user:{id:'sibling-user',role:'kid',kidId:'sibling'}});
+  assert.equal(sibling.body.practiceWords.find(item=>item.word===word).reason,'untried');
+  const parent = await call(route,{...common,user:{id:'parent'}});
+  assert.equal(parent.body.practiceWords.find(item=>item.word===word).reason,'untried');
+  const unlinked = await call(route,{...common,user:{id:'unlinked',role:'kid'}});
+  assert.equal(unlinked.statusCode,403);
 });

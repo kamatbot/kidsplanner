@@ -589,6 +589,10 @@ private struct DailyPuzzleView: View {
     @State private var resultMessage: String?
     @State private var activeCrosswordEntryID: String?
     @State private var focusedCrosswordCell: String?
+    @State private var hintedCrosswordEntryIDs: Set<String> = []
+    @State private var revealedCrosswordEntryIDs: Set<String> = []
+    @State private var revealedPracticeWordIDs: Set<String> = []
+    @State private var recalledPracticeWordIDs: Set<String> = []
     @State private var showClearConfirmation = false
     @State private var didReportEdit = false
     @State private var progressScope: Daily5Reporter.Scope?
@@ -633,6 +637,7 @@ private struct DailyPuzzleView: View {
                 if let chart = puzzle.chart { chartContent(chart) }
                 questionContent(question)
             } else if let crossword = puzzle.crossword {
+                crosswordPracticeContent()
                 crosswordContent(crossword)
             } else if let sudoku = puzzle.sudoku {
                 sudokuView(sudoku)
@@ -835,6 +840,60 @@ private struct DailyPuzzleView: View {
         }
     }
 
+    @ViewBuilder
+    private func crosswordPracticeContent() -> some View {
+        if let practiceWords = puzzle.practiceWords, !practiceWords.isEmpty {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                Text("Practice before the crossword")
+                    .font(Typography.cardTitle)
+                    .foregroundStyle(Palette.text)
+                Text("Try recalling the word, then reveal it. Skip to the crossword whenever you’re ready.")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: Space.sm) {
+                        ForEach(practiceWords) { practice in
+                            let revealed = revealedPracticeWordIDs.contains(practice.id)
+                            let recalled = recalledPracticeWordIDs.contains(practice.id)
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text(practice.definition)
+                                    .font(Typography.body.weight(.semibold))
+                                    .foregroundStyle(Palette.text)
+                                Text(practiceReason(practice.reason))
+                                    .font(Typography.label)
+                                    .foregroundStyle(Palette.textSecond)
+                                HStack(spacing: Space.sm) {
+                                    Button(revealed ? "Hide answer" : "Show answer") {
+                                        toggle(practice.id, in: $revealedPracticeWordIDs)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .accessibilityIdentifier("puzzle.practice.\(practice.id).answer")
+                                    Button(recalled ? "Recalled it ✓" : "I recalled it") {
+                                        toggle(practice.id, in: $recalledPracticeWordIDs)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(recalled ? Palette.accent : Palette.textSecond)
+                                    .accessibilityIdentifier("puzzle.practice.\(practice.id).recall")
+                                }
+                                if revealed {
+                                    Text(practice.word)
+                                        .font(Typography.body.weight(.bold))
+                                        .foregroundStyle(Palette.accent)
+                                    if let example = practice.example, !example.isEmpty {
+                                        Text(example).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                                    }
+                                }
+                            }
+                            .frame(width: dynamicTypeSize.isAccessibilitySize ? 320 : 240, alignment: .leading)
+                            .padding(Space.sm)
+                            .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func crosswordView(_ crossword: CrosswordPuzzle) -> some View {
         let columns = max(1, crossword.cols)
         let rows = max(1, crossword.rows)
@@ -961,32 +1020,86 @@ private struct DailyPuzzleView: View {
                         .font(Typography.cardTitle)
                         .foregroundStyle(Palette.text)
                     ForEach(entries) { entry in
-                        Button {
-                            activateCrosswordEntry(entry, focusFirstBlank: true)
-                        } label: {
-                            HStack(alignment: .top, spacing: Space.sm) {
-                                Text("\(entry.number)")
-                                    .font(Typography.monoSmall)
-                                    .foregroundStyle(Palette.textSecond)
-                                    .frame(width: 22, alignment: .leading)
-                                Text(entry.clue)
-                                    .font(Typography.body)
-                                    .foregroundStyle(Palette.text)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Button {
+                                activateCrosswordEntry(entry, focusFirstBlank: true)
+                            } label: {
+                                HStack(alignment: .top, spacing: Space.sm) {
+                                    Text("\(entry.number)")
+                                        .font(Typography.monoSmall)
+                                        .foregroundStyle(Palette.textSecond)
+                                        .frame(width: 22, alignment: .leading)
+                                    Text(entry.clue)
+                                        .font(Typography.body)
+                                        .foregroundStyle(Palette.text)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(.horizontal, Space.sm)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .background(activeCrosswordEntryID == entry.id ? Palette.accentSoft : Color.clear, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+                                .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, Space.sm)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .background(activeCrosswordEntryID == entry.id ? Palette.accentSoft : Color.clear, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(entry.number) \(direction), \(entry.clue)")
+                            .accessibilityHint("Selects this answer so you can type the whole word")
+                            .accessibilityValue(activeCrosswordEntryID == entry.id ? "Selected" : "Not selected")
+                            clueAssistance(entry)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(entry.number) \(direction), \(entry.clue)")
-                        .accessibilityHint("Selects this answer so you can type the whole word")
-                        .accessibilityValue(activeCrosswordEntryID == entry.id ? "Selected" : "Not selected")
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func clueAssistance(_ entry: CrosswordEntry) -> some View {
+        let hasHint = hintedCrosswordEntryIDs.contains(entry.id)
+        let hasAnswer = revealedCrosswordEntryIDs.contains(entry.id)
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.sm) {
+                Button(hasHint ? "Hide hint" : "Hint") {
+                    toggle(entry.id, in: $hintedCrosswordEntryIDs)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("puzzle.clue.\(entry.id).hint")
+                Button(hasAnswer ? "Hide answer" : "Show answer") {
+                    toggle(entry.id, in: $revealedCrosswordEntryIDs)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("puzzle.clue.\(entry.id).answer")
+            }
+            if hasHint {
+                Text(crosswordHint(for: entry))
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            if hasAnswer {
+                Text(entry.answer)
+                    .font(Typography.caption.weight(.bold))
+                    .foregroundStyle(Palette.accent)
+            }
+        }
+        .padding(.leading, 30)
+    }
+
+    private func crosswordHint(for entry: CrosswordEntry) -> String {
+        DailyPuzzleCrosswordInput.hint(for: entry)
+    }
+
+    private func practiceReason(_ reason: String) -> String {
+        switch reason {
+        case "missed": return "You missed this word this week"
+        case "untried": return "You have not tried this word this week"
+        default: return reason
+        }
+    }
+
+    private func toggle(_ id: String, in values: Binding<Set<String>>) {
+        if values.wrappedValue.contains(id) {
+            values.wrappedValue.remove(id)
+        } else {
+            values.wrappedValue.insert(id)
         }
     }
 

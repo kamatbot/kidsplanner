@@ -60,6 +60,26 @@ final class MyCornerUITests: XCTestCase {
         XCTAssertTrue(panelClose.waitForExistence(timeout: 5))
         panelClose.tap()
     }
+    func testExpandedCollectionCanSaveAndReopenNewSticker() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = launch(try sessions()["child"]!)
+        open(app)
+        if app.buttons["Add sticker"].exists { app.buttons["Add sticker"].tap() }
+        let sticker = app.buttons["Add paper plane"]
+        let collection = app.scrollViews["corner.collection"]
+        XCTAssertTrue(collection.waitForExistence(timeout: 5))
+        for _ in 0..<12 where !sticker.isHittable { collection.swipeUp() }
+        XCTAssertTrue(sticker.isHittable)
+        sticker.tap()
+        let save = app.buttons["corner-save"]; reveal(save, in: app); save.tap()
+        XCTAssertTrue(app.staticTexts["Saved."].waitForExistence(timeout: 8))
+        closeCornerAndPanel(app); open(app)
+        XCTAssertTrue(app.buttons["Select paper plane"].waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "expanded-sticker-collection"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     func testTouchPlacementAndRemoval() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
@@ -148,10 +168,36 @@ final class MyCornerUITests: XCTestCase {
         XCTAssertFalse(other.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Native corner note")).firstMatch.exists)
         let largeShot = XCTAttachment(screenshot: other.screenshot()); largeShot.name = "my-corner-native-dark-large-empty"; largeShot.lifetime = .keepAlways; add(largeShot)
         other.terminate()
+    }
+    func testParentOwnCornerSaveReopenAndEnergyCancel() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let cookies = try sessions()
         let parent = launch(cookies["parent"]!)
         XCTAssertTrue(parent.cells["Today"].waitForExistence(timeout: 15))
-        XCTAssertFalse(parent.buttons["today.studyPal.open"].exists)
-        XCTAssertFalse(parent.buttons["today.studyPal.toggle"].exists)
-        let parentShot = XCTAttachment(screenshot: parent.screenshot()); parentShot.name = "my-corner-parent-no-entry"; parentShot.lifetime = .keepAlways; add(parentShot)
+        let parentToggle = parent.buttons["today.studyPal.toggle"]
+        reveal(parentToggle, in: parent)
+        if parentToggle.label == "Show Koko" { parentToggle.tap() }
+        let parentKoko = parent.buttons["today.studyPal.open"]
+        reveal(parentKoko, in: parent); parentKoko.tap()
+        let parentEnergy = parent.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Energy check-in.")).firstMatch
+        XCTAssertTrue(parentEnergy.waitForExistence(timeout: 5)); parentEnergy.tap()
+        parent.buttons["Low"].tap(); parent.buttons["Preview sharing"].tap()
+        let beforeParentCancel = try messages(cookies["parent"]!).count
+        parent.buttons["Cancel"].tap()
+        XCTAssertEqual(try messages(cookies["parent"]!).count, beforeParentCancel)
+        parent.navigationBars["Koko"].buttons["Close"].tap()
+        open(parent)
+        if parent.buttons["Add sticker"].exists { parent.buttons["Add sticker"].tap() }
+        let panda = parent.buttons["Add joyful panda"]
+        let parentCollection = parent.scrollViews["corner.collection"]
+        XCTAssertTrue(parentCollection.waitForExistence(timeout: 5))
+        for _ in 0..<12 where !panda.isHittable { parentCollection.swipeUp() }
+        XCTAssertTrue(panda.isHittable); panda.tap()
+        let parentSave = parent.buttons["corner-save"]; reveal(parentSave, in: parent); parentSave.tap()
+        XCTAssertTrue(parent.staticTexts["Saved."].waitForExistence(timeout: 8))
+        closeCornerAndPanel(parent); open(parent)
+        XCTAssertTrue(parent.buttons["Select joyful panda"].waitForExistence(timeout: 5))
+        let parentShot = XCTAttachment(screenshot: parent.screenshot()); parentShot.name = "my-corner-parent-own-space"; parentShot.lifetime = .keepAlways; add(parentShot)
     }
 }

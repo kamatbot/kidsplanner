@@ -15,8 +15,13 @@ struct StudyPalCard: View {
         _hidden = AppStorage(wrappedValue: false, "fam_study_pal_hidden:\(userID)")
     }
 
-    private var isCurrentKid: Bool {
-        !store.needsAuth && store.me?.role == "kid" && store.me?.id == userID
+    private var isCurrentAccount: Bool {
+        guard !store.needsAuth, let user = store.me, user.id == userID, let family = store.family else { return false }
+        if user.role == "kid" {
+            guard let kidID = user.kidId else { return false }
+            return family.kids.contains { $0.id == kidID }
+        }
+        return family.parentIds.contains(user.id)
     }
 
     private var layout: AnyLayout {
@@ -26,7 +31,7 @@ struct StudyPalCard: View {
     }
 
     var body: some View {
-        if isCurrentKid {
+        if isCurrentAccount {
             Card(padding: Space.lg) {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     ViewThatFits(in: .horizontal) {
@@ -78,7 +83,7 @@ struct StudyPalCard: View {
 
     private var visibilityButton: some View {
         Button {
-            guard isCurrentKid else { return }
+            guard isCurrentAccount else { return }
             hidden.toggle()
         } label: {
             Text(hidden ? "Show Koko" : "Hide Koko")

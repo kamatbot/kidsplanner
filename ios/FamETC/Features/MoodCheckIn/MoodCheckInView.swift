@@ -7,9 +7,14 @@ struct MoodCheckInView: View {
     @State private var owner = ""
 
     private var identity: String {
-        guard !store.needsAuth, store.me?.role == "kid", let id = store.me?.id,
-              let family = store.family?.id else { return "" }
-        return id + ":" + family
+        guard !store.needsAuth, let user = store.me, let role = user.role,
+              ["kid", "parent"].contains(role), let family = store.family else { return "" }
+        if role == "kid" {
+            guard let kidID = user.kidId, family.kids.contains(where: { $0.id == kidID }) else { return "" }
+        } else if !family.parentIds.contains(user.id) {
+            return ""
+        }
+        return user.id + ":" + role + ":" + family.id
     }
 
     var body: some View {
@@ -73,11 +78,16 @@ struct MoodCheckInView: View {
 
     @MainActor private func confirm() async {
         await model.confirm(identity: owner, currentIdentity: { identity }) { text, messageID in
-            guard owner == identity, !identity.isEmpty else { throw CancellationError() }
+            guard owner == identity, !identity.isEmpty, let user = store.me, let role = user.role,
+                  ["kid", "parent"].contains(role),
+                  let familyID = store.family?.id else { throw CancellationError() }
+            let isKid = role == "kid"
+            let senderID = isKid ? (user.kidId ?? "") : user.id
+            guard !senderID.isEmpty else { throw CancellationError() }
             let message = try await APIClient.shared.sendChatMessage(
-                text: text, senderType: "kid", senderId: store.me?.kidId ?? "",
+                text: text, senderType: isKid ? "kid" : "parent", senderId: senderID,
                 clientMessageId: messageID,
-                expectedContext: ["userId": store.me?.id ?? "", "familyId": store.family?.id ?? ""])
+                expectedContext: ["userId": user.id, "familyId": familyID, "role": role])
             guard owner == identity else { throw CancellationError() }
             store.mergeIncoming([message], roomId: familyRoomId)
         }

@@ -5,7 +5,7 @@ window.FamStudyPal = (() => {
   const identities = new WeakMap();
   function render(host, user) {
     if (!host) return;
-    const identity = user?.role === 'kid' && user.id ? user.id : null;
+    const identity = ['kid', 'parent'].includes(user?.role) && user.id ? user.id : null;
     if (identities.has(host) && identities.get(host) === identity) return;
     identities.set(host, identity);
     host.replaceChildren();
@@ -45,7 +45,7 @@ window.FamStudyPal = (() => {
       button.setAttribute('aria-expanded', String(!hidden));
     }
     button.addEventListener('click', () => {
-      if (user.role !== 'kid' || user.id !== identity || !host.isConnected || identities.get(host) !== identity) return;
+      if (!['kid', 'parent'].includes(user.role) || user.id !== identity || !host.isConnected || identities.get(host) !== identity) return;
       hidden = !hidden;
       sessionChoices.set(key, hidden);
       try { localStorage.setItem(key, String(hidden)); } catch (_) { /* Keep the control usable. */ }

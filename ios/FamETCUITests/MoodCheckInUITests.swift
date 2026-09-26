@@ -45,7 +45,7 @@ final class MoodCheckInUITests: XCTestCase {
         XCTAssertEqual((state["notePosts"] as? [Any])?.count, 0)
         app.buttons["Cancel"].tap()
     }
-    func testPortraitChildThenParentVisibility() throws {
+    func testPortraitChildThenParentEnergyPreviewRemainsExplicit() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
         let app = XCUIApplication()
@@ -63,10 +63,11 @@ final class MoodCheckInUITests: XCTestCase {
         app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=parent; fam_qa_scenario=today-visual"
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["today.hero.summary"].firstMatch.waitForExistence(timeout: 15))
-        for _ in 0..<4 { app.swipeUp() }
-        XCTAssertFalse(app.buttons["today.studyPal.open"].exists)
-        XCTAssertFalse(app.buttons["Preview sharing"].exists)
-        let parentShot = XCTAttachment(screenshot: app.screenshot()); parentShot.name = "Parent child filter has no mood controls"; parentShot.lifetime = .keepAlways; add(parentShot)
+        openEnergy(in: app)
+        tap("Full", in: app); tap("Preview sharing", in: app)
+        XCTAssertTrue(app.buttons["Send to family"].exists)
+        app.buttons["Cancel"].tap()
+        let parentShot = XCTAttachment(screenshot: app.screenshot()); parentShot.name = "Parent Koko energy preview"; parentShot.lifetime = .keepAlways; add(parentShot)
         app.terminate()
         app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=kid; fam_qa_scenario=today-visual"
         app.launch()

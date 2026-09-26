@@ -10,25 +10,38 @@ struct MyCornerScreen: View {
     @State private var showDrawer = false
     @State private var confirmDiscard = false
     let ownerID: String
+    let familyID: String?
+    let role: String?
 
-    init(ownerID: String) {
+    init(ownerID: String, familyID: String? = nil, role: String? = nil) {
         self.ownerID = ownerID
-        let service = CornerService(ownerID: ownerID)
+        self.familyID = familyID
+        self.role = role
+        let service = CornerService(ownerID: ownerID, familyID: familyID, role: role)
         _model = State(initialValue: MyCornerModel(request: { try await service.request($0) }))
     }
     private var adjacent: Bool { sizeClass == .regular && !textSize.isAccessibilitySize }
+    private var isAuthorized: Bool {
+        guard !store.needsAuth, let user = store.me, user.id == ownerID, user.role == role,
+              let family = store.family, family.id == familyID else { return false }
+        if user.role == "kid" {
+            guard let kidID = user.kidId else { return false }
+            return family.kids.contains { $0.id == kidID }
+        }
+        return family.parentIds.contains(user.id)
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
-                if store.me?.id == ownerID && store.me?.role == "kid" && !store.needsAuth {
+                if isAuthorized {
                     VStack(alignment: .leading, spacing: Space.md) {
-                        Text("Only your child account can open this corner. Nothing here is shared with family.")
+                        Text("Only you can open this corner. Nothing here is shared with family.")
                             .foregroundStyle(Palette.textSecond)
                         if let draft = model.draft {
                             if adjacent {
                                 HStack(alignment: .top, spacing: Space.lg) {
                                     editor(draft).frame(maxWidth: .infinity)
-                                    collection.frame(width: 250)
+                                    ScrollView(.vertical, showsIndicators: true) { collection }.frame(width: 250, height: 520).accessibilityIdentifier("corner.collection")
                                 }
                             } else { editor(draft) }
                             if let latest = model.latest {
@@ -69,7 +82,7 @@ struct MyCornerScreen: View {
             }
             .sheet(isPresented: $showDrawer) {
                 NavigationStack {
-                    ScrollView { collection.padding() }
+                    ScrollView { collection.padding() }.accessibilityIdentifier("corner.collection")
                         .navigationTitle("Stickers")
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showDrawer = false } } }
                 }.presentationDetents([.medium, .large])
@@ -81,11 +94,12 @@ struct MyCornerScreen: View {
         .tint(Palette.accent)
         .interactiveDismissDisabled(model.dirty || model.busy)
         .task {
-            guard store.me?.id == ownerID, store.me?.role == "kid", !store.needsAuth else { return }
+            guard isAuthorized else { return }
             await model.load()
         }
         .onChange(of: store.me?.id) { _, _ in model.clear(); showDrawer = false; dismiss() }
-        .onChange(of: store.isParent) { _, isParent in if isParent { model.clear(); showDrawer = false; dismiss() } }
+        .onChange(of: store.me?.role) { _, _ in model.clear(); showDrawer = false; dismiss() }
+        .onChange(of: store.family?.id) { _, _ in model.clear(); showDrawer = false; dismiss() }
         .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { model.clear(); showDrawer = false; dismiss() } }
         .onDisappear { model.clear() }
     }
@@ -114,21 +128,38 @@ struct MyCornerScreen: View {
         }.disabled(model.busy)
     }
     private var collection: some View {
-        VStack(alignment: .leading) {
-            Text("Stickers").font(Typography.cardTitle)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 180 : 110))], spacing: 12) {
-                ForEach(CornerDocument.choices, id: \.self) { id in
-                    Button { model.add(id); showDrawer = false } label: {
-                        VStack { Image("Corner-" + id).resizable().scaledToFit().frame(width: 64, height: 64)
-                            Text(CornerDocument.label(id)).font(Typography.body)
-                        }.frame(maxWidth: .infinity, minHeight: 110)
-                            .padding(8)
-                            .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: 16))
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel("Add \(CornerDocument.label(id))")
-                        .disabled(model.busy || (model.draft?.stickers.count ?? 0) >= 18)
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Picker("Sticker category", selection: $category) {
+                Text("All").tag("All")
+                Text("Moods").tag("Moods")
+                Text("Activities").tag("Activities")
+                Text("Little things").tag("Little things")
+            }
+            .pickerStyle(.menu)
+            Group {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 180 : 110))], spacing: 12) {
+                    ForEach(filteredChoices, id: \.self) { id in
+                        Button { model.add(id); showDrawer = false } label: {
+                            VStack { Image("Corner-" + id).resizable().scaledToFit().frame(width: 64, height: 64)
+                                Text(CornerDocument.label(id)).font(Typography.body)
+                            }.frame(maxWidth: .infinity, minHeight: 110)
+                                .padding(8)
+                                .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: 16))
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("Add \(CornerDocument.label(id))")
+                            .disabled(model.busy || (model.draft?.stickers.count ?? 0) >= 18)
+                    }
                 }
             }
+        }
+    }
+    @State private var category = "All"
+    private var filteredChoices: [String] {
+        switch category {
+        case "Moods": CornerDocument.moods
+        case "Activities": CornerDocument.activities
+        case "Little things": CornerDocument.littleThings
+        default: CornerDocument.choices
         }
     }
     private func board(_ value: CornerDocument, editable: Bool) -> some View {

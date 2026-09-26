@@ -67,11 +67,11 @@ final class FamilyRingsMathTests: XCTestCase {
         XCTAssertFalse(ActionQueue.isDueNow(undated, now: now))
     }
 
-    func testDaily3UnavailableAndOnlyThreePartsCount() throws {
+    func testDaily4CountsOneChallengeWhenBothLegacyChallengePartsComplete() throws {
         XCTAssertNil(FamilyRingsMath.daily3(nil, today: "2026-09-23"))
-        let payload = try JSONDecoder().decode(DailyFiveProgressPayload.self, from: Data(#"{"date":"2026-09-23","parts":{"news":{"status":"completed"},"quote":{"status":"started"},"word":{"status":"completed"},"puzzle":{"status":"completed"}}}"#.utf8))
+        let payload = try JSONDecoder().decode(DailyFiveProgressPayload.self, from: Data(#"{"date":"2026-09-23","parts":{"news":{"status":"completed"},"quote":{"status":"started"},"word":{"status":"completed"},"puzzle":{"status":"completed"},"bt":{"status":"completed"}}}"#.utf8))
         XCTAssertNil(FamilyRingsMath.daily3(payload, today: "2026-09-24"))
-        XCTAssertEqual(FamilyRingsMath.daily3(payload, today: "2026-09-23"), .init(done: 2, total: 3))
+        XCTAssertEqual(FamilyRingsMath.daily3(payload, today: "2026-09-23"), .init(done: 3, total: 4))
     }
 
     private func homework(_ id: String, _ due: String, done: Bool = false, kid: String = "kid") -> HomeworkItem {

@@ -75,7 +75,7 @@ test('completed brain teaser keeps an explicit completion state in its tab', () 
   ctx.applyDaily5Done();
   assert.equal(nodes['widget-quiz'].hidden, true);
   assert.equal(nodes['daily5-quiz-done'].hidden, false);
-  assert.match(nodes['daily-quest-summary'].textContent, /1 of 3 complete/);
+  assert.match(nodes['daily-quest-summary'].textContent, /2 of 4 complete/);
 });
 
 test('compact homework preview counts unfinished work, shows two, and preserves role actions', () => {

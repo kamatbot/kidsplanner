@@ -54,11 +54,13 @@ struct TodayScreen: View {
 }
 
 private struct ParentTodayStack: View {
+    @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showSecondary = false
     @State private var showAddEvent = false
     @State private var showSchoolNotice = false
     @State private var showActions = false
+    @State private var showStudy = false
     let onOpenHomework: () -> Void
     let onOpenMeals: () -> Void
     let onDaily3: () -> Void
@@ -68,6 +70,13 @@ private struct ParentTodayStack: View {
             FamilyRingsKidGrid(onOpenHomework: onOpenHomework, onDaily3: onDaily3)
             FamilyRingsDayStrip(onOpenMeals: onOpenMeals)
             DailyFiveCard().id("daily3")
+            if let user = store.me, !store.needsAuth {
+                StudyPalCard(userID: user.id, onOpenStudy: { showStudy = true })
+                    .popover(isPresented: $showStudy, arrowEdge: .bottom) {
+                        StudyPalPanel(ownerID: user.id, usesPopover: sizeClass == .regular).id(user.id)
+                            .presentationCompactAdaptation(.sheet)
+                    }
+            }
             TodayUtilitiesRow(onScanNotice: { showSchoolNotice = true },
                               onOpenActions: { showActions = true }, onAddEvent: { showAddEvent = true })
             TodaySecondaryDisclosure(isExpanded: $showSecondary, role: .parent,
@@ -76,6 +85,9 @@ private struct ParentTodayStack: View {
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showSchoolNotice) { SchoolNoticeSheet() }
         .sheet(isPresented: $showActions) { FamilyRingsActionsSheet() }
+        .onChange(of: store.me?.id) { _, _ in showStudy = false; showActions = false }
+        .onChange(of: store.family?.id) { _, _ in showStudy = false; showActions = false }
+        .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { showStudy = false; showActions = false } }
     }
 }
 

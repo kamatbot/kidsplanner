@@ -31,12 +31,18 @@ test('real authenticated family route rejects stale context and ignores sender/f
   const post = (user, body) => fetch(base + '/api/chat/messages', { method: 'POST', headers: headers(user), body: JSON.stringify(body) });
   for (const user of [parent, siblingUser, outsider]) assert.equal((await post(user, payload)).status, 409);
   assert.equal((await post(child, { ...payload, expectedContext: { userId: child.id, familyId: otherFamily.id } })).status, 409);
+  assert.equal((await post(child, { ...payload, expectedContext: { userId: child.id, familyId: fam.id, role: 'parent' } })).status, 409);
   const first = await post(child, payload); assert.equal(first.status, 200);
   const sent = (await first.json()).message;
   assert.equal(sent.text, payload.text); assert.equal(sent.senderType, 'kid'); assert.equal(sent.senderId, kid.id); assert.equal(sent.familyId, fam.id);
   const retry = await post(child, payload); assert.equal((await retry.json()).message.id, sent.id);
   const messages = await (await fetch(base + '/api/chat/messages', { headers: headers(child) })).json();
   assert.equal(messages.messages.length, 1);
+  const parentPayload = { text: 'My energy is full today.', clientMessageId: crypto.randomUUID(), expectedContext: {userId: parent.id, familyId: fam.id, role: 'parent'} };
+  const parentSent = await (await post(parent, parentPayload)).json();
+  assert.equal(parentSent.message.senderType, 'parent'); assert.equal(parentSent.message.senderId, parent.id);
+  assert.equal((await (await post(parent, parentPayload)).json()).message.id, parentSent.message.id);
+  assert.equal((await post(parent, {...parentPayload, expectedContext: {...parentPayload.expectedContext, role:'kid'}})).status, 409);
   const other = await (await fetch(base + '/api/chat/messages', { headers: headers(outsider) })).json();
   assert.equal(other.messages.length, 0);
   const notes = await (await fetch(base + '/api/notes', { headers: headers(child) })).json();
