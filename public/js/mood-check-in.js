@@ -52,7 +52,20 @@
       },
     };
   }
-  if (typeof module !== 'undefined') module.exports = { createMoodCheckIn };
+  // Only the day of an answer is kept on this device — never the energy — so the
+  // prompt can step aside until tomorrow. Storage may be unavailable; then it just shows.
+  const answeredKey = identity => `fam_energy_answered:${identity}`;
+  const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  function answeredToday(storage, identity, today = localDay()) {
+    try { return !!identity && storage.getItem(answeredKey(identity)) === today; } catch (_) { return false; }
+  }
+  function markAnswered(storage, identity, today = localDay()) {
+    try { if (identity) storage.setItem(answeredKey(identity), today); } catch (_) {}
+  }
+  function clearAnswered(storage, identity) {
+    try { if (identity) storage.removeItem(answeredKey(identity)); } catch (_) {}
+  }
+  if (typeof module !== 'undefined') module.exports = { createMoodCheckIn, answeredToday, markAnswered, clearAnswered };
   if (!root.document) return;
   let model;
   root.famMoodCheckIn = {
@@ -60,11 +73,15 @@
     mount(identity) {
       const host = document.getElementById('mood-check-in');
       if (!host) return;
-      host.hidden = !identity();
+      let store = null;
+      try { store = root.localStorage; } catch (_) {}
+      const inUse = () => model && (model.state.energy || model.state.preview || model.state.busy || model.state.status);
+      host.hidden = !identity() || (answeredToday(store, identity()) && !inUse());
       if (model) { model.reconcile(); return; }
+      let sentBy = '';
       host.innerHTML = `<h2>How’s your energy?</h2><p>Optional. Your choice isn’t saved. Only Send to family shares a message.</p>
         <div class="mood-options" role="group" aria-label="Energy"><button type="button" data-energy="Low">Low</button><button type="button" data-energy="Okay">Okay</button><button type="button" data-energy="Full">Full</button></div>
-        <div class="mood-actions"><button type="button" data-action="share">Preview sharing</button><button type="button" data-action="help">Ask for help…</button><button type="button" data-action="cancel">Cancel</button></div>
+        <div class="mood-actions"><button type="button" data-action="share">Preview sharing</button><button type="button" data-action="help">Ask for help…</button><button type="button" data-action="cancel">Cancel</button><button type="button" data-action="done" hidden>Done</button></div>
         <div data-preview hidden><p id="mood-visibility">Family chat members can see the message you send. It stays in chat.</p><label for="mood-draft">Message preview — edit before sending</label><textarea id="mood-draft" rows="3" maxlength="2000" autocomplete="off" aria-describedby="mood-visibility"></textarea><button type="button" data-action="send">Send to family</button></div><p role="status" aria-live="polite" data-status></p>`;
       const draft = host.querySelector('textarea');
       model = createMoodCheckIn({ identity,
@@ -81,6 +98,7 @@
           });
           for (const action of ['share', 'help']) host.querySelector(`[data-action="${action}"]`).disabled = !state.energy || state.busy || state.attempted;
           host.querySelector('[data-action="cancel"]').disabled = state.busy;
+          host.querySelector('[data-action="done"]').hidden = !(state.energy || answeredToday(store, identity()));
           host.querySelector('[data-action="send"]').disabled = state.busy || !state.draft.trim();
           host.querySelector('[data-action="send"]').textContent = state.busy ? 'Sending…' : state.attempted ? 'Retry send to family' : 'Send to family';
         }
@@ -88,12 +106,20 @@
       host.addEventListener('click', event => {
         const button = event.target.closest('button');
         if (!button) return;
-        if (button.dataset.energy) model.select(button.dataset.energy);
+        if (button.dataset.energy) {
+          model.select(button.dataset.energy);
+          if (model.state.energy === button.dataset.energy) markAnswered(store, identity());
+        }
         switch (button.dataset.action) {
           case 'share': model.preview(); draft.focus(); break;
           case 'help': model.preview(true); draft.focus(); break;
-          case 'cancel': model.clear(); host.querySelector('[data-energy]').focus(); break;
-          case 'send': void model.confirm(); break;
+          case 'cancel': if (sentBy !== identity()) clearAnswered(store, identity()); model.clear(); host.querySelector('[data-energy]').focus(); break;
+          case 'done': model.clear(); host.hidden = true; break;
+          case 'send': void model.confirm().then(ok => {
+            if (!ok) return;
+            sentBy = identity(); markAnswered(store, identity());
+            setTimeout(() => { if (!model.state.busy) { model.clear(); host.hidden = true; } }, 1500);
+          }); break;
         }
       });
       draft.addEventListener('input', () => model.edit(draft.value));

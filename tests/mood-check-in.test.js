@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createMoodCheckIn } = require('../public/js/mood-check-in');
+const { createMoodCheckIn, answeredToday, markAnswered, clearAnswered } = require('../public/js/mood-check-in');
 function fixture(send = async () => ({ message: { id: 'message' } })) {
   let user = 'kid1'; const writes = [];
   const model = createMoodCheckIn({ identity: () => user, verifyIdentity: async () => user,
@@ -59,4 +59,18 @@ test('changing energy replaces the previous preview and empty edited drafts cann
   model.select('Low'); model.preview(); model.select('Full');
   assert.equal(model.state.preview, false); assert.equal(model.state.draft, '');
   model.preview(); model.edit('   '); await model.confirm(); assert.equal(writes.length, 0);
+});
+test('an answer hides the check-in for that person until tomorrow; only the day is stored', () => {
+  const data = new Map();
+  const storage = { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v), removeItem: k => data.delete(k) };
+  assert.equal(answeredToday(storage, 'kid1:fam:kid', '2026-09-26'), false);
+  markAnswered(storage, 'kid1:fam:kid', '2026-09-26');
+  assert.equal(answeredToday(storage, 'kid1:fam:kid', '2026-09-26'), true);
+  assert.equal(answeredToday(storage, 'kid1:fam:kid', '2026-09-27'), false, 'back the next day');
+  assert.equal(answeredToday(storage, 'parent1:fam:parent', '2026-09-26'), false, 'per person');
+  assert.deepEqual([...data.values()], ['2026-09-26'], 'no energy level is stored');
+  clearAnswered(storage, 'kid1:fam:kid');
+  assert.equal(answeredToday(storage, 'kid1:fam:kid', '2026-09-26'), false, 'Cancel undoes the answer');
+  assert.equal(answeredToday(null, 'kid1:fam:kid'), false, 'without storage the prompt simply shows');
+  assert.doesNotThrow(() => markAnswered({ setItem() { throw new Error('quota'); } }, 'kid1:fam:kid'));
 });
