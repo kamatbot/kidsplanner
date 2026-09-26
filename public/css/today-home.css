@@ -64,6 +64,7 @@
 #tab-today #today-actions-count { margin-left: auto; }
 :is(#tab-today,#family-actions-dialog) .today-action-row { display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 14px; min-height: 70px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--fr-rule); background: transparent; border-radius: 0; margin: 0; }
 :is(#tab-today,#family-actions-dialog) .today-action-row:last-child { border-bottom: 0; }
+:is(#tab-today,#family-actions-dialog) .today-action-done { color: var(--fr-you-ink); border-color: var(--fr-you); }
 :is(#tab-today,#family-actions-dialog) .today-action-lead { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; }
 :is(#tab-today,#family-actions-dialog) .today-action-lead .kid-profile-avatar { width: 40px; height: 40px; font-size: 15px; }
 .fr-family-badge { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--fr-you); color: var(--fr-on-you); font-weight: 800; }

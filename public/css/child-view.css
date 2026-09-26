@@ -203,9 +203,6 @@
 .cv-hero-rings > svg { width: 220px; height: 220px; overflow: visible; }
 .cv-fallback-rings .cv-ring-track { fill: none; opacity: var(--fr-track, .15); }
 .cv-fallback-rings .cv-ring-fill { fill: none; stroke-linecap: round; transition: stroke-dasharray .7s cubic-bezier(.2,.8,.2,1); }
-.cv-hero-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
-.cv-hero-center strong { display: block; font-size: 48px; line-height: .94; letter-spacing: -.04em; font-weight: 800; color: var(--fr-ink, var(--text)); }
-.cv-hero-center span { margin-top: 6px; color: var(--fr-ink-2, var(--text-2)); font-size: 12px; font-weight: 600; }
 .cv-hero-stats { display: grid; gap: 14px; }
 .cv-metric { display: grid; grid-template-columns: 70px 1fr; gap: 10px; align-items: baseline; }
 .cv-metric strong { font-size: 30px; line-height: 1; letter-spacing: -.03em; font-weight: 800; }

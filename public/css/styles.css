@@ -1645,7 +1645,7 @@ html.dark #dashboard-screen .kid-profile-avatar { color: #15121F; }
   .fr-mobile-logout { min-height: 44px; margin-top: 6px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--fr-danger); font: 600 14px "Geist", sans-serif; text-align: left; cursor: pointer; }
 
   .chat-dock,
-  .chat-dock.chat-collapsed { right: 16px; bottom: 92px; border-radius: 20px; }
+  .chat-dock.chat-collapsed { right: 16px; bottom: 164px; height: min(60dvh, calc(100dvh - 180px), 520px); border-radius: 20px; }
   .chat-fab { display: flex; right: 16px; bottom: 92px; width: 56px; height: 56px; }
 }
 
