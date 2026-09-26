@@ -30,7 +30,12 @@ final class SessionCancellationDelegate: NSObject, URLSessionDelegate, @unchecke
     static func finish(baseURL: URL, native: HTTPCookieStorage = .shared,
                        web: WKHTTPCookieStore? = nil,
                        revoke: () async throws -> Void) async -> Bool {
-        let web = web ?? WKWebsiteDataStore.default().httpCookieStore
+        // WKHTTPCookieStore does not own its WebsiteDataStore. Once RootView
+        // unmounts the last hybrid view, keep the default store alive through
+        // the asynchronous cookie operations rather than retaining only its jar.
+        let websiteData = web == nil ? WKWebsiteDataStore.default() : nil
+        defer { withExtendedLifetime(websiteData) {} }
+        let web = web ?? websiteData!.httpCookieStore
         let confirmed: Bool
         do { try await revoke(); confirmed = true } catch { confirmed = false }
         for cookie in native.cookies ?? [] where isSessionCookie(cookie, baseURL: baseURL) {
@@ -416,7 +421,9 @@ final class AuthService: NSObject {
     @MainActor
     private func syncCookiesToWebView() async {
         let generation = SessionSignOut.generation
-        let store = WKWebsiteDataStore.default().httpCookieStore
+        let websiteData = WKWebsiteDataStore.default()
+        defer { withExtendedLifetime(websiteData) {} }
+        let store = websiteData.httpCookieStore
         // Exact-host match (not substring — `contains` would also match
         // fametc.com.evil.com) and only the session cookie pair
         // (fam_sess + fam_sess.sig), so we never over-share other cookies.

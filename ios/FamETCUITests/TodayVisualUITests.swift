@@ -15,7 +15,7 @@ final class TodayVisualUITests: XCTestCase {
         reveal(review, app); review.tap()
         XCTAssertTrue(app.staticTexts["The student updates their own progress. You can review the assignment together."].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["Mark as done"].exists, "Parents review homework but never complete it")
-        app.navigationBars["Assignment"].buttons["Done"].tap()
+        app.navigationBars["Homework"].buttons["Close"].tap()
         let done = wait("today.action.done.qa-visual-action", app)
         reveal(done, app); done.tap()
         waitForHero("1 thing needs you, 2 cleared today", app)

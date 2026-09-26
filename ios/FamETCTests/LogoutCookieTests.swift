@@ -50,6 +50,30 @@ final class LogoutCookieTests: XCTestCase {
         withExtendedLifetime(websiteData) {}
     }
 
+    func testDefaultStoreCleanupAfterLastWebViewIsReleased() async {
+        let base = URL(string: "https://logout-default.example.invalid")!
+        let native = HTTPCookieStorage.sharedCookieStorage(forGroupContainerIdentifier: "logout-default-\(UUID())")
+        let value = cookie("fam_sess", domain: "logout-default.example.invalid")
+        native.setCookie(value)
+        // Production signs out after unmounting its last WKWebView. Do not keep
+        // a WKWebsiteDataStore owner alive in this test while finish suspends.
+        var view: WKWebView? = WKWebView(frame: .zero)
+        await view!.configuration.websiteDataStore.httpCookieStore.setCookie(value)
+        view = nil
+        let finished = expectation(description: "Default cookie cleanup finishes")
+        Task { @MainActor in
+            let confirmed = await SessionSignOut.finish(baseURL: base, native: native) {}
+            XCTAssertTrue(confirmed)
+            XCTAssertTrue((native.cookies ?? []).isEmpty)
+            let dataStore = WKWebsiteDataStore.default()
+            let remaining = await dataStore.httpCookieStore.allCookies()
+            XCTAssertFalse(remaining.contains { SessionSignOut.isSessionCookie($0, baseURL: base) })
+            withExtendedLifetime(dataStore) {}
+            finished.fulfill()
+        }
+        await fulfillment(of: [finished], timeout: 8)
+    }
+
     func testNativeCancellationDrainsBeforeCleanup() async {
         let configuration = URLSessionConfiguration.ephemeral
         let delegate = SessionCancellationDelegate()
