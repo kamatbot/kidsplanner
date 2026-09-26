@@ -56,7 +56,7 @@ struct FamilyRing: View {
     private var generatedAccessibilityText: String {
         metrics.enumerated().map { index, metric in
             guard let metric else {
-                return metrics.count == 3 && index == 2 ? "Daily 4: unavailable." : "Unavailable."
+                return metrics.count == 3 && index == 1 ? "Daily 4: unavailable." : "Unavailable."
             }
             return "\(metric.label): \(metric.accessibilityValue)."
         }.joined(separator: " ")
@@ -159,8 +159,8 @@ private struct FamilyRingLayer: View {
 #Preview("Partial") {
     FamilyRing(style: .kid, diameter: 156, metrics: [
         RingMetric(id: "homework", value: 3, total: 5, color: Palette.frHw, label: "Homework"),
-        RingMetric(id: "habits", value: 1, total: 2, color: Palette.frHab, label: "Habits"),
-        RingMetric(id: "daily3", value: 2, total: 4, color: Palette.frD3, label: "Daily 4")
+        RingMetric(id: "daily3", value: 2, total: 4, color: Palette.frD3, label: "Daily 4"),
+        RingMetric(id: "habits", value: 1, total: 2, color: Palette.frHab, label: "Habits")
     ])
     .padding()
     .background(Palette.frBg)
@@ -169,8 +169,8 @@ private struct FamilyRingLayer: View {
 #Preview("Empty") {
     FamilyRing(style: .kid, diameter: 156, metrics: [
         RingMetric(id: "homework", value: 0, total: 0, color: Palette.frHw, label: "Homework"),
-        RingMetric(id: "habits", value: 0, total: 0, color: Palette.frHab, label: "Habits"),
-        RingMetric(id: "daily3", value: 0, total: 0, color: Palette.frD3, label: "Daily 4")
+        RingMetric(id: "daily3", value: 0, total: 0, color: Palette.frD3, label: "Daily 4"),
+        RingMetric(id: "habits", value: 0, total: 0, color: Palette.frHab, label: "Habits")
     ])
     .padding()
     .background(Palette.frBg)
@@ -179,8 +179,8 @@ private struct FamilyRingLayer: View {
 #Preview("Full, Daily 4 unavailable") {
     FamilyRing(style: .kid, diameter: 156, metrics: [
         RingMetric(id: "homework", value: 5, total: 5, color: Palette.frHw, label: "Homework"),
-        RingMetric(id: "habits", value: 2, total: 2, color: Palette.frHab, label: "Habits"),
-        nil
+        nil,
+        RingMetric(id: "habits", value: 2, total: 2, color: Palette.frHab, label: "Habits")
     ])
     .padding()
     .background(Palette.frBg)

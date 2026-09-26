@@ -121,7 +121,7 @@ struct FamilyRingsHero: View {
                     .tracking(-2).monospacedDigit().foregroundStyle(Palette.frInk)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge).minimumScaleFactor(0.6)
                 if !summaryHeader {
-                    Text(progress.open == 0 ? "All clear" : store.isParent ? "need you" : "to do")
+                    Text(progress.open == 0 ? "All clear" : store.isParent ? "Need you" : "To do")
                         .font(Typography.chip).foregroundStyle(Palette.frYouInk)
                     Text("\(progress.cleared) cleared today")
                         .font(Theme.font(11, relativeTo: .caption)).foregroundStyle(Palette.frInk2)
@@ -222,8 +222,8 @@ struct FamilyRingsKidGrid: View {
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 280 : 160), alignment: .leading)], alignment: .leading, spacing: 8) {
                 legend("Homework (outer)", Palette.frHw)
-                legend("Habits (middle)", Palette.frHab)
-                legend("Daily 4 (inner)", Palette.frD3)
+                legend("Daily 4 (middle)", Palette.frD3)
+                legend("Habits (inner)", Palette.frHab)
                 legend("Fams this week", Palette.frFams)
             }.accessibilityIdentifier("today.rings.legend")
         }
@@ -278,14 +278,14 @@ struct FamilyRingsKidCard: View {
     private var currentWallet: FamsWallet? { snapshotKnown ? wallet : nil }
     private var metrics: [RingMetric?] {
         [homeworkKnown ? RingMetric(id: "homework", value: homework.done, total: homework.total, color: Palette.frHw, label: "Homework") : nil,
-         habitsKnown ? RingMetric(id: "habits", value: habits.done, total: habits.total, color: Palette.frHab, label: "Habits") : nil,
-         d3.map { RingMetric(id: "daily3", value: $0, total: 4, color: Palette.frD3, label: "Daily 4") }]
+         d3.map { RingMetric(id: "daily3", value: $0, total: 4, color: Palette.frD3, label: "Daily 4") },
+         habitsKnown ? RingMetric(id: "habits", value: habits.done, total: habits.total, color: Palette.frHab, label: "Habits") : nil]
     }
     private var summary: String {
         var text = "\(kid?.name ?? "Child"): "
         text += homeworkKnown ? "\(FamilyRingsMath.statusChip(homework: homework)). Homework \(homework.done) of \(homework.total) done this week. " : "Homework unavailable. "
-        text += habitsKnown ? "Habits \(habits.done) of \(habits.total) today. " : "Habits unavailable. "
         text += d3.map { "Daily 4, \($0) of 4 today. " } ?? "Daily 4 unavailable. "
+        text += habitsKnown ? "Habits \(habits.done) of \(habits.total) today. " : "Habits unavailable. "
         if let wallet = currentWallet { text += "\(famsAmount(wallet.balance)) fams, \(famsAmount(wallet.weekly.earned)) of \(famsAmount(wallet.weekly.limit)) this week." }
         return text
     }
@@ -306,9 +306,9 @@ struct FamilyRingsKidCard: View {
                             }
                         }.buttonStyle(.plain).disabled(!interactive)
                         VStack(alignment: .leading, spacing: compact ? 0 : 10) {
-                            metricButton(number: homeworkKnown ? "\(homework.left)" : "—", title: "homework left", detail: homeworkKnown ? "this week" : "Homework unavailable", color: Palette.frHwInk, id: "homework", action: openHomework)
+                            metricButton(number: homeworkKnown ? "\(homework.left)" : "—", title: "Homework left", detail: homeworkKnown ? "this week" : "Homework unavailable", color: Palette.frHwInk, id: "homework", action: openHomework)
                             metricButton(number: d3.map { "\($0)/4" } ?? "—", title: "Daily 4 today", detail: dailyStatus, color: Palette.frD3Ink, id: "daily3", action: onDaily3)
-                            metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", title: "habits today", detail: habitStatus, color: Palette.frHabInk, id: "habits", action: openHabits)
+                            metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", title: "Habits today", detail: habitStatus, color: Palette.frHabInk, id: "habits", action: openHabits)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if dense { Spacer(minLength: 0) }
@@ -374,9 +374,9 @@ struct FamilyRingsKidCard: View {
     private var chip: some View {
         Text(homeworkKnown ? FamilyRingsMath.statusChip(homework: homework) : "Homework unavailable")
             .font(compact ? Theme.font(11, weight: .semibold, relativeTo: .caption) : Typography.chip)
-            .foregroundStyle(!homeworkKnown ? Palette.frInk2 : homework.overdue > 0 ? Palette.frDanger : homework.dueToday > 0 ? Palette.frHwInk : Palette.frHabInk)
+            .foregroundStyle(!homeworkKnown ? Palette.frInk2 : homework.overdue > 0 ? Palette.frDanger : homework.dueToday > 0 ? Palette.frHwInk : Palette.frD3Ink)
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(!homeworkKnown ? Palette.frCard2 : homework.overdue > 0 ? Palette.frDangerSoft : homework.dueToday > 0 ? Palette.frHwSoft : Palette.frHabSoft, in: Capsule())
+            .background(!homeworkKnown ? Palette.frCard2 : homework.overdue > 0 ? Palette.frDangerSoft : homework.dueToday > 0 ? Palette.frHwSoft : Palette.frD3Soft, in: Capsule())
     }
     private func metricButton(number: String, title: String, detail: String, color: Color, id: String, action: @escaping () -> Void) -> some View {
         Button { if interactive { action() } } label: {
