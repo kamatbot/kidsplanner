@@ -25,6 +25,12 @@ test('synced Daily 3 without completions shows not done; failed sources identify
   assert.match(html, /0 of 3 done/); assert.equal((html.match(/>Not done</g) || []).length, 3); assert.match(html, /Habits unavailable/); assert.match(html, /id="cv-fams"/);
   assert.doesNotMatch(html, /0 completed|>0<|onclick=|mark.*done/i); assert.match(html, /Set home plan/);
 });
+test('unavailable homework and habits are not rendered as empty progress', async () => {
+  const { nodes, view } = setup({ getHomework: async () => { throw new Error('offline'); }, getGoals: async () => { throw new Error('offline'); } });
+  await view.render('one'); const html = nodes['tab-child'].innerHTML;
+  assert.match(html, />Unavailable<\/strong>/); assert.match(html, /Homework unavailable|Habits unavailable/);
+  assert.doesNotMatch(html, /nothing left|No habits yet/); assert.doesNotMatch(html, /stroke="var\(--fr-hw\)|stroke="var\(--fr-hab\)/);
+});
 test('habit counts use exactly the seven displayed local dates; Daily 3 ignores invalid timestamps', async () => {
   const { nodes, view } = setup({ getGoals: async () => [{ kidId: 'one', type: 'habit', title: 'Read', checks: ['2026-09-01', '2026-09-02', '2026-09-08', '2026-09-08', '2026-09-09'] }], getChildInsights: async () => ({ kidId: 'one', date: '2026-09-08', daily5: { date: '2026-09-08', parts: { news: { status: 'completed', updatedAt: '2026-09-08T08:00:00Z' }, word: { status: 'completed', updatedAt: 'invalid' }, quote: { status: 'started', updatedAt: '2026-09-08T09:00:00Z' } } } }) });
   await view.render('one'); const html = nodes['tab-child'].innerHTML;

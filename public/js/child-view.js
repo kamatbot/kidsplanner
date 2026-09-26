@@ -30,6 +30,12 @@
     const d = new Date(`${date}T12:00:00`);
     return Array.from({ length: 7 }, (_, i) => { const x = new Date(d); x.setDate(x.getDate() - 6 + i); return isoDate(x); });
   }
+  function weekDates(date) {
+    const d = new Date(`${date}T12:00:00`);
+    const offset = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - offset);
+    return Array.from({ length: 7 }, (_, i) => { const day = new Date(d); day.setDate(day.getDate() + i); return isoDate(day); });
+  }
   function dateLabel(date, options = { month: 'short', day: 'numeric' }) {
     return new Date(`${date}T12:00:00`).toLocaleDateString(undefined, options);
   }
@@ -68,6 +74,70 @@
       ${activity ? `<div class="cv-preparation"><span class="cv-symbol">${icon('activity')}</span><div><h3>Prepare for ${e(activity.activity.name)}</h3><p>${e(activity.activity.gear.join(', '))}</p>${button('activities', 'View activities')}</div></div>` : `<div class="cv-preparation cv-preparation-empty"><span class="cv-symbol">${icon('activity')}</span><div><h3>After-school preparation</h3><p>${sources.loading ? 'Loading activities…' : sources.errors.includes('Activities') ? 'Activities could not be loaded.' : 'No gear reminders recorded for today.'}</p>${button('activities', 'Review activities')}</div></div>`}
       ${sources.errors.length ? `<p role="status">${e(sources.errors.join(', '))} unavailable. ${button('retry', 'Try again')}</p>` : sources.loading ? '<p role="status">Loading homework, habits and activities…</p>' : ''}
       <div class="cv-footer">${button('all-homework', `View all homework ${icon('arrow')}`)}${button('settings', 'School settings')}</div></section>`;
+  }
+  function ringMarkup(options) {
+    if (typeof famRing === 'function') return famRing(options);
+    const size = Number(options.size) || 220;
+    const rings = Array.isArray(options.rings) ? options.rings : [];
+    const center = size / 2;
+    return `<svg class="cv-fallback-rings" viewBox="0 0 ${size} ${size}" role="img" aria-label="${e(options.label || 'Progress')}">${rings.map((ring, index) => {
+      const radius = Number(ring.radius) || Math.max(18, size / 2 - 20 - index * 22);
+      const circumference = 2 * Math.PI * radius;
+      const total = Number(ring.total) || 0;
+      const value = total ? Math.max(0, Math.min(total, Number(ring.value) || 0)) : 0;
+      const dash = total ? `${(value / total) * circumference} ${circumference}` : `4 7`;
+      return `<circle class="cv-ring-track" cx="${center}" cy="${center}" r="${radius}" stroke="${e(ring.color)}" stroke-width="${e(options.stroke || 14)}"${total ? '' : ' stroke-dasharray="4 7"'}/><circle class="cv-ring-fill" cx="${center}" cy="${center}" r="${radius}" stroke="${e(ring.color)}" stroke-width="${e(options.stroke || 14)}" stroke-dasharray="${dash}" transform="rotate(-90 ${center} ${center})"/>`;
+    }).join('')}</svg>`;
+  }
+  function weeklyBars(label, days, known, color) {
+    return `<section class="cv-week" aria-label="${e(label)} this week"><div class="cv-week-head"><span>${e(label)}</span><span>Mon–Sun</span></div><div class="cv-week-bars">${days.map(day => {
+      const observed = known[day];
+      const total = observed && Number(observed.total);
+      const value = total ? Math.max(0, Math.min(total, Number(observed.value) || 0)) : 0;
+      const state = observed == null ? 'is-unknown' : total === 0 ? 'is-empty' : value === total ? 'is-done' : 'is-partial';
+      const detail = observed == null ? 'unrecorded' : total === 0 ? 'no items recorded' : `${value} of ${total} completed`;
+      const progress = total ? Math.round((value / total) * 100) : 0;
+      return `<span class="cv-week-day ${state}" title="${e(dateLabel(day, { weekday: 'long', month: 'short', day: 'numeric' }))}: ${detail}"><i style="--cv-week-color:${e(color)};--cv-week-progress:${progress}%"></i><b>${e(dateLabel(day, { weekday: 'narrow' }))}</b><small>${observed == null ? '—' : total ? `${value}/${total}` : '—'}</small></span>`;
+    }).join('')}</div></section>`;
+  }
+  function childMetrics(id, date, data, state, sources) {
+    const days = weekDates(date);
+    const monday = days[0]; const sunday = days[6];
+    const homeworkKnown = !sources.loading && !sources.errors.includes('Homework');
+    const habitsKnown = !sources.loading && !sources.errors.includes('Habits');
+    const homework = homeworkKnown ? sources.homework.filter(item => item.kidId === id && item.dueDate && ((item.dueDate >= monday && item.dueDate <= sunday) || (item.dueDate < monday && item.status !== 'done'))) : [];
+    const hwDone = homework.filter(item => item.status === 'done').length;
+    const hwLeft = homework.length - hwDone;
+    const habits = habitsKnown ? sources.goals.filter(goal => goal.kidId === id && goal.type === 'habit') : [];
+    const habitsDone = habits.filter(goal => Array.isArray(goal.checks) && goal.checks.includes(date)).length;
+    const observed = state === 'ready' && data && data.daily5 && data.daily5.date === date ? data.daily5.parts || {} : null;
+    const dailyComplete = observed ? parts.filter(([key]) => observed[key]?.status === 'completed').length : null;
+    const homeworkDays = Object.fromEntries(days.map(day => {
+      if (!homeworkKnown || day > date) return [day, null];
+      const due = homework.filter(item => item.dueDate === day);
+      return [day, { value: due.filter(item => item.status === 'done').length, total: due.length }];
+    }));
+    const habitDays = Object.fromEntries(days.map(day => {
+      if (!habitsKnown || day > date || !habits.every(goal => Array.isArray(goal.checks))) return [day, null];
+      return [day, { value: habits.filter(goal => goal.checks.includes(day)).length, total: habits.length }];
+    }));
+    const dailyDays = Object.fromEntries(days.map(day => [day, day === date && observed ? { value: dailyComplete, total: 3 } : null]));
+    return { days, homework, hwDone, hwLeft, habits, habitsDone, dailyComplete, homeworkKnown, habitsKnown, homeworkDays, habitDays, dailyDays };
+  }
+  function hero(id, date, data, state, sources) {
+    const metric = childMetrics(id, date, data, state, sources);
+    const hwState = !metric.homeworkKnown ? (sources.loading ? 'Loading' : 'Unavailable') : metric.hwLeft || '—';
+    const habitState = !metric.habitsKnown ? (sources.loading ? 'Loading' : 'Unavailable') : metric.habits.length ? `${metric.habitsDone}/${metric.habits.length}` : '—';
+    const d3State = metric.dailyComplete == null ? (state === 'loading' ? 'Loading' : 'Unavailable') : `${metric.dailyComplete}/3`;
+    const label = `Homework ${metric.homeworkKnown ? `${metric.hwDone} of ${metric.homework.length}` : hwState}; habits ${metric.habitsKnown ? `${metric.habitsDone} of ${metric.habits.length}` : habitState}; Daily 3 ${metric.dailyComplete == null ? d3State : `${metric.dailyComplete} of 3`}`;
+    const ringData = [
+      ...(metric.homeworkKnown ? [{ value: metric.hwDone, total: metric.homework.length, color: 'var(--fr-hw)', label: 'Homework', radius: 94 }] : []),
+      ...(metric.habitsKnown ? [{ value: metric.habitsDone, total: metric.habits.length, color: 'var(--fr-hab)', label: 'Habits', radius: 68 }] : []),
+      ...(metric.dailyComplete == null ? [] : [{ value: metric.dailyComplete, total: 3, color: 'var(--fr-d3)', label: 'Daily 3', radius: 42 }])
+    ];
+    const rings = ringData.length ? ringMarkup({ size: 220, stroke: 14, label, key: `${id}:${date}`, rings: ringData }) : `<div class="cv-ring-pending">${sources.loading ? 'Loading progress…' : 'Progress unavailable'}</div>`;
+    const dailyWeek = metric.dailyComplete == null ? '<p class="cv-week-note">Daily 3 history is unavailable.</p>' : weeklyBars('Daily 3', metric.days, metric.dailyDays, 'var(--fr-d3)');
+    return `<section class="cv-panel cv-hero" aria-label="${e(label)}"><div class="cv-hero-rings">${rings}<div class="cv-hero-center"><strong>${hwState}</strong><span>${metric.homeworkKnown ? metric.hwLeft ? 'homework left' : 'nothing left' : 'homework'}</span></div></div><div class="cv-hero-stats"><div class="cv-metric cv-metric-hw"><strong>${hwState}</strong><span>${metric.homeworkKnown ? metric.hwLeft ? 'homework left<br>this week' : 'No homework left<br>this week' : 'Homework unavailable'}</span></div><div class="cv-metric cv-metric-hab"><strong>${habitState}</strong><span>${metric.habitsKnown ? metric.habits.length ? 'habits today' : 'No habits yet' : 'Habits unavailable'}</span></div><div class="cv-metric cv-metric-d3"><strong>${d3State}</strong><span>${metric.dailyComplete == null ? 'Daily 3 unavailable' : 'Daily 3 today'}</span></div></div></section><section class="cv-panel cv-weekly"><h2>This week</h2>${weeklyBars('Homework', metric.days, metric.homeworkDays, 'var(--fr-hw)')}${weeklyBars('Habits', metric.days, metric.habitDays, 'var(--fr-hab)')}${dailyWeek}<p class="cv-week-note">Unrecorded days remain unfilled.</p></section>`;
   }
   function progress(id, date, data, state, sources) {
     const habits = sources.goals.filter(g => g.kidId === id && g.type === 'habit');
@@ -117,7 +187,7 @@
     const mutationKey = `${account.id}:${familyId}:${id}`;
     const sources = { homework: [], goals: [], activities: [], errors: [], loading: true };
     function draw(state) {
-      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 3 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
+      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 3 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-overview">${hero(id, date, data, state, sources)}</div><div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
       root.setAttribute('aria-busy', String(state === 'loading'));
     }
     root.onclick = event => {
