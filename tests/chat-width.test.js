@@ -10,7 +10,7 @@ class MemoryStorage {
 }
 
 test("chat width uses a wider default and bounded desktop values", () => {
-  assert.equal(chatWidth.DEFAULT_WIDTH, 360);
+  assert.equal(chatWidth.DEFAULT_WIDTH, 340);
   assert.ok(chatWidth.DEFAULT_WIDTH > 318);
   assert.equal(chatWidth.clamp(200), chatWidth.MIN_WIDTH);
   assert.equal(chatWidth.clamp(900), chatWidth.MAX_WIDTH);

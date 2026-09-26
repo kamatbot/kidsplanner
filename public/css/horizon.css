@@ -1,10 +1,127 @@
-/* RetireOdds design tokens + base + auth pages.
-   "Horizon" palette (2026-07 refresh) */
+/* Family Rings tokens and app foundations.
+   Legacy aliases below keep existing web surfaces on the shared system. */
 
 :root {
-  /* Keep UA form controls (buttons, inputs, selects) in the same scheme as
-     the tokens — without this, dark mode renders light-scheme native controls
-     (white button faces, black control text) under the dark palette. */
+  color-scheme: light;
+  --fr-bg: #F4F5F7;
+  --fr-card: #FFFFFF;
+  --fr-card-2: #F7F8FA;
+  --fr-rule: #E7E9EE;
+  --fr-ink: #15171C;
+  --fr-ink-2: #6B7280;
+  --fr-ink-3: #9CA3AF;
+  --fr-you: #7B4DFF;
+  --fr-you-ink: #5B2EE6;
+  --fr-you-soft: #EFEAFF;
+  --fr-on-you: #FFFFFF;
+  --fr-hw: #E8467C;
+  --fr-hw-ink: #B8205A;
+  --fr-hw-soft: #FDE8EF;
+  --fr-d3: #4B7BF5;
+  --fr-d3-ink: #2A57C9;
+  --fr-d3-soft: #E7EEFE;
+  --fr-hab: #0EA58C;
+  --fr-hab-ink: #0B7866;
+  --fr-hab-soft: #DDF4EF;
+  --fr-fams: #D99A00;
+  --fr-fams-ink: #8A5A00;
+  --fr-fams-soft: #FFF3D6;
+  --fr-danger: #C8283F;
+  --fr-track: 15%;
+  --fr-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+
+  /* Existing CSS aliases. */
+  --bg: var(--fr-bg);
+  --sidebar: var(--fr-card);
+  --panel: var(--fr-card);
+  --panel-2: var(--fr-card-2);
+  --border: var(--fr-rule);
+  --text: var(--fr-ink);
+  --text-2: var(--fr-ink-2);
+  --muted: var(--fr-ink-2);
+  --accent: var(--fr-you);
+  --accent-ink: var(--fr-you-ink);
+  --accent-soft: var(--fr-you-soft);
+  --on-accent: var(--fr-on-you);
+  --coral: var(--fr-hw);
+  --warn: var(--fr-fams-ink);
+  --grid: var(--fr-rule);
+  --shadow: var(--fr-shadow);
+  --hover: color-mix(in srgb, var(--fr-ink) 5%, transparent);
+  --c-blue: var(--fr-d3);
+  --c-violet: var(--fr-you);
+  --c-amber: var(--fr-fams);
+  --c-green: #16824f;
+  --c-red: var(--fr-danger);
+  --c-teal: var(--fr-hab);
+  --c-orange: var(--fr-hw);
+  --c-orange-ink: var(--fr-hw-ink);
+}
+
+html.dark,
+.dark {
+  color-scheme: dark;
+  --fr-bg: #121318;
+  --fr-card: #1B1D24;
+  --fr-card-2: #22252D;
+  --fr-rule: #2C2F38;
+  --fr-ink: #F2F3F5;
+  --fr-ink-2: #A1A7B3;
+  --fr-ink-3: #6E7582;
+  --fr-you: #A68CFF;
+  --fr-you-ink: #C3B1FF;
+  --fr-you-soft: rgba(166, 140, 255, .16);
+  --fr-on-you: #15121F;
+  --fr-hw: #FF6F9D;
+  --fr-hw-ink: #FF9CBB;
+  --fr-hw-soft: rgba(255, 111, 157, .14);
+  --fr-d3: #7EA3FF;
+  --fr-d3-ink: #A9C1FF;
+  --fr-d3-soft: rgba(126, 163, 255, .14);
+  --fr-hab: #2FD3B4;
+  --fr-hab-ink: #74E6CF;
+  --fr-hab-soft: rgba(47, 211, 180, .14);
+  --fr-fams: #FFC53D;
+  --fr-fams-ink: #FFD978;
+  --fr-fams-soft: rgba(255, 197, 61, .14);
+  --fr-danger: #FF7A8A;
+  --fr-track: 22%;
+  --fr-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px rgba(0, 0, 0, .35);
+  --c-green: #55d88d;
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html,
+body { height: 100%; margin: 0; background: var(--fr-bg); }
+
+body {
+  font-family: "Geist", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--fr-ink);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar { width: 14px; height: 14px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, .28);
+  border: 3px solid transparent;
+  border-radius: 7px;
+  background-clip: padding-box;
+  min-height: 44px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, .45); background-clip: padding-box; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The public landing is outside the approved app redesign. Its existing
+   marketing tokens stay scoped here so landing.html/landing.css stay intact. */
+body:has(> .landing-shell) {
   color-scheme: light;
   --bg: #f1efec;
   --sidebar: #f8f6f3;
@@ -30,75 +147,4 @@
   --c-teal: #0d9488;
   --c-orange: #ea580c;
   --c-orange-ink: #b8420c;
-}
-
-.dark {
-  color-scheme: dark;
-  --bg: #211f1d;
-  --sidebar: #262421;
-  --panel: #2c2926;
-  --panel-2: #33302c;
-  --border: #3b3733;
-  --text: #f1efec;
-  --text-2: #a29c93;
-  --muted: #968f86;
-  --accent: #b98cff;
-  --accent-soft: rgba(185, 140, 255, 0.15);
-  --on-accent: #1c1526;
-  --coral: #ff8a66;
-  --warn: #d6a24a;
-  --c-orange-ink: #ff8a4d;
-  --grid: #35322e;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 38px rgba(0, 0, 0, 0.5);
-  --hover: rgba(241, 239, 236, 0.07);
-  --c-blue: #60a5fa;
-  --c-violet: #a78bfa;
-  --c-amber: #fbbf24;
-  --c-green: #4ade80;
-  --c-red: #f87171;
-  --c-teal: #2dd4bf;
-  --c-orange: #fb923c;
-}
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-html,
-body {
-  height: 100%;
-  margin: 0;
-}
-body {
-  font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
-}
-::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(128, 128, 128, 0.28);
-  border-radius: 7px;
-  min-height: 44px;
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(128, 128, 128, 0.45);
-  background-clip: padding-box;
-}
-
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }

@@ -9,8 +9,8 @@
 *, *::before, *::after { margin: 0; padding: 0; }
 
 :root {
-  --radius:    16px;
-  --radius-sm: 10px;
+  --radius:    24px;
+  --radius-sm: 12px;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .08);
 }
 .dark {
@@ -102,13 +102,13 @@ html { font-size: 16px; }
 .form-group label {
   display: block; font-weight: 700; font-size: 11px; text-transform: uppercase;
   letter-spacing: .06em; color: var(--text-2); margin-bottom: 6px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Geist", sans-serif;
 }
 .form-group input,
 .form-group select,
 .form-group textarea {
-  width: 100%; padding: 11px 14px;
-  border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  width: 100%; min-height: 44px; padding: 10px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-family: inherit; font-size: 14px; font-weight: 500;
   color: var(--text); background: var(--panel);
   transition: border-color .15s, box-shadow .15s; outline: none;
@@ -118,7 +118,7 @@ html { font-size: 16px; }
 .form-group select:focus,
 .form-group textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .form-group textarea { resize: vertical; }
 
@@ -130,7 +130,7 @@ html { font-size: 16px; }
 /* Buttons — violet is the only interactive color per Horizon */
 .btn-primary {
   background: var(--accent);
-  color: var(--on-accent); border: none; padding: 12px 22px; border-radius: var(--radius-sm);
+  color: var(--on-accent); border: none; min-height: 40px; padding: 9px 22px; border-radius: 999px;
   font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
   transition: filter .15s, transform .1s;
 }
@@ -144,7 +144,7 @@ html { font-size: 16px; }
 
 .btn-secondary {
   background: var(--panel); color: var(--text);
-  border: 1.5px solid var(--border); padding: 10px 18px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent); min-height: 40px; padding: 8px 18px; border-radius: 999px;
   font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
   transition: background .15s, border-color .15s;
 }
@@ -173,7 +173,7 @@ html { font-size: 16px; }
 
 /* micro-label: 11px uppercase mono, used throughout Horizon surfaces */
 .micro-label {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .08em;
+  font-family: "Geist", sans-serif; font-size: 11px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--text-2);
 }
 
@@ -188,29 +188,29 @@ html { font-size: 16px; }
 
 /* ---------- sidebar ---------- */
 .app-sidebar {
-  width: 212px; flex: none; background: var(--sidebar); border-right: 1px solid var(--border);
-  padding: 20px 12px 16px; display: flex; flex-direction: column; overflow-y: auto;
+  width: 224px; flex: none; background: var(--sidebar); border-right: 1px solid var(--border);
+  padding: 24px 16px 20px; display: flex; flex-direction: column; overflow-y: auto;
 }
 .sidebar-brand {
-  display: flex; align-items: center; gap: 10px; padding: 0 8px; margin-bottom: 22px;
+  display: flex; align-items: center; gap: 10px; padding: 0 8px; margin-bottom: 30px;
 }
 .sidebar-brand-mark {
-  width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: var(--on-accent);
-  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; flex: none;
+  width: 30px; height: 30px; border-radius: 9px; background: var(--accent); color: var(--on-accent);
+  display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; flex: none;
 }
 .sidebar-brand-name { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
 .sidebar-nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px;
-  color: var(--text-2); font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+  display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 12px; border-radius: 12px;
+  color: var(--text-2); font-size: 14px; font-weight: 500; cursor: pointer; border: none;
   background: none; width: 100%; text-align: left; font-family: inherit; transition: background .15s, color .15s;
 }
 .sidebar-nav-item svg { flex: none; }
 .sidebar-nav-item:hover { background: var(--hover); color: var(--text); }
-.sidebar-nav-item.active { background: var(--accent-soft); color: var(--accent); }
+.sidebar-nav-item.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 .sidebar-nav-badge {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; background: var(--panel);
+  font-family: "Geist", sans-serif; font-size: 11px; background: var(--panel);
   border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: auto;
 }
 .sidebar-nav-dot {
@@ -229,7 +229,7 @@ html { font-size: 16px; }
 }
 .sidebar-user-name { font-size: 13px; font-weight: 600; }
 .sidebar-user-role {
-  font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .08em;
+  font-family: "Geist", sans-serif; font-size: 10px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--text-2);
 }
 .sidebar-user-menu { position: relative; }
@@ -252,7 +252,7 @@ html { font-size: 16px; }
 
 /* ---------- main content ---------- */
 .main-content-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
-.main-content { flex: 1; min-width: 0; padding: 26px 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+.main-content { flex: 1; min-width: 0; padding: 30px 32px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
 
 /* Standalone feature pages reuse the dashboard's sidebar vocabulary without
    mounting the dashboard chat shell. Feature roots own their header/content;
@@ -268,7 +268,7 @@ html { font-size: 16px; }
 #tab-calendar.tab-panel.active { flex: 1; min-height: 0; }
 
 .card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); border: 0; border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 18px 20px;
 }
 .settings-subcard {
@@ -278,7 +278,7 @@ html { font-size: 16px; }
 
 /* ---------- chat dock ---------- */
 .chat-dock {
-  --chat-dock-width: 360px;
+  --chat-dock-width: 340px;
   width: var(--chat-dock-width); flex: none; background: var(--panel); border-left: 1px solid var(--border);
   display: flex; flex-direction: column; position: relative; transition: width .18s ease;
 }
@@ -317,7 +317,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-avatar-dot:first-child { margin-left: 0; }
 .chat-avatar-dot.is-me { background: var(--accent-soft); color: var(--accent); }
 .chat-unread-badge {
-  font-family: "JetBrains Mono", monospace; font-size: 10px; background: var(--coral); color: #fff;
+  font-family: "Geist", sans-serif; font-size: 10px; background: var(--coral); color: #fff;
   border-radius: 999px; padding: 2px 7px; font-weight: 700;
 }
 .chat-unread-badge[hidden] { display: none; }
@@ -358,14 +358,16 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-msg-bubble {
   --sender-color: var(--accent);
   padding: 9px 12px; border-radius: 14px 14px 14px 4px; word-break: break-word;
-  background: var(--panel-2); border: 1px solid var(--border); color: var(--sender-color); font-size: 13.5px; line-height: 1.45;
+  background: var(--panel-2); border: 0; color: var(--sender-color); font-size: 13.5px; line-height: 1.45;
 }
 .chat-msg-own .chat-msg-bubble {
-  --sender-color: var(--c-blue);
-  background: color-mix(in srgb, var(--c-blue) 10%, var(--panel)); color: var(--c-blue);
-  border: 1px solid color-mix(in srgb, var(--c-blue) 55%, var(--border)); border-radius: 14px 14px 4px 14px;
+  --sender-color: var(--accent-ink);
+  background: var(--accent-soft); color: var(--accent-ink);
+  border: 0; border-radius: 16px 16px 4px 16px;
 }
-.chat-msg-other .chat-msg-bubble { border-color: var(--sender-color); }
+.chat-msg-other .chat-msg-bubble { border-radius: 16px 16px 16px 4px; }
+.chat-msg-own .chat-msg-text { color: var(--accent-ink); }
+.chat-msg-other .chat-msg-text { color: var(--text); }
 .chat-msg-text { color: var(--sender-color); white-space: pre-wrap; }
 .chat-msg-text p { margin: 0; }
 .chat-msg-text p + p { margin-top: 8px; }
@@ -374,7 +376,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-msg-text li + li { margin-top: 4px; }
 .chat-msg-text strong { font-weight: 750; }
 .chat-msg-text em { font-style: italic; }
-.chat-msg-text code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, currentColor 9%, transparent); font: 600 .92em "JetBrains Mono", monospace; }
+.chat-msg-text code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, currentColor 9%, transparent); font: 600 .92em "Geist", sans-serif; }
 .chat-msg-heading { margin: 9px 0 3px; font-size: 1.03em; font-weight: 750; }
 .chat-msg-heading:first-child { margin-top: 0; }
 .chat-msg-text a {
@@ -383,7 +385,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-msg-text a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 2px; }
 .chat-msg-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; padding: 0 4px; }
-.chat-msg-time { font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--muted); }
+.chat-msg-time { font-family: "Geist", sans-serif; font-size: 10px; color: var(--muted); }
 .chat-msg-controls { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
 .chat-msg:hover .chat-msg-controls { opacity: 1; }
 .chat-msg-ctrl { background: none; border: none; cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 6px; }
@@ -411,7 +413,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-msg-own .chat-msg-card { background: rgba(255,255,255,.16); }
 .chat-card-icon { font-size: 16px; }
 .chat-card-body { color: var(--text); }
-.chat-card-label { font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.chat-card-label { font-family: "Geist", sans-serif; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
 .chat-card-title { font-size: 13px; font-weight: 600; }
 .chat-card-attribution { margin-top: 3px; color: var(--sender-color); font-size: 11px; font-weight: 600; }
 
@@ -425,14 +427,14 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-input:focus { outline: none; border-color: var(--accent); }
 .chat-send-btn {
-  flex-shrink: 0; width: 38px; height: 38px; padding: 0; border-radius: 50%;
+  flex-shrink: 0; width: 44px; height: 44px; padding: 0; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
 }
 
 .chat-picker-btn {
   flex-shrink: 0; border: 1px solid var(--border); background: var(--panel);
   border-radius: 50%; cursor: pointer; font-size: 15px; line-height: 1;
-  width: 34px; height: 34px; padding: 0;
+  width: 40px; height: 40px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   transition: border-color .15s, background .15s; color: var(--text);
 }
@@ -509,7 +511,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
   align-items: center; justify-content: center; box-shadow: var(--shadow); border: none; cursor: pointer;
 }
 .chat-fab-badge {
-  position: absolute; top: -2px; right: -2px; font-family: "JetBrains Mono", monospace; font-size: 10px;
+  position: absolute; top: -2px; right: -2px; font-family: "Geist", sans-serif; font-size: 10px;
   background: var(--coral); color: #fff; border-radius: 999px; padding: 2px 7px; font-weight: 700;
 }
 .chat-fab-badge[hidden] { display: none; }
@@ -529,8 +531,9 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 ============================================================ */
 .today-header { display: flex; align-items: flex-end; gap: 16px; }
 .today-greeting-col { flex: 1; }
-.today-greeting { font-size: 25px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; }
-.today-sync-status { display: flex; align-items: center; gap: 7px; padding-bottom: 6px; }
+.today-greeting { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; }
+.today-summary { font-size: 14px; color: var(--text-2); margin-top: 6px; }
+.today-sync-status { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-2); font-size: 12px; }
 .today-sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-green); flex: none; }
 
 .today-setup-card { margin: 16px 0; border: 1.5px solid color-mix(in srgb, var(--accent) 38%, var(--border)); }
@@ -591,7 +594,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .today-actions-list { margin-top: 14px; }
 .today-action-section + .today-action-section { margin-top: 18px; }
 .today-action-section-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-.today-action-section-title { font-size: 12px; font-family: "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .07em; color: var(--text-2); }
+.today-action-section-title { font-size: 12px; font-family: "Geist", sans-serif; text-transform: uppercase; letter-spacing: .07em; color: var(--text-2); }
 .today-action-section-count { font-size: 11px; color: var(--text-2); }
 .today-action-list { display: flex; flex-direction: column; }
 .today-action-row {
@@ -631,7 +634,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .today-action-snooze { min-height: 40px; padding: 7px 9px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); color: var(--text); font: 600 12px inherit; cursor: pointer; }
 .today-action-snooze:hover { border-color: var(--accent); }
 .today-action-delete { white-space: nowrap; }
-.today-actions-later-note { margin: 10px 0 4px; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-2); font-size: 11.5px; font-family: "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .04em; }
+.today-actions-later-note { margin: 10px 0 4px; padding-top: 10px; border-top: 1px dashed var(--border); color: var(--text-2); font-size: 11.5px; font-family: "Geist", sans-serif; text-transform: uppercase; letter-spacing: .04em; }
 .today-actions-later-note + .today-action-list { margin-top: 4px; }
 .today-action-row.later { padding-top: 8px; padding-bottom: 8px; }
 .today-action-row.later .today-action-title { font-size: 13px; }
@@ -659,7 +662,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   cursor: pointer;
 }
 .schedule-row:last-child { border-bottom: none; }
-.schedule-time { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--text-2); width: 52px; flex: none; }
+.schedule-time { font-family: "Geist", sans-serif; font-size: 12.5px; color: var(--text-2); width: 52px; flex: none; }
 .schedule-bar { width: 3px; height: 34px; border-radius: 2px; flex: none; }
 .schedule-main { flex: 1; min-width: 0; }
 .schedule-title { font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
@@ -679,7 +682,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .homework-due-check.done { background: var(--c-green); border-color: var(--c-green); }
 .homework-due-title { flex: 1; font-size: 13.5px; font-weight: 600; }
 .homework-due-row.done .homework-due-title { text-decoration: line-through; opacity: .6; }
-.homework-due-when { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-2); }
+.homework-due-when { font-family: "Geist", sans-serif; font-size: 11px; color: var(--text-2); }
 .homework-due-when.overdue { color: var(--c-red); }
 .homework-due-when.today { color: var(--warn); }
 .homework-due-kid-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
@@ -692,22 +695,22 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 .habit-check.done { background: var(--c-teal); border-color: var(--c-teal); }
 .habit-title { flex: 1; font-size: 13.5px; }
-.habit-streak { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-2); }
+.habit-streak { font-family: "Geist", sans-serif; font-size: 11px; color: var(--text-2); }
 .today-empty-cta { font-size: 13px; color: var(--text-2); line-height: 1.5; }
 .today-empty-cta a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .today-empty-cta a:hover { text-decoration: underline; }
 
 .momentum-block { margin-top: 14px; }
 .momentum-labels { display: flex; justify-content: space-between; margin-bottom: 5px; }
-.momentum-label { font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
-.momentum-value { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 700; }
+.momentum-label { font-family: "Geist", sans-serif; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
+.momentum-value { font-family: "Geist", sans-serif; font-size: 11px; font-weight: 700; }
 .momentum-track { height: 6px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
 .momentum-fill { height: 100%; background: linear-gradient(90deg, var(--coral), var(--accent)); }
 
 /* Daily 5 — folds quote/word/quiz/news into one card; sub-widgets lose
    their own card chrome so the whole thing reads as one panel. */
 .daily5-card { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
-.daily5-streak { display: flex; align-items: center; gap: 5px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--coral); }
+.daily5-streak { display: flex; align-items: center; gap: 5px; font-family: "Geist", sans-serif; font-size: 11px; color: var(--coral); }
 .daily5-card .widget { padding: 0; margin: 0 0 14px; border: none; box-shadow: none; background: none; }
 .daily5-card .widget:last-child { margin-bottom: 0; }
 .daily5-card .widget-header { margin-bottom: 6px; }
@@ -725,7 +728,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .crossword-cell, .crossword-blank { position: relative; width: 28px; height: 28px; }
 .crossword-cell { display: block; background: var(--panel); outline: 1px solid var(--border); }
 .crossword-cell > span { position: absolute; top: 1px; left: 2px; z-index: 1; font-size: 7px; font-weight: 700; color: var(--text-2); pointer-events: none; }
-.crossword-cell input, .sudoku-cell input { width: 100%; height: 100%; border: 0; background: transparent; color: var(--text); text-align: center; font: 700 15px/1 "Space Grotesk", sans-serif; text-transform: uppercase; outline: none; }
+.crossword-cell input, .sudoku-cell input { width: 100%; height: 100%; border: 0; background: transparent; color: var(--text); text-align: center; font: 700 15px/1 "Geist", sans-serif; text-transform: uppercase; outline: none; }
 .crossword-cell:focus-within, .sudoku-cell:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; }
 .sudoku-grid { display: grid; grid-template-columns: repeat(9, 34px); gap: 1px; width: max-content; margin: 0 auto; background: var(--text-2); border: 2px solid var(--text-2); }
 .sudoku-cell { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; background: var(--panel); color: var(--text); font-weight: 700; }
@@ -812,7 +815,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 }
 .kid-topbar-nav-item.active { background: var(--accent-soft); color: var(--accent); }
 
-.streak-ring-label { font-family: "JetBrains Mono", monospace; }
+.streak-ring-label { font-family: "Geist", sans-serif; }
 
 /* ============================================================
    PAGE HEADERS — shared by Calendar + Homework (canvas 1b/1c): title, kid
@@ -882,21 +885,21 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .week-grid-corner, .week-all-day-label { background: var(--panel-2); border-right: 1px solid var(--border); }
 .week-day-col-hdr { min-width: 0; padding: 9px 6px; text-align: center; background: var(--panel-2); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .week-day-col-hdr:last-child, .week-all-day-track:last-child, .week-day-track:last-child { border-right: none; }
-.week-day-col-hdr .wday-name { font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); }
-.week-day-col-hdr .wday-num { font-family: "JetBrains Mono", monospace; font-size: 17px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
+.week-day-col-hdr .wday-name { font-family: "Geist", sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); }
+.week-day-col-hdr .wday-num { font-family: "Geist", sans-serif; font-size: 17px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
 .week-day-col-hdr.is-today { background: var(--accent-soft); }
 .week-day-col-hdr.is-today .wday-name, .week-day-col-hdr.is-today .wday-num { color: var(--accent); }
 .week-day-col-hdr.is-weekend { background: var(--panel-2); }
 
 .week-all-day-row { position: sticky; top: 52px; z-index: 19; min-height: 52px; border-bottom: 1px solid var(--border); background: var(--panel); }
-.week-all-day-label { padding: 10px 7px; font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+.week-all-day-label { padding: 10px 7px; font-family: "Geist", sans-serif; font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-2); writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
 .week-all-day-track { min-width: 0; padding: 5px; border-right: 1px solid var(--border); background: var(--panel); }
 .week-all-day-track.is-today { background: color-mix(in srgb, var(--accent-soft) 38%, var(--panel)); }
 .week-all-day-track:empty::after { content: ' '; display: block; min-height: 34px; }
 
 .week-timed-row { align-items: stretch; }
 .week-time-axis { position: relative; background: var(--panel-2); border-right: 1px solid var(--border); }
-.week-time-label { position: absolute; right: 7px; transform: translateY(-50%); font-family: "JetBrains Mono", monospace; font-size: 9px; color: var(--text-2); white-space: nowrap; }
+.week-time-label { position: absolute; right: 7px; transform: translateY(-50%); font-family: "Geist", sans-serif; font-size: 9px; color: var(--text-2); white-space: nowrap; }
 .week-time-label:first-child { transform: none; }
 .week-day-track { min-width: 0; position: relative; overflow: visible; border-right: 1px solid var(--border); background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--week-row-height) - 1px), var(--border) calc(var(--week-row-height) - 1px), var(--border) var(--week-row-height)); }
 .week-day-track.is-today { background-color: color-mix(in srgb, var(--accent-soft) 30%, var(--panel)); }
@@ -916,7 +919,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .timed-event { position: absolute; z-index: 2; overflow: hidden; min-height: 34px; font-size: 11px; padding: 4px 5px; }
 .timed-event .evt-title { overflow-wrap: break-word; word-break: normal; }
 .week-evt .evt-time {
-  font-family: "JetBrains Mono", monospace; font-size: 10px; color: var(--text-2);
+  font-family: "Geist", sans-serif; font-size: 10px; color: var(--text-2);
   display: flex; align-items: center; gap: 4px; margin-bottom: 1px;
 }
 .week-evt .evt-allday-icon { flex: none; }
@@ -930,7 +933,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 
 .month-view { display: grid; grid-template-columns: repeat(7,1fr); grid-template-rows: auto repeat(6, minmax(0, 1fr)); height: max(var(--calendar-canvas-height), calc(100vh - 240px)); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
 .month-day-hdr {
-  padding: 8px; text-align: center; font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 700;
+  padding: 8px; text-align: center; font-family: "Geist", sans-serif; font-size: 10px; font-weight: 700;
   text-transform: uppercase; color: var(--text-2); background: var(--panel-2); border-bottom: 1px solid var(--border);
 }
 .month-day { min-height: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px 5px; cursor: pointer; transition: background .12s; position: relative; overflow: hidden; }
@@ -943,7 +946,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
   background: var(--accent); color: var(--on-accent); border-radius: 50%;
   width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
 }
-.mday-num { font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 700; margin-bottom: 4px; display: inline-block; }
+.mday-num { font-family: "Geist", sans-serif; font-size: 13px; font-weight: 700; margin-bottom: 4px; display: inline-block; }
 .month-evt {
   font-size: 11px; font-weight: 600; padding: 2px 6px 2px 7px; border-radius: 4px; margin-bottom: 2px; display: block;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: opacity .15s;
@@ -960,7 +963,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 
 .timetable-event-kid {
   display: inline-flex; align-items: center; margin-right: 5px;
-  color: var(--text-2); font-family: "JetBrains Mono", monospace;
+  color: var(--text-2); font-family: "Geist", sans-serif;
   font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
 }
 .month-evt .timetable-event-kid { font-size: 8px; margin-right: 3px; }
@@ -980,14 +983,14 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .widget { padding: 18px 20px; }
 .widget-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .widget-icon { font-size: 20px; line-height: 1; }
-.widget-label { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
+.widget-label { font-family: "Geist", sans-serif; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
 
 .quote-text { font-size: 14px; font-weight: 500; font-style: italic; color: var(--text); line-height: 1.5; margin-bottom: 8px; quotes: "\201C" "\201D"; }
 .quote-text::before { content: open-quote; }
 .quote-text::after  { content: close-quote; }
 .quote-author { font-size: 12px; font-weight: 600; color: var(--accent); }
 
-.sat-word { font-family: "JetBrains Mono", monospace; font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1.1; }
+.sat-word { font-family: "Geist", sans-serif; font-size: 22px; font-weight: 700; color: var(--accent); line-height: 1.1; }
 .sat-pos  { font-size: 12px; font-style: italic; color: var(--text-2); margin: 4px 0 8px; }
 .sat-def  { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.5; margin-bottom: 8px; }
 .sat-example { font-size: 12.5px; color: var(--text-2); font-style: italic; line-height: 1.5; }
@@ -1003,7 +1006,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .school-stats-row:last-child { border-bottom: none; }
 .school-stats-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .school-stats-name { font-size: 13px; font-weight: 700; color: var(--text); min-width: 60px; }
-.school-stats-metric { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.school-stats-metric { font-family: "Geist", sans-serif; font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
 .school-stats-balance.low { color: var(--c-red); font-weight: 700; }
 
 .quiz-question { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.4; margin-bottom: 12px; }
@@ -1127,7 +1130,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .parse-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 580px; }
 .parse-table thead { position: sticky; top: 0; z-index: 1; }
 .parse-table th {
-  background: var(--panel-2); padding: 10px; text-align: left; font-family: "JetBrains Mono", monospace;
+  background: var(--panel-2); padding: 10px; text-align: left; font-family: "Geist", sans-serif;
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
   color: var(--text-2); border-bottom: 1.5px solid var(--border); white-space: nowrap;
 }
@@ -1279,7 +1282,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .invite-box { background: var(--accent-soft); border-radius: 14px; padding: 16px 18px; }
 .invite-code-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .invite-code {
-  font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 700; letter-spacing: .1em;
+  font-family: "Geist", sans-serif; font-size: 20px; font-weight: 700; letter-spacing: .1em;
   color: var(--accent); background: var(--panel); border: 2px dashed var(--accent);
   border-radius: 10px; padding: 8px 16px;
 }
@@ -1332,7 +1335,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .school-sync-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .school-feed-table { display: flex; flex-direction: column; gap: 2px; }
 .school-feed-row { display: grid; grid-template-columns: 1fr repeat(auto-fit, minmax(60px, 1fr)); align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--border); gap: 8px; }
-.school-feed-hdr { font-family: "JetBrains Mono", monospace; font-size: 10.5px; font-weight: 700; color: var(--text-2); text-transform: uppercase; }
+.school-feed-hdr { font-family: "Geist", sans-serif; font-size: 10.5px; font-weight: 700; color: var(--text-2); text-transform: uppercase; }
 .school-feed-kid-hdr { text-align: center; }
 .school-feed-name { font-weight: 600; font-size: 14px; }
 .school-feed-deadline-tag {
@@ -1422,7 +1425,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .hw-kid-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
 .hw-due-label {
-  flex: none; width: 76px; text-align: right; font-family: "JetBrains Mono", monospace; font-size: 12px;
+  flex: none; width: 76px; text-align: right; font-family: "Geist", sans-serif; font-size: 12px;
   color: var(--text-2);
 }
 .hw-due-label.hw-due-overdue { color: var(--c-red); }
@@ -1465,19 +1468,19 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .goal-ring-btn:hover { filter: brightness(0.96); }
 .goal-ring-track { fill: none; stroke: var(--grid); stroke-width: 7; }
 .goal-ring-fill { fill: none; stroke-width: 7; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 33px 33px; transition: stroke-dasharray .2s; }
-.goal-ring-text { font-family: "JetBrains Mono", monospace; font-size: 14px; font-weight: 700; fill: var(--text); text-anchor: middle; }
+.goal-ring-text { font-family: "Geist", sans-serif; font-size: 14px; font-weight: 700; fill: var(--text); text-anchor: middle; }
 
 .goal-card-body { flex: 1; min-width: 0; }
 .goal-card-title { font-size: 14.5px; font-weight: 600; }
 .goal-card-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 .goal-card-streak {
   display: flex; align-items: center; gap: 5px; margin-top: 8px;
-  font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--coral);
+  font-family: "Geist", sans-serif; font-size: 11px; color: var(--coral);
 }
-.goal-card-fresh { margin-top: 8px; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-2); }
+.goal-card-fresh { margin-top: 8px; font-family: "Geist", sans-serif; font-size: 11px; color: var(--text-2); }
 
 .goal-progress-row { display: flex; justify-content: space-between; margin: 14px 0 5px; }
-.goal-progress-count { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; }
+.goal-progress-count { font-family: "Geist", sans-serif; font-size: 12px; font-weight: 700; }
 .goal-progress-track { height: 7px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
 .goal-progress-fill { height: 100%; background: var(--accent); transition: width .2s; }
 .goal-increment-btn { margin-top: 14px; align-self: flex-start; }
@@ -1495,7 +1498,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .goals-recap-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .goals-recap-track { flex: 1; height: 7px; border-radius: 4px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
 .goals-recap-fill { height: 100%; }
-.goals-recap-count { font-family: "JetBrains Mono", monospace; font-size: 12px; flex: none; text-align: right; }
+.goals-recap-count { font-family: "Geist", sans-serif; font-size: 12px; flex: none; text-align: right; }
 .goals-recap-footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); }
 
 /* ============================================================
@@ -1509,7 +1512,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .activities-dayof-row { display: flex; align-items: center; gap: 12px; }
 .activities-dayof-icon { flex: none; color: var(--accent); }
 .activities-dayof-text { flex: 1; font-size: 13.5px; }
-.activities-dayof-label { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); flex: none; }
+.activities-dayof-label { font-family: "Geist", sans-serif; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); flex: none; }
 
 .activities-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; max-width: 1040px; align-items: start; }
 .activity-card { border-top: 3px solid var(--kid-color, var(--accent)); }
@@ -1519,14 +1522,14 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .activity-card-rows { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; font-size: 12.5px; color: var(--text-2); }
 .activity-card-row { display: flex; gap: 8px; }
 .activity-card-row-label {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; width: 56px; flex: none;
+  font-family: "Geist", sans-serif; font-size: 11px; width: 56px; flex: none;
   text-transform: uppercase; letter-spacing: .06em;
 }
 .activity-gear-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
 .activity-gear-chip { padding: 3px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); font-size: 11.5px; }
 .activity-card-footer {
   margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
-  font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-2);
+  font-family: "Geist", sans-serif; font-size: 11px; color: var(--text-2);
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
 }
 .activity-card-edit { flex: none; }
@@ -1545,7 +1548,7 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 ============================================================ */
 #tab-settings .card > h3,
 #tab-notes .notes-hub > .notes-hub-header > h3 {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .08em;
+  font-family: "Geist", sans-serif; font-size: 11px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--text-2); font-weight: 700; margin: 0 0 14px;
 }
 #tab-notes .notes-hub > .notes-hub-header { margin-bottom: 0; }
@@ -1568,3 +1571,80 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 #puzzle-grid-wrap .quiz-option { min-height: 44px; text-align: left; }
 #puzzle-grid-wrap .quiz-option[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
 #puzzle-grid-wrap .quiz-option:disabled { color: var(--text); opacity: 1; }
+
+/* Family Rings phone shell — this follows legacy tablet rules deliberately. */
+.fr-mobile-topbar,
+.fr-mobile-tabbar,
+.fr-mobile-more { display: none; }
+
+#dashboard-screen .kid-profile-avatar {
+  background: var(--profile-color, var(--accent));
+  border: 0;
+  color: #FFFFFF;
+}
+html.dark #dashboard-screen .kid-profile-avatar { color: #15121F; }
+
+#chat-dock .chat-dock-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+@media (max-width: 700px) {
+  #dashboard-screen.screen.active { padding-bottom: 76px; }
+  .app-shell { min-height: 100vh; }
+  .app-sidebar,
+  .kid-topbar { display: none !important; }
+  .main-content { padding: 14px 16px 24px; gap: 14px; }
+  .card { border-radius: 20px; }
+  .today-greeting { font-size: 26px; }
+  .today-header { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .today-sync-status { padding-bottom: 0; }
+
+  .fr-mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 62px;
+    padding: 14px 16px 8px;
+    background: var(--bg);
+  }
+  .fr-mobile-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; }
+  .fr-mobile-mark {
+    display: grid; width: 30px; height: 30px; border-radius: 9px; place-items: center;
+    background: var(--accent); color: var(--on-accent); font-weight: 800;
+  }
+  .fr-mobile-avatar {
+    display: grid; width: 34px; height: 34px; border: 0; border-radius: 50%; place-items: center;
+    background: var(--accent); color: var(--on-accent); font: 700 13px/1 "Geist", sans-serif; cursor: pointer;
+  }
+  .fr-mobile-tabbar {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: 450;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: 76px;
+    padding: 5px 4px 10px; background: var(--panel); border-top: 1px solid var(--border);
+  }
+  .fr-mobile-tabbar .sidebar-nav-item {
+    display: grid; width: auto; min-width: 0; height: auto; min-height: 0; padding: 3px 2px;
+    place-items: center; align-content: center; gap: 4px; border-radius: 12px;
+    color: var(--text-2); font-size: 11px; font-weight: 600; line-height: 1;
+  }
+  .fr-mobile-tabbar .sidebar-nav-item span { display: block; }
+  .fr-mobile-tabbar .sidebar-nav-item.active { background: transparent; color: var(--accent-ink); }
+  .fr-mobile-tabbar .sidebar-nav-item.active svg { stroke-width: 2.3; }
+
+  .fr-mobile-more { width: min(320px, calc(100vw - 32px)); padding: 18px; border: 0; border-radius: 24px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+  .fr-mobile-more[open] { display: grid; gap: 4px; }
+  .fr-mobile-more::backdrop { background: rgba(18, 19, 24, .42); backdrop-filter: blur(3px); }
+  .fr-mobile-more-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 18px; }
+  .fr-mobile-more-header button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--panel-2); color: var(--text-2); font-size: 24px; line-height: 1; cursor: pointer; }
+  .fr-mobile-more > a,
+  .fr-mobile-more > button:not(.fr-mobile-logout) { display: flex; align-items: center; min-height: 44px; padding: 0 10px; border: 0; border-radius: 12px; background: transparent; color: var(--text); font: 600 14px "Geist", sans-serif; text-align: left; text-decoration: none; cursor: pointer; }
+  .fr-mobile-more > a:hover,
+  .fr-mobile-more > button:not(.fr-mobile-logout):hover { background: var(--panel-2); }
+  .fr-mobile-logout { min-height: 44px; margin-top: 6px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--fr-danger); font: 600 14px "Geist", sans-serif; text-align: left; cursor: pointer; }
+
+  .chat-dock,
+  .chat-dock.chat-collapsed { right: 16px; bottom: 92px; border-radius: 20px; }
+  .chat-fab { display: flex; right: 16px; bottom: 92px; width: 56px; height: 56px; }
+}

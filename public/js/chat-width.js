@@ -3,7 +3,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.FamChatWidth = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
-  const DEFAULT_WIDTH = 360;
+  const DEFAULT_WIDTH = 340;
   const MIN_WIDTH = 296;
   const MAX_WIDTH = 520;
   const STEP = 16;

@@ -1,6 +1,16 @@
 /* Self-hosted variable fonts (latin subset), font-display:swap.
-   Downloaded from Google Fonts 2026-07-11 (Space Grotesk v22, JetBrains Mono
-   v24, wght 400..700) — regenerate if weights/families change. */
+   Geist source: https://github.com/vercel/geist-font, v1.5.1, SIL OFL 1.1
+   (full license: OFL.txt). Space Grotesk and JetBrains Mono remain only for
+   the marketing surface while it retains its existing type system. */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(./geist.woff2) format('woff2');
+}
+
+/* Marketing fonts, retained for landing.html / landing.css. */
 @font-face {
   font-family: 'Space Grotesk';
   font-style: normal;
