@@ -144,6 +144,20 @@ let chatPollAbort   = null;   // AbortController for the in-flight long-poll fet
 const CHAT_LONGPOLL_WAIT_S = 25; // must match LONG_POLL_MS in lib/routes/chat.js
 const CHAT_BACKOFF_MS = [2000, 5000, 10000]; // retry backoff on poll errors, capped
 
+/* Hermes private thread — a second room shown in the same dock via the
+   Family|Hermes chips (see switchChatRoom). Kept as its own state so the
+   family room above stays byte-for-byte unchanged while Hermes is active;
+   see docs/HERMES-THREADS-CONTRACT.md. */
+let chatActiveRoom  = 'family'; // 'family' | 'hermes' — which room #chat-messages shows
+let chatRoomDot     = { family: false, hermes: false }; // unread dot on the inactive chip
+let hermesMessages  = [];
+let hermesLastId    = null;
+let hermesPollTimer = null;
+let hermesPollAbort = null;
+let hermesSending   = false;
+let hermesLoaded    = false;
+let hermesAvailable = true; // sticky false once the thread endpoints fail (e.g. 404 pre-launch)
+
 /* Parent-only Hermes meal-plan draft review. The dialog is created lazily so
    the existing shell HTML stays unchanged, then reused for every draft. */
 let mealPlanReviewDialog = null;
@@ -1239,6 +1253,8 @@ function showDashboard() {
   // start/stop lifecycle from here on as the user navigates between tabs.
   loadChatMessages();
   startChatPolling();
+  loadHermesMessages();
+  startHermesPolling();
 }
 
 /* ============================================================
@@ -3718,6 +3734,12 @@ function confirmMealPlanReviewImport() {
 }
 
 function renderChatMessages() {
+  // Hermes is showing in #chat-messages right now — keep chatMessages/cursors
+  // current (mergeChatMessages already ran) but don't touch the DOM; flag the
+  // Family chip so its dot lights up. Family behaviour below this guard is
+  // untouched when Family is the active room (including in isolated tests
+  // that extract this function without the chatActiveRoom global).
+  if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom !== 'family') { chatRoomDot.family = true; renderChatRoomTabs(); return; }
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -3931,6 +3953,275 @@ function setupChatRealtimeNudges() {
   document.addEventListener('visibilitychange', nudge);
   window.addEventListener('focus', nudge);
   window.addEventListener('online', nudge);
+}
+
+/* ============================================================
+   HERMES THREAD — private per-user assistant room, shown in the same
+   dock as family chat via the Family|Hermes chips (see switchChatRoom
+   and index.html's .chat-room-switch). Mirrors the family long-poll/
+   merge/send shape above with its own state, so family chat is never
+   touched by anything here. Contract: docs/HERMES-THREADS-CONTRACT.md.
+============================================================ */
+async function hermesApi(path, opts) {
+  const res = await fetch(path, Object.assign({
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+  }, opts));
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* no body */ }
+  if (!res.ok) {
+    const err = new Error((body && body.error) || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return body;
+}
+
+function renderHermesUnavailableNotice() {
+  const el = document.getElementById('chat-messages');
+  if (el) el.innerHTML = '<p class="text-muted chat-empty">Hermes isn’t available right now.</p>';
+}
+
+async function loadHermesMessages() {
+  if (!hermesAvailable) { if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice(); return; }
+  try {
+    const data = await hermesApi('/api/hermes/thread/messages?limit=50');
+    hermesLoaded = true;
+    mergeHermesMessages((data && data.messages) || []);
+    if (chatActiveRoom === 'hermes') renderHermesMessages();
+  } catch (err) {
+    // ponytail: any failure here (404 pre-launch, network blip, 500) marks
+    // the thread unavailable for the rest of this session rather than
+    // retrying with backoff like family chat does. Swap in a real retry once
+    // the server contract has shipped and failures are known to be
+    // transient rather than "not built yet".
+    hermesAvailable = false;
+    if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice();
+  }
+}
+
+// Same id-dedupe merge as mergeChatMessages, kept separate so a family-room
+// change can never touch hermesMessages or vice versa.
+function mergeHermesMessages(msgs) {
+  if (!msgs.length) return;
+  const byId = new Map(hermesMessages.map((m) => [m.id, m]));
+  let changed = false;
+  for (const m of msgs) {
+    if (JSON.stringify(byId.get(m.id)) !== JSON.stringify(m)) { byId.set(m.id, m); changed = true; }
+  }
+  if (!changed) return;
+  hermesMessages = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  hermesLastId = hermesMessages[hermesMessages.length - 1].id;
+  if (chatActiveRoom === 'hermes') renderHermesMessages();
+  else { chatRoomDot.hermes = true; renderChatRoomTabs(); }
+}
+
+async function hermesLongPollFetch(afterId = hermesLastId) {
+  const qs = `?afterId=${encodeURIComponent(afterId || '')}&wait=1`;
+  hermesPollAbort = new AbortController();
+  const res = await fetch('/api/hermes/thread/messages' + qs, { credentials: 'same-origin', signal: hermesPollAbort.signal });
+  if (!res.ok) throw new Error(`poll failed (${res.status})`);
+  const data = await res.json().catch(() => null);
+  return (data && data.messages) || [];
+}
+
+async function hermesLongPollLoop(lifetime) {
+  let cursor = hermesLastId; // sends may update the display, never the receive cursor
+  while (hermesPollTimer === lifetime && !lifetime.signal.aborted) {
+    if (document.hidden) { await chatReceivePause(lifetime.signal); continue; }
+    const started = Date.now();
+    const previousId = cursor;
+    try {
+      const msgs = await hermesLongPollFetch(cursor);
+      if (hermesPollTimer !== lifetime || lifetime.signal.aborted) break;
+      mergeHermesMessages(msgs);
+      cursor = msgs.length ? msgs[msgs.length - 1].id : cursor;
+      if (cursor === previousId && Date.now() - started < 1000) {
+        await chatReceivePause(lifetime.signal, 1000 - (Date.now() - started));
+      }
+    } catch (err) {
+      if (hermesPollTimer !== lifetime || lifetime.signal.aborted) break;
+      if (err.name === 'AbortError') continue;
+      hermesAvailable = false; // see the ponytail note in loadHermesMessages
+      if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice();
+      break;
+    }
+  }
+}
+
+function startHermesPolling() {
+  if (hermesPollTimer || !hermesAvailable) return; // navigation must not multiply active listeners
+  hermesPollTimer = new AbortController();
+  hermesLongPollLoop(hermesPollTimer);
+}
+
+function stopHermesPolling() {
+  if (hermesPollTimer) hermesPollTimer.abort();
+  hermesPollTimer = null;
+  if (hermesPollAbort) { hermesPollAbort.abort(); hermesPollAbort = null; }
+}
+
+async function handleSendHermesMessage(e) {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const text = input ? input.value.trim() : '';
+  if (!text || hermesSending) return;
+  hermesSending = true;
+  const sentDraft = input.value;
+  const sendingUser = sessionUser?.id;
+  try {
+    const data = await hermesApi('/api/hermes/thread/messages', { method: 'POST', body: JSON.stringify({ text }) });
+    if (sessionUser?.id !== sendingUser) return;
+    if (input && input.value === sentDraft) input.value = '';
+    if (data && data.message) mergeHermesMessages([data.message]);
+    scrollChatToBottom();
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  } finally {
+    hermesSending = false;
+  }
+}
+
+// Client-nav-only targets for a hermes-nudge button with an `open` field —
+// no server call (contract §3). An unrecognized target is plain text: no
+// navigation, no fetch.
+function handleHermesNudgeOpen(target) {
+  if (target === 'homework') switchNavTab('homework');
+  else if (target === 'goals') switchNavTab('goals');
+  else if (target === 'today') switchNavTab('today');
+  else if (target === 'meals') location.href = '/meals';
+}
+
+// Any other hermes-nudge button: POST the action, disabling it while in
+// flight, then replace that message by id and append any follow-ups not
+// already shown (contract §3).
+async function handleHermesNudgeAction(messageId, actionId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const data = await hermesApi(`/api/hermes/thread/messages/${encodeURIComponent(messageId)}/actions`, {
+      method: 'POST',
+      body: JSON.stringify({ action: actionId }),
+    });
+    const idx = hermesMessages.findIndex((m) => m.id === messageId);
+    if (data && data.message) {
+      if (idx !== -1) hermesMessages[idx] = data.message;
+      else hermesMessages.push(data.message);
+    }
+    const known = new Set(hermesMessages.map((m) => m.id));
+    ((data && data.messages) || []).forEach((m) => { if (!known.has(m.id)) { hermesMessages.push(m); known.add(m.id); } });
+    hermesMessages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    hermesLastId = hermesMessages.length ? hermesMessages[hermesMessages.length - 1].id : hermesLastId;
+    renderHermesMessages();
+  } catch (err) {
+    if (btn) btn.disabled = false;
+    toast(`❌ ${err.message}`);
+  }
+}
+
+// Renders a hermes-nudge card's title/lines/buttons-or-chip per contract §3.
+// `lines` is capped at 7 rows (a week-draft card lists seven dinners).
+function renderHermesNudgeButton(messageId, action) {
+  const style = action && action.style === 'primary' ? 'primary' : 'secondary';
+  const done = !!(action && action.done);
+  const label = done ? ((action && action.doneLabel) || `${(action && action.label) || ''} ✓`) : ((action && action.label) || '');
+  const onclick = action && action.open
+    ? `handleHermesNudgeOpen('${action.open}')`
+    : `handleHermesNudgeAction('${messageId}','${action && action.id}',this)`;
+  return `<button type="button" class="hermes-nudge-btn hermes-nudge-btn-${style}"${done ? ' disabled' : ''} onclick="${onclick}">${esc(label)}</button>`;
+}
+
+function renderHermesNudgeCard(m) {
+  const card = m.card;
+  if (!card || card.type !== 'hermes-nudge') return '';
+  const title = card.title ? `<div class="chat-card-title">${esc(card.title)}</div>` : '';
+  const lines = Array.isArray(card.lines) ? card.lines.slice(0, 7) : [];
+  const linesHtml = lines.length ? `<ul class="hermes-nudge-lines">${lines.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>` : '';
+  const state = card.state || {};
+  const actions = Array.isArray(card.actions) ? card.actions : [];
+  let actionsHtml = '';
+  if (state.status === 'open' && actions.length) {
+    actionsHtml = `<div class="hermes-nudge-actions">${actions.map((a) => renderHermesNudgeButton(m.id, a)).join('')}</div>`;
+  } else if (state.status !== 'open' && state.label) {
+    actionsHtml = `<div class="hermes-nudge-resolved">${esc(state.label)}</div>`;
+  }
+  return `${title}${linesHtml}${actionsHtml}`;
+}
+
+function renderHermesMessage(m) {
+  if (m.deleted) {
+    return `<div data-chat-id="${esc(m.id)}" class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
+  }
+  const own = isOwnMessage(m);
+  const color = chatSenderColor(m);
+  const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+  return `<div data-chat-id="${esc(m.id)}" class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
+    ${!own ? `<span class="chat-person-avatar" style="--avatar-color:${color}" aria-hidden="true">✦</span>` : ''}
+    ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}${m.senderType === 'agent' ? ' <span class="fr-helper-tag">HELPER</span>' : ''}</div>` : ''}
+    <div class="chat-msg-bubble" style="--sender-color:${color}">
+      ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
+      ${renderHermesNudgeCard(m)}
+    </div>
+    <div class="chat-msg-meta"><span class="chat-msg-time">${time}</span></div>
+  </div>`;
+}
+
+function renderHermesMessages() {
+  if (chatActiveRoom !== 'hermes') return;
+  if (!hermesAvailable) { renderHermesUnavailableNotice(); return; }
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  if (!hermesMessages.length) {
+    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? 'Ask Hermes anything about your family’s day.' : 'Loading…'}</p>`;
+    return;
+  }
+  el.innerHTML = hermesMessages.map((m) => renderHermesMessage(m)).join('');
+  if (wasAtBottom) el.scrollTop = el.scrollHeight;
+}
+
+function renderChatRoomTabs() {
+  ['family', 'hermes'].forEach((room) => {
+    const tab = document.getElementById(`chat-room-tab-${room}`);
+    if (tab) {
+      tab.classList.toggle('active', chatActiveRoom === room);
+      tab.setAttribute('aria-selected', String(chatActiveRoom === room));
+    }
+    const dot = document.getElementById(`chat-room-dot-${room}`);
+    if (dot) dot.hidden = !(chatRoomDot[room] && chatActiveRoom !== room);
+  });
+}
+
+function switchChatRoom(room) {
+  chatActiveRoom = room === 'hermes' ? 'hermes' : 'family';
+  chatRoomDot[chatActiveRoom] = false;
+  renderChatRoomTabs();
+  closeChatPickers();
+  const hide = chatActiveRoom === 'hermes';
+  ['chat-emoji-btn', 'chat-gif-btn', 'chat-media-btn'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = hide;
+  });
+  const input = document.getElementById('chat-input');
+  if (input) input.placeholder = hide ? 'Message Hermes…' : 'Message the family…';
+  if (hide) {
+    renderHermesMessages();
+    if (!hermesLoaded) loadHermesMessages();
+  } else {
+    renderChatMessages();
+  }
+  scrollChatToBottom();
+}
+
+// Web push deep link (data.url "/app?chat=hermes", routed by sw.js) — opens
+// the dock (or the phone/kid slide-over) straight on the Hermes tab.
+function openHermesChat() {
+  switchChatRoom('hermes');
+  const dock = document.getElementById('chat-dock');
+  if (!dock) return;
+  if (dock.classList.contains('chat-collapsed')) dock.classList.add('chat-force-open');
+  dock.classList.add('chat-open');
+  markChatSeen();
 }
 
 /* ============================================================
@@ -4208,6 +4499,7 @@ function setupKidRequestNudges() {
 }
 
 async function handleSendChatMessage(e) {
+  if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom === 'hermes') return handleSendHermesMessage(e);
   e.preventDefault();
   const input = document.getElementById('chat-input');
   const text = input ? input.value.trim() : '';
@@ -6448,11 +6740,15 @@ function switchNavTab(tab) {
 
   // Chat is docked/collapsed (not hidden) on every tab except Notes/Settings —
   // keep it live and polling on all of those, stop only where it's hidden.
+  // Hermes polls on the same lifecycle, independently of family chat.
   if (CHAT_DOCK_MODE[tab] !== 'hidden') {
     loadChatMessages();
     startChatPolling();
+    loadHermesMessages();
+    startHermesPolling();
   } else {
     stopChatPolling();
+    stopHermesPolling();
   }
 }
 
@@ -7785,6 +8081,8 @@ async function init() {
   }
   const requestedChild = new URLSearchParams(window.location.search).get('child');
   if (requestedChild) openChildView(requestedChild);
+  // Web push deep link for Hermes (data.url "/app?chat=hermes", see sw.js).
+  if (new URLSearchParams(window.location.search).get('chat') === 'hermes') openHermesChat();
   startKidRequestPolling(); // parents: surface pending kid sign-in requests
   renderInstallAppControl();
   registerServiceWorker().then(renderNotificationsControl).then(startReminderLoop);
