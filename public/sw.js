@@ -55,6 +55,11 @@ self.addEventListener('push', (event) => {
   })());
 });
 
+// Generic by design: routes ANY push's data.url back into the app, which
+// already covers the Hermes deep link data.url "/app?chat=hermes" (see
+// docs/HERMES-THREADS-CONTRACT.md §4) — app.js's init() reads ?chat=hermes
+// on load and opens the chat dock/slide-over on the Hermes tab. No
+// special-casing needed here; keep this generic for future push types too.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || '/';

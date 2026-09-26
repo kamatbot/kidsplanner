@@ -811,13 +811,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
       </main>
 
-      <!-- Family Chat — docked right-hand column on Today; collapses to a slim
-           avatar strip on Calendar/Homework/Goals/Activities (see
+      <!-- Family/Hermes Chat — docked right-hand column on Today; collapses to
+           a slim avatar strip on Calendar/Homework/Goals/Activities (see
            switchNavTab), hidden entirely on Notes/Settings and
            for kid sessions (which get a floating slide-over button instead,
-           see .chat-fab + toggleKidChat()). One chat per family — no thread
-           selection. Poll lifecycle is tied to the shell being visible (see
-           startChatPolling/stopChatPolling calls in switchNavTab). -->
+           see .chat-fab + toggleKidChat()). Two rooms share this one dock —
+           the Family|Hermes chips in the header switch which room #chat-
+           messages/#chat-send-form show (see switchChatRoom in app.js);
+           there's no per-room markup beyond that. Poll lifecycle is tied to
+           the shell being visible (see start/stopChatPolling and
+           start/stopHermesPolling calls in switchNavTab). -->
       <aside class="chat-dock" id="chat-dock" onclick="handleChatDockClick(event)">
         <div class="chat-dock-resize-handle" id="chat-dock-resize-handle"
              role="separator" tabindex="0" aria-label="Resize family chat"
@@ -827,7 +830,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
              onkeydown="handleChatDockResizeKeydown(event)"
              onclick="event.stopPropagation()"></div>
         <div class="chat-dock-header">
-          <span class="chat-dock-title micro-label">Family chat</span>
+          <div class="chat-dock-title">
+            <div class="chat-room-switch" role="tablist" aria-label="Chat room">
+              <button type="button" class="chat-room-tab active" id="chat-room-tab-family" data-room="family" role="tab" aria-selected="true" onclick="switchChatRoom('family')">Family<span class="chat-room-dot" id="chat-room-dot-family" hidden></span></button>
+              <button type="button" class="chat-room-tab" id="chat-room-tab-hermes" data-room="hermes" role="tab" aria-selected="false" onclick="switchChatRoom('hermes')">Hermes<span class="chat-room-dot" id="chat-room-dot-hermes" hidden></span></button>
+            </div>
+          </div>
           <div class="chat-dock-avatars" id="chat-dock-avatars"></div>
           <span class="chat-unread-badge" id="chat-unread-badge" hidden>0</span>
         </div>
@@ -835,7 +843,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <div class="chat-messages" id="chat-messages"></div>
           <!-- Emoji + GIF popovers: absolutely positioned relative to
                .chat-send-row (position:relative in CSS), toggled by
-               toggleEmojiPicker()/toggleGifPicker() in app.js. -->
+               toggleEmojiPicker()/toggleGifPicker() in app.js. Hidden
+               entirely in the Hermes room (see switchChatRoom). -->
           <div class="chat-picker-anchor">
             <div class="chat-popover chat-emoji-popover" id="chat-emoji-popover" hidden></div>
             <div class="chat-popover chat-gif-popover" id="chat-gif-popover" hidden>

@@ -322,6 +322,23 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 }
 .chat-unread-badge[hidden] { display: none; }
 
+/* Family | Hermes room switch — two pill chips replace the old static
+   "Family chat" title (see switchChatRoom/renderChatRoomTabs in app.js).
+   Nested one level inside .chat-dock-title so the existing collapse/
+   force-open/mobile-slide-over show-hide rules for that class (below, and
+   in the @media (max-width: 900px) block) keep controlling visibility
+   unchanged; this inner element only lays out the two chips. */
+.chat-room-switch { display: flex; gap: 6px; }
+.chat-room-tab {
+  display: inline-flex; align-items: center; gap: 5px; border: 0; cursor: pointer;
+  min-height: 32px; padding: 5px 12px; border-radius: 999px; background: transparent;
+  color: var(--fr-ink-2, var(--text-2)); font: 600 13px "Geist", sans-serif;
+}
+.chat-room-tab.active { background: var(--fr-you-soft, var(--accent-soft)); color: var(--fr-you-ink, var(--accent)); }
+.chat-room-tab:focus-visible { outline: 2px solid var(--fr-you, var(--accent)); outline-offset: 2px; }
+.chat-room-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fr-you, var(--accent)); }
+.chat-room-dot[hidden] { display: none; }
+
 /* Slim collapsed strip on Homework/Goals/Activities: hide messages/input,
    show a narrow rail of avatar dots + unread badge; click to expand. */
 .chat-dock.chat-collapsed { width: 56px; cursor: pointer; }
@@ -417,6 +434,27 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-card-label { font-family: "Geist", sans-serif; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
 .chat-card-title { font-size: 13px; font-weight: 600; }
 .chat-card-attribution { margin-top: 3px; color: var(--sender-color); font-size: 11px; font-weight: 600; }
+
+/* Hermes nudge card (contract §3): title reuses .chat-card-title above;
+   lines are a compact, capped, tail-truncated list; actions are violet-
+   token capsules while state.status is "open", else a quiet resolved chip. */
+.hermes-nudge-lines { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.hermes-nudge-lines li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--fr-ink-2, var(--text-2)); }
+.hermes-nudge-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.hermes-nudge-btn {
+  min-height: 40px; padding: 0 16px; border-radius: 999px; font: 600 13px "Geist", sans-serif;
+  cursor: pointer; transition: opacity .15s;
+}
+@media (pointer: coarse) { .hermes-nudge-btn { min-height: 44px; } }
+.hermes-nudge-btn-primary { border: 0; background: var(--fr-you, var(--accent)); color: var(--fr-on-you, var(--on-accent)); }
+.hermes-nudge-btn-secondary { border: 1px solid var(--fr-you, var(--accent)); background: transparent; color: var(--fr-you-ink, var(--accent)); }
+.hermes-nudge-btn:disabled { opacity: .55; cursor: default; }
+.hermes-nudge-btn:focus-visible { outline: 2px solid var(--fr-you, var(--accent)); outline-offset: 2px; }
+.hermes-nudge-resolved {
+  display: inline-flex; align-items: center; margin-top: 8px; padding: 4px 10px;
+  border-radius: 999px; background: var(--fr-card-2, var(--panel-2)); color: var(--fr-ink-2, var(--text-2));
+  font-size: 11.5px; font-weight: 600;
+}
 
 .chat-send-row {
   display: grid; grid-template-columns: repeat(3, 44px) minmax(0, 1fr) 44px;
