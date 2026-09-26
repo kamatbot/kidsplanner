@@ -52,7 +52,7 @@ The request/response shapes mirror the family chat routes.
 {
   "type": "hermes-nudge",
   "id": "<nudgeKey>",
-  "kind": "day-end | home-kid | home-kid-later | home-kid-followup | kid-reminder | home-parent | dinner-tonight | dinner-ideas | dinner-week | dinner-week-draft",
+  "kind": "day-end | home-kid | home-kid-later | home-kid-followup | kid-reminder | home-parent | dinner-tonight | dinner-ideas | dinner-week | dinner-week-draft | approval",
   "title": null,
   "lines": ["Paneer wraps · 20 min · you have 7 of 9"],
   "actions": [
@@ -175,3 +175,39 @@ Only the thread owner is notified.
 - It is null when the kid has no timed commitments today.
 
 **`sent`** covers the last 3 days, for every recipient.
+
+## 7. Approvals
+
+When Hermes requests an Operator approval (MCP `fametc_approvals_request`), the server posts an `approval` card into the approving parent's thread, or into every parent's thread when no approver is named, and pushes it.
+- The card's `lines` show the exact proposed action.
+- Its buttons are `approve` (primary) and `reject`.
+- Both run the same `decideApproval` → `continueApproved` path as the web Today case card, with the tapping parent as the actor and the stored action hash.
+- Whichever surface decides first wins. A later tap on a stale card resolves it with the current state, for example "Already approved".
+- `approval` is server-only: the Mac cannot post it.
+
+## 8. Today strip (web and iOS)
+
+A slim "Hermes" strip at the top of Today, above the Needs-you hero, for both parent and kid Today.
+
+**What it shows.** Candidates are messages in the signed-in person's Hermes thread that have all of:
+- `senderType: "agent"`;
+- a `card.type` of `"hermes-nudge"`;
+- a `card.state.status` of `"open"`;
+- not deleted.
+
+A candidate is shown when either:
+- it has at least one action without `open` that isn't `done` (it is **actionable**), and it was posted within the last **18 hours**; or
+- it has no such action, and it was posted within the last **2 hours** (a status like "school ended now").
+
+Show at most **2**, newest first. Hide the strip entirely when there are none: no empty state, no placeholder.
+
+**How each row works**
+- A small "Hermes" label with the sparkles mark in violet.
+- The message text, at most 2 lines.
+- The card's buttons, behaving exactly as in chat (§3).
+- Tapping the text opens the Hermes chat room.
+- Buttons share state with the chat thread. A tap in the strip updates the same message in the chat, and a resolved row leaves the strip.
+
+**Where the data comes from**
+- **Web:** the already-loaded Hermes thread state.
+- **iOS:** load the `"hermes"` room when Today appears and on pull-to-refresh, unless it's already loaded.
