@@ -6,8 +6,8 @@
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f1efec",
-  "theme_color": "#f1efec",
+  "background_color": "#F4F5F7",
+  "theme_color": "#F4F5F7",
   "categories": ["family", "lifestyle", "productivity"],
   "prefer_related_applications": false,
   "icons": [

@@ -2289,6 +2289,10 @@ function markDaily5Done(part) {
 }
 function applyDaily5Done() {
   const s = load(daily5DoneKey()) || {};
+  if (typeof isKidSession === 'function' && isKidSession() && currentFamily) {
+    const observed = todayRingData.get(todayRingDataKey(sessionUser.kidId,isoDate(new Date())))?.progress?.parts;
+    ['news','quote','word','bt','puzzle'].forEach(key => { if (observed?.[key]?.status === 'completed') s[key] = true; });
+  }
   const parts = [['news', 'News reflection'], ['quote', 'Quote reflection'], ['word', 'Word activity']];
   const quest = document.getElementById('daily-quest-summary');
   if (quest) {
@@ -2312,11 +2316,14 @@ function applyDaily5Done() {
 }
 
 function renderTodayLearningRings(done = load(daily5DoneKey()) || {}) {
+  const ownProgress = typeof isKidSession === 'function' && isKidSession() && currentFamily ? todayRingData.get(todayRingDataKey(sessionUser.kidId,isoDate(new Date())))?.progress : null;
   ['news','quote','word','challenge'].forEach(key => {
     const target = document.getElementById('fr-learning-' + key);
     if (!target) return;
-    const complete = key === 'challenge' ? !!(done.bt || done.puzzle) : !!done[key];
-    target.innerHTML = famRing({ size:44,stroke:6,key:`learning-${key}`,rings:[{ value:complete ? 1 : 0,total:1,color:'var(--fr-d3)',radius:17 }],label:`${key}: ${complete ? 'Done' : 'Not completed'}` });
+    const recorded = (key === 'challenge' ? ['puzzle','bt'] : [key]).map(part => ownProgress?.parts?.[part]?.status);
+    const complete = (key === 'challenge' ? !!(done.bt || done.puzzle) : !!done[key]) || recorded.includes('completed');
+    const started = !complete && recorded.includes('started');
+    target.innerHTML = famRing({ size:44,stroke:6,key:`learning-${key}`,rings:[{ value:complete ? 1 : started ? .35 : 0,total:1,color:'var(--fr-d3)',radius:17 }],label:`${key}: ${complete ? 'Done' : started ? 'Started' : 'Not completed'}` });
     if (key === 'challenge') document.getElementById('fr-challenge-status').textContent = complete ? 'Done ✓' : 'Brain teaser & puzzle';
   });
 }
@@ -4451,7 +4458,7 @@ function renderHomeworkHub() {
   const error = homeworkLoadState === 'error' ? `<div class="homework-load-error" role="alert">Couldn't refresh homework. ${homeworkItems.length ? 'Showing the last loaded assignments.' : ''}<button type="button" class="btn-link" onclick="loadHomework().then(renderHomeworkHub)">Try again</button></div>` : '';
   const empty = homeworkLoadState === 'loading' ? 'Loading assignments…' : homeworkLoadState === 'error' ? 'Assignments are temporarily unavailable.' : homeworkWorkspaceStatus === 'done' ? 'No completed assignments in this view yet.' : (homeworkItems.length ? 'No open assignments match these filters.' : 'No homework yet. Add an assignment or connect a school feed in Settings.');
   const ringKids = (currentFamily?.kids || []).filter(kid => !isKidSession() || kid.id === sessionUser.kidId);
-  const ringSummary = ringKids.map(kid => { const hw = todayKidProgress(kid.id,isoDate(new Date())).homework;
+  const ringSummary = homeworkLoadState !== 'ready' ? '' : ringKids.map(kid => { const hw = todayKidProgress(kid.id,isoDate(new Date())).homework;
     return `<button type="button" class="fr-homework-kid" onclick="setActiveKid('${todayActionIdArg(kid.id)}','homework')">${famRing({size:52,stroke:6,key:`homework-${kid.id}`,rings:[{value:hw.done,total:hw.total,color:'var(--fr-hw)'}],label:`${kid.name}: ${hw.done} of ${hw.total} homework done this week`})}<span><b>${esc(kid.name)}</b><span>${hw.left} left this week${hw.overdue ? ` · ${hw.overdue} overdue` : ''}</span></span></button>`;
   }).join('');
   list.innerHTML = `${error}<div class="fr-homework-rings">${ringSummary}</div>
@@ -5423,13 +5430,11 @@ async function renderTodayFams(force = false) {
       fetchedAt: Date.now()
     });
   }));
-  if (current()) paintTodayKidCards();
+  if (current()) { paintTodayKidCards(); applyDaily5Done(); }
 }
 
-// Meals "Tonight" card (docs/MEALS-PLAN.md §7 "Today" integration). Best-
-// effort and read-only here for everyone (kids included — the "Cooked it"
-// action lives on /meals itself, gated there): a Meals fetch failure must
-// never break the rest of Today, so any error just leaves the card hidden.
+// Parent-only Tonight link. A Meals fetch failure leaves the chip hidden
+// without interrupting the rest of Today.
 async function famRenderTodayMeals(todayIso) {
   const card = document.getElementById('today-meals-card');
   const body = document.getElementById('today-meals-body');

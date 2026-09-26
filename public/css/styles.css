@@ -1648,3 +1648,6 @@ html.dark #dashboard-screen .kid-profile-avatar { color: #15121F; }
   .chat-dock.chat-collapsed { right: 16px; bottom: 92px; border-radius: 20px; }
   .chat-fab { display: flex; right: 16px; bottom: 92px; width: 56px; height: 56px; }
 }
+
+#child-nav .kid-profile-avatar { width: 26px; height: 26px; font-size: 12px; }
+.fr-mobile-more-header button { min-width: 44px; min-height: 44px; }

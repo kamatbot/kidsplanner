@@ -130,3 +130,22 @@ test('failed and pending homework/habit loads never claim empty or complete', ()
   ctx.homeworkLoadState='loading'; ctx.goalsLoadState='loading';
   assert.match(ctx.todayKidRowHtml({id:'a',name:'Alex'},true,'loading','2026-09-26','loading'),/Loading homework/);
 });
+
+test('learning tiles combine current child server progress with local completions', () => {
+  const nodes = Object.fromEntries(['news','quote','word','challenge'].map(key => [`fr-learning-${key}`,{}]));
+  nodes['fr-challenge-status'] = {};
+  const values = {};
+  const ctx = setup(['renderTodayLearningRings'], {
+    document:{getElementById:id=>nodes[id]},isKidSession:()=>true,currentFamily:{id:'family'},sessionUser:{kidId:'a'},
+    todayRingDataKey:()=> 'a-today',todayRingData:new Map([['a-today',{progress:{parts:{
+      news:{status:'completed'},word:{status:'started'},puzzle:{status:'started'},bt:{status:'completed'}
+    }}}]]),
+    famRing:options=>{values[options.key]=options.rings[0].value;return options.label;},
+  });
+  ctx.renderTodayLearningRings({quote:true});
+  assert.deepEqual(values,{'learning-news':1,'learning-quote':1,'learning-word':.35,'learning-challenge':1});
+  assert.equal(nodes['fr-challenge-status'].textContent,'Done ✓');
+  ctx.isKidSession=()=>false;
+  ctx.renderTodayLearningRings({});
+  assert.deepEqual(values,{'learning-news':0,'learning-quote':0,'learning-word':0,'learning-challenge':0},'parent tiles never inherit a child’s records');
+});

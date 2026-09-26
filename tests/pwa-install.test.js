@@ -31,7 +31,7 @@ test("every authenticated web shell advertises the same install manifest", () =>
   for (const page of ["public/index.html", "public/trips.html", "public/meals.html"]) {
     const html = read(page);
     assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);
-    assert.match(html, /<meta name="theme-color" content="#f1efec">/);
+    assert.equal(html.match(/<meta name="theme-color" content="([^"]+)">/)[1], JSON.parse(read("public/manifest.webmanifest")).theme_color);
     assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png">/);
   }
 });
