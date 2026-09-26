@@ -24,7 +24,7 @@ No real-account production navigation or passkey registration/authentication cer
 
 ## Latest presentation change
 
-Moved the web My Corner entry into the Today header, immediately before the school-sync status. Responsive wrapping and open/close verified in Chromium at 390, 1024 and 1920 pixels. This localized presentation change uses UX_FAST focused evidence; no full CI rerun or deployment was performed for it.
+Commit `4ca8daa` moved the web My Corner entry into the Today header, immediately before the school-sync status. Responsive wrapping and open/close verified in Chromium at 390, 1024 and 1920 pixels. This localized presentation change uses UX_FAST focused evidence; no full CI rerun or deployment was performed for it.
 
 ## Current authorization and external state
 
@@ -34,6 +34,6 @@ The release worker had already initiated a Hostinger upload/build before the sto
 
 ## Security issue requiring resolution before another release
 
-The release worker reported that its uploaded archive is publicly downloadable and contains `.env.hostinger` and an APNs `.p8` key. Do not reuse that archive or publish its URL. The owner was informed and authorized removing the exposed archive without changing the running app. The existing release worker owns this cleanup; final outcome is pending. Credential rotation and a safe private-file provisioning/upload path need resolution with the owner before further deployment. Do not expose secret values in logs, messages or commits.
+The release worker reported that its uploaded archive is publicly downloadable and contains `.env.hostinger` and an APNs `.p8` key. Do not reuse that archive or publish its URL. The owner was informed and authorized removing the exposed archive without changing the running app. The worker subsequently verified GET 404 for the exact archive URL and its absence from the Hostinger file listing. It had already disappeared before deletion was needed; no deletion API, rebuild or rollback was performed. The running app remains unchanged. Previously exposed credentials still require rotation. Credential rotation and a safe private-file provisioning/upload path need resolution with the owner before further deployment. Do not expose secret values in logs, messages or commits.
 
-The private local incident receipt (including exact provider archive path) is `.dev-data/daily-four/release/deploy-revoked-20260926.json`. Cleanup status may be updated in a later handoff commit. This document contains no credentials or download URL.
+The private local incident receipt (including exact provider archive path) is `.dev-data/daily-four/release/deploy-revoked-20260926.json`. Archive unavailability is verified; credential rotation remains outstanding. This document contains no credentials or download URL.
