@@ -501,7 +501,8 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .hermes-page-send-btn:focus-visible { outline: 2px solid var(--fr-you); outline-offset: 2px; }
 
 @media (max-width: 700px) {
-  #tab-hermes { max-width: none; }
+  /* Leave room under the composer for the floating family-chat button. */
+  #tab-hermes { max-width: none; padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
   .hermes-conversation-card { min-height: 320px; max-height: none; flex: 1; }
 }
 
