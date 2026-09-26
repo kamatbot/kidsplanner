@@ -277,7 +277,7 @@ struct FamilyRingsKidCard: View {
     private var d3: Int? { snapshotKnown ? daily3 : nil }
     private var currentWallet: FamsWallet? { snapshotKnown ? wallet : nil }
     private var metrics: [RingMetric?] {
-        [homeworkKnown ? RingMetric(id: "homework", value: homework.done, total: homework.total, color: Palette.frHw, label: "Homework") : nil,
+        [homeworkKnown ? RingMetric(id: "homework", value: homework.total > 0 ? homework.done : 1, total: max(homework.total, 1), color: Palette.frHw, label: "Homework") : nil,
          d3.map { RingMetric(id: "daily3", value: $0, total: 4, color: Palette.frD3, label: "Daily 4") },
          habitsKnown ? RingMetric(id: "habits", value: habits.done, total: habits.total, color: Palette.frHab, label: "Habits") : nil]
     }

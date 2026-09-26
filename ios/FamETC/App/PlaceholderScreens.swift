@@ -308,7 +308,7 @@ struct HomeworkScreen: View {
                     } label: {
                         HStack(spacing: Space.sm) {
                             FamilyRing(style: .kid, diameter: 44, metrics: [
-                                RingMetric(id: "homework", value: progress.done, total: progress.total,
+                                RingMetric(id: "homework", value: progress.total > 0 ? progress.done : 1, total: max(progress.total, 1),
                                            color: Palette.frHw, label: "Homework")
                             ])
                             VStack(alignment: .leading, spacing: 2) {
