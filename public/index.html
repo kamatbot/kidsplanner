@@ -111,6 +111,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </nav>
     <dialog class="fr-mobile-more" id="mobile-more-dialog" aria-label="More navigation">
       <div class="fr-mobile-more-header"><strong>More</strong><button type="button" aria-label="Close menu" onclick="this.closest('dialog').close()">×</button></div>
+      <button type="button" data-tab="hermes" onclick="this.closest('dialog').close();switchNavTab('hermes')">Hermes</button>
       <button type="button" data-tab="activities" onclick="this.closest('dialog').close();switchNavTab('activities')">Activities</button>
       <a href="/trips">Trips</a>
       <a class="parent-only" href="/meals">Meals</a>
@@ -126,6 +127,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <nav class="kid-topbar-nav">
         <button class="kid-topbar-nav-item sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')" aria-label="Today" title="Today">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="hermes" onclick="switchNavTab('hermes')" aria-label="Hermes" title="Hermes">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14 10L22 12L14 14L12 22L10 14L2 12L10 10Z"></path></svg>
         </button>
         <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')" aria-label="Calendar" title="Calendar">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
@@ -157,6 +161,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <button class="sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
             <span>Today</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="hermes" onclick="switchNavTab('hermes')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14 10L22 12L14 14L12 22L10 14L2 12L10 10Z"></path></svg>
+            <span>Hermes</span>
+            <span class="sidebar-nav-badge" id="sidebar-hermes-badge" hidden>0</span>
           </button>
           <button class="sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
@@ -241,11 +250,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               <span class="today-sync-dot" id="today-sync-dot"></span><span id="today-sync-text"></span>
             </div>
           </header>
-
-          <!-- Hermes strip (docs/HERMES-THREADS-CONTRACT.md §8) — up to 2 open
-               hermes-nudge/status cards from the signed-in person's own thread.
-               Filled by renderTodayHermesStrip() (app.js); hidden when empty. -->
-          <section class="fr-hermes-strip" id="today-hermes-strip" aria-label="From Hermes" hidden></section>
 
           <section class="today-actions-card fr-hero" id="today-actions-card" aria-labelledby="today-actions-title">
             <div id="today-parent-ring" class="fr-you-ring" aria-live="polite"></div>
@@ -499,6 +503,31 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
               </section>
           </div>
+        </div>
+
+        <!-- Hermes Tab — the private per-user assistant thread, moved off
+             Today into its own nav tab (docs/HERMES-THREADS-CONTRACT.md).
+             "Waiting on you" lists actionable open hermes-nudge/approval
+             cards; the conversation below shows every message; the composer
+             posts through the same send path as the chat dock's Hermes room
+             (see handleSendHermesMessage in app.js). Filled by
+             renderHermesPage(). -->
+        <div class="tab-panel" id="tab-hermes">
+          <header class="hermes-page-header">
+            <h1 class="page-title">Hermes</h1>
+            <p class="hermes-page-meta">Your private assistant · only you see this thread</p>
+          </header>
+          <section class="hermes-pending-card" id="hermes-pending" aria-label="Waiting on you" hidden>
+            <div class="hermes-section-label">Waiting on you</div>
+            <div id="hermes-pending-list"></div>
+          </section>
+          <section class="hermes-conversation-card">
+            <div class="hermes-page-messages" id="hermes-page-messages"></div>
+            <form id="hermes-page-form" class="hermes-page-send-row" onsubmit="handleSendHermesMessage(event, document.getElementById('hermes-page-input'))">
+              <input type="text" id="hermes-page-input" class="hermes-page-input" placeholder="Message Hermes…" aria-label="Message Hermes" autocomplete="off" maxlength="4000">
+              <button type="submit" class="hermes-page-send-btn" title="Send" aria-label="Send"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg></button>
+            </form>
+          </section>
         </div>
 
         <!-- Calendar Tab (canvas 1b) — one calendar surface with the header

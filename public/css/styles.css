@@ -456,6 +456,55 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
   font-size: 11.5px; font-weight: 600;
 }
 
+/* ============================================================
+   HERMES TAB — the private assistant thread's own nav tab (moved off
+   Today; docs/HERMES-THREADS-CONTRACT.md). Family Rings tokens only, so
+   dark mode follows for free. Message bubbles/nudge cards/buttons reuse
+   the generic .chat-msg*/.hermes-nudge-* classes above unchanged — those
+   aren't scoped to .chat-dock, so they render identically in here.
+============================================================ */
+#tab-hermes { max-width: 760px; }
+.hermes-page-header { display: flex; flex-direction: column; gap: 2px; }
+.hermes-page-meta { margin: 0; font-size: 13px; color: var(--fr-ink-2); }
+
+.hermes-pending-card,
+.hermes-conversation-card { background: var(--fr-card); border: 0; border-radius: 20px; box-shadow: var(--fr-shadow); }
+.hermes-pending-card { padding: 16px 20px; }
+.hermes-section-label {
+  font: 600 12px/1.4 "Geist", sans-serif; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--fr-you-ink); margin-bottom: 4px;
+}
+.hermes-pending-row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--fr-rule); }
+.hermes-pending-row:last-child { border-bottom: 0; }
+.hermes-pending-row .hermes-nudge-actions { margin-top: 0; }
+.hermes-pending-text { font-size: 14px; line-height: 1.4; color: var(--fr-ink); }
+.hermes-pending-lines { display: flex; flex-direction: column; font-size: 12.5px; line-height: 1.4; color: var(--fr-ink-2); }
+.hermes-pending-lines span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+.hermes-conversation-card { display: flex; flex-direction: column; flex: 1; min-height: 420px; max-height: 68vh; }
+.hermes-page-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.hermes-page-send-row {
+  display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+  border-top: 1px solid var(--fr-rule);
+}
+.hermes-page-input {
+  flex: 1; min-width: 0; min-height: 44px; border: 1px solid var(--fr-rule); border-radius: 999px;
+  padding: 10px 16px; font-family: inherit; font-size: 13.5px; background: var(--fr-card-2); color: var(--fr-ink);
+}
+.hermes-page-input:focus-visible { outline: 2px solid var(--fr-you); outline-offset: 2px; }
+.hermes-page-send-btn {
+  flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--fr-you); color: var(--fr-on-you);
+}
+.hermes-page-send-btn:hover { background: var(--fr-you-ink); }
+.hermes-page-send-btn:focus-visible { outline: 2px solid var(--fr-you); outline-offset: 2px; }
+
+@media (max-width: 700px) {
+  #tab-hermes { max-width: none; }
+  .hermes-conversation-card { min-height: 320px; max-height: none; flex: 1; }
+}
+
 .chat-send-row {
   display: grid; grid-template-columns: repeat(3, 44px) minmax(0, 1fr) 44px;
   align-items: center; gap: 8px; padding: 12px 16px;

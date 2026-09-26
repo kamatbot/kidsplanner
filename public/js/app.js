@@ -3987,7 +3987,7 @@ function renderHermesUnavailableNotice() {
 }
 
 async function loadHermesMessages() {
-  if (!hermesAvailable) { if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice(); return; }
+  if (!hermesAvailable) { if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice(); renderHermesPage(); return; }
   try {
     const data = await hermesApi('/api/hermes/thread/messages?limit=50');
     const first = !hermesLoaded;
@@ -4001,7 +4001,8 @@ async function loadHermesMessages() {
     if (err.status === 404) hermesAvailable = false;
     if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice();
   }
-  renderTodayHermesStrip();
+  updateHermesBadge();
+  renderHermesPage();
 }
 
 // Same id-dedupe merge as mergeChatMessages, kept separate so a family-room
@@ -4016,7 +4017,8 @@ function mergeHermesMessages(msgs, { quiet = false } = {}) {
   if (!changed) return;
   hermesMessages = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   hermesLastId = hermesMessages[hermesMessages.length - 1].id;
-  renderTodayHermesStrip();
+  updateHermesBadge();
+  renderHermesPage();
   if (chatActiveRoom === 'hermes') renderHermesMessages();
   else if (!quiet) { chatRoomDot.hermes = true; renderChatRoomTabs(); }
 }
@@ -4072,9 +4074,12 @@ function stopHermesPolling() {
   if (hermesPollAbort) { hermesPollAbort.abort(); hermesPollAbort = null; }
 }
 
-async function handleSendHermesMessage(e) {
+// Shared by the chat dock's Hermes room composer (#chat-input) and the
+// Hermes tab's own composer (#hermes-page-input) — same POST path either
+// way, just told which input element to read/clear/scroll for.
+async function handleSendHermesMessage(e, inputEl) {
   e.preventDefault();
-  const input = document.getElementById('chat-input');
+  const input = inputEl || document.getElementById('chat-input');
   const text = input ? input.value.trim() : '';
   if (!text || hermesSending) return;
   hermesSending = true;
@@ -4085,7 +4090,9 @@ async function handleSendHermesMessage(e) {
     if (sessionUser?.id !== sendingUser) return;
     if (input && input.value === sentDraft) input.value = '';
     if (data && data.message) mergeHermesMessages([data.message]);
-    scrollChatToBottom();
+    // Your own message: always jump to the bottom of whichever pane sent it.
+    const scrollEl = document.getElementById(input && input.id === 'hermes-page-input' ? 'hermes-page-messages' : 'chat-messages');
+    if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
   } catch (err) {
     toast(`❌ ${err.message}`);
   } finally {
@@ -4123,7 +4130,8 @@ async function handleHermesNudgeAction(messageId, actionId, btn) {
     hermesMessages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     hermesLastId = hermesMessages.length ? hermesMessages[hermesMessages.length - 1].id : hermesLastId;
     renderHermesMessages();
-    renderTodayHermesStrip();
+    updateHermesBadge();
+    renderHermesPage();
   } catch (err) {
     if (btn) btn.disabled = false;
     toast(`❌ ${err.message}`);
@@ -4228,64 +4236,83 @@ function switchChatRoom(room) {
   scrollChatToBottom();
 }
 
-// Web push deep link (data.url "/app?chat=hermes", routed by sw.js) — opens
-// the dock (or the phone/kid slide-over) straight on the Hermes tab.
-function openHermesChat() {
-  switchChatRoom('hermes');
-  const dock = document.getElementById('chat-dock');
-  if (!dock) return;
-  if (dock.classList.contains('chat-collapsed')) dock.classList.add('chat-force-open');
-  dock.classList.add('chat-open');
-  markChatSeen();
-}
-
-// Today strip selection (contract §8), pure so it's cheap to unit-test: open
-// hermes-nudge cards from the signed-in person's own thread. A card with an
-// actionable button (no `open`, not `done`) shows for 18h; a status-only card
-// (no such button, e.g. "school ended now") shows for 2h. Newest 2, newest first.
-function todayHermesStripItems(messages, nowMs = Date.now()) {
+// "Waiting on you" (Hermes tab) + nav badge selection, pure so it's cheap to
+// unit-test: open hermes-nudge cards from the signed-in person's own thread
+// with at least one actionable button (no `open`, not `done`), posted within
+// the last 18h (contract §8's actionable window — the passive/status-only
+// branch doesn't apply here, since this list is only for things that need
+// the user to act). Newest first, capped at `limit` (Infinity for the badge).
+function hermesPendingItems(messages, nowMs = Date.now(), limit = 3) {
   const ACTIONABLE_WINDOW_MS = 18 * 3600 * 1000;
-  const STATUS_WINDOW_MS = 2 * 3600 * 1000;
   return (messages || [])
     .filter((m) => m && !m.deleted && m.senderType === 'agent' && m.card
       && m.card.type === 'hermes-nudge' && m.card.state && m.card.state.status === 'open')
+    .filter((m) => (Array.isArray(m.card.actions) ? m.card.actions : []).some((a) => a && !a.open && !a.done))
     .filter((m) => {
       const postedAt = Date.parse(m.createdAt);
-      if (!Number.isFinite(postedAt)) return false;
-      const actionable = (Array.isArray(m.card.actions) ? m.card.actions : []).some((a) => a && !a.open && !a.done);
-      return (nowMs - postedAt) <= (actionable ? ACTIONABLE_WINDOW_MS : STATUS_WINDOW_MS);
+      return Number.isFinite(postedAt) && (nowMs - postedAt) <= ACTIONABLE_WINDOW_MS;
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 2);
+    .slice(0, limit);
 }
 
-// One strip row: "Hermes" label, the message text (2-line clamp in CSS), then
-// the same buttons chat would show (contract §3) — every candidate here is
-// already state.status "open" per todayHermesStripItems, so buttons always
-// render when the card has any (a status-only card has none).
-function renderTodayHermesStripRow(m) {
+// One "Waiting on you" row: the message text, the approval proposal lines
+// when present, then the same buttons chat would show (contract §3) — every
+// candidate here is already state.status "open" and actionable per
+// hermesPendingItems, so buttons always render.
+function renderHermesPendingRow(m) {
   const actions = Array.isArray(m.card.actions) ? m.card.actions : [];
   const buttons = actions.length
     ? `<div class="hermes-nudge-actions">${actions.map((a) => renderHermesNudgeButton(m.id, a)).join('')}</div>`
     : '';
   // An approval shows the exact proposal (When / For / Notes) before the buttons.
   const lines = m.card.kind === 'approval' && Array.isArray(m.card.lines) ? m.card.lines.slice(0, 3) : [];
-  const details = lines.length ? `<span class="fr-hermes-lines">${lines.map((line) => `<span>${esc(line)}</span>`).join('')}</span>` : '';
-  return `<div class="fr-hermes-row" data-message-id="${esc(m.id)}">
-    <button type="button" class="fr-hermes-open" onclick="openHermesChat()">
-      <span class="fr-hermes-label"><span class="fr-hermes-mark" aria-hidden="true">✦</span>Hermes</span>
-      <span class="fr-hermes-text">${esc(m.text || '')}</span>${details}
-    </button>
+  const details = lines.length ? `<div class="hermes-pending-lines">${lines.map((line) => `<span>${esc(line)}</span>`).join('')}</div>` : '';
+  return `<div class="hermes-pending-row" data-message-id="${esc(m.id)}">
+    <div class="hermes-pending-text">${esc(m.text || '')}</div>${details}
     ${buttons}
   </div>`;
 }
 
-function renderTodayHermesStrip() {
-  const el = document.getElementById('today-hermes-strip');
+// Sidebar nav badge: how many actionable open cards (contract §8) are
+// waiting, no cap — hidden at 0. Kid sessions/phone have no sidebar element,
+// so this is a safe no-op there (see updateHomeworkBadge for the same shape).
+function updateHermesBadge() {
+  const badge = document.getElementById('sidebar-hermes-badge');
+  if (!badge) return;
+  const count = hermesPendingItems(hermesMessages, Date.now(), Infinity).length;
+  badge.textContent = count;
+  badge.hidden = count === 0;
+}
+
+// Hermes tab (own nav tab — docs/HERMES-THREADS-CONTRACT.md): "Waiting on
+// you", then the full conversation. Self-guards on the tab being active so
+// every hermesMessages-changing call site can call it unconditionally.
+function renderHermesPage() {
+  const panel = document.getElementById('tab-hermes');
+  if (!panel || !panel.classList.contains('active')) return;
+
+  const pending = document.getElementById('hermes-pending');
+  const pendingList = document.getElementById('hermes-pending-list');
+  if (pending && pendingList) {
+    const items = hermesPendingItems(hermesMessages, Date.now(), 3);
+    pending.hidden = !items.length;
+    pendingList.innerHTML = items.map(renderHermesPendingRow).join('');
+  }
+
+  const el = document.getElementById('hermes-page-messages');
   if (!el) return;
-  const items = todayHermesStripItems(hermesMessages);
-  el.hidden = !items.length;
-  el.innerHTML = items.map(renderTodayHermesStripRow).join('');
+  if (!hermesAvailable) { el.innerHTML = '<p class="text-muted chat-empty">Hermes isn’t available right now.</p>'; return; }
+  if (!hermesMessages.length) {
+    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? 'Hermes checks in here when a kid’s day ends, homework is due or dinner isn’t planned. You can also ask it anything.' : 'Loading…'}</p>`;
+    return;
+  }
+  // Auto-scroll to bottom when the tab is freshly opened (scrollHeight/
+  // clientHeight both read 0 while the panel was display:none, so this is
+  // trivially true) or when new messages arrive while already at bottom.
+  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  el.innerHTML = hermesMessages.map((m) => renderHermesMessage(m)).join('');
+  if (wasAtBottom) el.scrollTop = el.scrollHeight;
 }
 
 /* ============================================================
@@ -4465,7 +4492,7 @@ function toggleKidChat() {
   if (open) markChatSeen();
 }
 
-const CHAT_DOCK_MODE = { today: 'open', child: 'collapsed', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', notes: 'hidden', settings: 'hidden' };
+const CHAT_DOCK_MODE = { today: 'open', child: 'collapsed', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', hermes: 'collapsed', notes: 'hidden', settings: 'hidden' };
 function applyChatDockState(tab) {
   const dock = document.getElementById('chat-dock');
   if (!dock) return;
@@ -4563,7 +4590,7 @@ function setupKidRequestNudges() {
 }
 
 async function handleSendChatMessage(e) {
-  if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom === 'hermes') return handleSendHermesMessage(e);
+  if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom === 'hermes') return handleSendHermesMessage(e, document.getElementById('chat-input'));
   e.preventDefault();
   const input = document.getElementById('chat-input');
   const text = input ? input.value.trim() : '';
@@ -5828,7 +5855,6 @@ function renderTodayScreen() {
   }
 
   document.getElementById('tab-today')?.classList.toggle('fr-kid-today', isKidSession());
-  renderTodayHermesStrip();
   renderTodaySetupCard();
   renderTodayFams();
   initDaily5Tabs();
@@ -5979,12 +6005,10 @@ function renderTodaySchedule(todayIso) {
   if (row && next.length && dayOver) row.innerHTML = todayDayStrip(next,tomorrowIso,false);
 }
 
-// Keep the "Now" line accurate without a full Today reload. Also re-runs the
-// Hermes strip's age windows (contract §8) so a card fades out on its own,
-// with no new message needed to trigger the re-render.
+// Keep the "Now" line accurate without a full Today reload.
 setInterval(() => {
   const tab = document.getElementById('tab-today');
-  if (tab && tab.classList.contains('active')) { renderTodaySchedule(isoDate(new Date())); renderTodayHermesStrip(); }
+  if (tab && tab.classList.contains('active')) renderTodaySchedule(isoDate(new Date()));
 }, 5 * 60 * 1000);
 
 function renderTodayHomeworkRow(item, todayIso) {
@@ -6804,6 +6828,7 @@ function switchNavTab(tab) {
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
   if (tab === 'notes') { loadNotes(); }
+  if (tab === 'hermes') { renderHermesPage(); }
 
   // Chat is docked/collapsed (not hidden) on every tab except Notes/Settings —
   // keep it live and polling on all of those, stop only where it's hidden.
@@ -8148,8 +8173,9 @@ async function init() {
   }
   const requestedChild = new URLSearchParams(window.location.search).get('child');
   if (requestedChild) openChildView(requestedChild);
-  // Web push deep link for Hermes (data.url "/app?chat=hermes", see sw.js).
-  if (new URLSearchParams(window.location.search).get('chat') === 'hermes') openHermesChat();
+  // Web push deep link for Hermes (data.url "/app?chat=hermes", see sw.js) —
+  // Hermes now lives in its own nav tab, not the chat dock.
+  if (new URLSearchParams(window.location.search).get('chat') === 'hermes') switchNavTab('hermes');
   startKidRequestPolling(); // parents: surface pending kid sign-in requests
   renderInstallAppControl();
   registerServiceWorker().then(renderNotificationsControl).then(startReminderLoop);
