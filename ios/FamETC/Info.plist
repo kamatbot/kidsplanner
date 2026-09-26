@@ -35,8 +35,7 @@
 	<string>Fam ETC uses the camera to scan timetables, homework, and your pantry so items can be added automatically.</string>
 	<key>UIAppFonts</key>
 	<array>
-		<string>SpaceGrotesk.ttf</string>
-		<string>JetBrainsMono.ttf</string>
+		<string>Geist.ttf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>

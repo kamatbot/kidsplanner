@@ -2,27 +2,32 @@ import SwiftUI
 
 // MARK: - Card
 
-/// The app's panel surface: rounded, bordered, soft two-layer shadow (mirrors the
-/// web `--shadow`). The base building block for every screen.
+/// The app's elevated, borderless panel surface.
 struct Card<Content: View>: View {
     var padding: CGFloat = Space.xl
     @ViewBuilder var content: () -> Content
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var radius: CGFloat {
+        horizontalSizeClass == .regular ? Radius.cardLarge : Radius.card
+    }
 
     var body: some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(padding)
-            .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .strokeBorder(Palette.border, lineWidth: 1)
-            )
-            .cardShadow()
+            .background {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Palette.frCard)
+                    .shadow(color: Color.adaptive(Color(hex: 0x101828, alpha: 0.06), .black.opacity(0.40)), radius: 1, y: 1)
+                    .shadow(color: Color.adaptive(Color(hex: 0x101828, alpha: 0.06), .black.opacity(0.35)), radius: 12, y: 8)
+            }
     }
 }
 
 extension View {
-    /// Two-layer soft shadow matching the web `--shadow` token.
+    /// Two-layer soft shadow matching the Family Rings elevation token.
     func cardShadow() -> some View {
         self
             .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 1)
@@ -73,8 +78,10 @@ struct MicroLabel: View {
     let text: String
     var body: some View {
         Text(text)
-            .font(Typography.caption.weight(.medium))
-            .foregroundStyle(Palette.textSecond)
+            .font(Typography.sectionLabel)
+            .tracking(1)
+            .textCase(.uppercase)
+            .foregroundStyle(Palette.frInk2)
     }
 }
 
@@ -191,18 +198,16 @@ struct SignalButton: View {
                 Text(title)
             }
             .font(Typography.body.weight(.semibold))
-            .foregroundStyle(Palette.onAccent)
+            .foregroundStyle(Palette.frOnYou)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Space.md)
-            .background(Signal.gradient(), in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .frame(minHeight: 44)
+            .background(Palette.frYou, in: Capsule())
         }
         .buttonStyle(PressableStyle())
     }
 }
 
-/// Solid violet primary action button — onAccent text, `Radius.field` corners.
-/// The everyday "do a thing" button; reserve `SignalButton`'s coral→violet
-/// gradient for the one momentum CTA per screen.
+/// Solid violet primary action button.
 struct AccentButton: View {
     let title: String
     var systemImage: String? = nil
@@ -218,10 +223,10 @@ struct AccentButton: View {
                 Text(title)
             }
             .font(Typography.body.weight(.semibold))
-            .foregroundStyle(Palette.onAccent)
+            .foregroundStyle(Palette.frOnYou)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, Space.md)
-            .background(Palette.accent, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .frame(minHeight: 44)
+            .background(Palette.frYou, in: Capsule())
         }
         .buttonStyle(PressableStyle())
     }
