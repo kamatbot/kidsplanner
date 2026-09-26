@@ -125,7 +125,7 @@ function esc(s) {
 function toast(msg) {
   const el = document.getElementById('toast');
   if (!el) return;
-  el.textContent = msg;
+  el.textContent = String(msg ?? '').replace(/^❌\s*/, '');
   el.classList.add('show');
   clearTimeout(el._timer);
   el._timer = setTimeout(() => el.classList.remove('show'), 2800);
