@@ -37,34 +37,32 @@
 #tab-today .daily5-tabs {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  max-width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px;
-  gap: 4px;
-  margin: 14px 0 0;
+  border-radius: 12px;
+  padding: 3px;
+  gap: 2px;
+  margin: 14px 0 16px;
 }
 #tab-today .daily5-tabs button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 16px;
+  min-height: 36px;
+  padding: 0 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 9px;
   background: transparent;
   color: var(--text-2);
-  font: 600 14px/1.2 "Geist", sans-serif;
+  font: var(--t-label);
   text-decoration: none;
   cursor: pointer;
   transition: background-color .2s cubic-bezier(.2,.8,.2,1), color .2s cubic-bezier(.2,.8,.2,1);
 }
 #tab-today .daily5-tabs button[aria-selected="true"] {
-  background: var(--fr-you-soft);
-  color: var(--fr-you-ink);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 12%, transparent);
 }
 #tab-today .daily5-tabs button[data-done="true"]::after {
   content: "";
@@ -333,13 +331,19 @@
 #tab-today .daily5-streak.is-zero .streak-flame,
 #tab-today .daily5-streak.is-zero .streak-count { display: none; }
 
-/* Ring tiles are shortcuts to the tablist within the Daily 3 card.
-   Challenge remains separate; switching preserves mounted panels and drafts. */
+/* Family Rings activity tiles. The accessible tablist stays separate from
+   Challenge; its three mounted panels preserve every draft and interaction. */
 #tab-today .fr-learning-tiles { display: grid; grid-template-columns: 3fr 1.2fr; gap: 16px; }
-#tab-today .fr-learning-tiles .daily5-launchers { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin: 0; padding: 0; border: 0; background: none; border-radius: 0; }
-#tab-today .fr-learning-tiles :is(.daily5-launchers button,.fr-challenge-tile) { display: flex; align-items: center; gap: 14px; padding: 14px 18px; min-height: 88px; background: var(--fr-card); color: var(--fr-ink); border: 0; border-radius: 24px; box-shadow: var(--fr-shadow); text-align: left; cursor: pointer; font-family: inherit; }
+#tab-today .fr-learning-tiles .daily5-tabs { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin: 0; padding: 0; border: 0; background: none; border-radius: 0; }
+#tab-today .fr-learning-tiles :is(.daily5-tabs button,.fr-challenge-tile) { display: flex; align-items: center; gap: 14px; padding: 14px 18px; min-height: 88px; background: var(--fr-card); color: var(--fr-ink); border: 0; border-radius: 24px; box-shadow: var(--fr-shadow); text-align: left; cursor: pointer; font-family: inherit; }
+#tab-today .fr-learning-tiles button[aria-selected="true"] { box-shadow: var(--fr-shadow); }
+#tab-today .fr-learning-tiles .daily5-tabs button::after { content: none; }
 #tab-today .fr-learning-tiles button:hover { background: var(--fr-card-2); }
-#tab-today .fr-learning-ring { display: block; width: 44px; height: 44px; flex: none; }
+#tab-today .fr-learning-ring { display: block; position: relative; width: 44px; height: 44px; flex: none; }
+#tab-today .fr-learning-tiles [aria-selected="true"] .fr-learning-ring::after {
+  content: ""; position: absolute; width: 10px; height: 10px; border-radius: 50%;
+  top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--fr-you);
+}
 #tab-today .fr-learning-tiles b { display: block; font-size: 16px; font-weight: 700; }
 #tab-today .fr-learning-tiles small { display: block; font-size: 12px; font-weight: 400; color: var(--fr-ink-2); margin-top: 2px; }
 #tab-today .today-daily3 .today-section-head { margin-bottom: 8px; }
@@ -348,6 +352,6 @@
 #tab-today .streak-flame { color: var(--fr-d3); }
 @container today (max-width: 700px) {
   #tab-today .fr-learning-tiles { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-  #tab-today .fr-learning-tiles .daily5-launchers { display: contents; }
-  #tab-today .fr-learning-tiles :is(.daily5-launchers button,.fr-challenge-tile) { padding: 14px; min-height: 76px; border-radius: 20px; gap: 10px; }
+  #tab-today .fr-learning-tiles .daily5-tabs { display: contents; }
+  #tab-today .fr-learning-tiles :is(.daily5-tabs button,.fr-challenge-tile) { padding: 14px; min-height: 76px; border-radius: 20px; gap: 10px; }
 }
