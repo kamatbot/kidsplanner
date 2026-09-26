@@ -35,7 +35,6 @@
   <link rel="stylesheet" href="/css/today-home.css">
   <link rel="stylesheet" href="/css/study-pal.css">
   <link rel="stylesheet" href="/css/mood-check-in.css">
-  <link rel="stylesheet" href="/css/my-corner.css">
   <link rel="stylesheet" href="/css/today-learning.css">
   <link rel="stylesheet" href="/css/child-view.css">
   <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
@@ -246,11 +245,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               <h1 class="today-greeting" id="today-greeting"></h1>
               <p class="today-summary" id="today-summary"><span id="today-date-label"></span><span id="today-summary-needs"></span><span id="today-summary-events"></span></p>
             </div>
-            <div class="today-header-actions">
-              <div id="fam-my-corner-entry" hidden></div>
-              <div class="today-sync-status" id="today-sync-status" hidden>
-                <span class="today-sync-dot" id="today-sync-dot"></span><span id="today-sync-text"></span>
-              </div>
+            <div class="today-sync-status" id="today-sync-status" hidden>
+              <span class="today-sync-dot" id="today-sync-dot"></span><span id="today-sync-text"></span>
             </div>
           </header>
 
@@ -1576,7 +1572,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <script src="/js/child-view.js"></script>
 <script src="/js/mood-check-in.js"></script>
 <script src="/js/study-pal.js"></script>
-<script src="/js/my-corner.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

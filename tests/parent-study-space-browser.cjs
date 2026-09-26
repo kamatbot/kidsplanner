@@ -27,28 +27,11 @@ const assert = require('node:assert/strict');
       assert.equal(await count(),before+1);
       const messages = (await (await context.request.get(base+'/api/chat/messages')).json()).messages;
       assert.equal(messages.at(-1).senderType,'parent');
-      await page.getByRole('button',{name:'My Corner · stickers & a note'}).click();
-      await page.getByRole('button',{name:'Add sticker',exact:true}).waitFor();
-      let collection = page.locator('.fam-corner-desktop-drawer');
-      if(width<650) {await page.getByRole('button',{name:'Add sticker',exact:true}).click(); collection = page.getByRole('dialog',{name:'Sticker collection'});}
-      const picker=collection.getByLabel('Sticker category');
-      assert.equal(await collection.locator('.fam-corner-collection button').count(),48);
-      await picker.selectOption('Moods'); assert.equal(await collection.locator('.fam-corner-collection button').count(),13);
-      await picker.selectOption('Activities'); assert.equal(await collection.locator('.fam-corner-collection button').count(),16);
-      await picker.selectOption('Little things'); assert.equal(await collection.locator('.fam-corner-collection button').count(),19);
-      await picker.selectOption('Moods');
-      await collection.getByRole('button',{name:'joyful panda',exact:true}).click();
-      await page.getByRole('button',{name:'Save changes',exact:true}).click();
-      await page.getByRole('status').filter({hasText:'Saved.'}).waitFor();
-      await page.getByRole('button',{name:'Close',exact:true}).click();
-      await page.getByRole('button',{name:'My Corner · stickers & a note'}).click();
-      const panda = page.getByRole('button',{name:'Select joyful panda'}).first();
-      await panda.waitFor();
-      await panda.locator('img').evaluate(img => img.decode());
-      assert.ok(await panda.locator('img').evaluate(img=>img.naturalWidth===1254));
-      await page.screenshot({path:'.dev-data/daily-four/parent-corner-'+width+'.png'});
+      // My Corner and stickers are iOS-only; the web offers neither.
+      assert.equal(await page.getByRole('button',{name:/My Corner/}).count(),0);
+      await page.screenshot({path:'.dev-data/daily-four/parent-koko-'+width+'.png'});
       await context.close();
     }
-    console.log('PASS parent Koko, explicit emotion preview/cancel/send, 48 sticker categories at 390/1024px');
+    console.log('PASS parent Koko, explicit emotion preview/cancel/send, no web My Corner at 390/1024px');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -549,7 +549,6 @@ async function bootstrapSession() {
   }
   sessionUser = me.user;
   window.FamStudyPal?.render(document.getElementById('today-study-pal'), sessionUser);
-  window.famMyCorner?.setUser(sessionUser, null);
   save('fam_user', sessionUser);
   applyRoleScopingToUI();
 
@@ -5827,7 +5826,6 @@ async function retryTodayProgress() {
 function renderTodayScreen() {
   window.famMoodCheckIn?.mount(() => ["kid", "parent"].includes(sessionUser?.role) && currentFamily ? `${sessionUser.id}:${currentFamily.id}:${sessionUser.role}` : "");
   window.FamStudyPal?.render(document.getElementById('today-study-pal'), sessionUser);
-  window.famMyCorner?.setUser(sessionUser, currentFamily?.id);
   if (!sessionUser) return;
   const mobileAvatar = document.getElementById('mobile-user-avatar');
   if (mobileAvatar) {
@@ -6902,7 +6900,6 @@ function toast(msg) {
 async function handleLogout() {
   window.famMoodCheckIn?.clear();
   window.FamStudyPal?.render(document.getElementById('today-study-pal'), null);
-  window.famMyCorner?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
