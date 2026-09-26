@@ -14,6 +14,11 @@ truth is `ios/FamETC/`; native tabs remain native and secondary surfaces use
 `lib/` route/store modules. The scanner bridge remains unwired; do not treat
 the old `WebShellController` path as shipped.
 
+Hostinger deployments must come from merged `main`, never a feature branch.
+Verify the release SHA equals current `origin/main` before packaging or upload,
+including UX_FAST releases. When the owner reserves merge/deploy for Claude,
+push the feature branch and hand it over without merging or deploying.
+
 For ordinary web release discovery, start at `scripts/pack-deploy.sh`. It is
 the authoritative packer: it requires an approved env source, stamps the
 commit, excludes native sources, bundles named runtime extras, and boot-smokes
