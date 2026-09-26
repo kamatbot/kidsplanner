@@ -5,7 +5,11 @@ import XCTest
 final class TodayVisualUITests: XCTestCase {
     private let fixtureURL = URL(string: "http://127.0.0.1:18257")!
 
-    override func setUpWithError() throws { continueAfterFailure = false; try resetFixture() }
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        try resetFixture()
+    }
 
     func testParentNeedsYouCountsReviewAndDoneJourney() throws {
         let app = launch(.parent)
@@ -54,11 +58,13 @@ final class TodayVisualUITests: XCTestCase {
         attach(app, "family-rings-kid-card-dark-ax")
         let news = app.descendants(matching: .any)["today.daily3.news"].firstMatch
         reveal(news, app)
-        for id in ["today.daily3.news", "today.daily3.quote", "today.daily3.word", "today.daily3.challenge"] {
-            XCTAssertTrue(wait(id, app).exists, "Daily 3 must expose all four tiles")
-        }
         news.tap()
         XCTAssertTrue(app.navigationBars["Interesting News"].waitForExistence(timeout: 8))
+        app.navigationBars["Interesting News"].buttons["Close"].tap()
+        for id in ["today.daily3.quote", "today.daily3.word", "today.daily3.challenge"] {
+            // At accessibility sizes later tiles are lazily created while scrolling.
+            reveal(app.descendants(matching: .any)[id].firstMatch, app)
+        }
     }
 
     func testChildHabitTouchUpdatesRingAndStaysScoped() throws {
@@ -68,8 +74,10 @@ final class TodayVisualUITests: XCTestCase {
         reveal(card, app)
         XCTAssertTrue(card.label.contains("Habits 1 of 2 today"))
         // The card combines VoiceOver elements with named custom actions. This
-        // verifies the separate sighted touch target at standard iPad text size.
-        card.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.68)).tap()
+        // verifies the separate sighted touch target at standard text size.
+        let point = UIDevice.current.userInterfaceIdiom == .phone
+            ? CGVector(dx: 0.7, dy: 0.65) : CGVector(dx: 0.25, dy: 0.68)
+        card.coordinate(withNormalizedOffset: point).tap()
         XCTAssertTrue(app.navigationBars["Habits today"].waitForExistence(timeout: 5))
         let habit = app.switches["today.habit.qa-visual-goal-2"]
         XCTAssertTrue(habit.waitForExistence(timeout: 5))
@@ -94,6 +102,40 @@ final class TodayVisualUITests: XCTestCase {
         // The fixture's error variant fails goals, wallet and learning data but
         // deliberately keeps /api/family/actions available, so it cannot reach
         // the hero retry state without adding a fixture failure mode.
+    }
+
+    func testCompactPhonePortraitAndLandscape() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = launch(.parent, scenario: "family-rings-density")
+        defer { XCUIDevice.shared.orientation = .portrait }
+        waitForHero("6 things need you", app)
+        let first = wait("today.kidcard.qa-visual-kid-1", app)
+        let second = app.descendants(matching: .any)["today.kidcard.qa-visual-kid-2"].firstMatch
+        XCTAssertLessThan(first.frame.height, 335, "A child summary should fit compactly without tall metric stacks")
+        XCTAssertLessThan(first.frame.minY, 540, "Three actions should leave room for a child card on the first screen")
+        attach(app, "compact-phone-portrait-busy")
+        reveal(first, app)
+        attach(app, "compact-phone-child-cards")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        // Rotation shortens the viewport; reveal the lazy grid before querying it.
+        app.swipeUp(velocity: .slow)
+        let sameRow = expectation(for: NSPredicate { _, _ in
+            first.exists && second.exists && abs(first.frame.minY - second.frame.minY) < 2
+                && first.frame.maxX <= second.frame.minX
+        }, evaluatedWith: app)
+        wait(for: [sameRow], timeout: 10)
+        for _ in 0..<3 {
+            let offset = 12 - first.frame.minY
+            if abs(offset) < 4 { break }
+            let distance = max(-app.frame.height * 0.35, min(app.frame.height * 0.35, offset))
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: distance)))
+        }
+        Thread.sleep(forTimeInterval: 2)
+        attach(app, "compact-phone-landscape-two-children")
+        XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 2)
+        XCTAssertLessThanOrEqual(first.frame.maxX, second.frame.minX)
+        XCTAssertLessThan(second.frame.maxX, app.frame.maxX)
     }
 
     private enum Role: String { case parent, kid }
@@ -125,7 +167,7 @@ final class TodayVisualUITests: XCTestCase {
         wait(for: [changed], timeout: 8)
     }
     private func attach(_ app: XCUIApplication, _ name: String) {
-        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "SYNTHETIC QA — \(name)"; shot.lifetime = .keepAlways; add(shot)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); shot.name = "SYNTHETIC QA — \(name)"; shot.lifetime = .keepAlways; add(shot)
     }
     private func resetFixture() throws {
         var request = URLRequest(url: fixtureURL.appendingPathComponent("__qa/reset")); request.httpMethod = "POST"; request.timeoutInterval = 10

@@ -224,6 +224,7 @@ const server = http.createServer(async (req, res) => {
   const ringsScenario = scenario.startsWith("family-rings");
   const ringsEmpty = scenario === "family-rings-empty";
   const ringsError = scenario === "family-rings-error";
+  const ringsDensity = scenario === "family-rings-density";
   const learningScenario = scenario.startsWith("learning-polish") || ringsScenario;
   const failureScenario = scenario.endsWith("-failure");
   const visualScenario = scenario === "today-visual" || learningScenario;
@@ -270,7 +271,7 @@ const server = http.createServer(async (req, res) => {
   if (ringsScenario && (url.pathname === "/api/goals" || /^\/api\/goals\/[^/]+\/check$/.test(url.pathname))) {
     if (url.pathname === "/api/goals" && req.method === "GET") {
       if (ringsError) return send(res, 503, { error: "Synthetic habits unavailable." });
-      const rows = ringsEmpty ? [] : state.rings.goals.filter(goal => role !== "kid" || goal.kidId === sessionKid.id);
+      const rows = ringsEmpty || ringsDensity ? [] : state.rings.goals.filter(goal => role !== "kid" || goal.kidId === sessionKid.id);
       return send(res, 200, { goals: rows });
     }
     const goal = !ringsEmpty && state.rings.goals.find(item => item.id === decodeURIComponent(url.pathname.split("/")[3]));
@@ -309,8 +310,8 @@ const server = http.createServer(async (req, res) => {
     if (!visualFamily.kids.some(child => child.id === kidId)) return send(res, 404, { error: "No child." });
     if (ringsError) return send(res, 503, { error: "Synthetic wallet unavailable." });
     const earned = ringsEmpty ? 0 : 12;
-    return send(res, 200, { kidId, isParent: role === "parent", balance: earned, totalEarned: earned,
-      weekly: { earned, limit: 30, weekStart: today }, goal: null,
+    return send(res, 200, { kidId, isParent: role === "parent", balance: ringsDensity ? (kidId === visualKid.id ? 882 : 775) : earned, totalEarned: earned,
+      weekly: { earned, limit: ringsDensity ? 300 : 30, weekStart: today }, goal: null,
       schoolPoints: { current: null, highWater: 0, resetPending: false }, chores: [], transactions: [], completedLessons: [] });
   }
   if (visualScenario && /^\/api\/children\/[^/]+\/insights$/.test(url.pathname)) {
@@ -319,7 +320,7 @@ const server = http.createServer(async (req, res) => {
     if (!sessionFamily.kids.some(child => child.id === childId)) return send(res, 404, { error: "No child" });
     if (ringsError) return send(res, 503, { error: "Synthetic learning unavailable." });
     return send(res, 200, { kidId: childId, date: today, schoolStats: null, homePlan: null,
-      daily5: { date: today, parts: ringsScenario ? (ringsEmpty ? {} : ringsParts) : { news: { status: "completed", updatedAt: isoNow } } } });
+      daily5: { date: today, parts: ringsScenario ? (ringsEmpty || ringsDensity ? {} : ringsParts) : { news: { status: "completed", updatedAt: isoNow } } } });
   }
   if (url.pathname === "/api/chat/rooms") return send(res, 200, [{ roomId: "family", tripId: null, title: sessionFamily.name, memberCount: 2 }]);
   if (url.pathname === "/api/chat/messages" && req.method === "GET") return send(res, 200, { messages: [] });
@@ -350,6 +351,12 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { homework: rows });
   }
   if (url.pathname === "/api/family/actions") {
+    if (ringsDensity && req.method === "GET" && role === "parent") {
+      const titles = ["Assessment 1 Revision Booklet", "Test de compréhension écrite 10.1", "Reading Homework – Magnets", "Complete the science journal", "Review the reading log", "Pack the activity bag"];
+      return send(res, 200, { actions: titles.map((title, index) => ({ ...visualAction,
+        id: `qa-density-${index}`, title, sourceType: "homework", sourceId: "qa-visual-homework-1",
+        kidId: index % 2 ? visualSibling.id : visualKid.id, status: "open" })) });
+    }
     if (ringsScenario && req.method === "POST") {
       if (role === "kid") return send(res, 403, { error: "Parents only." });
       const body = await readJSON(req);

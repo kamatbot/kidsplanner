@@ -9,6 +9,15 @@ struct TodayParentHeader: View {
 
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.dynamicTypeSize) private var textSize
+
+    private var isCompactPhone: Bool {
+        !textSize.isAccessibilitySize && (
+            sizeClass != .regular ||
+            (UIDevice.current.userInterfaceIdiom == .phone && verticalSizeClass == .compact)
+        )
+    }
 
     private var overdue: Int {
         store.kids.reduce(0) { $0 + FamilyRingsMath.homework(kidID: $1.id, items: store.homework, today: Agenda.todayKey()).overdue }
@@ -19,12 +28,64 @@ struct TodayParentHeader: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: Space.md) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(greeting)
-                    .font(sizeClass == .regular ? Typography.greetingRegular : Typography.greeting)
-                    .tracking(-0.5)
-                    .foregroundStyle(Palette.text)
+        HStack(alignment: isCompactPhone ? .top : .center, spacing: isCompactPhone ? Space.sm : Space.md) {
+            headerCopy
+            Spacer(minLength: Space.sm)
+            HStack(spacing: isCompactPhone ? Space.xs : Space.md) {
+                Button {
+                    Haptics.impact(.light)
+                    onAddEvent()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Palette.onAccent)
+                        .frame(width: 44, height: 44)
+                        .background(Palette.accent, in: Circle())
+                }
+                .buttonStyle(PressableStyle(scale: 0.94))
+                .accessibilityLabel("Add event")
+                .accessibilityHint("Create a family event")
+
+                Menu {
+                    Button(action: onMore) { Label("Notes", systemImage: "note.text") }
+                } label: {
+                    TodayInitialAvatar(
+                        text: store.me?.name?.first.map(String.init) ?? "F",
+                        color: Palette.accentSoft
+                    )
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel("More")
+                .accessibilityHint("Open Notes and other family tools")
+            }
+        }
+    }
+
+    @ViewBuilder private var headerCopy: some View {
+        VStack(alignment: .leading, spacing: isCompactPhone ? 2 : 3) {
+            Text(greeting)
+                .font(isCompactPhone
+                    ? Theme.font(22, weight: .bold, relativeTo: .title2)
+                    : (sizeClass == .regular ? Typography.greetingRegular : Typography.greeting))
+                .tracking(-0.5)
+                .foregroundStyle(Palette.text)
+                .lineLimit(isCompactPhone ? 2 : nil)
+                .minimumScaleFactor(isCompactPhone ? 0.9 : 1)
+                .accessibilityLabel(greeting)
+
+            if isCompactPhone {
+                Text(dateLabel)
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.frInk2)
+                    .lineLimit(1)
+                (Text(overdue > 0 ? "\(overdue) overdue" : "Nothing overdue")
+                    .foregroundColor(overdue > 0 ? Palette.frDanger : Palette.frInk2)
+                 + Text(" · \(eventCount) event\(eventCount == 1 ? "" : "s") today").foregroundColor(Palette.frInk2))
+                    .font(Typography.label)
+                    .lineLimit(1)
+                    .accessibilityLabel("\(overdue > 0 ? "\(overdue) overdue" : "Nothing overdue"). \(eventCount) event\(eventCount == 1 ? "" : "s") today")
+            } else {
                 Text(dateLabel)
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
@@ -32,66 +93,53 @@ struct TodayParentHeader: View {
                 (Text(overdue > 0 ? "\(overdue) overdue" : "Nothing overdue")
                     .foregroundColor(overdue > 0 ? Palette.frDanger : Palette.frInk2)
                  + Text(" · \(eventCount) event\(eventCount == 1 ? "" : "s") today").foregroundColor(Palette.frInk2))
-                    .font(Typography.label).fixedSize(horizontal: false, vertical: true)
+                    .font(Typography.label)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: Space.sm)
-            Button {
-                Haptics.impact(.light)
-                onAddEvent()
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Palette.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(Palette.accent, in: Circle())
-            }
-            .buttonStyle(PressableStyle(scale: 0.94))
-            .accessibilityLabel("Add event")
-            .accessibilityHint("Create a family event")
-
-            Menu {
-                Button(action: onMore) { Label("Notes", systemImage: "note.text") }
-            } label: {
-                TodayInitialAvatar(
-                    text: store.me?.name?.first.map(String.init) ?? "F",
-                    color: Palette.accentSoft
-                )
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-            }
-            .accessibilityLabel("More")
-            .accessibilityHint("Open Notes and other family tools")
         }
+        .layoutPriority(1)
     }
 }
 
 struct TodayChildHeader: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     let dateLabel: String
     let onMore: () -> Void
 
     private var kid: Kid? { store.kids.first { $0.id == store.me?.kidId } }
     private var kidName: String { kid?.name ?? store.me?.name ?? "there" }
+    private var isCompactPhone: Bool {
+        !textSize.isAccessibilitySize && (
+            sizeClass != .regular ||
+            (UIDevice.current.userInterfaceIdiom == .phone && verticalSizeClass == .compact)
+        )
+    }
 
     var body: some View {
-        HStack(alignment: .center, spacing: Space.md) {
+        HStack(alignment: isCompactPhone ? .top : .center, spacing: isCompactPhone ? Space.sm : Space.md) {
             if let kid {
-                KidProfileAvatar(kid: kid, size: 48)
+                KidProfileAvatar(kid: kid, size: isCompactPhone ? 40 : 48)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             } else {
                 TodayInitialAvatar(text: String(kidName.prefix(1)), color: Palette.accentSoft)
-                    .frame(width: 48, height: 48)
+                    .frame(width: isCompactPhone ? 40 : 48, height: isCompactPhone ? 40 : 48)
             }
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: isCompactPhone ? 2 : 3) {
                 Text("Hi \(kidName)")
-                    .font(Typography.greeting)
+                    .font(isCompactPhone ? Theme.font(22, weight: .bold, relativeTo: .title2) : Typography.greeting)
                     .foregroundStyle(Palette.text)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(isCompactPhone ? 2 : nil)
+                    .minimumScaleFactor(isCompactPhone ? 0.9 : 1)
+                    .accessibilityLabel("Hi \(kidName)")
                 Text(textSize.isAccessibilitySize ? Date().formatted(.dateTime.month(.abbreviated).day()) : dateLabel)
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
+                    .lineLimit(isCompactPhone ? 1 : nil)
             }
+            .layoutPriority(1)
             Spacer(minLength: Space.sm)
             Menu {
                 Button(action: onMore) { Label("Notes", systemImage: "note.text") }

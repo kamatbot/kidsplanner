@@ -1,12 +1,13 @@
 # Native Family Rings and Study Pal handoff
 
-2026-09-26 · branch `codex/ios-family-rings` · version 1.2 (12).
+2026-09-26 · branch `codex/ios-family-rings` · version 1.2 (13).
 
 Open `ios/FamETC.xcodeproj` in the isolated `ios-family-rings` worktree. The project is generated from `ios/project.yml` with XcodeGen. The owner has authorized merging the integrated source and deploying its web/backend counterpart. Native archive/upload remains owner-controlled. The release receipt records the final commit, CI run and live web build.
 
 ## Included
 
 - Exact adaptive Family Rings palette, bundled Geist, borderless cards and reusable accessible rings without the zero-progress cap dot.
+- Compact iPhone Today header and Needs You summary, inline child metrics, and a width-adaptive child grid with both children on one row in landscape. Accessibility text sizes retain a single column and expanded typography.
 - Native parent/kid Today, scoped counts in `FamilyRingsMath`, action Review/Done flows, native habits, child cards, calendar strip, Tonight and four learning tiles. Challenge remains separate from the Daily 3 count.
 - Child-only Koko panel with the next homework task, Energy check-in and My Corner. It opens as a compact anchored iPad popover or a smaller iPhone sheet; full activities open only after selection. Energy requires preview/send to share; private notes and six sticker choices persist only for the owning child. Save failures retain the draft.
 - Account-switch protections: private views/state clear immediately; native and WebKit session cookies clear before onboarding. Cookie cleanup retains its WebKit data store through asynchronous work.
@@ -22,6 +23,8 @@ Local Xcode 27.1, iOS 27 simulators and Node v24.21.0. Synthetic accounts only; 
 - iPad interaction evidence covers portrait/landscape, light/dark, accessibility XXXL, Koko hide/show persistence, homework navigation, explicit mood preview/cancel/retry, corner movement/removal and failed-save recovery, parent exclusion, Daily 3 visibility, action creation/snooze/delete and empty/error states.
 - iPhone SE (375pt): light parent/dark child layouts inspected; Koko-to-homework navigation passed in `se-navigation.xcresult`.
 - Combined native integration: all selected unit tests and all five iPad chat tests passed, including the exact keyboard/picker/draft round-trip. Koko homework and parent Review/Done passed. The separate habit-touch recovery (`habit-control.xcresult`) verifies the actual switch, sibling exclusion and updated ring count. Earlier coordinate/row test failures were corrected using the recorded UI hierarchy.
+
+- iPhone density follow-up (`UX_FAST`, build 13): compact portrait and same-row landscape assertions passed on iPhone Pro and 375pt SE. The SE also passed child habit touch/update, empty/unavailable data, and dark accessibility XXXL Daily 3 navigation. UI tests now reveal offscreen lazy content before querying it and capture the full display after rotation. Earlier test-harness failures remain in the diagnostic bundles; `density-se-final.xcresult` supersedes them. The iPad parent Review/Done and child habit journeys passed in `density-ipad.xcresult`. Business counts and server behavior are unchanged.
 
 Implementation checks are focused under the standing local-iteration policy. Web deployment requires one successful full CI run for the final merged commit; its ID and result belong in the release receipt. Earlier failed diagnostic runs remain on disk; the named recovery results supersede their corrected failures.
 

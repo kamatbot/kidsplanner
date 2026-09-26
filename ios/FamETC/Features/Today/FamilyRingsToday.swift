@@ -4,6 +4,7 @@ import SwiftUI
 struct FamilyRingsHero: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onSeeAll: () -> Void
@@ -24,10 +25,11 @@ struct FamilyRingsHero: View {
             ? "\(progress.open) \(progress.open == 1 ? "thing needs" : "things need") you, \(progress.cleared) cleared today"
             : "\(progress.open) to do, \(progress.cleared) cleared today"
     }
-    private var wide: Bool { sizeClass == .regular && !textSize.isAccessibilitySize }
+    private var compact: Bool { !textSize.isAccessibilitySize && (sizeClass == .compact || verticalSizeClass == .compact) }
+    private var wide: Bool { !compact && !textSize.isAccessibilitySize }
 
     var body: some View {
-        Card(padding: wide ? 28 : 20) {
+        Card(padding: compact ? 14 : 28) {
             if store.me == nil || store.family == nil || (store.isLoadingActions && viewerItems.isEmpty) {
                 VStack(spacing: 16) {
                     Circle().fill(Palette.frCard2).frame(width: 152, height: 152)
@@ -44,13 +46,20 @@ struct FamilyRingsHero: View {
                 }
             } else {
                 let layout = wide ? AnyLayout(HStackLayout(alignment: .center, spacing: 24))
-                                  : AnyLayout(VStackLayout(spacing: 20))
+                                  : AnyLayout(VStackLayout(spacing: 8))
                 layout {
-                    heroRing.frame(width: wide ? 250 : nil)
-                    VStack(alignment: .leading, spacing: 12) {
-                        ViewThatFits(in: .horizontal) {
-                            HStack { heading; Spacer(); allLink }
-                            VStack(alignment: .leading) { heading; allLink }
+                    if !compact { heroRing.frame(width: wide ? 250 : nil) }
+                    VStack(alignment: .leading, spacing: compact ? 6 : 12) {
+                        if compact {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 10) { compactSummary; Spacer(minLength: 4); allLink }
+                                VStack(alignment: .leading, spacing: 4) { compactSummary; allLink }
+                            }
+                        } else {
+                            ViewThatFits(in: .horizontal) {
+                                HStack { heading; Spacer(); allLink }
+                                VStack(alignment: .leading) { heading; allLink }
+                            }
                         }
                         if active.isEmpty {
                             Text("All clear. Nothing waiting right now.")
@@ -58,10 +67,10 @@ struct FamilyRingsHero: View {
                             Button("Family actions", action: onSeeAll).frame(minHeight: 44)
                         } else {
                             ForEach(Array(active.prefix(3))) { action in
-                                FamilyRingsActionRow(action: action)
+                                FamilyRingsActionRow(action: action, compact: compact)
                                 if action.id != active.prefix(3).last?.id { Divider().overlay(Palette.frRule) }
                             }
-                            if active.count > 3 {
+                            if active.count > 3 && !compact {
                                 Button("+\(active.count - 3) more", action: onSeeAll)
                                     .font(Typography.body.weight(.semibold))
                                     .frame(minHeight: 44).accessibilityIdentifier("today.hero.more")
@@ -84,23 +93,35 @@ struct FamilyRingsHero: View {
             .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.frYouInk)
             .frame(minHeight: 44).accessibilityIdentifier("today.hero.seeAll")
     }
+    private var compactSummary: some View {
+        HStack(spacing: 10) {
+            heroRing
+            VStack(alignment: .leading, spacing: 3) {
+                heading
+                Text("\(progress.cleared) cleared today")
+                    .font(Typography.caption).foregroundStyle(Palette.frInk2)
+            }.accessibilityHidden(true)
+        }
+    }
     private var heroRing: some View {
         ZStack {
-            FamilyRing(style: .parent, diameter: wide ? 188 : 152, metrics: [
+            FamilyRing(style: .parent, diameter: compact ? 64 : wide ? 188 : 152, metrics: [
                 RingMetric(id: "you", value: progress.cleared, total: progress.total,
                            color: Palette.frYou, label: store.isParent ? "Needs you" : "Your day")
             ]).id(identity)
             VStack(spacing: 3) {
                 Text(progress.open == 0 && progress.cleared > 0 ? "✓" : "\(progress.open)")
-                    .font(wide ? Typography.heroNumeralRegular : Typography.heroNumeral)
+                    .font(compact ? Typography.statNumeral : wide ? Typography.heroNumeralRegular : Typography.heroNumeral)
                     .tracking(-2).monospacedDigit().foregroundStyle(Palette.frInk)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge).minimumScaleFactor(0.6)
-                Text(progress.open == 0 ? "All clear" : store.isParent ? "need you" : "to do")
-                    .font(Typography.chip).foregroundStyle(Palette.frYouInk)
-                Text("\(progress.cleared) cleared today")
-                    .font(Theme.font(11, relativeTo: .caption)).foregroundStyle(Palette.frInk2)
+                if !compact {
+                    Text(progress.open == 0 ? "All clear" : store.isParent ? "need you" : "to do")
+                        .font(Typography.chip).foregroundStyle(Palette.frYouInk)
+                    Text("\(progress.cleared) cleared today")
+                        .font(Theme.font(11, relativeTo: .caption)).foregroundStyle(Palette.frInk2)
+                }
             }
-            .padding(28).frame(width: wide ? 188 : 152)
+            .padding(compact ? 8 : 28).frame(width: compact ? 64 : wide ? 188 : 152)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .accessibilityElement(children: .ignore)
@@ -113,6 +134,7 @@ private struct FamilyRingsActionRow: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var homeworkRef: HWRef?
     let action: FamilyAction
+    var compact = false
     private var kid: Kid? {
         let id = action.kidId ?? (action.assigneeType == "kid" ? action.assigneeId : nil)
         return store.kids.first { $0.id == id }
@@ -122,23 +144,23 @@ private struct FamilyRingsActionRow: View {
     private var meta: String { "\(kid?.name ?? "Family / shared") · \(action.sourceType.capitalized) · \(ActionQueue.dueLabel(for: action))" }
     var body: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-                                                 : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+                                                 : AnyLayout(HStackLayout(alignment: .center, spacing: compact ? 8 : 12))
         layout {
-            HStack(spacing: 12) {
-                if let kid { KidProfileAvatar(kid: kid, size: 40) }
+            HStack(spacing: compact ? 8 : 12) {
+                if let kid { KidProfileAvatar(kid: kid, size: compact ? 28 : 40) }
                 else { Text("F").font(Typography.itemTitle).foregroundStyle(Palette.frOnYou)
-                    .frame(width: 40, height: 40).background(Palette.frYou, in: Circle()).accessibilityHidden(true) }
+                    .frame(width: compact ? 28 : 40, height: compact ? 28 : 40).background(Palette.frYou, in: Circle()).accessibilityHidden(true) }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(action.title).font(Typography.itemTitle).foregroundStyle(Palette.frInk)
+                    Text(action.title).font(compact ? Typography.body.weight(.semibold) : Typography.itemTitle).foregroundStyle(Palette.frInk)
                         .lineLimit(textSize.isAccessibilitySize ? nil : 2)
-                    Text(meta).font(Typography.label).foregroundStyle(overdue ? Palette.frDanger : Palette.frInk2)
+                    Text(meta).font(compact ? Typography.caption : Typography.label).foregroundStyle(overdue ? Palette.frDanger : Palette.frInk2)
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityElement(children: .combine)
             }
             if isReview, let sourceID = action.sourceId {
                 Button("Review") { homeworkRef = HWRef(id: sourceID) }
-                    .buttonStyle(RingsCapsuleStyle(filled: true))
+                    .buttonStyle(RingsCapsuleStyle(filled: true, compact: compact))
                     .accessibilityIdentifier("today.action.review.\(action.id)")
             } else if store.canCompleteAction(action) {
                 Button("Done") {
@@ -151,7 +173,7 @@ private struct FamilyRingsActionRow: View {
                            before.dueNow > 0, after.dueNow == 0, after.cleared > 0 { Haptics.notify(.success) }
                     }
                 }
-                .buttonStyle(RingsCapsuleStyle())
+                .buttonStyle(RingsCapsuleStyle(compact: compact))
                 .disabled(store.completingActionIDs.contains(action.id))
                 .accessibilityIdentifier("today.action.done.\(action.id)")
             }
@@ -163,10 +185,11 @@ private struct FamilyRingsActionRow: View {
 
 struct RingsCapsuleStyle: ButtonStyle {
     var filled = false
+    var compact = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.font(Typography.body.weight(.semibold))
             .foregroundStyle(filled ? Palette.frOnYou : Palette.frYouInk)
-            .padding(.horizontal, 18).frame(minHeight: 44)
+            .padding(.horizontal, compact ? 12 : 18).frame(minHeight: 44)
             .background(filled ? Palette.frYou : Color.clear, in: Capsule())
             .overlay(Capsule().strokeBorder(filled ? Color.clear : Palette.frYou, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.7 : 1)
@@ -176,13 +199,16 @@ struct RingsCapsuleStyle: ButtonStyle {
 struct FamilyRingsKidGrid: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var textSize
     let onOpenHomework: () -> Void
     let onDaily3: () -> Void
     var body: some View {
         if !store.kids.isEmpty {
-            LazyVGrid(columns: sizeClass == .regular && !textSize.isAccessibilitySize
-                      ? [GridItem(.adaptive(minimum: 380), spacing: 20)] : [GridItem(.flexible())], spacing: 20) {
+            // An iPhone can stay horizontally compact in landscape. The grid
+            // follows its usable width instead, including safe-area insets.
+            LazyVGrid(columns: textSize.isAccessibilitySize ? [GridItem(.flexible())]
+                      : [GridItem(.adaptive(minimum: sizeClass == .regular && verticalSizeClass != .compact ? 380 : 300), spacing: 12)], spacing: 12) {
                 ForEach(store.kids) { kid in
                     FamilyRingsKidCard(kidID: kid.id, onOpenHomework: onOpenHomework, onDaily3: onDaily3)
                         .id("\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kid.id)|\(Agenda.todayKey())")
@@ -208,6 +234,7 @@ struct FamilyRingsKidGrid: View {
 struct FamilyRingsKidCard: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.scenePhase) private var scenePhase
     @State private var daily3: Int?
@@ -238,7 +265,8 @@ struct FamilyRingsKidCard: View {
     private var homeworkKnown: Bool { !store.isLoadingHomework && store.homeworkError == nil }
     private var habitsKnown: Bool { store.goalsLoadState == .ready }
     private var snapshotKnown: Bool { loadedIdentity == identity && !loading }
-    private var diameter: CGFloat { !store.isParent || sizeClass == .regular ? 156 : 120 }
+    private var compact: Bool { !textSize.isAccessibilitySize && (sizeClass == .compact || verticalSizeClass == .compact) }
+    private var diameter: CGFloat { compact ? 88 : 156 }
     private var d3: Int? { snapshotKnown ? daily3 : nil }
     private var currentWallet: FamsWallet? { snapshotKnown ? wallet : nil }
     private var metrics: [RingMetric?] {
@@ -257,11 +285,11 @@ struct FamilyRingsKidCard: View {
 
     var body: some View {
         if validScope, let kid {
-            Card(padding: sizeClass == .regular ? 24 : 20) {
-                VStack(alignment: .leading, spacing: 16) {
+            Card(padding: compact ? 14 : 24) {
+                VStack(alignment: .leading, spacing: compact ? 8 : 16) {
                     header(kid)
                     let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .center, spacing: 16))
-                                                             : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
+                                                             : AnyLayout(HStackLayout(alignment: .center, spacing: compact ? 12 : 16))
                     layout {
                         Button(action: openBrief) {
                             if loading && !snapshotKnown {
@@ -270,7 +298,7 @@ struct FamilyRingsKidCard: View {
                                 FamilyRing(style: .kid, diameter: diameter, metrics: metrics, accessibilityText: summary, isButtonContent: interactive).id(identity)
                             }
                         }.buttonStyle(.plain).disabled(!interactive)
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: compact ? 0 : 10) {
                             metricButton(number: homeworkKnown ? "\(homework.left)" : "—", title: "homework left", detail: homeworkKnown ? "this week" : "Homework unavailable", color: Palette.frHwInk, id: "homework", action: openHomework)
                             metricButton(number: d3.map { "\($0)/3" } ?? "—", title: "Daily 3 today", detail: dailyStatus, color: Palette.frD3Ink, id: "daily3", action: onDaily3)
                             metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", title: "habits today", detail: habitStatus, color: Palette.frHabInk, id: "habits", action: openHabits)
@@ -330,24 +358,30 @@ struct FamilyRingsKidCard: View {
     }
     private func name(_ kid: Kid) -> some View {
         Button(action: openBrief) {
-            HStack(spacing: 10) { KidProfileAvatar(kid: kid, size: 34); Text(kid.name).font(Typography.kidName).foregroundStyle(Palette.frInk) }
+            HStack(spacing: 10) { KidProfileAvatar(kid: kid, size: compact ? 28 : 34); Text(kid.name).font(compact ? Theme.font(18, weight: .bold, relativeTo: .title3) : Typography.kidName).foregroundStyle(Palette.frInk) }
                 .frame(minHeight: 44)
         }.buttonStyle(.plain).disabled(!interactive)
     }
     private var chip: some View {
         Text(homeworkKnown ? FamilyRingsMath.statusChip(homework: homework) : "Homework unavailable")
-            .font(Typography.chip)
+            .font(compact ? Theme.font(11, weight: .semibold, relativeTo: .caption) : Typography.chip)
             .foregroundStyle(!homeworkKnown ? Palette.frInk2 : homework.overdue > 0 ? Palette.frDanger : homework.dueToday > 0 ? Palette.frHwInk : Palette.frHabInk)
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(!homeworkKnown ? Palette.frCard2 : homework.overdue > 0 ? Palette.frDangerSoft : homework.dueToday > 0 ? Palette.frHwSoft : Palette.frHabSoft, in: Capsule())
     }
     private func metricButton(number: String, title: String, detail: String, color: Color, id: String, action: @escaping () -> Void) -> some View {
         Button { if interactive { action() } } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(number).font(sizeClass == .regular ? Typography.statNumeralRegular : Typography.statNumeral)
+            let layout = compact && !textSize.isAccessibilitySize
+                ? AnyLayout(HStackLayout(alignment: .center, spacing: 8))
+                : AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            layout {
+                Text(number).font(compact ? Typography.statNumber : Typography.statNumeralRegular)
                     .tracking(-0.8).monospacedDigit().foregroundStyle(color)
-                Text(title).font(Typography.label).foregroundStyle(Palette.frInk2)
-                Text(detail).font(Typography.caption).foregroundStyle(color)
+                    .frame(minWidth: compact && !textSize.isAccessibilitySize ? 40 : nil, alignment: .leading)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(Typography.label).foregroundStyle(Palette.frInk2)
+                    Text(detail).font(Typography.caption).foregroundStyle(color)
+                }
             }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }.buttonStyle(.plain).disabled(!interactive)
@@ -357,7 +391,7 @@ struct FamilyRingsKidCard: View {
         Button { if interactive { showFams = true } } label: {
             if let wallet = currentWallet {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) { balance(wallet); weeklyBar(wallet); weekText(wallet) }
+                    HStack(spacing: 8) { balance(wallet); weeklyBar(wallet); weekText(wallet) }
                     VStack(alignment: .leading, spacing: 8) { balance(wallet); weeklyBar(wallet); weekText(wallet) }
                 }
             } else {
@@ -367,7 +401,7 @@ struct FamilyRingsKidCard: View {
             .accessibilityIdentifier("today.kidcard.\(kidID).fams")
     }
     private func balance(_ wallet: FamsWallet) -> some View {
-        Text("\(famsAmount(wallet.balance)) fams").font(Typography.statNumber).monospacedDigit().foregroundStyle(Palette.frInk)
+        Text("\(famsAmount(wallet.balance)) fams").font(compact ? Typography.itemTitle : Typography.statNumber).monospacedDigit().foregroundStyle(Palette.frInk)
     }
     private func weeklyBar(_ wallet: FamsWallet) -> some View {
         GeometryReader { proxy in
