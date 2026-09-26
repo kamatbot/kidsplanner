@@ -24,7 +24,7 @@ final class MyCornerUITests: XCTestCase {
     }
     private func launch(_ cookie: String, large: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchEnvironment = ["FAM_BASE_URL": base, "FAM_ONBOARDED": "1", "FAM_SCREEN": "today", "FAM_DEV_COOKIE": cookie, "FAM_THEME": large ? "dark" : "light"]
+        app.launchEnvironment = ["FAM_BASE_URL": base, "FAM_ONBOARDED": "1", "FAM_SCREEN": "today", "FAM_DEV_COOKIE": cookie, "FAM_THEME": large ? "dark" : "light", "FAM_RESET_ENERGY": "1"]
         app.launchArguments = ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
         app.launch(); return app
     }

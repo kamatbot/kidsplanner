@@ -63,6 +63,7 @@ struct FamETCApp: App {
 ///   FAM_ONBOARDED   "1"                                — skip native onboarding
 ///   FAM_THEME       "light" | "dark"                   — force the app theme
 ///   FAM_SCREEN      today|chat|calendar|homework        — deep-link target tab
+///   FAM_RESET_ENERGY "1"                               — forget today's energy check-in answers
 enum DebugLaunch {
     private static var env: [String: String] { ProcessInfo.processInfo.environment }
 
@@ -87,6 +88,11 @@ enum DebugLaunch {
         let e = env
         if e["FAM_ONBOARDED"] == "1" {
             UserDefaults.standard.set(true, forKey: "fam_onboarded")
+        }
+        if e["FAM_RESET_ENERGY"] == "1" {
+            for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix(EnergyCheckIn.keyPrefix) {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
         if let theme = e["FAM_THEME"], theme == "light" || theme == "dark" {
             UserDefaults.standard.set(theme, forKey: "fam_theme")

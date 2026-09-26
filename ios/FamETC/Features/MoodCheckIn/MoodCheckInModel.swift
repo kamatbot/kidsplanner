@@ -11,6 +11,7 @@ final class MoodCheckInModel {
     private(set) var sending = false
     private(set) var attempted = false
     private(set) var status = ""
+    private(set) var sent = false
     private var messageID = UUID().uuidString
     private var generation = 0
 
@@ -28,7 +29,7 @@ final class MoodCheckInModel {
     }
     func clear() {
         generation += 1
-        energy = nil; draft = ""; previewing = false; sending = false; attempted = false; status = ""
+        energy = nil; draft = ""; previewing = false; sending = false; attempted = false; status = ""; sent = false
         messageID = UUID().uuidString
     }
     func confirm(identity: String, currentIdentity: () -> String,
@@ -43,6 +44,7 @@ final class MoodCheckInModel {
             guard token == generation, identity == currentIdentity() else { clearIfChanged(identity, currentIdentity); return }
             clear()
             status = "Sent to family chat."
+            sent = true
         } catch {
             guard token == generation, identity == currentIdentity() else { clearIfChanged(identity, currentIdentity); return }
             sending = false
@@ -51,5 +53,24 @@ final class MoodCheckInModel {
     }
     private func clearIfChanged(_ identity: String, _ current: () -> String) {
         if identity != current() { clear() }
+    }
+}
+
+/// Once someone answers, the check-in steps aside until tomorrow on this device.
+/// Only the day is kept — never the energy.
+enum EnergyCheckIn {
+    static let keyPrefix = "fam_energy_answered:"
+    private static func key(_ userID: String, _ familyID: String) -> String { keyPrefix + userID + ":" + familyID }
+    static func answeredToday(userID: String?, familyID: String?, today: String = Agenda.todayKey(), defaults: UserDefaults = .standard) -> Bool {
+        guard let userID, let familyID, !userID.isEmpty, !familyID.isEmpty else { return false }
+        return defaults.string(forKey: key(userID, familyID)) == today
+    }
+    static func mark(userID: String?, familyID: String?, today: String = Agenda.todayKey(), defaults: UserDefaults = .standard) {
+        guard let userID, let familyID, !userID.isEmpty, !familyID.isEmpty else { return }
+        defaults.set(today, forKey: key(userID, familyID))
+    }
+    static func unmark(userID: String?, familyID: String?, defaults: UserDefaults = .standard) {
+        guard let userID, let familyID, !userID.isEmpty, !familyID.isEmpty else { return }
+        defaults.removeObject(forKey: key(userID, familyID))
     }
 }

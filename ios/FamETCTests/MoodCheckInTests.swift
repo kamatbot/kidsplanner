@@ -43,4 +43,16 @@ final class MoodCheckInTests: XCTestCase {
         }
         XCTAssertEqual(sends, 1); XCTAssertEqual(model.draft, ""); XCTAssertEqual(model.status, "")
     }
+    func testAnsweringHidesTheCheckInForThatPersonUntilTomorrow() {
+        let defaults = UserDefaults(suiteName: "energy-check-in-tests")!
+        defaults.removePersistentDomain(forName: "energy-check-in-tests")
+        XCTAssertFalse(EnergyCheckIn.answeredToday(userID: "kid1", familyID: "f1", today: "2026-09-26", defaults: defaults))
+        EnergyCheckIn.mark(userID: "kid1", familyID: "f1", today: "2026-09-26", defaults: defaults)
+        XCTAssertTrue(EnergyCheckIn.answeredToday(userID: "kid1", familyID: "f1", today: "2026-09-26", defaults: defaults))
+        XCTAssertFalse(EnergyCheckIn.answeredToday(userID: "kid1", familyID: "f1", today: "2026-09-27", defaults: defaults), "back tomorrow")
+        XCTAssertFalse(EnergyCheckIn.answeredToday(userID: "parent1", familyID: "f1", today: "2026-09-26", defaults: defaults), "per person")
+        XCTAssertEqual(defaults.dictionaryRepresentation().filter { $0.key.hasPrefix(EnergyCheckIn.keyPrefix) }.values.compactMap { $0 as? String }, ["2026-09-26"], "only the day is kept")
+        EnergyCheckIn.unmark(userID: "kid1", familyID: "f1", defaults: defaults)
+        XCTAssertFalse(EnergyCheckIn.answeredToday(userID: "kid1", familyID: "f1", today: "2026-09-26", defaults: defaults), "Cancel undoes the answer")
+    }
 }

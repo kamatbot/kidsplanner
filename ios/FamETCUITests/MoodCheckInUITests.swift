@@ -13,6 +13,7 @@ final class MoodCheckInUITests: XCTestCase {
         app.launchEnvironment["FAM_THEME"] = "dark"
         app.launchEnvironment["FAM_SCREEN"] = "today"
         app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=kid; fam_qa_scenario=learning-polish-failure"
+        app.launchEnvironment["FAM_RESET_ENERGY"] = "1"
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         if UIDevice.current.userInterfaceIdiom == .pad { XCUIDevice.shared.orientation = .landscapeLeft }
         app.launch()
@@ -44,6 +45,9 @@ final class MoodCheckInUITests: XCTestCase {
         XCTAssertEqual(posts.first?["text"] as? String, "My energy is okay today.")
         XCTAssertEqual((state["notePosts"] as? [Any])?.count, 0)
         app.buttons["Cancel"].tap()
+        // Answered today: the check-in steps aside in the Koko panel.
+        XCTAssertTrue(app.navigationBars["Koko"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Energy check-in.")).firstMatch.waitForNonExistence(timeout: 5))
     }
     func testPortraitChildThenParentEnergyPreviewRemainsExplicit() throws {
         continueAfterFailure = false
@@ -54,6 +58,7 @@ final class MoodCheckInUITests: XCTestCase {
         app.launchEnvironment["FAM_SCREEN"] = "today"
         app.launchEnvironment["FAM_THEME"] = "light"
         app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=kid; fam_qa_scenario=today-visual"
+        app.launchEnvironment["FAM_RESET_ENERGY"] = "1"
         app.launch()
         openEnergy(in: app)
         tap("Full", in: app); tap("Preview sharing", in: app)

@@ -24,7 +24,10 @@ struct MoodCheckInView: View {
                     Text("Optional. Your choice isn’t saved. Only Send to family shares a message.")
                         .foregroundStyle(.secondary)
                     ForEach(MoodCheckInModel.Energy.allCases, id: \.self) { energy in
-                        Button { model.select(energy) } label: {
+                        Button {
+                            model.select(energy)
+                            if model.energy == energy { EnergyCheckIn.mark(userID: store.me?.id, familyID: store.family?.id) }
+                        } label: {
                             HStack {
                                 Text(energy.rawValue)
                                 Spacer()
@@ -65,9 +68,19 @@ struct MoodCheckInView: View {
             .disabled(identity.isEmpty || owner != identity)
             .tint(Palette.accent)
             .navigationTitle("Energy check-in")
-            .toolbar { ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { model.clear(); dismiss() }.disabled(model.sending)
-            } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        if !model.sent { EnergyCheckIn.unmark(userID: store.me?.id, familyID: store.family?.id) }
+                        model.clear(); dismiss()
+                    }.disabled(model.sending)
+                }
+                if model.energy != nil || model.sent {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { model.clear(); dismiss() }.disabled(model.sending)
+                    }
+                }
+            }
         }
         .presentationSizing(.page)
         .interactiveDismissDisabled(model.sending)

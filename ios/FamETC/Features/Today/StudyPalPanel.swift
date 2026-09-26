@@ -27,6 +27,7 @@ struct StudyPalPanel: View {
     }
 
     @State private var destination: Destination?
+    @State private var energyAnswered = false
 
     private var isAuthorized: Bool {
         guard !store.needsAuth, let user = store.me, user.id == ownerID, let family = store.family else { return false }
@@ -56,12 +57,14 @@ struct StudyPalPanel: View {
                         VStack(alignment: .leading, spacing: Space.md) {
                             header
                             if store.isParent { familyActionsButton } else { nextHomeworkButton }
-                            panelButton(
-                                title: "Energy check-in",
-                                detail: "Choose how your energy feels today",
-                                systemImage: "bolt.heart",
-                                action: { destination = .energy }
-                            )
+                            if !energyAnswered {
+                                panelButton(
+                                    title: "Energy check-in",
+                                    detail: "Choose how your energy feels today",
+                                    systemImage: "bolt.heart",
+                                    action: { destination = .energy }
+                                )
+                            }
                             panelButton(
                                 title: "My Corner",
                                 detail: "A private space for your ideas",
@@ -91,13 +94,14 @@ struct StudyPalPanel: View {
         .presentationDragIndicator(usesPopover ? .hidden : .visible)
         .tint(Palette.frYou)
         .onAppear {
+            refreshEnergy()
             if !isAuthorized { dismiss() }
         }
         .onChange(of: identity) { _, _ in
             destination = nil
             dismiss()
         }
-        .sheet(item: $destination) { destination in
+        .sheet(item: $destination, onDismiss: refreshEnergy) { destination in
             switch destination {
             case .homework(let id): HomeworkDetailSheet(homeworkId: id)
             case .energy: MoodCheckInView()
@@ -106,6 +110,10 @@ struct StudyPalPanel: View {
             }
         }
         .onDisappear { destination = nil }
+    }
+
+    private func refreshEnergy() {
+        energyAnswered = EnergyCheckIn.answeredToday(userID: store.me?.id, familyID: store.family?.id)
     }
 
     private var header: some View {
