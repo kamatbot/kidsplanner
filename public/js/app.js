@@ -3735,11 +3735,11 @@ function confirmMealPlanReviewImport() {
 
 function renderChatMessages() {
   // Hermes is showing in #chat-messages right now — keep chatMessages/cursors
-  // current (mergeChatMessages already ran) but don't touch the DOM; flag the
-  // Family chip so its dot lights up. Family behaviour below this guard is
+  // current (mergeChatMessages already ran, and lights the Family dot for new
+  // messages) but don't touch the DOM. Family behaviour below this guard is
   // untouched when Family is the active room (including in isolated tests
   // that extract this function without the chatActiveRoom global).
-  if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom !== 'family') { chatRoomDot.family = true; renderChatRoomTabs(); return; }
+  if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom !== 'family') return;
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -3845,9 +3845,12 @@ function mergeChatMessages(msgs) {
     if (JSON.stringify(byId.get(m.id)) !== JSON.stringify(m)) { byId.set(m.id, m); changed = true; }
   }
   if (!changed) return;
+  // Loads reset the cursor first, so only a merge on top of known history is news.
+  const isNews = chatLastId != null;
   chatMessages = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   chatLastAt = chatMessages[chatMessages.length - 1].createdAt;
   chatLastId = chatMessages[chatMessages.length - 1].id;
+  if (isNews && typeof chatActiveRoom !== 'undefined' && chatActiveRoom !== 'family') { chatRoomDot.family = true; renderChatRoomTabs(); }
   renderChatMessages();
 }
 

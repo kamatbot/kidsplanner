@@ -164,7 +164,7 @@ test('a failed hermes-nudge action re-enables the button and surfaces the error'
   assert.match(toasted, /Not allowed/);
 });
 
-test('the family room render path is untouched; an active Hermes room leaves #chat-messages alone and just flags the dot', () => {
+test('the family room render path is untouched; an active Hermes room leaves #chat-messages alone', () => {
   let badgeCalls = 0;
   let tabsCalls = 0;
   const el = makeEl({ scrollHeight: 50, scrollTop: 50, clientHeight: 50, innerHTML: 'SENTINEL' });
@@ -188,9 +188,27 @@ test('the family room render path is untouched; an active Hermes room leaves #ch
   c.chatActiveRoom = 'hermes';
   c.renderChatMessages();
   assert.equal(el.innerHTML, 'SENTINEL'); // never touched while Hermes is showing
-  assert.equal(c.chatRoomDot.family, true); // inactive-room dot lit instead
-  assert.equal(tabsCalls, 1);
+  assert.equal(c.chatRoomDot.family, false); // re-renders aren't news
+  assert.equal(tabsCalls, 0);
   assert.equal(badgeCalls, 1); // no further family DOM work happened
+});
+
+test('the Family dot lights only for new family messages while Hermes is open', () => {
+  let tabsCalls = 0;
+  const c = {
+    chatMessages: [], chatLastAt: null, chatLastId: null,
+    chatActiveRoom: 'hermes',
+    chatRoomDot: { family: false, hermes: false },
+    renderChatMessages() {},
+    renderChatRoomTabs: () => tabsCalls++,
+  };
+  vm.createContext(c);
+  vm.runInContext(fn('mergeChatMessages'), c);
+  c.mergeChatMessages([{ id: 'a', createdAt: '2026-09-26T09:00:00Z' }]); // initial load: cursor was null
+  assert.equal(c.chatRoomDot.family, false);
+  c.mergeChatMessages([{ id: 'b', createdAt: '2026-09-26T09:05:00Z' }]); // a new message on top of history
+  assert.equal(c.chatRoomDot.family, true);
+  assert.equal(tabsCalls, 1);
 });
 
 test('openHermesChat (the ?chat=hermes deep link target) selects the Hermes chip and opens the dock/slide-over', () => {
