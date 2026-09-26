@@ -27,6 +27,7 @@ final class AppStore {
     var me: User? {
         didSet {
             if oldValue?.id != me?.id {
+                clearGoals()
                 notes = []
                 notesLoadGeneration &+= 1
                 sessionGeneration &+= 1
@@ -36,6 +37,7 @@ final class AppStore {
     var family: Family? {
         didSet {
             if oldValue?.id != family?.id {
+                clearGoals()
                 notes = []
                 notesLoadGeneration &+= 1
                 sessionGeneration &+= 1
@@ -66,6 +68,12 @@ final class AppStore {
     var notes: [Note] = []                     // reflections + pinned snippets (Notes tab)
     private var notesLoadGeneration = 0
     private var sessionGeneration = 0
+    var goals: [Goal] = []
+    var goalsLoadState: GoalLoadState = .idle
+    var goalsError: String?
+    var goalMutationIDs: Set<String> = []
+    private var goalsLoadGeneration = 0
+    var pendingHomeworkKidID: String?
     /// Parent composite Meals state, or the family shopping projection for a
     /// kid session. Kids never receive pantry/menu/prefs/household state.
     var meals: MealsState?
@@ -237,12 +245,13 @@ final class AppStore {
                 async let actionLoad: Void = loadFamilyActions()
                 async let notesLoad: Void = loadNotes()
                 async let mealsLoad: Void = loadMeals()
+                async let goalsLoad: Void = loadGoals()
                 async let rooms = api.chatRooms()
                 let freshMessages = try await msgs
                 guard generation == refreshGeneration else { return }
                 messages = Self.dedupe(freshMessages)
                 updateChatSeen(familyRoomId)
-                _ = await (kids, calHw, actionLoad, notesLoad, mealsLoad)
+                _ = await (kids, calHw, actionLoad, notesLoad, mealsLoad, goalsLoad)
                 guard generation == refreshGeneration else { return }
                 // Fail soft to just the family room (Trips-unaware/unreachable server).
                 let freshRooms = try? await rooms
@@ -274,6 +283,7 @@ final class AppStore {
     }
 
     func signedOut() {
+        clearGoals()
         sessionGeneration &+= 1
         notesLoadGeneration &+= 1
         notes = []
@@ -615,6 +625,83 @@ final class AppStore {
     }
 
     // MARK: Meals (parent composite; family shopping for kids)
+
+    private func clearGoals() {
+        goalsLoadGeneration &+= 1
+        goals = []
+        goalsLoadState = .idle
+        goalsError = nil
+        goalMutationIDs = []
+        pendingHomeworkKidID = nil
+    }
+
+    func loadGoals() async {
+        guard family != nil, me != nil else { clearGoals(); return }
+        // Do not let a read race a non-idempotent server toggle.
+        guard goalMutationIDs.isEmpty else { return }
+        goalsLoadGeneration &+= 1
+        let generation = goalsLoadGeneration
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        goalsLoadState = .loading
+        goalsError = nil
+        do {
+            let loaded = try await api.goals()
+            guard generation == goalsLoadGeneration, session == sessionGeneration,
+                  accountID == me?.id, familyID == family?.id else { return }
+            goals = loaded.filter { goal in
+                kids.contains { $0.id == goal.kidId } && (isParent || me?.kidId == goal.kidId)
+            }
+            goalsLoadState = .ready
+        } catch {
+            guard generation == goalsLoadGeneration, session == sessionGeneration,
+                  accountID == me?.id, familyID == family?.id else { return }
+            goalsLoadState = .error
+            goalsError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+        }
+    }
+
+    func toggleGoalCheck(_ goal: Goal) async {
+        guard family != nil, me != nil,
+              let index = goals.firstIndex(where: { $0.id == goal.id }),
+              goals[index].type == "habit", kids.contains(where: { $0.id == goals[index].kidId }),
+              isParent || me?.kidId == goals[index].kidId,
+              goalMutationIDs.insert(goal.id).inserted else { return }
+        let original = goals[index]
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        // Invalidate in-flight reads; independent goal writes may still finish.
+        goalsLoadGeneration &+= 1
+        goalsLoadState = .ready
+        goalsError = nil
+        let today = DateFmt.ymd.string(from: Date())
+        var checks = original.checks ?? []
+        if checks.contains(today) { checks.removeAll { $0 == today } }
+        else { checks.append(today) }
+        goals[index].checks = checks
+        defer {
+            if session == sessionGeneration { goalMutationIDs.remove(goal.id) }
+        }
+        do {
+            let updated = try await api.toggleGoalCheck(id: goal.id)
+            guard session == sessionGeneration, accountID == me?.id, familyID == family?.id,
+                  let current = goals.firstIndex(where: { $0.id == goal.id }) else { return }
+            guard updated.id == original.id, updated.kidId == original.kidId else {
+                goals[current] = original
+                goalsError = "Unable to update habit."
+                return
+            }
+            goals[current] = updated
+        } catch {
+            guard session == sessionGeneration, accountID == me?.id, familyID == family?.id else { return }
+            if let current = goals.firstIndex(where: { $0.id == goal.id }) { goals[current] = original }
+            goalsError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+        }
+    }
 
     /// Parents load the composite planner; kids load only the shopping
     /// projection so pantry/menu/household data never crosses the API boundary.
@@ -1083,7 +1170,8 @@ final class AppStore {
         }
         async let calendar: Void = loadCalendarAndHomework(force: true)
         async let actionLoad: Void = loadFamilyActions()
-        _ = await (calendar, actionLoad)
+        async let goalsLoad: Void = loadGoals()
+        _ = await (calendar, actionLoad, goalsLoad)
         guard generation == refreshGeneration else { return }
         await ParentFamilyAssistancePublisher.publish(from: self)
     }
@@ -1224,7 +1312,7 @@ final class AppStore {
         return action.assigneeType == "family" || canManageOwnKidAction(action, ownKidId: ownKidId)
     }
 
-    private func canManageOwnKidAction(_ action: FamilyAction, ownKidId: String) -> Bool {
+    func canManageOwnKidAction(_ action: FamilyAction, ownKidId: String) -> Bool {
         action.assigneeType == "kid" &&
             action.assigneeId == ownKidId && action.kidId == ownKidId
     }
@@ -1245,6 +1333,58 @@ final class AppStore {
         return isParent || (me?.kidId.map { canManageOwnKidAction(action, ownKidId: $0) } ?? false)
     }
 
+    @discardableResult
+    func createFamilyAction(title: String, dueDate: String? = nil) async -> Bool {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isParent, me != nil, family != nil, !title.isEmpty else { return false }
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        do {
+            let created = try await api.createFamilyAction(title: title, dueDate: dueDate)
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID,
+                  isParent, canViewAction(created) else { return false }
+            // Retire reads issued before the write response so they cannot erase it.
+            actionLoadGeneration &+= 1
+            isLoadingActions = false
+            actions.removeAll { $0.id == created.id }
+            actions.append(created)
+            actionError = nil
+            return true
+        } catch {
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return false }
+            actionError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+            return false
+        }
+    }
+
+    func deleteFamilyAction(_ action: FamilyAction) async {
+        guard isParent, me != nil, canViewAction(action),
+              actions.contains(where: { $0.id == action.id }),
+              completingActionIDs.insert(action.id).inserted else { return }
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        defer {
+            if session == sessionGeneration { completingActionIDs.remove(action.id) }
+        }
+        do {
+            try await api.deleteFamilyAction(id: action.id)
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID,
+                  isParent, canViewAction(action) else { return }
+            actionLoadGeneration &+= 1
+            isLoadingActions = false
+            actions.removeAll { $0.id == action.id }
+            actionError = nil
+        } catch {
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return }
+            // Keep the original row visible until the server confirms deletion.
+            actionError = error.localizedDescription
+            if case APIError.unauthenticated = error { handle(error) }
+        }
+    }
+
     /// Optimistically completes an action, then replaces it with the server's
     /// response. Any failed PATCH restores the exact previous action so the
     /// row never disappears permanently because of a transient error.
@@ -1253,16 +1393,26 @@ final class AppStore {
               let index = actions.firstIndex(where: { $0.id == action.id }) else { return }
 
         let previous = actions[index]
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        defer {
+            if session == sessionGeneration, me?.id == accountID, family?.id == familyID {
+                completingActionIDs.remove(action.id)
+            }
+        }
         completingActionIDs.insert(action.id)
         actions[index].status = "done"
         actions[index].snoozedUntil = nil
         do {
             let updated = try await actionService.updateFamilyAction(action.id, status: "done", snoozedUntil: nil)
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return }
             if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
                 actions[currentIndex] = updated
             }
             actionError = nil
         } catch {
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return }
             if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
                 actions[currentIndex] = previous
             } else {
@@ -1271,7 +1421,6 @@ final class AppStore {
             actionError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
         }
-        completingActionIDs.remove(action.id)
     }
 
     /// Optimistically snoozes an eligible action using the existing server
@@ -1281,17 +1430,27 @@ final class AppStore {
               let index = actions.firstIndex(where: { $0.id == action.id }) else { return }
 
         let previous = actions[index]
+        let session = sessionGeneration
+        let accountID = me?.id
+        let familyID = family?.id
+        defer {
+            if session == sessionGeneration, me?.id == accountID, family?.id == familyID {
+                completingActionIDs.remove(action.id)
+            }
+        }
         let snoozedUntil = ActionQueue.snoozeUntil(preset)
         completingActionIDs.insert(action.id)
         actions[index].status = "snoozed"
         actions[index].snoozedUntil = snoozedUntil
         do {
             let updated = try await actionService.updateFamilyAction(action.id, status: "snoozed", snoozedUntil: snoozedUntil)
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return }
             if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
                 actions[currentIndex] = updated
             }
             actionError = nil
         } catch {
+            guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return }
             if let currentIndex = actions.firstIndex(where: { $0.id == action.id }) {
                 actions[currentIndex] = previous
             } else {
@@ -1300,7 +1459,6 @@ final class AppStore {
             actionError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
         }
-        completingActionIDs.remove(action.id)
     }
 
     @discardableResult

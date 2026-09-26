@@ -331,7 +331,7 @@ private struct WeekTimelineDayColumn: View {
 
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                Palette.panel
+                (Calendar.current.isDateInToday(date) ? Palette.frYouSoft : Palette.frCard)
                     .contentShape(Rectangle())
                     .overlay(alignment: .top) {
                         ZStack(alignment: .top) {
@@ -422,7 +422,7 @@ private struct WeekEventLabel: View {
         Agenda.kidColor(item.kidID, kids: kids)
             ?? (item.category == "trip" ? Palette.teal
                 : (item.kind == .homework ? Palette.blue
-                    : (item.kind == .deadline ? Palette.coral : Palette.accent)))
+                    : (item.kind == .deadline ? Palette.frDanger : Palette.accent)))
     }
 
     var body: some View {
@@ -447,7 +447,7 @@ private struct WeekEventLabel: View {
         .padding(.vertical, compact ? 3 : 5)
         .padding(.horizontal, compact ? 3 : 4)
         .frame(maxWidth: .infinity, minHeight: compact ? 44 : nil, maxHeight: .infinity, alignment: .topLeading)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .background(item.kidID == nil ? Palette.frYouSoft : color.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(color.opacity(0.28), lineWidth: 1)

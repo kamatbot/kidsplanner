@@ -141,7 +141,42 @@ const visualAction = {
   snoozedUntil: null,
 };
 
-const state = { eventPosts: [], chatPosts: [], notePosts: [], daily5Posts: [], notes: [], requests: [], answerPosts: [], failures: {} };
+// Family Rings is opt-in; independent mutable state keeps existing QA stable.
+function initialRingsState() {
+  const base = { ...visualAction, dueTime: null };
+  return {
+    actions: [
+      { ...base, id: "qa-visual-homework-action", title: "Visual coral field notes", assigneeType: "kid",
+        assigneeId: visualKid.id, kidId: visualKid.id, sourceType: "homework", sourceId: "qa-visual-homework-1" },
+      { ...base, title: "Pack the rings activity bag" },
+      { ...base, id: "qa-visual-done", title: "Read the rings notice", assigneeType: "kid",
+        assigneeId: visualKid.id, kidId: visualKid.id, status: "done", completedAt: isoNow },
+      { ...base, id: "qa-visual-old-done", title: "Earlier completed action", status: "done",
+        completedAt: new Date(now.getTime() - 86_400_000).toISOString(), updatedAt: isoNow },
+      { ...base, id: "qa-visual-legacy-done", title: "Legacy completed action", status: "done", updatedAt: isoNow },
+      { ...base, id: "qa-visual-snoozed", title: "Later rings reminder", status: "snoozed",
+        snoozedUntil: new Date(now.getTime() + 86_400_000).toISOString() },
+      { ...base, id: "qa-visual-sibling-action", title: "Sibling rings reminder", assigneeType: "kid",
+        assigneeId: visualSibling.id, kidId: visualSibling.id, status: "snoozed",
+        snoozedUntil: new Date(now.getTime() + 86_400_000).toISOString() },
+    ],
+    goals: [
+      { id: "qa-visual-goal-1", kidId: visualKid.id, title: "Read a little", type: "habit", target: 7, checks: [today], progress: null },
+      { id: "qa-visual-goal-2", kidId: visualKid.id, title: "Pack school bag", type: "habit", target: 7, checks: [], progress: null },
+      { id: "qa-visual-goal-3", kidId: visualSibling.id, title: "Practise guitar", type: "habit", target: 7, checks: [], progress: null },
+    ],
+    homework: structuredClone(visualHomework),
+  };
+}
+const ringsEvents = [
+  ...visualFamilyEvents,
+  { ...visualFamilyEvents[1], id: "qa-visual-afternoon", title: "Rings afternoon practice", time: "15:00", endTime: "16:00" },
+  { ...visualFamilyEvents[1], id: "qa-visual-overlap", title: "Rings overlapping lesson", time: "15:30", endTime: "16:30" },
+  { ...visualFamilyEvents[1], id: "qa-visual-early", title: "Rings early departure", time: "05:00", endTime: "05:30" },
+];
+const ringsParts = { news: { status: "completed", updatedAt: isoNow }, quote: { status: "started", updatedAt: isoNow } };
+
+const state = { eventPosts: [], chatPosts: [], notePosts: [], daily5Posts: [], notes: [], requests: [], answerPosts: [], failures: {}, rings: initialRingsState() };
 
 function cookies(req) {
   return Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => {
@@ -186,7 +221,10 @@ const server = http.createServer(async (req, res) => {
   const jar = cookies(req);
   const role = jar.fam_sess === "kid" ? "kid" : "parent";
   const scenario = jar.fam_qa_scenario || "success";
-  const learningScenario = scenario.startsWith("learning-polish");
+  const ringsScenario = scenario.startsWith("family-rings");
+  const ringsEmpty = scenario === "family-rings-empty";
+  const ringsError = scenario === "family-rings-error";
+  const learningScenario = scenario.startsWith("learning-polish") || ringsScenario;
   const failureScenario = scenario.endsWith("-failure");
   const visualScenario = scenario === "today-visual" || learningScenario;
   const sessionKid = visualScenario ? visualKid : kid;
@@ -197,7 +235,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/__qa/reset" && req.method === "POST") {
     state.eventPosts.length = 0; state.chatPosts.length = 0; state.notePosts.length = 0;
     state.daily5Posts.length = 0; state.notes.length = 0; state.requests.length = 0;
-    state.answerPosts.length = 0; state.failures = {};
+    state.answerPosts.length = 0; state.failures = {}; state.rings = initialRingsState();
     return send(res, 200, { ok: true });
   }
   // Fail once, before applying writes, to exercise explicit native retry/draft
@@ -229,12 +267,59 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { families: [visibleFamily] });
   }
   if (url.pathname === "/api/family/access-requests") return send(res, 200, { requests: [] });
+  if (ringsScenario && (url.pathname === "/api/goals" || /^\/api\/goals\/[^/]+\/check$/.test(url.pathname))) {
+    if (url.pathname === "/api/goals" && req.method === "GET") {
+      if (ringsError) return send(res, 503, { error: "Synthetic habits unavailable." });
+      const rows = ringsEmpty ? [] : state.rings.goals.filter(goal => role !== "kid" || goal.kidId === sessionKid.id);
+      return send(res, 200, { goals: rows });
+    }
+    const goal = !ringsEmpty && state.rings.goals.find(item => item.id === decodeURIComponent(url.pathname.split("/")[3]));
+    if (!goal) return send(res, 404, { error: "Goal not found." });
+    if (role === "kid" && goal.kidId !== sessionKid.id) return send(res, 403, { error: "Own habits only." });
+    if (req.method !== "PATCH") return send(res, 405, { error: "PATCH required." });
+    await readJSON(req);
+    if (ringsError) return send(res, 503, { error: "Synthetic habit update unavailable." });
+    goal.checks = goal.checks.includes(today) ? goal.checks.filter(date => date !== today) : [...goal.checks, today];
+    return send(res, 200, { goal });
+  }
+  if (ringsScenario && /^\/api\/family\/actions\/[^/]+$/.test(url.pathname)) {
+    const item = !ringsEmpty && state.rings.actions.find(row => row.id === decodeURIComponent(url.pathname.split("/")[4]));
+    if (!item) return send(res, 404, { error: "Action not found." });
+    if (req.method === "DELETE") {
+      if (role === "kid") return send(res, 403, { error: "Parents only." });
+      state.rings.actions = state.rings.actions.filter(row => row.id !== item.id);
+      return send(res, 200, { ok: true });
+    }
+    if (req.method !== "PATCH") return send(res, 405, { error: "PATCH required." });
+    const body = await readJSON(req);
+    if (role === "kid" && (item.assigneeType !== "kid" || item.assigneeId !== sessionKid.id || item.kidId !== sessionKid.id || Object.keys(body).some(key => !["status", "snoozedUntil"].includes(key))))
+      return send(res, 403, { error: "Own actions only." });
+    if (role !== "kid" && item.sourceType === "homework" && ("status" in body || "snoozedUntil" in body))
+      return send(res, 403, { error: "Parents review homework; students update it." });
+    if ("status" in body && (!["open", "done", "snoozed"].includes(body.status) || (role === "kid" && body.status === "open")))
+      return send(res, 403, { error: "Unsupported action status." });
+    if (body.status && body.status !== item.status) item.completedAt = body.status === "done" ? new Date().toISOString() : null;
+    for (const key of ["status", "snoozedUntil", "title", "notes", "dueDate", "dueTime"]) if (key in body) item[key] = body[key];
+    item.updatedAt = new Date().toISOString();
+    return send(res, 200, { action: item });
+  }
+  if (ringsScenario && url.pathname === "/api/fams") {
+    const kidId = url.searchParams.get("kidId") || sessionKid.id;
+    if (role === "kid" && kidId !== sessionKid.id) return send(res, 403, { error: "Own wallet only." });
+    if (!visualFamily.kids.some(child => child.id === kidId)) return send(res, 404, { error: "No child." });
+    if (ringsError) return send(res, 503, { error: "Synthetic wallet unavailable." });
+    const earned = ringsEmpty ? 0 : 12;
+    return send(res, 200, { kidId, isParent: role === "parent", balance: earned, totalEarned: earned,
+      weekly: { earned, limit: 30, weekStart: today }, goal: null,
+      schoolPoints: { current: null, highWater: 0, resetPending: false }, chores: [], transactions: [], completedLessons: [] });
+  }
   if (visualScenario && /^\/api\/children\/[^/]+\/insights$/.test(url.pathname)) {
     if (role === "kid") return send(res, 403, { error: "Parent only" });
     const childId = decodeURIComponent(url.pathname.split("/")[3]);
     if (!sessionFamily.kids.some(child => child.id === childId)) return send(res, 404, { error: "No child" });
+    if (ringsError) return send(res, 503, { error: "Synthetic learning unavailable." });
     return send(res, 200, { kidId: childId, date: today, schoolStats: null, homePlan: null,
-      daily5: { date: today, parts: { news: { status: "completed", updatedAt: isoNow } } } });
+      daily5: { date: today, parts: ringsScenario ? (ringsEmpty ? {} : ringsParts) : { news: { status: "completed", updatedAt: isoNow } } } });
   }
   if (url.pathname === "/api/chat/rooms") return send(res, 200, [{ roomId: "family", tripId: null, title: sessionFamily.name, memberCount: 2 }]);
   if (url.pathname === "/api/chat/messages" && req.method === "GET") return send(res, 200, { messages: [] });
@@ -245,11 +330,11 @@ const server = http.createServer(async (req, res) => {
   }
   if (url.pathname === "/api/calendar/sync") {
     return send(res, 200, {
-      events: visualScenario ? visualSchoolEvents : [], lastSyncAt: isoNow, throttled: false,
+      events: ringsScenario ? (ringsEmpty ? [] : visualSchoolEvents.filter(item => role !== "kid" || !item.kidId || item.kidId === sessionKid.id)) : visualScenario ? visualSchoolEvents : [], lastSyncAt: isoNow, throttled: false,
     });
   }
   if (url.pathname === "/api/calendar/events" && req.method === "GET") {
-    return send(res, 200, { events: visualScenario ? visualFamilyEvents : [event] });
+    return send(res, 200, { events: ringsScenario ? (ringsEmpty ? [] : ringsEvents.filter(item => role !== "kid" || !item.kidId || item.kidId === sessionKid.id)) : visualScenario ? visualFamilyEvents : [event] });
   }
   if (url.pathname === "/api/calendar/events" && req.method === "POST") {
     const body = await readJSON(req);
@@ -259,13 +344,23 @@ const server = http.createServer(async (req, res) => {
     return send(res, 201, { event: { ...event, id: "qa-reviewed-event", ...body }, existing: false });
   }
   if (url.pathname === "/api/homework") {
-    const rows = visualScenario
+    const rows = ringsScenario ? (ringsEmpty ? [] : state.rings.homework.filter(item => role !== "kid" || item.kidId === sessionKid.id)) : visualScenario
       ? (role === "kid" ? visualHomework.filter((item) => item.kidId === sessionKid.id) : visualHomework)
       : [homework];
     return send(res, 200, { homework: rows });
   }
   if (url.pathname === "/api/family/actions") {
-    return send(res, 200, { actions: visualScenario ? [visualAction] : [action] });
+    if (ringsScenario && req.method === "POST") {
+      if (role === "kid") return send(res, 403, { error: "Parents only." });
+      const body = await readJSON(req);
+      if (!String(body.title || "").trim()) return send(res, 400, { error: "Title required." });
+      const created = { ...visualAction, id: `qa-visual-created-${Date.now()}-${state.rings.actions.length}`,
+        title: String(body.title).trim(), dueDate: body.dueDate || null, dueTime: null,
+        sourceType: "manual", assigneeType: "family", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      state.rings.actions.push(created);
+      return send(res, 201, { action: created });
+    }
+    return send(res, 200, { actions: ringsScenario ? (ringsEmpty ? [] : state.rings.actions.filter(item => role !== "kid" || item.assigneeType === "family" || (item.assigneeType === "kid" && item.assigneeId === sessionKid.id && item.kidId === sessionKid.id))) : visualScenario ? [visualAction] : [action] });
   }
   if (url.pathname === "/api/notes" && req.method === "GET") return send(res, 200, { notes: state.notes });
   if (url.pathname === "/api/notes" && req.method === "POST") {
@@ -283,7 +378,7 @@ const server = http.createServer(async (req, res) => {
     state.notePosts.push(body); state.notes.unshift(note);
     return send(res, 201, { note });
   }
-  if (url.pathname === "/api/meals") return send(res, 200, { pantry: [], menu: [], shopping: [], prefs: null });
+  if (url.pathname === "/api/meals") return send(res, 200, { pantry: [], menu: ringsScenario && !ringsEmpty && role === "parent" ? [{ id: "qa-visual-dinner", date: today, slot: "dinner", title: "Rings vegetable noodles", note: null, recipeId: null, createdAt: isoNow, cookedAt: null }] : [], shopping: [], prefs: null });
   if (url.pathname === "/api/meals/shopping") return send(res, 200, { shopping: [] });
   if (url.pathname === "/api/enrichment/puzzle/today") return send(res, 200, learningScenario ? {
     date: today, available: true, type: "crossword", title: "Shared vocabulary crossword",
@@ -341,8 +436,9 @@ const server = http.createServer(async (req, res) => {
   });
   if (url.pathname.startsWith("/api/daily5/progress")) {
     if (req.method === "POST") state.daily5Posts.push(await readJSON(req));
-    const parts = Object.fromEntries(state.daily5Posts.filter(item => item.date === today)
-      .map(item => [item.part, { status: item.status, updatedAt: isoNow }]));
+    if (ringsError) return send(res, 503, { error: "Synthetic learning unavailable." });
+    const parts = { ...(ringsScenario && !ringsEmpty ? ringsParts : {}), ...Object.fromEntries(state.daily5Posts.filter(item => item.date === today)
+      .map(item => [item.part, { status: item.status, updatedAt: isoNow }])) };
     return send(res, 200, { date: today, parts });
   }
 

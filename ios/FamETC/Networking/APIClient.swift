@@ -46,7 +46,8 @@ final class APIClient: FamilyActionService {
         configuration.waitsForConnectivity = false
         return URLSession(configuration: configuration)
     }()
-    private let session: URLSession = {
+    private var session = APIClient.makeSession()
+    private static func makeSession() -> URLSession {
         let c = URLSessionConfiguration.default
         c.httpCookieStorage = .shared
         c.httpCookieAcceptPolicy = .always
@@ -57,8 +58,8 @@ final class APIClient: FamilyActionService {
         // the web subscription gate (in-app purchases ship later). Carries the
         // shared-secret header when configured — see Config.clientHeaders.
         c.httpAdditionalHeaders = Config.clientHeaders
-        return URLSession(configuration: c)
-    }()
+        return URLSession(configuration: c, delegate: SessionCancellationDelegate(), delegateQueue: nil)
+    }
 
     // MARK: Fams — server owns amounts, deduplication and approval rules.
     func famsWallet(kidId: String) async throws -> FamsWallet {
@@ -228,6 +229,17 @@ final class APIClient: FamilyActionService {
         return r.actions
     }
 
+    func createFamilyAction(title: String, dueDate: String? = nil) async throws -> FamilyAction {
+        var body: [String: Any] = ["title": title, "assigneeType": "family", "sourceType": "manual"]
+        if let dueDate { body["dueDate"] = dueDate }
+        let response: FamilyActionResponse = try await request("/api/family/actions", method: "POST", body: body)
+        return response.action
+    }
+
+    func deleteFamilyAction(id: String) async throws {
+        let _: OKResponse = try await request("/api/family/actions/\(pathComponent(id))", method: "DELETE")
+    }
+
     /// Uses the same PATCH body as web Today. No native-only endpoint or
     /// status is introduced; `snoozedUntil` is required by the server only
     /// when status is `snoozed`.
@@ -280,6 +292,16 @@ final class APIClient: FamilyActionService {
     }
 
     // MARK: Meals (composite parent-gated; shopping is family-readable)
+
+    func goals() async throws -> [Goal] {
+        let response: GoalsResponse = try await request("/api/goals")
+        return response.goals
+    }
+
+    func toggleGoalCheck(id: String) async throws -> Goal {
+        let response: GoalResponse = try await request("/api/goals/\(pathComponent(id))/check", method: "PATCH", body: [:])
+        return response.goal
+    }
 
     func mealsState() async throws -> MealsState {
         try await request("/api/meals")
@@ -495,8 +517,10 @@ final class APIClient: FamilyActionService {
         let r: MessagesResponse = try await request(path, timeout: wait ? 35 : nil)
         return r.messages
     }
-    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String, roomId: String = familyRoomId) async throws -> ChatMessage {
+    func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String, roomId: String = familyRoomId, clientMessageId: String? = nil, expectedContext: [String: String]? = nil) async throws -> ChatMessage {
         var body: [String: Any] = ["text": text, "senderType": senderType, "senderId": senderId]
+        if let clientMessageId { body["clientMessageId"] = clientMessageId }
+        if let expectedContext { body["expectedContext"] = expectedContext }
         if let card { body["card"] = card }
         if let media { body["media"] = media }
         let r: MessageResponse = try await request(chatBasePath(roomId), method: "POST", body: body)
@@ -555,8 +579,19 @@ final class APIClient: FamilyActionService {
     func me() async throws -> MeResponse {
         try await request("/api/me")
     }
-    func logout() async {
-        _ = try? await rawSend("/api/logout", method: "POST", body: [:])
+    @MainActor func logout() async -> Bool {
+        SessionSignOut.generation += 1
+        let cookies = HTTPCookieStorage.shared.cookies(for: base) ?? []
+        let cookie = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] ?? ""
+        // Drain old native/auth responses before clearing credentials. Revocation
+        // uses the captured cookie without accepting any response cookies.
+        if let delegate = session.delegate as? SessionCancellationDelegate { await delegate.cancel(session) }
+        await AuthService.shared.cancelSessionRequests()
+        let confirmed = await SessionSignOut.finish(baseURL: base) {
+            _ = try await self.rawSend("/api/logout", method: "POST", body: [:], timeout: 8, cookie: cookie)
+        }
+        session = Self.makeSession()
+        return confirmed
     }
 
     // MARK: Analytics (fire-and-forget)

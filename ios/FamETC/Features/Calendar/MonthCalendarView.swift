@@ -210,7 +210,7 @@ private struct DayCell: View {
         }
         .padding(4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(targeted ? Palette.accentSoft : Palette.panel, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background((targeted || isToday) ? Palette.frYouSoft : Palette.frCard, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(isToday ? Palette.accent : Palette.border, lineWidth: isToday ? 2 : 1)
@@ -231,7 +231,7 @@ private struct DayCell: View {
         // `category == "trip"` — teal, matching AgendaRow's airplane icon.
         let color: Color = Agenda.kidColor(item.kidId, kids: store.kids)
             ?? (item.familyEvent?.category == "trip" ? Palette.teal
-                : (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.coral : Palette.accent)))
+                : (item.kind == .homework ? Palette.blue : (item.kind == .deadline ? Palette.frDanger : Palette.accent)))
         let kidName = showKidLabels ? Agenda.kidName(item.kidId, kids: store.kids) : nil
         let titleText = (item.familyEvent?.isRecurring == true ? "↻ " : "")
             + (kidName.map { "\($0): " } ?? "") + item.title
@@ -245,7 +245,7 @@ private struct DayCell: View {
         }
         .padding(.vertical, 2).padding(.trailing, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .background(item.kidId == nil ? Palette.frYouSoft : color.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         if item.kind == .homework, store.isParent, let hw = item.homework {
             label.draggable(hw.id)
         } else if let fe = item.familyEvent {

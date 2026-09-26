@@ -29,7 +29,7 @@ private struct KidApprovalRow: View {
 
     var body: some View {
         HStack(spacing: Space.md) {
-            Text("🙋").font(.system(size: 26))
+            Image(systemName: "person.crop.circle.badge.questionmark").font(.system(size: 26, weight: .medium)).foregroundStyle(Palette.frYou).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(request.name) wants to sign in")
                     .font(Typography.body.weight(.semibold))

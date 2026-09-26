@@ -63,6 +63,7 @@ struct RootView: View {
     @State private var planningSelection: PlanningDestination = .trips
     @State private var assistanceChild: AssistanceChildRoute?
     @State private var pendingAssistanceURL: URL?
+    @State private var signingOut = false
     private struct AssistanceChildRoute: Identifiable { let id: String }
 
     private func openAssistanceRoute(_ url: URL) {
@@ -85,8 +86,11 @@ struct RootView: View {
 
 
     var body: some View {
-        adaptiveLayout
-        .tint(Palette.accent)
+        Group {
+            if signingOut { ProgressView("Signing out…").frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else { adaptiveLayout }
+        }
+        .tint(Palette.frYou)
         .preferredColorScheme(store.colorScheme)
         .onOpenURL { openAssistanceRoute($0) }
         .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
@@ -143,7 +147,7 @@ struct RootView: View {
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             routeFromLiveChatNotification(fallbackRoomId: "trip:\(tripId)")
         }
-        .overlay { if store.needsAuth { ReauthOverlay() } }
+        .overlay { if store.needsAuth && !signingOut { ReauthOverlay() } }
         .onAppear {
             #if DEBUG
             switch DebugLaunch.screen {
@@ -180,7 +184,10 @@ struct RootView: View {
     /// System bars own safe areas and can adapt to Duo's vertical presentation.
     private var adaptiveLayout: some View {
         TabView(selection: $selection) {
-            TodayScreen(onOpenHomework: { selection = .homework })
+            TodayScreen(onOpenHomework: { selection = .homework }, onOpenMeals: {
+                planningSelection = .meals
+                selection = .planning
+            })
                 .accessibilityIdentifier("screen-today")
                 .tabItem { Label("Today", systemImage: Tab.today.icon) }
                 .tag(Tab.today)
@@ -232,12 +239,16 @@ struct RootView: View {
     }
 
     private func signOut() {
+        guard !signingOut else { return }
+        signingOut = true
+        assistanceChild = nil
+        pendingAssistanceURL = nil
+        // Unmount private native/web content before the network revocation wait.
+        store.signedOut()
         Task {
-            await APIClient.shared.logout()
-            await MainActor.run {
-                store.signedOut()
-                onboarded = false
-            }
+            let confirmed = await APIClient.shared.logout()
+            UserDefaults.standard.set(!confirmed, forKey: "fam_logout_unconfirmed")
+            onboarded = false
         }
     }
 }

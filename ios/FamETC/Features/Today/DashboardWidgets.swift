@@ -147,21 +147,14 @@ struct DailyFiveCard: View {
     @State private var dailyFiveProgressLoading = false
 
     var body: some View {
-        VStack(spacing: Space.md) {
-            TodayDailyFivePreview(
-                isKid: isKid,
-                statuses: activityStatuses,
-                newsChoices: newsChoices,
-                selectedNews: selectedNews,
-                isLoading: extrasLoading || dailyFiveProgressLoading,
-                progressKnown: dailyFiveProgress != nil,
-                canRetry: !extrasLoading,
-                onOpen: openActivity,
-                onSelectNews: selectNews,
-                onRetry: { Task { await loadDailyExtras() } }
-            )
-            puzzleSection
-        }
+        TodayDailyFivePreview(
+            isKid: isKid,
+            statuses: activityStatuses,
+            challengeStatus: challengeStatus,
+            challengeDetail: challengeDetail,
+            onOpen: openActivity,
+            onOpenChallenge: openChallenge
+        )
         .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") { await loadDailyExtras() }
         .onReceive(NotificationCenter.default.publisher(for: .famsRewardsChanged)) { _ in
             Task { await refreshServerProgress() }
@@ -218,6 +211,22 @@ struct DailyFiveCard: View {
         return result
     }
 
+    private var challengeStatus: DailyFiveActivityStatus {
+        guard !extrasLoading else { return .loading }
+        guard puzzle != nil else { return .unavailable }
+        if puzzleStatus == "Puzzle solved" { return .completed }
+        if puzzleStatus == "Resume your puzzle" { return .started }
+        return .available
+    }
+
+    private var challengeDetail: String {
+        guard challengeStatus != .unavailable else { return "Not scheduled" }
+        guard challengeStatus != .loading else { return "Loading" }
+        let ready = challengeStatus == .completed ? "Done" : (puzzle?.title ?? "Puzzle ready")
+        let streak = dailyPuzzleStreak(userID: store.me?.id)
+        return streak > 0 ? "\(streak)-day streak · \(ready)" : ready
+    }
+
     private func serverStatus(
         for activity: DailyFiveActivity,
         progress: DailyFiveProgressPayload
@@ -242,11 +251,6 @@ struct DailyFiveCard: View {
         }
     }
 
-    private func selectNews(_ article: RecentNewsItem) {
-        guard newsChoices.contains(where: { $0.article?.id == article.id }) else { return }
-        selectedNewsID = article.id
-    }
-
     private func openActivity(_ activity: DailyFiveActivity) {
         Haptics.selection()
         switch activity {
@@ -257,6 +261,15 @@ struct DailyFiveCard: View {
             selectedNewsID = article.id
             activeSheet = .news(article)
         }
+    }
+
+    private func openChallenge() {
+        Haptics.selection()
+        guard let puzzle else {
+            activeSheet = .teaser
+            return
+        }
+        activeSheet = puzzle.type == "brainteaser" ? .teaser : .puzzle(puzzle)
     }
 
     @ViewBuilder
@@ -355,32 +368,29 @@ struct DailyFiveCard: View {
         }
     }
 
-    private var puzzleSection: some View {
-        Card(padding: Space.md) {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                LearningActivityHeading(title: "Brain & Puzzle", subtitle: "A different thinking challenge for each day.", systemImage: "puzzlepiece")
-                if extrasLoading {
-                    ProgressView("Loading today's challenge…")
-                } else if let puzzle {
-                    Text(puzzle.instructions ?? "Take your time and work it through.")
-                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                    Button {
-                        Haptics.selection()
-                        activeSheet = puzzle.type == "brainteaser" ? .teaser : .puzzle(puzzle)
-                    } label: {
-                        Label(puzzle.title ?? "Open today's challenge", systemImage: "arrow.up.right.circle.fill")
-                            .font(Typography.body.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent).tint(Palette.accent)
-                    .accessibilityIdentifier("today.puzzle.open")
-                } else {
-                    LearningFeedback(title: "Today's challenge couldn't load.", message: "Try again to fetch the scheduled puzzle.", kind: .retry)
-                    Button("Retry challenge") { Task { await loadDailyExtras() } }
-                        .buttonStyle(.borderedProminent).tint(Palette.accent).frame(minHeight: 44)
-                }
-            }
+    /// Puzzle progress is keyed by account and day. Read only solved records for
+    /// this account to show a local consecutive-day streak on the challenge tile.
+    private func dailyPuzzleStreak(userID: String?) -> Int {
+        guard let userID else { return 0 }
+        let account = SHA256.hash(data: Data(userID.utf8)).map { String(format: "%02x", $0) }.joined()
+        let prefix = "fametc.dailyPuzzleProgress.v2.\(account)."
+        let solvedDates = Set(UserDefaults.standard.dictionaryRepresentation().keys.compactMap { key -> String? in
+            guard key.hasPrefix(prefix), key.hasSuffix(".solved") else { return nil }
+            let remainder = String(key.dropFirst(prefix.count))
+            guard let date = remainder.split(separator: ".", maxSplits: 1).first, date.count == 10 else { return nil }
+            return String(date)
+        })
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        var date = calendar.startOfDay(for: Date())
+        var streak = 0
+        while solvedDates.contains(DateFmt.ymd.string(from: date)) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: date) else { break }
+            date = previous
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        return streak
     }
 }
 

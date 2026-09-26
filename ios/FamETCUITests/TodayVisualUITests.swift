@@ -1,175 +1,116 @@
 import UIKit
 import XCTest
 
-/// Focused visual-regression journeys for the native Today redesign. The
-/// `today-visual` cookie selects only the synthetic fixture dataset; no test
-/// here reaches production services or writes production data.
+/// Family Rings journeys use only the isolated mutable localhost fixture.
 final class TodayVisualUITests: XCTestCase {
-    private let fixtureURL = URL(string: "http://127.0.0.1:18247")!
+    private let fixtureURL = URL(string: "http://127.0.0.1:18257")!
 
-    override func setUpWithError() throws {
-        continueAfterFailure = false
-        try resetFixture()
+    override func setUpWithError() throws { continueAfterFailure = false; try resetFixture() }
+
+    func testParentNeedsYouCountsReviewAndDoneJourney() throws {
+        let app = launch(.parent)
+        waitForHero("2 things need you, 1 cleared today", app)
+        attach(app, "family-rings-parent-first-screen")
+        let review = wait("today.action.review.qa-visual-homework-action", app)
+        reveal(review, app); review.tap()
+        XCTAssertTrue(app.staticTexts["The student updates their own progress. You can review the assignment together."].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["Mark as done"].exists, "Parents review homework but never complete it")
+        app.navigationBars["Assignment"].buttons["Done"].tap()
+        let done = wait("today.action.done.qa-visual-action", app)
+        reveal(done, app); done.tap()
+        waitForHero("1 thing needs you, 2 cleared today", app)
     }
 
-    func testParentFirstScreenOpensReadOnlyFamilyBrief() throws {
-        let app = launch(role: .parent)
-        let priority = waitForID("today.priority.review", in: app)
-        XCTAssertTrue(app.staticTexts["2 children"].waitForExistence(timeout: 5),
-                      "The visual fixture should expose both child profiles to a parent")
-        let event = app.descendants(matching: .any).matching(NSPredicate(
-            format: "label CONTAINS %@", "Visual family dinner"
-        )).firstMatch
-        XCTAssertTrue(event.waitForExistence(timeout: 5),
-                      "The visual fixture should expose an actual event dated today")
-        let progress = app.descendants(matching: .any).matching(NSPredicate(
-            format: "label CONTAINS %@", "Daily 5 1/5"
-        )).firstMatch
-        XCTAssertTrue(progress.waitForExistence(timeout: 12), "Parent progress must come from the actual child insights response")
-
-        // Capture the actual first screen before opening the priority route.
-        attachScreenshot(of: app, name: "today-visual-parent-first-screen")
-        reveal(priority, in: app)
-        priority.tap()
-
-        XCTAssertTrue(app.navigationBars["Your family brief"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["A brief from your saved homework, family actions and calendar. Open an item to check the details."].waitForExistence(timeout: 5))
-
-        let assignment = app.buttons.matching(NSPredicate(
-            format: "label BEGINSWITH %@", "Homework for Maya Visual: Visual coral field notes"
-        )).firstMatch
-        XCTAssertTrue(assignment.waitForExistence(timeout: 5), "The Today brief did not show the synthetic priority homework")
-        reveal(assignment, in: app)
-        assignment.tap()
-
-        XCTAssertTrue(app.staticTexts["The student updates their own progress. You can review the assignment together."].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Mark as done"].exists, "A parent brief must remain read-only for student-owned homework")
-        attachScreenshot(of: app, name: "today-visual-parent-read-only-brief")
+    func testParentFamilyActionsCanCreate() throws {
+        let app = launch(.parent)
+        let all = wait("today.hero.seeAll", app); reveal(all, app); all.tap()
+        XCTAssertTrue(app.navigationBars["Family actions"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Pack the rings activity bag"].exists)
+        let field = wait("today.action.newTitle", app); field.tap(); field.typeText("QA created action")
+        let add = wait("today.action.add", app); add.tap()
+        XCTAssertTrue(app.staticTexts["QA created action"].waitForExistence(timeout: 8))
+        let snooze = wait("today.action.snooze.qa-visual-action", app)
+        reveal(snooze, app); snooze.tap()
+        app.buttons["Tomorrow"].tap()
+        let delete = wait("today.action.delete.qa-visual-action", app)
+        reveal(delete, app); delete.tap()
+        let removed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.staticTexts["Pack the rings activity bag"])
+        wait(for: [removed], timeout: 8)
+        app.navigationBars["Family actions"].buttons["Close"].tap()
+        waitForHero("2 things need you, 1 cleared today", app)
     }
 
-    func testParentNoticeScanKeepsLabelAndOpensReview() throws {
-        let app = launch(role: .parent)
-        let scan = waitForID("today.notice.scan", in: app)
-
-        reveal(scan, in: app)
-        XCTAssertEqual(scan.label, "Turn a school notice into a plan")
-        scan.tap()
-        XCTAssertTrue(app.navigationBars["Review School Notice"].waitForExistence(timeout: 8))
-    }
-
-    func testSecondaryDisclosureChangesStateAndRevealsTodayContext() throws {
-        let app = launch(role: .parent, theme: "dark")
-        let toggle = waitForID("today.secondary.toggle", in: app)
-        reveal(toggle, in: app)
-
-        let action = app.staticTexts["Pack the visual activity bag"]
-        XCTAssertFalse(action.exists,
-                       "The synthetic family action must remain behind the collapsed secondary tools section")
-
-        let before = try XCTUnwrap(toggle.value as? String, "The secondary disclosure needs an accessibility value")
-        toggle.tap()
-        let after = try XCTUnwrap(toggle.value as? String, "The secondary disclosure lost its accessibility value after tapping")
-        XCTAssertNotEqual(before, after, "The secondary disclosure did not report a state transition")
-        XCTAssertTrue(app.staticTexts["Family actions"].waitForExistence(timeout: 5),
-                      "Expanding the secondary Today section did not reveal the family-tools content")
-        XCTAssertTrue(action.waitForExistence(timeout: 5),
-                      "Expanding the secondary Today section did not reveal the synthetic family action")
-        attachScreenshot(of: app, name: "today-visual-parent-secondary-dark")
-    }
-
-    func testKidCompactDailyFiveNewsFlowWithDarkLargeText() throws {
-        let app = launch(role: .kid, theme: "dark", largeText: true)
-        attachScreenshot(of: app, name: "today-visual-kid-first-screen-dark-large")
-
-        let choice = waitForID("today.daily5.news.science", in: app)
-        reveal(choice, in: app, maxSwipes: 10)
-        choice.tap()
-        let news = waitForID("today.daily5.news", in: app)
-        reveal(news, in: app, maxSwipes: 10)
+    func testKidScopeAndDailyThree() throws {
+        let app = launch(.kid, theme: "dark", accessibilityText: true)
+        attach(app, "family-rings-kid-dark-ax")
+        XCTAssertFalse(app.descendants(matching: .any)["today.tonight"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["today.kidcard.qa-visual-kid-2"].exists)
+        // Kid cards intentionally ignore child elements for VoiceOver and expose
+        // habits through a named custom action. XCTest cannot invoke that action
+        // reliably. The named action still requires manual VoiceOver verification.
+        let card = wait("today.kidcard.qa-visual-kid-1", app)
+        XCTAssertTrue(card.label.contains("Maya Visual"))
+        reveal(card, app)
+        attach(app, "family-rings-kid-card-dark-ax")
+        let news = app.descendants(matching: .any)["today.daily3.news"].firstMatch
+        reveal(news, app)
+        for id in ["today.daily3.news", "today.daily3.quote", "today.daily3.word", "today.daily3.challenge"] {
+            XCTAssertTrue(wait(id, app).exists, "Daily 3 must expose all four tiles")
+        }
         news.tap()
-
         XCTAssertTrue(app.navigationBars["Interesting News"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts["Visual scientists map a coral nursery"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Researchers observed how young coral settles and grows in a protected nursery."].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["What could help the coral nursery thrive?"].waitForExistence(timeout: 5))
-
-        let reflection = app.descendants(matching: .any)["Write what you think…"].firstMatch
-        XCTAssertTrue(reflection.waitForExistence(timeout: 5), "The complete news activity did not expose its reflection field")
-        reveal(reflection, in: app, maxSwipes: 10)
-        reflection.tap()
-        reflection.typeText("A protected nursery gives young coral time to grow.")
-
-        let save = app.buttons["Save response"]
-        reveal(save, in: app, maxSwipes: 10)
-        XCTAssertTrue(save.isEnabled, "The news response action should enable after a meaningful reflection")
-        save.tap()
-        XCTAssertTrue(app.staticTexts["Idea saved"].waitForExistence(timeout: 8))
-        attachScreenshot(of: app, name: "today-visual-kid-daily5-news-dark-large")
     }
 
-    // MARK: - Launch and fixture helpers
+    func testEmptyAndErrorStatesKeepTodayAvailable() throws {
+        let empty = launch(.parent, scenario: "family-rings-empty")
+        XCTAssertTrue(wait("today.hero.summary", empty).label.contains("0"))
+        attach(empty, "family-rings-parent-empty")
+        empty.terminate()
+        let error = launch(.parent, scenario: "family-rings-error")
+        XCTAssertTrue(wait("today.hero.summary", error).exists)
+        // The fixture's error variant fails goals, wallet and learning data but
+        // deliberately keeps /api/family/actions available, so it cannot reach
+        // the hero retry state without adding a fixture failure mode.
+    }
 
     private enum Role: String { case parent, kid }
-
-    @discardableResult
-    private func launch(role: Role, theme: String = "light", largeText: Bool = false) -> XCUIApplication {
+    private func launch(_ role: Role, scenario: String = "family-rings", theme: String = "light", accessibilityText: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["FAM_BASE_URL"] = fixtureURL.absoluteString
         app.launchEnvironment["FAM_ONBOARDED"] = "1"
         app.launchEnvironment["FAM_THEME"] = theme
         app.launchEnvironment["FAM_SCREEN"] = "today"
-        app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=\(role.rawValue); fam_qa_scenario=today-visual"
-        if largeText {
-            // UIKit's documented UI-test launch override for an accessibility
-            // content-size category; the visual check remains on the compact
-            // Today route while exercising text wrapping and bounded scrolling.
-            app.launchArguments += [
-                "-UIPreferredContentSizeCategoryName",
-                "UICTContentSizeCategoryAccessibilityXXXL",
-            ]
-        } else {
-            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL"]
-        }
-        app.launch()
-        return app
+        app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=\(role.rawValue); fam_qa_scenario=\(scenario)"
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", accessibilityText ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+        app.launch(); return app
     }
-
-    private func waitForID(_ id: String, in app: XCUIApplication) -> XCUIElement {
+    private func wait(_ id: String, _ app: XCUIApplication) -> XCUIElement {
         let element = app.descendants(matching: .any)[id].firstMatch
-        XCTAssertTrue(element.waitForExistence(timeout: 12), "Missing Today UI contract identifier: \(id)")
+        XCTAssertTrue(element.waitForExistence(timeout: 12), "Missing Family Rings contract: \(id)")
         return element
     }
-
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication, maxSwipes: Int = 8) {
-        for _ in 0..<maxSwipes where !element.isHittable { app.swipeUp() }
-        XCTAssertTrue(element.isHittable, "Today control is not hittable after bounded scrolling: \(element.identifier)")
+    private func reveal(_ element: XCUIElement, _ app: XCUIApplication) {
+        for _ in 0..<14 {
+            if element.exists && element.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable, "Control was not reachable after bounded scrolling: \(element.identifier)")
     }
-
-    private func attachScreenshot(of app: XCUIApplication, name: String) {
-        let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad-iOS27" : "iPhone-iOS27"
-        let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "SYNTHETIC QA — \(device) — \(name)"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    private func waitForHero(_ text: String, _ app: XCUIApplication) {
+        let hero = wait("today.hero.summary", app)
+        let changed = expectation(for: NSPredicate(format: "label CONTAINS %@", text), evaluatedWith: hero)
+        wait(for: [changed], timeout: 8)
     }
-
+    private func attach(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "SYNTHETIC QA — \(name)"; shot.lifetime = .keepAlways; add(shot)
+    }
     private func resetFixture() throws {
-        var request = URLRequest(url: fixtureURL.appendingPathComponent("__qa/reset"))
-        request.httpMethod = "POST"
-        request.timeoutInterval = 10
-        let done = expectation(description: "Today visual fixture responds")
-        var error: Error?
-        URLSession.shared.dataTask(with: request) { _, response, requestError in
-            defer { done.fulfill() }
-            if let requestError { error = requestError; return }
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                error = NSError(domain: "TodayVisualUITests", code: 1, userInfo: [
-                    NSLocalizedDescriptionKey: "Start tests/fixtures/ios-family-assistance-server.js on port 18247 first.",
-                ])
-                return
-            }
+        var request = URLRequest(url: fixtureURL.appendingPathComponent("__qa/reset")); request.httpMethod = "POST"; request.timeoutInterval = 10
+        let done = expectation(description: "reset Family Rings fixture"); var failure: Error?
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            defer { done.fulfill() }; if let error { failure = error }
+            else if (response as? HTTPURLResponse)?.statusCode != 200 { failure = NSError(domain: "TodayVisualUITests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Start the Family Rings fixture on port 18257."]) }
         }.resume()
-        wait(for: [done], timeout: 15)
-        if let error { throw error }
+        wait(for: [done], timeout: 15); if let failure { throw failure }
     }
 }

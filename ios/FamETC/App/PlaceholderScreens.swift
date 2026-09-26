@@ -61,7 +61,11 @@ struct HomeworkScreen: View {
                 }
             }
         }
-        .onAppear(perform: reconcileSelection)
+        .onAppear {
+            consumePendingKid()
+            reconcileSelection()
+        }
+        .onChange(of: store.pendingHomeworkKidID) { _, _ in consumePendingKid() }
         .onChange(of: orderedHomework.map(\.id)) { _, _ in reconcileSelection() }
         .onChange(of: store.kids.map(\.id)) { _, kidIDs in
             guard let selectedKidID, !kidIDs.contains(selectedKidID) else { return }
@@ -95,6 +99,7 @@ struct HomeworkScreen: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Space.lg) {
                 header
+                homeworkRingSummaries
                 if store.isParent, !store.kids.isEmpty {
                     HomeworkKidFilter(kids: store.kids, selectedKidID: $selectedKidID)
                 }
@@ -143,6 +148,7 @@ struct HomeworkScreen: View {
     private var homeworkQueue: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: Space.md) {
+                homeworkRingSummaries
                 listHeading
                 if store.isParent, !store.kids.isEmpty {
                     HomeworkKidFilter(kids: store.kids, selectedKidID: $selectedKidID)
@@ -278,6 +284,51 @@ struct HomeworkScreen: View {
         horizontalSizeClass == .regular
             && !dynamicTypeSize.isAccessibilitySize
             && availableWidth >= 800
+    }
+
+    private func consumePendingKid() {
+        guard let id = store.pendingHomeworkKidID else { return }
+        store.pendingHomeworkKidID = nil
+        guard store.isParent, store.kids.contains(where: { $0.id == id }) else { return }
+        selectedKidID = id
+        selectedHomeworkID = nil
+        reconcileSelection()
+    }
+
+    @ViewBuilder
+    private var homeworkRingSummaries: some View {
+        if !store.isLoadingHomework && store.homeworkError == nil {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 144), spacing: Space.sm)], spacing: Space.sm) {
+                ForEach(store.kids.filter { store.isParent || $0.id == store.me?.kidId }) { kid in
+                    let progress = FamilyRingsMath.homework(kidID: kid.id, items: store.homework, today: Agenda.todayKey())
+                    Button {
+                        selectedKidID = kid.id
+                        selectedHomeworkID = nil
+                        reconcileSelection()
+                    } label: {
+                        HStack(spacing: Space.sm) {
+                            FamilyRing(style: .kid, diameter: 44, metrics: [
+                                RingMetric(id: "homework", value: progress.done, total: progress.total,
+                                           color: Palette.frHw, label: "Homework")
+                            ])
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(kid.name).font(Typography.caption.weight(.semibold))
+                                Text("\(progress.left) left").font(Typography.itemTitle).monospacedDigit()
+                            }
+                            .foregroundStyle(Palette.frHwInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(Space.sm)
+                        .background(Palette.frHwSoft, in: RoundedRectangle(cornerRadius: Radius.field))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(kid.name), \(progress.left) homework left this week")
+                    .accessibilityIdentifier("homework.ring.\(kid.id)")
+                }
+            }
+        }
     }
 
     private func reconcileSelection() {

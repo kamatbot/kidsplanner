@@ -2,6 +2,48 @@ import AuthenticationServices
 import UIKit
 import WebKit
 
+/// Wait for native tasks to finish cancellation before deleting their cookie jar.
+final class SessionCancellationDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var completion: CheckedContinuation<Void, Never>?
+    func cancel(_ session: URLSession) async {
+        await withCheckedContinuation { continuation in
+            lock.lock(); completion = continuation; lock.unlock()
+            session.invalidateAndCancel()
+        }
+    }
+    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
+        lock.lock(); let continuation = completion; completion = nil; lock.unlock()
+        continuation?.resume()
+    }
+}
+
+@MainActor enum SessionSignOut {
+    static var generation = 0
+    static func isSessionCookie(_ cookie: HTTPCookie, baseURL: URL) -> Bool {
+        let domains = Set(["fametc.com", "www.fametc.com", baseURL.host ?? ""])
+        let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+        return domains.contains(domain.lowercased()) && ["fam_sess", "fam_sess.sig"].contains(cookie.name)
+    }
+    /// Remote failure never prevents local credential removal. The result only
+    /// confirms remote revocation; it is not the result of local sign-out.
+    static func finish(baseURL: URL, native: HTTPCookieStorage = .shared,
+                       web: WKHTTPCookieStore? = nil,
+                       revoke: () async throws -> Void) async -> Bool {
+        let web = web ?? WKWebsiteDataStore.default().httpCookieStore
+        let confirmed: Bool
+        do { try await revoke(); confirmed = true } catch { confirmed = false }
+        for cookie in native.cookies ?? [] where isSessionCookie(cookie, baseURL: baseURL) {
+            native.deleteCookie(cookie)
+        }
+        let cookies = await web.allCookies()
+        for cookie in cookies where isSessionCookie(cookie, baseURL: baseURL) {
+            await web.deleteCookie(cookie)
+        }
+        return confirmed
+    }
+}
+
 enum AuthError: Error {
     case unsupported, options, registration, verify(String), cancelled
     var isCancellation: Bool { if case .cancelled = self { return true }; return false }
@@ -56,7 +98,8 @@ final class AuthService: NSObject {
     private var apiBase: String { Config.baseURL.absoluteString } // https://www.fametc.com
 
     // One cookie jar shared across options→verify so fam_sess persists.
-    private let session: URLSession = {
+    private var session = AuthService.makeSession()
+    private static func makeSession() -> URLSession {
         let c = URLSessionConfiguration.default
         c.httpCookieStorage = .shared
         c.httpCookieAcceptPolicy = .always
@@ -65,8 +108,13 @@ final class AuthService: NSObject {
         // purchases ship later) and the subscription gate never blocks it. Carries
         // the shared-secret header when configured — see Config.clientHeaders.
         c.httpAdditionalHeaders = Config.clientHeaders
-        return URLSession(configuration: c)
-    }()
+        return URLSession(configuration: c, delegate: SessionCancellationDelegate(), delegateQueue: nil)
+    }
+
+    @MainActor func cancelSessionRequests() async {
+        if let delegate = session.delegate as? SessionCancellationDelegate { await delegate.cancel(session) }
+        session = Self.makeSession()
+    }
 
     private var authContinuation: CheckedContinuation<ASAuthorization, Error>?
 
@@ -367,6 +415,7 @@ final class AuthService: NSObject {
 
     @MainActor
     private func syncCookiesToWebView() async {
+        let generation = SessionSignOut.generation
         let store = WKWebsiteDataStore.default().httpCookieStore
         // Exact-host match (not substring — `contains` would also match
         // fametc.com.evil.com) and only the session cookie pair
@@ -375,9 +424,11 @@ final class AuthService: NSObject {
         let cookies = (HTTPCookieStorage.shared.cookies ?? [])
             .filter { allowedDomains.contains($0.domain) && $0.name.hasPrefix("fam_sess") }
         for cookie in cookies {
+            guard generation == SessionSignOut.generation else { return }
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 store.setCookie(cookie) { cont.resume() }
             }
+            if generation != SessionSignOut.generation { await store.deleteCookie(cookie); return }
         }
     }
 }

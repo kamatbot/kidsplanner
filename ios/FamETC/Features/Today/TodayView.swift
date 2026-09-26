@@ -1,131 +1,81 @@
 import SwiftUI
 
-/// The native Today landing surface. The first screen is deliberately small:
-/// one real priority, today's real events, and the work already in the family
-/// contract. Secondary feature cards remain behind the disclosure.
 struct TodayScreen: View {
     @Environment(AppStore.self) private var store
-    @State private var selectedKidID: String?
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAddEvent = false
     @State private var showNotes = false
-
     let onOpenHomework: () -> Void
+    let onOpenMeals: () -> Void
 
-    init(onOpenHomework: @escaping () -> Void = {}) {
+    init(onOpenHomework: @escaping () -> Void = {}, onOpenMeals: @escaping () -> Void = {}) {
         self.onOpenHomework = onOpenHomework
+        self.onOpenMeals = onOpenMeals
     }
-
-    private var bottomClearance: CGFloat {
-        Layout.bottomNavigationClearance > 0 ? Layout.bottomNavigationClearance : Space.xl
-    }
-
+    private var scope: String { "\(store.me?.id ?? "")|\(store.family?.id ?? "")" }
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: Space.lg) {
-                    if store.isParent {
-                        TodayParentHeader(
-                            greeting: greeting,
-                            dateLabel: dateLabel,
-                            onAddEvent: { showAddEvent = true },
-                            onMore: { showNotes = true }
-                        )
-                        TodayKidFilter(selectedKidID: $selectedKidID)
-                        ParentTodayStack(onOpenHomework: onOpenHomework)
-                            .environment(\.todayKidFilter, selectedKidID)
-                    } else {
-                        TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
-                        KidTodayStack(onOpenHomework: onOpenHomework)
+                TimelineView(.periodic(from: .now, by: 300)) { _ in
+                    VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+                        if store.isParent {
+                            TodayParentHeader(greeting: greeting, dateLabel: dateLabel,
+                                              onAddEvent: { showAddEvent = true }, onMore: { showNotes = true })
+                            ParentTodayStack(onOpenHomework: onOpenHomework, onOpenMeals: onOpenMeals,
+                                             onDaily3: { scrollToDaily3(proxy) })
+                        } else {
+                            TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
+                            KidTodayStack(onOpenHomework: onOpenHomework, onDaily3: { scrollToDaily3(proxy) })
+                        }
                     }
+                    .padding(sizeClass == .regular ? 32 : 16)
+                    .padding(.bottom, max(Layout.bottomNavigationClearance, Space.xl))
                 }
-                .padding(Space.lg)
-                .padding(.bottom, bottomClearance)
-                .contentShape(Rectangle())
-                .onTapGesture { famDismissKeyboard() }
             }
+            .id(scope)
         }
         .background(ScreenBackground())
         .scrollDismissesKeyboard(.interactively)
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showNotes) { NotesScreen() }
-        .onChange(of: store.me?.id) { _, _ in selectedKidID = nil }
-        .onChange(of: store.kids.map(\.id)) { _, ids in
-            if let selectedKidID, !ids.contains(selectedKidID) { self.selectedKidID = nil }
-        }
     }
-
-    private var firstName: String {
-        guard let name = store.me?.name, !name.isEmpty else { return "" }
-        return String(name.split(separator: " ").first ?? Substring(name))
+    private func scrollToDaily3(_ proxy: ScrollViewProxy) {
+        withAnimation(Motion.maybe(Motion.snappy, reduceMotion: reduceMotion)) { proxy.scrollTo("daily3", anchor: .top) }
     }
-
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
-        let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
-        return firstName.isEmpty ? part : "\(part), \(firstName)"
+        let part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+        let name = store.me?.name?.split(separator: " ").first.map(String.init) ?? ""
+        return name.isEmpty ? part : "\(part), \(name)"
     }
-
-    private var dateLabel: String {
-        Date().formatted(.dateTime.weekday(.wide).month(.wide).day())
-    }
+    private var dateLabel: String { Date().formatted(.dateTime.weekday(.wide).day().month(.wide)) }
 }
-
-// MARK: - Parent Today
 
 private struct ParentTodayStack: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.todayKidFilter) private var selectedKidID
-    @State private var showBrief = false
     @State private var showSecondary = false
     @State private var showAddEvent = false
     @State private var showSchoolNotice = false
     @State private var showActions = false
     let onOpenHomework: () -> Void
-
-    private var summaryLayout: AnyLayout {
-        sizeClass == .regular && !textSize.isAccessibilitySize
-            ? AnyLayout(HStackLayout(alignment: .top, spacing: Space.lg))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: Space.lg))
-    }
-
+    let onOpenMeals: () -> Void
+    let onDaily3: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.lg) {
-            summaryLayout {
-                VStack(spacing: Space.lg) {
-                    TodayParentPriorityCard(onReview: { showBrief = true })
-                    TodayScheduleTimelineCard()
-                    TodayParentProgressCard()
-                }
-                .frame(maxWidth: .infinity)
-                DailyFiveCard().frame(maxWidth: .infinity)
-            }
-            TodayUtilitiesRow(
-                onScanNotice: { showSchoolNotice = true },
-                onOpenActions: { showActions = true }
-            )
-            TodaySecondaryDisclosure(
-                isExpanded: $showSecondary,
-                role: .parent,
-                extra: AnyView(HomeworkDueCard(onOpenHomework: onOpenHomework))
-            )
-        }
-        .sheet(isPresented: $showBrief) {
-            ParentAttentionSheet(childID: selectedKidID)
+        VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+            FamilyRingsHero(onSeeAll: { showActions = true })
+            FamilyRingsKidGrid(onOpenHomework: onOpenHomework, onDaily3: onDaily3)
+            FamilyRingsDayStrip(onOpenMeals: onOpenMeals)
+            DailyFiveCard().id("daily3")
+            TodayUtilitiesRow(onScanNotice: { showSchoolNotice = true },
+                              onOpenActions: { showActions = true }, onAddEvent: { showAddEvent = true })
+            TodaySecondaryDisclosure(isExpanded: $showSecondary, role: .parent,
+                                     extra: AnyView(HomeworkDueCard(onOpenHomework: onOpenHomework)))
         }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
         .sheet(isPresented: $showSchoolNotice) { SchoolNoticeSheet() }
-        .sheet(isPresented: $showActions) {
-            NavigationStack {
-                ScrollView { ActionCard().padding(Space.lg) }
-                    .background(ScreenBackground())
-                    .navigationTitle("Family actions")
-                    .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") { showActions = false }
-                    } }
-            }
-        }
+        .sheet(isPresented: $showActions) { FamilyRingsActionsSheet() }
     }
 }
 
@@ -198,12 +148,10 @@ enum StudyStartPriority {
 
 private struct StudyStartCard: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.todayKidFilter) private var selectedKidID
 
     private var item: HomeworkItem? {
         let scoped = store.homework.filter {
-            (store.isParent || $0.kidId == store.me?.kidId) &&
-            (selectedKidID == nil || $0.kidId == selectedKidID)
+            (store.isParent || $0.kidId == store.me?.kidId)
         }
         return StudyStartPriority.select(from: scoped)
     }
@@ -401,15 +349,13 @@ private struct HomeworkSyncNotice: View {
 
 private struct HomeworkDueCard: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.todayKidFilter) private var selectedKidID
     let onOpenHomework: () -> Void
 
     private var items: [HomeworkItem] {
         let limit = Agenda.dayKey(offset: 7)
         return store.homework
             .filter {
-                !$0.isDone && $0.dueDate <= limit &&
-                (selectedKidID == nil || $0.kidId == selectedKidID)
+                !$0.isDone && $0.dueDate <= limit
             }
             .sorted {
                 ($0.dueDate, $0.dueTime ?? "23:59", $0.id) < ($1.dueDate, $1.dueTime ?? "23:59", $1.id)
@@ -503,34 +449,34 @@ private struct HomeworkDueRow: View {
 private struct KidTodayStack: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.dynamicTypeSize) private var textSize
-    @State private var showSecondary = false
+    @State private var showActions = false
+    @State private var showStudy = false
     let onOpenHomework: () -> Void
-
-    private var kidID: String? { store.me?.kidId }
-
-    private var summaryLayout: AnyLayout {
-        sizeClass == .regular && !textSize.isAccessibilitySize
-            ? AnyLayout(HStackLayout(alignment: .top, spacing: Space.lg))
-            : AnyLayout(VStackLayout(alignment: .leading, spacing: Space.lg))
-    }
-
+    let onDaily3: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.lg) {
-            summaryLayout {
-                DailyFiveCard(isKid: true).frame(maxWidth: .infinity)
-                VStack(spacing: Space.lg) {
-                    StudyStartCard()
-                    TodayScheduleTimelineCard(kidID: kidID)
-                    TodayChildFamsCard(kidID: kidID)
-                }
-                .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+            FamilyRingsHero(onSeeAll: { showActions = true })
+            if let kidID = store.me?.kidId {
+                FamilyRingsKidCard(kidID: kidID, onOpenHomework: onOpenHomework, onDaily3: onDaily3)
+                    .id("\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kidID)|\(Agenda.todayKey())")
             }
-            TodaySecondaryDisclosure(
-                isExpanded: $showSecondary,
-                role: .kid,
-                extra: AnyView(KidHomeworkCard(onOpenHomework: onOpenHomework))
-            )
+            DailyFiveCard(isKid: true).id("daily3")
+            FamilyRingsDayStrip(kidID: store.me?.kidId)
+            StudyStartCard()
+            if let user = store.me, user.role == "kid", !store.needsAuth {
+                StudyPalCard(userID: user.id, onOpenStudy: { showStudy = true })
+            }
+            KidHomeworkCard(onOpenHomework: onOpenHomework)
+        }
+        .sheet(isPresented: $showActions) { FamilyRingsActionsSheet() }
+        .sheet(isPresented: $showStudy) {
+            if let user = store.me, user.role == "kid", !store.needsAuth {
+                StudyPalPanel(ownerID: user.id).id(user.id)
+            }
+        }
+        .onChange(of: store.me?.id) { _, _ in showStudy = false; showActions = false }
+        .onChange(of: store.needsAuth) { _, needsAuth in
+            if needsAuth { showStudy = false; showActions = false }
         }
     }
 }

@@ -119,6 +119,12 @@ struct ParentAttentionSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                if store.isParent, store.assistanceIdentityVerified, !store.needsAuth,
+                   let childID, store.kids.contains(where: { $0.id == childID }) {
+                    FamilyRingsKidCard(kidID: childID, onOpenHomework: {}, interactive: false)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
                 Section {
                     Text("A brief from your saved homework, family actions and calendar. Open an item to check the details.")
                         .font(Typography.body).foregroundStyle(Palette.textSecond)

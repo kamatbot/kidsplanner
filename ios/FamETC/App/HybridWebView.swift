@@ -32,6 +32,10 @@ struct HybridWebView: UIViewRepresentable {
         // configured) rides in the UA as FamETCiOS/<key> — see Config.
         config.applicationNameForUserAgent = Config.webUserAgentToken
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = UIColor(Palette.frBg)
+        webView.underPageBackgroundColor = UIColor(Palette.frBg)
+        webView.scrollView.backgroundColor = UIColor(Palette.frBg)
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .always
@@ -47,6 +51,13 @@ struct HybridWebView: UIViewRepresentable {
         // WKWebView (and its cookie/data-store state) while loading that route.
         context.coordinator.attach(to: container)
         context.coordinator.load(path: path)
+    }
+
+    static func dismantleUIView(_ container: HybridWebContainer, coordinator: Coordinator) {
+        container.webView.stopLoading()
+        container.webView.navigationDelegate = nil
+        container.webView.uiDelegate = nil
+        container.webView.loadHTMLString("", baseURL: nil)
     }
 
     final class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate {
@@ -194,6 +205,7 @@ final class HybridWebContainer: UIView {
     init(webView: WKWebView) {
         self.webView = webView
         super.init(frame: .zero)
+        backgroundColor = UIColor(Palette.frBg)
         webView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(webView)
         NSLayoutConstraint.activate([
