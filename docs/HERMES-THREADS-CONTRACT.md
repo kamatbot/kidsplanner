@@ -67,7 +67,7 @@ The request/response shapes mirror the family chat routes.
 **How to render**
 1. Show the message `text` as a Hermes bubble.
 2. If `title` is set, show it as a small bold line.
-3. Show `lines` as a compact list: at most 6 rows, each one line with tail truncation.
+3. Show `lines` as a compact list: at most 7 rows (a week draft has seven), each one line with tail truncation.
 4. If `state.status === "open"`, show the buttons in order:
    - `style: "primary"` is a violet filled capsule.
    - `style: "secondary"` is an outline capsule.
@@ -115,6 +115,7 @@ Only the thread owner is notified.
 **`GET /api/hermes/rooms/hermes:<userId>/messages`**
 - Returns every human message, with no `@Hermes` needed.
 - Each message carries `actor` and `actorToken` for the thread owner.
+- Each message also carries `recentHermes`: the last five Hermes messages in the thread (including nudges), so a reply is read against the nudge it answers.
 
 **`GET /api/hermes/rooms/hermes:<userId>/context`**
 - Returns a family snapshot scoped to the **thread owner**. Kids get the kid ceiling.
@@ -134,7 +135,7 @@ Only the thread owner is notified.
   - that the `kind` is in the allowlist;
   - that each action id is allowed for that kind;
   - role (dinner and parent kinds go to parents only; kid kinds go to kids only);
-  - lengths: text ≤ 600, lines ≤ 6 × 120, labels ≤ 40.
+  - lengths: text ≤ 600, lines ≤ 7 × 120, labels ≤ 40, buttons ≤ 5.
 
 ## 6. Facts: `GET /api/hermes/proactive/state`
 
@@ -170,7 +171,7 @@ Only the thread owner is notified.
   - manual events with that `kidId`;
   - weekly activities (`kind: "activity"`).
 - Family-wide events never count.
-- A home-plan `pickupTime` for today overrides the computed time.
+- A home-plan `schoolEnd` for today replaces the timetable's school finish (half days).
 - It is null when the kid has no timed commitments today.
 
 **`sent`** covers the last 3 days, for every recipient.

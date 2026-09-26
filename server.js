@@ -643,6 +643,7 @@ require("./lib/routes/auth")(app, routeDeps);
 require("./lib/routes/family")(app, routeDeps);
 require("./lib/routes/chat")(app, routeDeps);
 require("./lib/routes/hermes")(app, routeDeps);
+require("./lib/routes/hermes-threads")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/actions")(app, routeDeps);

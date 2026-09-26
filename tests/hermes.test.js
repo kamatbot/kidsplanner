@@ -286,6 +286,8 @@ test("Hermes rooms are family-scoped and agent replies preserve the Hermes sende
     "family",
     `trip:${ownedTrip.id}`,
     `trip:${associatedTrip.id}`,
+    // Each family login's private thread (lib/hermes-threads.js); never another family's.
+    `hermes:${parent.id}`,
   ]);
   assert.equal(roomList.body.rooms.some((room) => room.roomId === `trip:${unrelatedTrip.id}`), false);
   assert.equal(roomList.body.rooms.some((room) => room.roomId === `trip:${kidOnlyTrip.id}`), false);
