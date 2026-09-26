@@ -22,7 +22,7 @@ Replace the text-heavy "Horizon" look with **Family Rings**: a bright, cool-grey
 
 **Five rules you must not break**
 
-1. **Every ring is a real count** with a defined numerator and denominator (§6). Never decorative or pre-filled. A denominator of 0 renders a dashed empty track plus an empty-state line.
+1. **Every ring is a real count** with a defined numerator and denominator (§6). Never decorative or pre-filled. Homework with nothing left, including a week with no homework, renders a full ring (owner decision 2026-09-26); any other denominator of 0 renders a dashed empty track plus an empty-state line.
 2. **Violet (`--fr-you`) means you and actions only.** Buttons, the parent ring, the now-marker, selection and focus.
 3. **Ring colours are fixed per metric**: orange for Homework, mint for Daily 4, fuchsia for Habits (owner decision 2026-09-26). Gold is only for fams. Kid identity uses the kid's profile colour on the avatar badge, never on rings.
 4. **Colour is never the only carrier.** Every ring has adjacent numbers and text, `role="img"` and an `aria-label`.

@@ -136,7 +136,7 @@
     const d3State = metric.dailyComplete == null ? (state === 'loading' ? 'Loading' : 'Unavailable') : `${metric.dailyComplete}/4`;
     const label = `Homework ${metric.homeworkKnown ? `${metric.hwDone} of ${metric.homework.length}` : hwState}; Daily 4 ${metric.dailyComplete == null ? d3State : `${metric.dailyComplete} of 4`}; habits ${metric.habitsKnown ? `${metric.habitsDone} of ${metric.habits.length}` : habitState}`;
     const ringData = [
-      ...(metric.homeworkKnown ? [{ value: metric.hwDone, total: metric.homework.length, color: 'var(--fr-hw)', label: 'Homework', radius: 94 }] : []),
+      ...(metric.homeworkKnown ? [{ value: metric.homework.length ? metric.hwDone : 1, total: metric.homework.length || 1, color: 'var(--fr-hw)', label: 'Homework', radius: 94 }] : []),
       ...(metric.dailyComplete == null ? [] : [{ value: metric.dailyComplete, total: 4, color: 'var(--fr-d3)', label: 'Daily 4', radius: 68 }]),
       ...(metric.habitsKnown ? [{ value: metric.habitsDone, total: metric.habits.length, color: 'var(--fr-hab)', label: 'Habits', radius: 42 }] : [])
     ];

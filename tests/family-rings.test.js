@@ -103,6 +103,7 @@ test('unavailable parent insights omit the Daily 4 ring instead of rendering fal
   assert.doesNotMatch(unavailable,/>0\/4</);
   assert.match(unavailable,/No habits yet/);
   const zero=ctx.todayKidRowHtml(kid,true,'error','2026-09-26',{date:'2026-09-26',parts:{}});
+  assert.deepEqual([ctx.rings[0].value,ctx.rings[0].total],[1,1],'no homework left reads as a full ring');
   assert.equal(ctx.rings.length,3);
   assert.match(zero,/>0\/4</);
   assert.match(zero,/Homework left<br>this week/);

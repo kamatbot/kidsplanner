@@ -4928,7 +4928,7 @@ function renderHomeworkHub() {
   const empty = homeworkLoadState === 'loading' ? 'Loading assignments…' : homeworkLoadState === 'error' ? 'Assignments are temporarily unavailable.' : homeworkWorkspaceStatus === 'done' ? 'No completed assignments in this view yet.' : (homeworkItems.length ? 'No open assignments match these filters.' : 'No homework yet. Add an assignment or connect a school feed in Settings.');
   const ringKids = (currentFamily?.kids || []).filter(kid => !isKidSession() || kid.id === sessionUser.kidId);
   const ringSummary = homeworkLoadState !== 'ready' ? '' : ringKids.map(kid => { const hw = todayKidProgress(kid.id,isoDate(new Date())).homework;
-    return `<button type="button" class="fr-homework-kid" onclick="setActiveKid('${todayActionIdArg(kid.id)}','homework')">${famRing({size:52,stroke:6,key:`homework-${kid.id}`,rings:[{value:hw.done,total:hw.total,color:'var(--fr-hw)'}],label:`${kid.name}: ${hw.done} of ${hw.total} homework done this week`})}<span><b>${esc(kid.name)}</b><span>${hw.left} left this week${hw.overdue ? ` · ${hw.overdue} overdue` : ''}</span></span></button>`;
+    return `<button type="button" class="fr-homework-kid" onclick="setActiveKid('${todayActionIdArg(kid.id)}','homework')">${famRing({size:52,stroke:6,key:`homework-${kid.id}`,rings:[{value:hw.total ? hw.done : 1,total:hw.total || 1,color:'var(--fr-hw)'}],label:`${kid.name}: ${hw.done} of ${hw.total} homework done this week`})}<span><b>${esc(kid.name)}</b><span>${hw.left} left this week${hw.overdue ? ` · ${hw.overdue} overdue` : ''}</span></span></button>`;
   }).join('');
   list.innerHTML = `${error}<div class="fr-homework-rings">${ringSummary}</div>
     <section class="homework-overview" aria-label="Homework summary for current filters">
@@ -5779,7 +5779,7 @@ function todayKidRowHtml(kid, parent, state, todayIso, progressState = 'loading'
   const open = parent ? `openChildView('${id}')` : `openTodayKidHomework('${id}')`;
   const fmt = n => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
   const rings = [
-    ...(hwKnown ? [{ value: hw.done, total: hw.total, color: 'var(--fr-hw)', label: 'Homework done this week', radius:66 }] : []),
+    ...(hwKnown ? [{ value: hw.total ? hw.done : 1, total: hw.total || 1, color: 'var(--fr-hw)', label: 'Homework done this week', radius:66 }] : []), // nothing left = full
     ...(daily3 ? [{ value: daily3.done, total: 4, color: 'var(--fr-d3)', label: 'Daily 4 today', radius:48 }] : []),
     ...(habKnown ? [{ value: hab.done, total: hab.total, color: 'var(--fr-hab)', label: 'Habits checked today', radius:30 }] : [])
   ];
