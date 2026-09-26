@@ -7,8 +7,8 @@
    place to tweak it. Horizon tokens only (--panel, --border, --accent,
    --text, --text-2, --muted, --panel-2, --accent-soft, --hover, --shadow,
    --radius, --radius-sm, --c-*) so dark mode stays correct — see
-   horizon.css. JetBrains Mono is used the same way the rest of the app
-   uses it (.micro-label, mono numerics) via the family already loaded by
+   horizon.css. Geist carries labels and tabular numerics via the family
+   already loaded by
    fonts.css.
 ============================================================ */
 
@@ -84,7 +84,7 @@
 .trip-create-blob-2 { width: 200px; height: 200px; background: #f59e0b; bottom: -100px; left: 18%; }
 .trip-create-hero-inner { position: relative; }
 .trip-create-kicker {
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
   color: rgba(255, 255, 255, .82);
   margin-bottom: 6px;
@@ -114,7 +114,7 @@
 .trip-create-card .trip-input[type="date"] { width: auto; flex: 0 1 190px; min-width: 150px; }
 .trip-create-presets { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
 .trip-create-preset {
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--text-2);
   background: var(--panel-2);
@@ -126,7 +126,7 @@
 }
 .trip-create-preset:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .trip-create-meta {
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
   color: var(--accent); font-weight: 700;
   margin-left: auto;
@@ -241,7 +241,7 @@
 
 /* ---------- role chips ---------- */
 .role-chip {
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 10.5px;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -261,7 +261,7 @@
   margin-bottom: 12px;
 }
 .trip-stat-card { padding: 16px 18px; }
-.trip-stat-val { font-family: "JetBrains Mono", monospace; font-size: 26px; font-weight: 700; margin-top: 4px; }
+.trip-stat-val { font-family: Geist, sans-serif; font-size: 26px; font-weight: 700; margin-top: 4px; }
 .trip-overview-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -270,27 +270,27 @@
   margin-bottom: 12px;
 }
 .trip-panel-title { margin-bottom: 10px; }
-.trip-next-flight-route { font-family: "JetBrains Mono", monospace; font-size: 22px; font-weight: 700; }
+.trip-next-flight-route { font-family: Geist, sans-serif; font-size: 22px; font-weight: 700; }
 .trip-next-flight-sub { font-size: 13px; color: var(--text-2); }
 .trip-next-flight-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.trip-next-flight-times { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--text-2); margin-top: 6px; }
+.trip-next-flight-times { font-family: Geist, sans-serif; font-size: 13px; color: var(--text-2); margin-top: 6px; }
 .trip-homebase-name { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
 .trip-homebase-addr { font-size: 13px; color: var(--text-2); margin-top: 4px; }
-.trip-homebase-times { font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--text-2); margin-top: 6px; }
+.trip-homebase-times { font-family: Geist, sans-serif; font-size: 13px; color: var(--text-2); margin-top: 6px; }
 .trip-link-more { font-size: 13px; font-weight: 600; display: inline-block; margin-top: 10px; color: var(--accent); text-decoration: none; }
 .trip-link-more:hover { text-decoration: underline; }
 
 .trip-favorites-list { display: flex; flex-direction: column; gap: 12px; }
 .trip-favorite-row { display: flex; align-items: center; gap: 10px; }
-.trip-favorite-rank { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--muted); width: 18px; flex: none; }
+.trip-favorite-rank { font-family: Geist, sans-serif; font-size: 12px; color: var(--muted); width: 18px; flex: none; }
 .trip-favorite-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trip-favorite-count { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--accent); font-weight: 700; flex: none; }
+.trip-favorite-count { font-family: Geist, sans-serif; font-size: 12px; color: var(--accent); font-weight: 700; flex: none; }
 
 .trip-feed-list { display: flex; flex-direction: column; gap: 13px; }
 .trip-feed-row { display: flex; align-items: flex-start; gap: 10px; }
 .trip-feed-text { flex: 1; font-size: 13.5px; line-height: 1.45; color: var(--text-2); }
 .trip-feed-text strong { color: var(--text); }
-.trip-feed-when { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); flex: none; }
+.trip-feed-when { font-family: Geist, sans-serif; font-size: 11px; color: var(--muted); flex: none; }
 
 /* ---------- itinerary tab ---------- */
 .trip-itin-toolbar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
@@ -318,7 +318,7 @@
 .trip-item[draggable="true"] { cursor: grab; }
 .trip-item[draggable="true"]:hover { box-shadow: var(--shadow); }
 .trip-item-drag { flex: none; margin-top: 4px; color: var(--muted); }
-.trip-item-time { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: var(--text-2); width: 44px; flex: none; margin-top: 2px; }
+.trip-item-time { font-family: Geist, sans-serif; font-size: 12.5px; color: var(--text-2); width: 44px; flex: none; margin-top: 2px; }
 .trip-item-body { flex: 1; min-width: 0; }
 .trip-item-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .trip-item-title { font-size: 14.5px; font-weight: 600; }
@@ -327,7 +327,7 @@
 
 .cat-pill {
   display: inline-flex; align-items: center; gap: 5px;
-  font-family: "JetBrains Mono", monospace; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  font-family: Geist, sans-serif; font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
 }
 .cat-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
@@ -336,14 +336,14 @@
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
   border-radius: 999px; padding: 5px 10px; cursor: pointer;
-  font-size: 12.5px; font-weight: 700; font-family: "JetBrains Mono", monospace;
+  font-size: 12.5px; font-weight: 700; font-family: Geist, sans-serif;
 }
 .trip-vote-btn.voted { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .trip-thread-btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--border); background: var(--panel); color: var(--text-2);
   border-radius: 999px; padding: 5px 10px; cursor: pointer;
-  font-size: 12.5px; font-weight: 700; font-family: "JetBrains Mono", monospace;
+  font-size: 12.5px; font-weight: 700; font-family: Geist, sans-serif;
 }
 .trip-thread-btn:hover { background: var(--hover); }
 
@@ -408,7 +408,7 @@
   background: var(--panel); color: var(--text); outline: none; width: 100%;
 }
 .trip-input:focus, .trip-select:focus { border-color: var(--accent); }
-.trip-input-mono { font-family: "JetBrains Mono", monospace; font-size: 13px; }
+.trip-input-mono { font-family: Geist, sans-serif; font-size: 13px; }
 .trip-input-time { width: 82px; flex: none; }
 .trip-input-grow { flex: 1; min-width: 180px; }
 
@@ -448,18 +448,18 @@
   display: flex; align-items: center; justify-content: center;
 }
 .trip-flight-main { min-width: 150px; }
-.trip-flight-route { font-family: "JetBrains Mono", monospace; font-size: 19px; font-weight: 700; }
+.trip-flight-route { font-family: Geist, sans-serif; font-size: 19px; font-weight: 700; }
 .trip-flight-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
-.trip-mono { font-family: "JetBrains Mono", monospace; }
+.trip-mono { font-family: Geist, sans-serif; }
 .trip-flight-details { flex: 1; min-width: 170px; }
-.trip-flight-times { font-family: "JetBrains Mono", monospace; font-size: 13px; }
+.trip-flight-times { font-family: Geist, sans-serif; font-size: 13px; }
 .trip-conf-chip { color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; }
 
 .trip-lodging-main { flex: 1; min-width: 200px; }
 .trip-lodging-name { font-size: 16.5px; font-weight: 700; letter-spacing: -.02em; }
 .trip-lodging-addr { font-size: 13px; color: var(--text-2); margin-top: 3px; }
 .trip-lodging-cols { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
-.trip-mono-val { font-family: "JetBrains Mono", monospace; font-size: 13px; margin-top: 2px; }
+.trip-mono-val { font-family: Geist, sans-serif; font-size: 13px; margin-top: 2px; }
 .trip-note-chip {
   font-size: 13px; color: var(--text-2); margin-top: 10px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
@@ -476,7 +476,7 @@
 .trip-progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width .2s ease; }
 .trip-packing-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
 .trip-preset-chip {
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 11px; letter-spacing: .04em;
   color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 999px; padding: 5px 11px; cursor: pointer;
@@ -508,7 +508,7 @@
 .trip-invite-card { margin-bottom: 16px; }
 .trip-invite-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .trip-invite-link {
-  flex: 1; min-width: 220px; font-family: "JetBrains Mono", monospace; font-size: 13.5px;
+  flex: 1; min-width: 220px; font-family: Geist, sans-serif; font-size: 13.5px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
   padding: 11px 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -564,7 +564,7 @@
 .trip-chat-update-body { flex: 1; min-width: 0; }
 .trip-chat-update-kind {
   color: var(--trip-update-color);
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: .07em;
@@ -593,7 +593,7 @@
   min-height: 18px;
   margin-top: 6px;
   color: var(--muted);
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 9.5px;
 }
 .trip-chat-update .chat-msg-controls { margin-left: auto; }
@@ -623,3 +623,7 @@
   .trip-create-meta.show,
   .trip-spinner { animation: none; transition: none; transform: none; }
 }
+
+/* Family Rings cards and action controls for the trips surface. */
+.trip-card, .trip-stat-card, .trip-join-card { border-radius: 24px; border-color: var(--fr-rule, var(--border)); box-shadow: var(--fr-shadow, var(--shadow)); }
+.trip-card:focus-visible { outline-color: var(--fr-you, var(--accent)); }

@@ -64,3 +64,7 @@
 .schedule-kid, .hw-kid-tag, .goals-recap-kid, .activity-card-kid { color: var(--text-2) !important; }
 .schedule-kid { display: inline-flex; align-items: center; gap: 6px; }
 .schedule-kid .kid-profile-avatar, .hw-kid-tag .kid-profile-avatar, .goals-recap-kid .kid-profile-avatar { width: 20px; height: 20px; font-size: 0.625rem; }
+
+/* Family Rings control geometry. */
+.settings-nav button { border-radius: 12px; }.settings-nav button[aria-current] { background: var(--fr-you-soft, var(--accent-soft)); color: var(--fr-you-ink, var(--accent)); }
+.settings-content .card { background: var(--fr-card, var(--panel)); border-radius: 24px; box-shadow: var(--fr-shadow, var(--shadow)); padding: 20px; }

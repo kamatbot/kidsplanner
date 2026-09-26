@@ -7,8 +7,8 @@
 #fams-root h2 { font-size: 21px; letter-spacing: -.025em; margin: 0 0 12px; }
 #fams-root h3 { font-size: 16px; margin: 0 0 10px; }
 .fams-wallet { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; padding: 28px; background: var(--panel); border-radius: 16px; border: 1px solid var(--border); }
-#fams-root .fams-balance { font-family: 'JetBrains Mono', monospace; color: var(--text); font-size: clamp(36px, 6vw, 60px); letter-spacing: -.03em; margin: 12px 0; line-height: 1.1; overflow-wrap: anywhere; }
-.fams-balance span:last-child { font-family: 'Space Grotesk', sans-serif; font-size: 20px; }
+#fams-root .fams-balance { font-family: Geist, sans-serif; color: var(--text); font-size: clamp(36px, 6vw, 60px); letter-spacing: -.03em; margin: 12px 0; line-height: 1.1; overflow-wrap: anywhere; }
+.fams-balance span:last-child { font-family: Geist, sans-serif; font-size: 20px; }
 .fams-week { align-self: center; }
 .fams-week p { font-size: 14px; }
 #fams-root progress { width: 100%; height: 12px; appearance: none; border: 0; border-radius: 6px; background: var(--grid); overflow: hidden; }
@@ -33,7 +33,7 @@
 .fams-list strong { font-size: 15px; overflow-wrap: anywhere; }
 .fams-list p { margin: 5px 0 0; font-size: 13px; }
 .fams-list button { flex-shrink: 0; font-size: 13px !important; }
-.fams-amount { font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: nowrap; }
+.fams-amount { font-family: Geist, sans-serif; font-size: 13px; white-space: nowrap; }
 .fams-lesson { border-top: 1px solid var(--border); padding: 16px 0; }
 #fams-root summary { cursor: pointer; padding: 10px 0; min-height: 44px; color: var(--accent); font-weight: 600; }
 #fams-root fieldset { border: 0; padding: 0; margin: 0; }
@@ -66,7 +66,13 @@
 #fams-root .fams-chart-key { font-size: 13px; }
 
 /* Match the dashboard's type rather than mixing display and monospace faces. */
-#fams-root { font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; }
+#fams-root { font-family: Geist, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 15px; }
 #fams-root .fams-balance, #fams-root .fams-balance span:last-child, .fams-amount { font-family: inherit; font-variant-numeric: tabular-nums; }
 .fams-header h1 { font-size: clamp(25px, 3vw, 32px); }
 #fams-root h2 { font-size: 20px; }
+
+/* Gold is reserved for the Fams balance and earned-weekly progress. */
+#fams-root { color: var(--fr-ink, var(--text)); }.fams-wallet { border: 0; border-radius: 24px; background: var(--fr-card, var(--panel)); box-shadow: var(--fr-shadow, var(--shadow)); }
+#fams-root .fams-balance, .fams-amount { color: var(--fr-fams-ink, var(--text)); }
+#fams-root progress, #fams-root progress::-webkit-progress-bar { background: var(--fr-fams-soft, var(--grid)); }#fams-root progress::-webkit-progress-value, #fams-root progress::-moz-progress-bar { background: var(--fr-fams, var(--accent)); }
+#fams-root button { border-radius: 999px; background: var(--fr-you, var(--accent)); color: var(--fr-on-you, var(--on-accent)); }

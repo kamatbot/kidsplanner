@@ -50,6 +50,10 @@
 }
 .fam-enrich-card.fam-locked > .fam-enrich-lock { display: flex; }
 
+/* Family Rings token pass for enrichment cards and controls. */
+.fam-enrich-card, .widget, .widget-card { border-radius: 24px; box-shadow: var(--fr-shadow, var(--shadow)); }
+.fam-pin-btn, .fam-reflect-btn { color: var(--fr-you-ink, var(--accent)); }
+
 /* ---------- quote flip card ---------- */
 .widget-quote { perspective: 1200px; }
 .widget-flip-inner {
@@ -160,7 +164,7 @@
 .notes-timeline { display: flex; flex-direction: column; gap: 20px; }
 .notes-day-group { display: flex; flex-direction: column; gap: 10px; }
 .notes-day-header {
-  font-family: "JetBrains Mono", monospace;
+  font-family: Geist, sans-serif;
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;

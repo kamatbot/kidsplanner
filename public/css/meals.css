@@ -81,7 +81,7 @@
   font-weight: 700; flex: none; border: 2px solid var(--panel);
 }
 .meal-member-portion-badge {
-  font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 700;
+  font-family: Geist, sans-serif; font-size: 9px; font-weight: 700;
   color: var(--text-2); margin-left: 3px;
 }
 .meal-total-portions {
@@ -146,7 +146,7 @@
 @keyframes meal-spin { to { transform: rotate(360deg); } }
 
 .meal-chip {
-  font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .04em;
+  font-family: Geist, sans-serif; font-size: 11px; letter-spacing: .04em;
   color: var(--text-2); background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 999px; padding: 5px 11px; cursor: pointer;
   transition: color .12s ease, border-color .12s ease, background .12s ease;
@@ -203,7 +203,7 @@
 .meal-day-col.today { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .meal-day-head { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .meal-day-dow { color: var(--muted); }
-.meal-day-num { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 700; }
+.meal-day-num { font-family: Geist, sans-serif; font-size: 16px; font-weight: 700; }
 .meal-entry-card { background: var(--panel-2); border-radius: 9px; padding: 9px 10px; }
 .meal-entry-title { font-size: 13px; font-weight: 600; line-height: 1.35; }
 .meal-entry-prep { color: var(--c-amber); margin-top: 4px; }
@@ -233,14 +233,14 @@
 .meal-pantry-name { font-size: 14px; font-weight: 600; }
 .meal-pantry-unit { font-weight: 400; font-size: 12.5px; }
 .meal-expiry-badge {
-  font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--warn);
+  font-family: Geist, sans-serif; font-size: 10.5px; color: var(--warn);
   background: color-mix(in srgb, var(--c-amber) 16%, var(--panel)); border-radius: 999px; padding: 2px 9px;
 }
 .meal-pantry-row-controls { display: flex; align-items: center; gap: 8px; flex: none; }
 .meal-level-seg { display: flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .meal-level-seg-btn {
   border: none; background: var(--panel); color: var(--text-2); cursor: pointer;
-  font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: .03em;
+  font-family: Geist, sans-serif; font-size: 10.5px; letter-spacing: .03em;
   padding: 6px 10px; transition: background .12s ease, color .12s ease;
 }
 .meal-level-seg-btn + .meal-level-seg-btn { border-left: 1px solid var(--border); }
@@ -250,7 +250,7 @@
 .meal-level-seg-btn.active.meal-level-low { background: color-mix(in srgb, var(--c-amber) 22%, var(--panel)); color: var(--warn); }
 .meal-level-seg-btn.active.meal-level-out { background: color-mix(in srgb, var(--c-red) 18%, var(--panel)); color: var(--c-red); }
 .meal-level-chip {
-  font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: .03em;
+  font-family: Geist, sans-serif; font-size: 10.5px; letter-spacing: .03em;
   border-radius: 999px; padding: 5px 11px;
 }
 .meal-level-chip.meal-level-plenty { background: color-mix(in srgb, var(--c-green) 20%, var(--panel)); color: var(--c-green); }
@@ -366,3 +366,7 @@
   .meal-recipe-card,
   .meal-sheet { animation: none; transition: none; transform: none; }
 }
+
+/* Shared Family Rings surface treatment. Shopping counts alone use gold. */
+.meal-recipe-card, .meal-sheet, .meal-household-panel-inner { border-radius: 24px; border-color: var(--fr-rule, var(--border)); box-shadow: var(--fr-shadow, var(--shadow)); }
+.meal-shopping-row-meta { color: var(--fr-fams-ink, var(--warn)); }.meal-shopping-row-meta .meal-chip { background: var(--fr-fams-soft, var(--panel-2)); }

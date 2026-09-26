@@ -21,3 +21,6 @@
 .chat-media-dialog footer { display:flex; justify-content:space-between; gap:12px; margin-top:18px; }
 .chat-media-dialog button:disabled { opacity:.5; cursor:not-allowed; }
 @media(max-width:600px){ .chat-media-dialog{padding:18px;} .chat-media-dialog footer button{font-size:12px;padding:12px;} }
+
+.chat-media-add { border-radius: 999px; color: var(--fr-ink-2, var(--text-2)); }.chat-media-add:hover { color: var(--fr-you-ink, var(--accent)); background: var(--fr-you-soft, var(--accent-soft)); }
+.chat-media-dialog { border: 0; border-radius: 24px; background: var(--fr-card, var(--panel)); box-shadow: var(--fr-shadow, var(--shadow)); }
