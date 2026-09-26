@@ -4268,10 +4268,13 @@ function renderTodayHermesStripRow(m) {
   const buttons = actions.length
     ? `<div class="hermes-nudge-actions">${actions.map((a) => renderHermesNudgeButton(m.id, a)).join('')}</div>`
     : '';
+  // An approval shows the exact proposal (When / For / Notes) before the buttons.
+  const lines = m.card.kind === 'approval' && Array.isArray(m.card.lines) ? m.card.lines.slice(0, 3) : [];
+  const details = lines.length ? `<span class="fr-hermes-lines">${lines.map((line) => `<span>${esc(line)}</span>`).join('')}</span>` : '';
   return `<div class="fr-hermes-row" data-message-id="${esc(m.id)}">
     <button type="button" class="fr-hermes-open" onclick="openHermesChat()">
       <span class="fr-hermes-label"><span class="fr-hermes-mark" aria-hidden="true">✦</span>Hermes</span>
-      <span class="fr-hermes-text">${esc(m.text || '')}</span>
+      <span class="fr-hermes-text">${esc(m.text || '')}</span>${details}
     </button>
     ${buttons}
   </div>`;

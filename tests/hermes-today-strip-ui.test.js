@@ -135,3 +135,16 @@ test('a shown row\'s text opens the Hermes chat and its buttons dispatch through
   assert.match(el.innerHTML, /class="fr-hermes-open" onclick="openHermesChat\(\)"/);
   assert.match(el.innerHTML, /data-action-id="later"[^>]*onclick="handleHermesNudgeButton\(this\)"/);
 });
+
+test('an approval row shows its proposal lines; other kinds stay text-only', () => {
+  const c = { esc, renderHermesNudgeButton: (id, a) => `<button data-action-id="${a.id}"></button>` };
+  vm.createContext(c);
+  vm.runInContext(fn('renderTodayHermesStripRow'), c);
+  const approval = { id: 'm9', text: 'Hermes needs your OK to add “Science fair” to the calendar.', card: { type: 'hermes-nudge', kind: 'approval', lines: ['When · Thu, Oct 1 · 16:00–17:00', 'For · Taylor', 'Notes · Bring the model', 'Extra'], actions: [{ id: 'approve' }, { id: 'reject' }], state: { status: 'open' } } };
+  const html = c.renderTodayHermesStripRow(approval);
+  assert.match(html, /fr-hermes-lines/);
+  assert.ok(html.includes('When · Thu, Oct 1 · 16:00–17:00') && html.includes('Notes · Bring the model'));
+  assert.ok(!html.includes('Extra'), 'at most 3 lines');
+  const plain = c.renderTodayHermesStripRow(Object.assign({}, approval, { card: Object.assign({}, approval.card, { kind: 'home-parent' }) }));
+  assert.ok(!plain.includes('fr-hermes-lines'));
+});
