@@ -33,15 +33,16 @@
 | Uploads | yes — timetable/homework photos (JPG/PNG/PDF), feeds existing Claude parse pipeline | multer; native document scanner on iOS |
 | Min iOS | latest major minus 1 | modern SwiftUI @Observable |
 
-## Design (FINAL — Horizon redesign, user-confirmed 2026-07-11; spec: docs/design/redesign/)
+## Design (FINAL — Family Rings web, user-confirmed 2026-09-26; spec: docs/design/family-rings/)
 | Decision | Value |
 |---|---|
-| Language | Full Horizon adoption per "Fam ETC Redesign.dc.html" (claude.ai/design d048593a…): one structure everywhere — sidebar nav → main content → docked family chat (slim-strip collapse on Homework/Goals/Activities). Today replaces the widget-wall dashboard; News, Quote and Word form "Daily 3"; Brain Teaser / Puzzle has its own section. |
-| Palette | Horizon tokens 1:1 web+iOS (`public/css/horizon.css` / `Theme.swift`): bg `#f1efec` greige, panel white, accent `#6f43d6` violet (the ONLY interactive color), coral `#f0704f` partner; dark mode = same tokens re-resolved (accent `#b98cff`). Per-kid identity = parent-selected profile color and optional photo, shared across web and native surfaces (updated 2026-09-07). Existing palette is the fallback for profiles without a valid color. Green/red strictly semantic. |
-| Hero gradient | coral→violet, reserved for ONE momentum element per screen |
-| Dark mode | both at launch (marketing screenshots in light mode); web toggle Auto/Light/Dark in Settings |
-| Typography | Space Grotesk (UI) + JetBrains Mono (numerals, 11px uppercase micro-labels), self-hosted on web (`public/fonts/`) and bundled on iOS |
-| Superseded | The original KidsPlanner-carryover palette (purple `#6C63FF`/pink/teal, purple→pink hero) and the 2026-07-04 "no docked chat on iPad" revert — both replaced by this redesign. |
+| Language | Family Rings: the parent's Needs You ring and three action previews, then each child's concentric Homework/Habits/Daily 3 rings, day strip, and learning tiles. Existing sidebar → content → docked chat structure; phone bottom navigation. Every metric comes from recorded work, no sibling ranking. |
+| Palette | Web `--fr-*` tokens in `public/css/horizon.css`: cool grey `#F4F5F7`, white cards, violet actions `#7B4DFF`, rose homework `#E8467C`, teal habits `#0EA58C`, azure Daily 3 `#4B7BF5`, gold fams `#D99A00`. Dark mode resolves the same semantic tokens. Profile colors identify children, never metric categories. |
+| Hero | A progress ring, with empty dashed tracks for zero denominators; no decorative fill or momentum gradient. |
+| Dark mode | Auto/Light/Dark in Settings; matching Family Rings light and dark palettes. |
+| Typography | Self-hosted Geist variable 100–900 on the web, tabular numerals throughout; 30px greeting, 64px hero count, 30px child stats, 14px body. |
+| Native and marketing scope | iOS parity is pending a separate approved native brief. Marketing keeps its existing Horizon type and palette. |
+| Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). Native and marketing implementations remain outside this change. |
 
 ## Monetization
 | Decision | Value | → Components |

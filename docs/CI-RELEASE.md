@@ -16,3 +16,7 @@ required checks, and the effective rules endpoint returned `[]`. These are
 observations of the provider state, not a substitute for the workflow gate.
 Refresh both reads before every release and record any change with the release
 source.
+
+Refreshed 2026-09-26 for Family Rings: `main` remains `protected=false` and
+the effective rules endpoint returns `[]`. The active workflow still runs the
+full Node 24 gate on a push to `main`; no additional dispatch is needed.
