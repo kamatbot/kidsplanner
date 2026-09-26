@@ -49,6 +49,8 @@ struct ChatCard: Codable, Equatable {
     let type: String   // "homework" | "event" | "trip-flight" | ...
     let id: String
     var title: String?
+    var url: String? = nil
+    var source: String? = nil
 }
 
 /// Media attached to a chat message. GIF fields remain optional for the Giphy

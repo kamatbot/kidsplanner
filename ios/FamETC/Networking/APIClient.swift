@@ -28,10 +28,15 @@ protocol FamilyActionService {
     func updateFamilyAction(_ id: String, status: String, snoozedUntil: String?) async throws -> FamilyAction
 }
 
+/// The receive boundary used by the room loop, including empty-room long polls.
+protocol ChatMessageService {
+    func chatMessages(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> [ChatMessage]
+}
+
 /// Typed async client for the Fam ETC JSON API. Shares `HTTPCookieStorage.shared`
 /// with `AuthService` and the WKWebView, so once the user signs in (passkey) every
 /// native request carries `fam_sess` and stays in lockstep with any hybrid web tab.
-final class APIClient: FamilyActionService {
+final class APIClient: FamilyActionService, ChatMessageService {
     static let shared = APIClient()
 
     private let base = Config.baseURL

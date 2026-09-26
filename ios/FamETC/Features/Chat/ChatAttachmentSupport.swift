@@ -239,101 +239,301 @@ actor ChatNotificationPrefetcher {
     }
 }
 
-// MARK: - Picker menu
+// MARK: - Composer and keyboard attachment panel
 
+/// One reserved input area is shared by the system keyboard and attachment
+/// grid. This keeps the native SwiftUI text field and avoids overlapping insets.
 struct ChatComposerAddMenu: View {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    @Binding var keyboardDocked: Bool
+    let placeholder: String
     let canBuzz: Bool
+    let canSend: Bool
+    let sendingMessage: Bool
+    let inputBottom: CGFloat
+    let onSubmit: () -> Void
     let onGif: () -> Void
     let onBuzz: () -> Void
     let onSend: (ChatPickedAttachment) async throws -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showsAttachments = false
+    @State private var keyboardTop: CGFloat?
+    @State private var restingBottom: CGFloat = 0
+    @State private var lastKeyboardHeight: CGFloat = 300
+    @State private var returningToKeyboard = false
+    @FocusState private var fieldFocused: Bool
     @State private var pickerKind: PickerKind?
     @State private var isSending = false
     @State private var errorMessage: String?
+    @State private var failedAttachment: ChatPickedAttachment?
+    @State private var pickedSend: ((ChatPickedAttachment) async throws -> Void)?
 
     private enum PickerKind: String, Identifiable {
-        case photoVideo
-        case file
+        case photoVideo, camera, file
         var id: String { rawValue }
     }
 
+    private var keyboardHeight: CGFloat { keyboardTop.map { max(0, restingBottom - $0) } ?? 0 }
+    private var reservedHeight: CGFloat {
+        showsAttachments || returningToKeyboard ? max(0, lastKeyboardHeight - keyboardHeight) : 0
+    }
+
     var body: some View {
-        Menu {
-            Button {
-                onGif()
-            } label: {
-                Label("GIF", systemImage: "photo.stack")
-            }
+        VStack(spacing: 0) {
+            HStack(alignment: .bottom, spacing: Space.sm) {
+                Button {
+                    Haptics.selection()
+                    if showsAttachments {
+                        returningToKeyboard = true
+                        showsAttachments = false
+                        fieldFocused = true
+                    } else {
+                        if keyboardHeight > 0 { lastKeyboardHeight = keyboardHeight }
+                        showsAttachments = true
+                        fieldFocused = false
+                    }
+                    isFocused = true
+                } label: {
+                    Group {
+                        if isSending { ProgressView().tint(Palette.accent) }
+                        else {
+                            Image(systemName: showsAttachments ? "keyboard" : "plus")
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundStyle(Palette.accent)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .background(Palette.accentSoft, in: Circle())
+                }
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel(showsAttachments ? "Show keyboard" : "More chat actions")
+                .accessibilityIdentifier("chat.attachments.toggle")
 
-            Button {
-                onBuzz()
-            } label: {
-                Label("Buzz", systemImage: "wave.3.right.circle.fill")
-            }
-            .disabled(!canBuzz)
+                TextField(placeholder, text: $text, axis: .vertical)
+                    .font(.body)
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1...5)
+                    .focused($fieldFocused)
+                    .padding(.horizontal, Space.md).padding(.vertical, 11)
+                    .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 22))
+                    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Palette.border, lineWidth: 1).allowsHitTesting(false))
+                    .accessibilityIdentifier("chat.composer")
 
-            Divider()
+                Button(action: onSubmit) {
+                    Group {
+                        if sendingMessage { ProgressView().tint(Palette.onAccent) }
+                        else { Image(systemName: "paperplane.fill") }
+                    }
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Palette.onAccent)
+                    .frame(width: 44, height: 44)
+                    .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
+                }
+                .disabled(!canSend)
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel("Send message")
+                .accessibilityIdentifier("chat.send")
+            }
+            .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+            .background(Palette.panel)
+            .overlay(Divider().overlay(Palette.border), alignment: .top)
 
-            Button {
-                pickerKind = .photoVideo
-            } label: {
-                Label("Photo or Video", systemImage: "photo.on.rectangle.angled")
-            }
-            Button {
-                pickerKind = .file
-            } label: {
-                Label("File", systemImage: "doc")
-            }
-        } label: {
-            Group {
-                if isSending {
-                    ProgressView().tint(Palette.accent)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Palette.accent)
+            ZStack(alignment: .top) {
+                if showsAttachments {
+                    ChatAttachmentPanel(canBuzz: canBuzz, isSending: isSending, onAction: selectAction)
                 }
             }
-            .frame(width: 44, height: 44)
-            .background(Palette.accentSoft, in: Circle())
+            .frame(height: reservedHeight)
+            .clipped()
         }
-        .disabled(isSending)
-        .accessibilityLabel(isSending ? "Preparing attachment" : "More chat actions")
-        .accessibilityHint("GIF, Buzz, photo, video, or file")
+        .onChange(of: isFocused) { _, focused in
+            if !focused {
+                showsAttachments = false
+                returningToKeyboard = false
+                fieldFocused = false
+            } else if !showsAttachments { fieldFocused = true }
+        }
+        .onChange(of: fieldFocused) { _, focused in
+            if focused {
+                if showsAttachments { returningToKeyboard = true }
+                showsAttachments = false
+                isFocused = true
+            } else if !showsAttachments { isFocused = false }
+        }
+        .onChange(of: inputBottom, initial: true) { _, bottom in
+            if !isFocused && !showsAttachments { restingBottom = bottom }
+        }
+        .onChange(of: keyboardHeight > 0 || showsAttachments || returningToKeyboard) { _, active in keyboardDocked = active }
+        .onChange(of: keyboardHeight) { _, height in
+            if height > 0 && !showsAttachments { lastKeyboardHeight = height }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+            guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+                  let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
+                  let window = scene.windows.first(where: \.isKeyWindow) else { return }
+            let converted = window.convert(frame, from: window.screen.coordinateSpace)
+            let docked = converted.minY < window.bounds.maxY
+                && converted.maxY >= window.bounds.maxY - 1
+                && converted.width >= window.bounds.width * 0.8
+            let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+            withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
+                keyboardTop = docked && fieldFocused ? converted.minY : nil
+                // Floating and hardware keyboards consume no docked inset.
+                // Their frame event must also finish the picker transition.
+                if fieldFocused { returningToKeyboard = false }
+            }
+        }
         .sheet(item: $pickerKind) { kind in
             switch kind {
-            case .photoVideo:
-                ChatPhotoVideoPicker { picked in handlePicked(picked) }
-            case .file:
-                ChatDocumentPicker { picked in handlePicked(picked) }
+            case .photoVideo: ChatPhotoVideoPicker { handlePicked($0) }
+            case .camera: ChatCameraPicker { handlePicked($0) }
+            case .file: ChatDocumentPicker { handlePicked($0) }
             }
         }
         .alert("Attachment not sent", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
-            Button("OK", role: .cancel) { errorMessage = nil }
+            Button("Cancel", role: .cancel) { discardFailedAttachment() }
+            Button("Retry") {
+                if let failedAttachment { handlePicked(failedAttachment) }
+            }
         } message: {
             Text(errorMessage ?? "Please try again.")
         }
     }
 
+    private func selectAction(_ action: ChatAttachmentAction) {
+        Haptics.selection()
+        isFocused = false
+        fieldFocused = false
+        showsAttachments = false
+        returningToKeyboard = false
+        switch action {
+        case .gif: onGif()
+        case .buzz: onBuzz()
+        case .photos, .camera, .files:
+            pickedSend = onSend // Keep the originating room through sheet dismissal.
+            switch action {
+            case .photos: pickerKind = .photoVideo
+            case .camera: pickerKind = .camera
+            default: pickerKind = .file
+            }
+        }
+    }
+
+    private func discardFailedAttachment() {
+        if let failedAttachment { try? FileManager.default.removeItem(at: failedAttachment.url) }
+        failedAttachment = nil
+        errorMessage = nil
+    }
+
     private func handlePicked(_ picked: ChatPickedAttachment?) {
         pickerKind = nil
-        guard let picked else { return }
+        guard let picked, !isSending else { return }
+        let send = pickedSend ?? onSend
         isSending = true
+        errorMessage = nil
         Task { @MainActor in
-            defer {
-                isSending = false
-                try? FileManager.default.removeItem(at: picked.url)
-            }
+            defer { isSending = false }
             do {
-                try await onSend(picked)
+                try await send(picked)
+                try? FileManager.default.removeItem(at: picked.url)
+                failedAttachment = nil
                 Haptics.notify(.success)
             } catch {
+                failedAttachment = picked
                 Haptics.notify(.error)
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+}
+
+private enum ChatAttachmentAction { case photos, camera, files, gif, buzz }
+
+private struct ChatAttachmentPanel: View {
+    let canBuzz: Bool
+    let isSending: Bool
+    let onAction: (ChatAttachmentAction) -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack {
+                    Text("A little more family").font(.headline)
+                    Spacer()
+                    Image(systemName: "sparkles").foregroundStyle(Palette.accent)
+                }
+                .foregroundStyle(Palette.text)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 130 : 88), spacing: 12)], spacing: 20) {
+                    action("Photos", icon: "photo.on.rectangle.angled", color: Palette.blue, kind: .photos)
+                        .accessibilityHint("Choose a photo or video")
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        action("Camera", icon: "camera.fill", color: Palette.coral, kind: .camera)
+                    }
+                    action("Files", icon: "doc.fill", color: Palette.teal, kind: .files)
+                    action("GIFs", icon: "face.smiling.fill", color: Palette.violet, kind: .gif)
+                    action("Buzz", icon: "wave.3.right.circle.fill", color: Palette.amber, kind: .buzz)
+                        .disabled(!canBuzz)
+                        .accessibilityHint(canBuzz ? "Confirm sending your draft as a Time Sensitive alert" : "Write a message first")
+                }
+                Text(isSending ? "Preparing your attachment…" : "Photos, little moments, and a nudge when it matters.")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(20)
+            .padding(.bottom, 12)
+        }
+        .background(Palette.panel)
+        .accessibilityIdentifier("chat.attachments.panel")
+    }
+
+    private func action(_ title: String, icon: String, color: Color, kind: ChatAttachmentAction) -> some View {
+        Button { onAction(kind) } label: {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 25, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 58, height: 54)
+                    .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+                Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Palette.text)
+            }
+            .frame(maxWidth: .infinity, minHeight: 82)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(isSending)
+        .accessibilityIdentifier("chat.attachments.\(title.lowercased())")
+    }
+}
+
+private struct ChatCameraPicker: UIViewControllerRepresentable {
+    let completion: (ChatPickedAttachment?) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(completion: completion) }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let completion: (ChatPickedAttachment?) -> Void
+        init(completion: @escaping (ChatPickedAttachment?) -> Void) { self.completion = completion }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { completion(nil) }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            guard let photo = info[.originalImage] as? UIImage,
+                  let data = photo.jpegData(compressionQuality: 0.9) else { completion(nil); return }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("fam-camera-\(UUID().uuidString).jpg")
+            do {
+                try data.write(to: url, options: .atomic)
+                completion(ChatPickedAttachment(url: url, mimeType: "image/jpeg"))
+            } catch { completion(nil) }
         }
     }
 }

@@ -107,4 +107,163 @@ final class ChatMergeTests: XCTestCase {
 
         XCTAssertEqual(store.unreadCount(for: familyRoomId), 2)
     }
+
+    func testEqualTimestampsRetainReceiveOrderAfterUpsert() {
+        let deduped = AppStore.dedupe([msg("z"), msg("a"), msg("z", text: "updated")])
+        XCTAssertEqual(deduped.map(\.id), ["z", "a"])
+        XCTAssertEqual(deduped.first?.text, "updated")
+    }
+
+    private final class ChatService: ChatMessageService {
+        var receive: (String?, Bool) async throws -> [ChatMessage] = { _, _ in [] }
+        func chatMessages(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> [ChatMessage] {
+            try await receive(afterId, wait)
+        }
+    }
+
+    func testEmptyRoomImmediatelyStartsLongPoll() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        let listening = expectation(description: "Empty room is listening")
+        service.receive = { afterId, wait in
+            if wait {
+                XCTAssertNil(afterId)
+                listening.fulfill()
+                try await Task.sleep(for: .seconds(60))
+            }
+            return []
+        }
+        let loop = Task { await store.runActiveRoomLoop("trip:test") }
+        defer { loop.cancel() }
+        await fulfillment(of: [listening], timeout: 0.75)
+    }
+
+    func testReceiveRearmsImmediatelyAndSendCannotSkipCursor() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        let listening = expectation(description: "Next delta is listening without the old 2 second floor")
+        var calls = 0
+        service.receive = { afterId, wait in
+            calls += 1
+            if calls == 1 {
+                XCTAssertFalse(wait)
+                return [self.msg("m1")]
+            }
+            if calls == 2 {
+                XCTAssertTrue(wait)
+                XCTAssertEqual(afterId, "m1")
+                // A send confirms m3 while receive is still fetching m2.
+                store.mergeIncoming([self.msg("m3", at: "2026-01-01T10:02:00.000Z")], roomId: "trip:test")
+                return [self.msg("m2", at: "2026-01-01T10:01:00.000Z")]
+            }
+            XCTAssertEqual(afterId, "m2", "Confirmed send cannot skip a receive cursor")
+            listening.fulfill()
+            try await Task.sleep(for: .seconds(60))
+            return []
+        }
+        let loop = Task { await store.runActiveRoomLoop("trip:test") }
+        defer { loop.cancel() }
+        await fulfillment(of: [listening], timeout: 0.75)
+        XCTAssertEqual(store.messagesByRoom["trip:test"]?.map(\.id), ["m1", "m2", "m3"])
+    }
+
+    func testImmediateDuplicateResponseRetainsBackoff() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        let firstPoll = expectation(description: "First long poll")
+        let spun = expectation(description: "No tight loop on an older server")
+        spun.isInverted = true
+        var calls = 0
+        service.receive = { _, _ in
+            calls += 1
+            if calls == 2 { firstPoll.fulfill() }
+            if calls > 2 { spun.fulfill() }
+            return [self.msg("m1")]
+        }
+        let loop = Task { await store.runActiveRoomLoop("trip:test") }
+        defer { loop.cancel() }
+        await fulfillment(of: [firstPoll], timeout: 0.75)
+        await fulfillment(of: [spun], timeout: 0.2)
+    }
+
+    func testInitialSnapshotRetainsConcurrentConfirmedSend() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        let listening = expectation(description: "Snapshot applied")
+        service.receive = { _, wait in
+            if wait {
+                listening.fulfill()
+                try await Task.sleep(for: .seconds(60))
+                return []
+            }
+            store.mergeIncoming([self.msg("sent", at: "2026-01-01T10:02:00.000Z")], roomId: "trip:test")
+            return [self.msg("earlier")]
+        }
+        let loop = Task { await store.runActiveRoomLoop("trip:test") }
+        defer { loop.cancel() }
+        await fulfillment(of: [listening], timeout: 0.75)
+        XCTAssertEqual(store.messagesByRoom["trip:test"]?.map(\.id), ["earlier", "sent"])
+    }
+
+    func testLateReceiveCannotEnterAnotherAccount() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        store.me = User(id: "before", email: "a@example.com", name: "Before", role: "parent")
+        service.receive = { _, _ in
+            store.me = User(id: "after", email: "b@example.com", name: "After", role: "parent")
+            return [self.msg("private")]
+        }
+        await store.runActiveRoomLoop("trip:test")
+        XCTAssertNil(store.messagesByRoom["trip:test"])
+    }
+
+    func testCancelledReceiveCannotApplyLateSnapshot() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        let started = expectation(description: "Request started")
+        var response: CheckedContinuation<[ChatMessage], Never>?
+        service.receive = { _, _ in
+            await withCheckedContinuation { continuation in
+                response = continuation
+                started.fulfill()
+            }
+        }
+        let loop = Task { await store.runActiveRoomLoop("trip:test") }
+        await fulfillment(of: [started], timeout: 0.75)
+        loop.cancel()
+        response?.resume(returning: [msg("late")])
+        await loop.value
+        XCTAssertNil(store.messagesByRoom["trip:test"])
+    }
+
+    func testIdentityRefreshRearmsWaitingFamilyRoomWhileDashboardStillLoads() async {
+        let service = ChatService()
+        let store = AppStore(chatService: service)
+        let listening = expectation(description: "Family chat listens while dashboard is refreshing")
+        var requests = 0
+        service.receive = { _, wait in
+            requests += 1
+            XCTAssertTrue(store.isRefreshing)
+            if wait {
+                listening.fulfill()
+                try await Task.sleep(for: .seconds(60))
+            }
+            return []
+        }
+        store.isRefreshing = true
+        store.activeRoomId = familyRoomId
+        // Let the pre-identity loop reach its no-family suspension.
+        await Task.yield()
+        XCTAssertEqual(requests, 0)
+        store.me = User(id: "parent", email: "parent@example.com", name: "Parent", role: "parent")
+        store.family = Family(id: "f1", name: "Family", inviteCode: "ABC123", parentIds: ["parent"],
+                              parents: [], kids: [], createdAt: "2026-01-01T00:00:00.000Z")
+        // This is the restart boundary immediately after refresh's identity
+        // requests, before awaiting its calendar/homework/notes/meals loads.
+        store.restartChatLoop()
+        defer { store.chatDidEnterBackground() }
+        await fulfillment(of: [listening], timeout: 0.75)
+        XCTAssertEqual(requests, 2, "One initial fetch and one long poll, without a second active loop")
+    }
+
 }

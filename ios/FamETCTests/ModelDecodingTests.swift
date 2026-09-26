@@ -5,6 +5,17 @@ import XCTest
 /// response shapes (lib/family.js publicFamily, lib/chat.js sendMessage/listMessages).
 final class ModelDecodingTests: XCTestCase {
 
+    func testNewsChatCardDecodesArticleAndLegacyCardsRemainCompatible() throws {
+        let card = try JSONDecoder().decode(ChatCard.self, from: Data(#"{"type":"news","id":"nt_news","title":"A cleaner future","url":"https://example.test/news","source":"Example News"}"#.utf8))
+        XCTAssertEqual(card.url, "https://example.test/news")
+        XCTAssertEqual(card.source, "Example News")
+        let restored = try JSONDecoder().decode(ChatCard.self, from: JSONEncoder().encode(card))
+        XCTAssertEqual(restored, card)
+        let legacy = try JSONDecoder().decode(ChatCard.self, from: Data(#"{"type":"event","id":"e_1","title":"Soccer"}"#.utf8))
+        XCTAssertNil(legacy.url)
+        XCTAssertNil(legacy.source)
+    }
+
     func testDailyNewsEditionDecodesMissingCategoryAndLegacyResponse() throws {
         let current = Data(#"{"items":[],"maxAgeDays":14,"editionDate":"2026-09-07","choices":[{"category":"regional","label":"Local/Regional","article":null}]}"#.utf8)
         let news = try JSONDecoder().decode(RecentNewsResponse.self, from: current)
