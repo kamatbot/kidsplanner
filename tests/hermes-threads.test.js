@@ -271,7 +271,8 @@ test("a parent's nudge reaches the kid once an hour, naming what's due", async (
   assert.equal(lonely.body.message.card.state.label, "Mia has no device yet");
 });
 
-test("dinner: 3 ideas, cook one, draft the rest of next week", async () => {
+test("dinner: 3 ideas, cook one, draft the rest of next week", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-09-25T03:00:00.000Z") }); // 10:00 in Bangkok: every recipe fits before dinner
   const { parent, fam, ryshiUser } = setup("Dinner");
   const routes = harness();
   const act = (messageId, action, user = parent) => invoke(routes["POST /api/hermes/thread/messages/:messageId/actions"], { user, params: { messageId }, body: { action } });
@@ -316,6 +317,20 @@ test("dinner: 3 ideas, cook one, draft the rest of next week", async () => {
   const weekDinners = meals.getState(fam.id).menu.filter((e) => e.slot === "dinner" && e.date >= monday && e.date <= hermesProactive.addDays(monday, 6));
   assert.equal(weekDinners.length, 7);
   assert.equal(new Set(weekDinners.map((e) => e.title)).size, 7, "no repeats");
+});
+
+test("dinner late in the day: only ideas that fit the time left, in plain English", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-09-25T11:19:00.000Z") }); // 18:19 in Bangkok, dinner at 18:30
+  const { parent, fam } = setup("LateDinner");
+  const routes = harness();
+  const offer = hermesThreads.postNudge(fam, {
+    userId: parent.id, nudgeKey: "dinner-tonight:late", text: "Dinner tonight isn't planned yet.",
+    card: { kind: "dinner-tonight", actions: [{ id: "dinner-ideas", label: "Show 3 ideas", style: "primary" }] },
+  }).message;
+  const ideas = await invoke(routes["POST /api/hermes/thread/messages/:messageId/actions"], { user: parent, params: { messageId: offer.id }, body: { action: "dinner-ideas" } });
+  const reply = ideas.body.messages[0];
+  assert.match(reply.text, /^Here (is one idea|are [23] ideas) for tonight:$/);
+  for (const line of reply.card.lines) assert.ok(Number((line.match(/ · (\d+) min/) || [])[1]) <= 20, line);
 });
 
 test("facts: day ends per kid in family time, tonight's list and dinner", async () => {
