@@ -8,6 +8,8 @@ struct FamilyRingsHero: View {
     @Environment(\.dynamicTypeSize) private var textSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onSeeAll: () -> Void
+    /// iPad child layout: the compact card's small summary ring and header, with full-size action rows.
+    var dense = false
 
     private var viewerItems: [FamilyAction] {
         store.actions.filter { action in
@@ -26,65 +28,69 @@ struct FamilyRingsHero: View {
             : "\(progress.open) to do, \(progress.cleared) cleared today"
     }
     private var compact: Bool { !textSize.isAccessibilitySize && (sizeClass == .compact || verticalSizeClass == .compact) }
-    private var wide: Bool { !compact && !textSize.isAccessibilitySize }
+    private var wide: Bool { !compact && !dense && !textSize.isAccessibilitySize }
+    private var summaryHeader: Bool { compact || (dense && !textSize.isAccessibilitySize) }
 
     var body: some View {
-        Card(padding: compact ? 14 : 28) {
-            if store.me == nil || store.family == nil || (store.isLoadingActions && viewerItems.isEmpty) {
-                VStack(spacing: 16) {
-                    Circle().fill(Palette.frCard2).frame(width: 152, height: 152)
-                    RoundedRectangle(cornerRadius: 12).fill(Palette.frCard2).frame(height: 44)
-                    RoundedRectangle(cornerRadius: 12).fill(Palette.frCard2).frame(height: 44)
-                }
-                .redacted(reason: .placeholder)
-                .accessibilityLabel("Loading your day")
-            } else if let error = store.actionError, viewerItems.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(error).font(Typography.body).foregroundStyle(Palette.frInk2)
-                    Button("Try again") { Task { await store.loadFamilyActions() } }
-                        .frame(minHeight: 44).accessibilityIdentifier("today.hero.retry")
-                }
-            } else {
-                let layout = wide ? AnyLayout(HStackLayout(alignment: .center, spacing: 24))
-                                  : AnyLayout(VStackLayout(spacing: 8))
-                layout {
-                    if !compact { heroRing.frame(width: wide ? 250 : nil) }
-                    VStack(alignment: .leading, spacing: compact ? 6 : 12) {
-                        if compact {
-                            ViewThatFits(in: .horizontal) {
-                                HStack(spacing: 10) { compactSummary; Spacer(minLength: 4); allLink }
-                                VStack(alignment: .leading, spacing: 4) { compactSummary; allLink }
-                            }
-                        } else {
-                            ViewThatFits(in: .horizontal) {
-                                HStack { heading; Spacer(); allLink }
-                                VStack(alignment: .leading) { heading; allLink }
-                            }
-                        }
-                        if active.isEmpty {
-                            Text("All clear. Nothing waiting right now.")
-                                .font(Typography.body).foregroundStyle(Palette.frInk2)
-                            Button("Family actions", action: onSeeAll).frame(minHeight: 44)
-                        } else {
-                            ForEach(Array(active.prefix(3))) { action in
-                                FamilyRingsActionRow(action: action, compact: compact)
-                                if action.id != active.prefix(3).last?.id { Divider().overlay(Palette.frRule) }
-                            }
-                            if active.count > 3 && !compact {
-                                Button("+\(active.count - 3) more", action: onSeeAll)
-                                    .font(Typography.body.weight(.semibold))
-                                    .frame(minHeight: 44).accessibilityIdentifier("today.hero.more")
-                            }
-                        }
-                        if store.actionError != nil {
-                            Text("Actions couldn't refresh. Pull down to retry.")
-                                .font(Typography.caption).foregroundStyle(Palette.frDanger)
-                        }
+        Card(padding: compact ? 14 : dense ? 20 : 28) {
+            Group {
+                if store.me == nil || store.family == nil || (store.isLoadingActions && viewerItems.isEmpty) {
+                    VStack(spacing: 16) {
+                        Circle().fill(Palette.frCard2).frame(width: summaryHeader ? 64 : 152, height: summaryHeader ? 64 : 152)
+                        RoundedRectangle(cornerRadius: 12).fill(Palette.frCard2).frame(height: 44)
+                        RoundedRectangle(cornerRadius: 12).fill(Palette.frCard2).frame(height: 44)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .redacted(reason: .placeholder)
+                    .accessibilityLabel("Loading your day")
+                } else if let error = store.actionError, viewerItems.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(error).font(Typography.body).foregroundStyle(Palette.frInk2)
+                        Button("Try again") { Task { await store.loadFamilyActions() } }
+                            .frame(minHeight: 44).accessibilityIdentifier("today.hero.retry")
+                    }
+                } else {
+                    let layout = wide ? AnyLayout(HStackLayout(alignment: .center, spacing: 24))
+                                      : AnyLayout(VStackLayout(spacing: 8))
+                    layout {
+                        if !summaryHeader { heroRing.frame(width: wide ? 250 : nil) }
+                        VStack(alignment: .leading, spacing: compact ? 6 : 12) {
+                            if summaryHeader {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 10) { compactSummary; Spacer(minLength: 4); allLink }
+                                    VStack(alignment: .leading, spacing: 4) { compactSummary; allLink }
+                                }
+                            } else {
+                                ViewThatFits(in: .horizontal) {
+                                    HStack { heading; Spacer(); allLink }
+                                    VStack(alignment: .leading) { heading; allLink }
+                                }
+                            }
+                            if active.isEmpty {
+                                Text("All clear. Nothing waiting right now.")
+                                    .font(Typography.body).foregroundStyle(Palette.frInk2)
+                                Button("Family actions", action: onSeeAll).frame(minHeight: 44)
+                            } else {
+                                ForEach(Array(active.prefix(3))) { action in
+                                    FamilyRingsActionRow(action: action, compact: compact)
+                                    if action.id != active.prefix(3).last?.id { Divider().overlay(Palette.frRule) }
+                                }
+                                if active.count > 3 && !compact {
+                                    Button("+\(active.count - 3) more", action: onSeeAll)
+                                        .font(Typography.body.weight(.semibold))
+                                        .frame(minHeight: 44).accessibilityIdentifier("today.hero.more")
+                                }
+                            }
+                            if store.actionError != nil {
+                                Text("Actions couldn't refresh. Pull down to retry.")
+                                    .font(Typography.caption).foregroundStyle(Palette.frDanger)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .animation(Motion.maybe(Motion.ring, reduceMotion: reduceMotion), value: active.map(\.id))
                 }
-                .animation(Motion.maybe(Motion.ring, reduceMotion: reduceMotion), value: active.map(\.id))
             }
+            .frame(maxHeight: dense ? .infinity : nil, alignment: .top)
         }
     }
     private var heading: some View { MicroLabel(text: store.isParent ? "NEEDS YOU" : "YOUR DAY") }
@@ -105,23 +111,23 @@ struct FamilyRingsHero: View {
     }
     private var heroRing: some View {
         ZStack {
-            FamilyRing(style: .parent, diameter: compact ? 64 : wide ? 188 : 152, metrics: [
+            FamilyRing(style: .parent, diameter: summaryHeader ? 64 : wide ? 188 : 152, metrics: [
                 RingMetric(id: "you", value: progress.cleared, total: progress.total,
                            color: Palette.frYou, label: store.isParent ? "Needs you" : "Your day")
             ]).id(identity)
             VStack(spacing: 3) {
                 Text(progress.open == 0 && progress.cleared > 0 ? "✓" : "\(progress.open)")
-                    .font(compact ? Typography.statNumeral : wide ? Typography.heroNumeralRegular : Typography.heroNumeral)
+                    .font(summaryHeader ? Typography.statNumeral : wide ? Typography.heroNumeralRegular : Typography.heroNumeral)
                     .tracking(-2).monospacedDigit().foregroundStyle(Palette.frInk)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge).minimumScaleFactor(0.6)
-                if !compact {
+                if !summaryHeader {
                     Text(progress.open == 0 ? "All clear" : store.isParent ? "need you" : "to do")
                         .font(Typography.chip).foregroundStyle(Palette.frYouInk)
                     Text("\(progress.cleared) cleared today")
                         .font(Theme.font(11, relativeTo: .caption)).foregroundStyle(Palette.frInk2)
                 }
             }
-            .padding(compact ? 8 : 28).frame(width: compact ? 64 : wide ? 188 : 152)
+            .padding(summaryHeader ? 8 : 28).frame(width: summaryHeader ? 64 : wide ? 188 : 152)
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .accessibilityElement(children: .ignore)
@@ -251,6 +257,7 @@ struct FamilyRingsKidCard: View {
     let onOpenHomework: () -> Void
     var interactive = true
     var onDaily3: () -> Void = {}
+    var dense = false
 
     private var kid: Kid? { store.kids.first { $0.id == kidID } }
     private var identity: String { "\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kidID)|\(Agenda.todayKey())" }
@@ -265,8 +272,8 @@ struct FamilyRingsKidCard: View {
     private var homeworkKnown: Bool { !store.isLoadingHomework && store.homeworkError == nil }
     private var habitsKnown: Bool { store.goalsLoadState == .ready }
     private var snapshotKnown: Bool { loadedIdentity == identity && !loading }
-    private var compact: Bool { !textSize.isAccessibilitySize && (sizeClass == .compact || verticalSizeClass == .compact) }
-    private var diameter: CGFloat { compact ? 88 : 156 }
+    private var compact: Bool { !textSize.isAccessibilitySize && (dense || sizeClass == .compact || verticalSizeClass == .compact) }
+    private var diameter: CGFloat { compact ? (dense ? 112 : 88) : 156 }
     private var d3: Int? { snapshotKnown ? daily3 : nil }
     private var currentWallet: FamsWallet? { snapshotKnown ? wallet : nil }
     private var metrics: [RingMetric?] {
@@ -285,7 +292,7 @@ struct FamilyRingsKidCard: View {
 
     var body: some View {
         if validScope, let kid {
-            Card(padding: compact ? 14 : 24) {
+            Card(padding: compact ? (dense ? 20 : 14) : 24) {
                 VStack(alignment: .leading, spacing: compact ? 8 : 16) {
                     header(kid)
                     let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .center, spacing: 16))
@@ -304,9 +311,11 @@ struct FamilyRingsKidCard: View {
                             metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", title: "habits today", detail: habitStatus, color: Palette.frHabInk, id: "habits", action: openHabits)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    if dense { Spacer(minLength: 0) }
                     Divider().overlay(Palette.frRule)
                     famsRow
                 }
+                .frame(maxHeight: dense ? .infinity : nil, alignment: .top)
             }
             .contentShape(Rectangle())
             .onTapGesture { openBrief() }

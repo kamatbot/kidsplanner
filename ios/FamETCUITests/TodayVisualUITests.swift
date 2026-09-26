@@ -74,9 +74,9 @@ final class TodayVisualUITests: XCTestCase {
         reveal(card, app)
         XCTAssertTrue(card.label.contains("Habits 1 of 2 today"))
         // The card combines VoiceOver elements with named custom actions. This
-        // verifies the separate sighted touch target at standard text size.
-        let point = UIDevice.current.userInterfaceIdiom == .phone
-            ? CGVector(dx: 0.7, dy: 0.65) : CGVector(dx: 0.25, dy: 0.68)
+        // verifies the separate sighted touch target at standard text size. The
+        // iPhone and the two-column iPad card share one layout: habits sit right of the ring.
+        let point = CGVector(dx: 0.7, dy: 0.65)
         card.coordinate(withNormalizedOffset: point).tap()
         XCTAssertTrue(app.navigationBars["Habits today"].waitForExistence(timeout: 5))
         let habit = app.switches["today.habit.qa-visual-goal-2"]

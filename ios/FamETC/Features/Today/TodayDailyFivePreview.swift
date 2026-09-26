@@ -60,6 +60,7 @@ struct TodayDailyFivePreview: View {
     let challengeDetail: String
     let onOpen: (DailyFiveActivity) -> Void
     let onOpenChallenge: () -> Void
+    var dense = false
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: Space.sm), count: horizontalSizeClass == .regular ? 4 : 2)
@@ -70,7 +71,7 @@ struct TodayDailyFivePreview: View {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: Space.xs) {
-                        MicroLabel(text: isKid ? "Your day" : "Today")
+                        if !dense { MicroLabel(text: isKid ? "Your day" : "Today") }
                         Text("Daily 4")
                             .font(Typography.cardTitle)
                             .foregroundStyle(Palette.frInk)
@@ -88,7 +89,8 @@ struct TodayDailyFivePreview: View {
                             title: activity.title,
                             status: statuses[activity] ?? .unavailable,
                             detail: nil,
-                            action: { onOpen(activity) }
+                            action: { onOpen(activity) },
+                            minHeight: dense ? 96 : 116
                         )
                     }
                     DailyThreeTile(
@@ -96,7 +98,8 @@ struct TodayDailyFivePreview: View {
                         title: "Challenge",
                         status: challengeStatus,
                         detail: challengeDetail,
-                        action: onOpenChallenge
+                        action: onOpenChallenge,
+                        minHeight: dense ? 96 : 116
                     )
                 }
             }
@@ -111,6 +114,7 @@ private struct DailyThreeTile: View {
     let status: DailyFiveActivityStatus
     let detail: String?
     let action: () -> Void
+    var minHeight: CGFloat = 116
 
     var body: some View {
         Button {
@@ -142,7 +146,7 @@ private struct DailyThreeTile: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .frame(minHeight: 116)
+            .frame(minHeight: minHeight)
             .padding(.vertical, Space.sm)
             .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
             .contentShape(Rectangle())

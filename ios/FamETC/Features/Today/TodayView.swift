@@ -461,33 +461,69 @@ private struct HomeworkDueRow: View {
 private struct KidTodayStack: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.dynamicTypeSize) private var textSize
     @State private var showActions = false
     @State private var showStudy = false
     let onOpenHomework: () -> Void
     let onDaily3: () -> Void
+    /// iPad, mostly used by children: two columns keep Daily 4 on the first screen.
+    private var tight: Bool { sizeClass == .regular && verticalSizeClass == .regular && !textSize.isAccessibilitySize }
     var body: some View {
-        VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
-            FamilyRingsHero(onSeeAll: { showActions = true })
-            if let kidID = store.me?.kidId {
-                FamilyRingsKidCard(kidID: kidID, onOpenHomework: onOpenHomework, onDaily3: onDaily3)
-                    .id("\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kidID)|\(Agenda.todayKey())")
-            }
-            DailyFiveCard(isKid: true).id("daily3")
-            FamilyRingsDayStrip(kidID: store.me?.kidId)
-            StudyStartCard()
-            if let user = store.me, user.role == "kid", !store.needsAuth {
-                StudyPalCard(userID: user.id, onOpenStudy: { showStudy = true })
-                    .popover(isPresented: $showStudy, arrowEdge: .bottom) {
-                        StudyPalPanel(ownerID: user.id, usesPopover: sizeClass == .regular).id(user.id)
-                            .presentationCompactAdaptation(.sheet)
+        Group {
+            if tight {
+                tightLayout
+            } else {
+                VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+                    FamilyRingsHero(onSeeAll: { showActions = true })
+                    if let kidID = store.me?.kidId {
+                        FamilyRingsKidCard(kidID: kidID, onOpenHomework: onOpenHomework, onDaily3: onDaily3)
+                            .id("\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kidID)|\(Agenda.todayKey())")
                     }
+                    DailyFiveCard(isKid: true).id("daily3")
+                    FamilyRingsDayStrip(kidID: store.me?.kidId)
+                    StudyStartCard()
+                    studyPal
+                    KidHomeworkCard(onOpenHomework: onOpenHomework)
+                }
             }
-            KidHomeworkCard(onOpenHomework: onOpenHomework)
         }
         .sheet(isPresented: $showActions) { FamilyRingsActionsSheet() }
         .onChange(of: store.me?.id) { _, _ in showStudy = false; showActions = false }
         .onChange(of: store.needsAuth) { _, needsAuth in
             if needsAuth { showStudy = false; showActions = false }
+        }
+    }
+    @ViewBuilder private var studyPal: some View {
+        if let user = store.me, user.role == "kid", !store.needsAuth {
+            StudyPalCard(userID: user.id, onOpenStudy: { showStudy = true })
+                .popover(isPresented: $showStudy, arrowEdge: .bottom) {
+                    StudyPalPanel(ownerID: user.id, usesPopover: sizeClass == .regular).id(user.id)
+                        .presentationCompactAdaptation(.sheet)
+                }
+        }
+    }
+    private var tightLayout: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top, spacing: 20) {
+                FamilyRingsHero(onSeeAll: { showActions = true }, dense: true)
+                if let kidID = store.me?.kidId {
+                    FamilyRingsKidCard(kidID: kidID, onOpenHomework: onOpenHomework, onDaily3: onDaily3, dense: true)
+                        .id("\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kidID)|\(Agenda.todayKey())")
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)   // equal-height cards in the first row
+            DailyFiveCard(isKid: true, dense: true).id("daily3")
+            HStack(alignment: .top, spacing: 20) {
+                VStack(alignment: .leading, spacing: 20) {
+                    FamilyRingsDayStrip(kidID: store.me?.kidId)
+                    StudyStartCard()
+                }
+                VStack(alignment: .leading, spacing: 20) {
+                    KidHomeworkCard(onOpenHomework: onOpenHomework)
+                    studyPal
+                }
+            }
         }
     }
 }

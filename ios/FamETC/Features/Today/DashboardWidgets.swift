@@ -113,6 +113,7 @@ struct DailyFiveCard: View {
     @Environment(AppStore.self) private var store
     /// Kept for existing parent/kid call sites and the approved child variant.
     var isKid: Bool = false
+    var dense = false
 
     private enum DailySheet: Identifiable {
         case quote
@@ -153,7 +154,8 @@ struct DailyFiveCard: View {
             challengeStatus: challengeStatus,
             challengeDetail: challengeDetail,
             onOpen: openActivity,
-            onOpenChallenge: openChallenge
+            onOpenChallenge: openChallenge,
+            dense: dense
         )
         .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") { await loadDailyExtras() }
         .onReceive(NotificationCenter.default.publisher(for: .famsRewardsChanged)) { _ in
