@@ -138,7 +138,8 @@ let chatAddTodayTipShownForUser = null;
 let chatMessages    = [];     // messages currently rendered, oldest-first
 let chatLastAt      = null;   // createdAt cursor (used for the one-shot ?since= fetch)
 let chatLastId      = null;   // id cursor for the long-poll ?afterId=
-let chatPollTimer   = false;  // truthy while the long-poll loop should keep running
+let chatPollTimer   = null;   // AbortController owning exactly one receive loop
+let chatSending     = false;
 let chatPollAbort   = null;   // AbortController for the in-flight long-poll fetch, if any
 const CHAT_LONGPOLL_WAIT_S = 25; // must match LONG_POLL_MS in lib/routes/chat.js
 const CHAT_BACKOFF_MS = [2000, 5000, 10000]; // retry backoff on poll errors, capped
@@ -3201,6 +3202,17 @@ function renderMealPlanReviewAction(msg) {
 
 function renderChatCard(card, senderName) {
   if (!card || !card.type || card.type === 'meal-plan-draft') return '';
+  if (card.type === 'news') {
+    let url;
+    try { url = new URL(card.url); } catch (_) { return ''; }
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    return `<a class="chat-msg-card chat-news-card" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">
+      <span class="chat-card-icon" aria-hidden="true">📰</span>
+      <span class="chat-card-body"><span class="chat-card-label">${esc(card.source || url.hostname)}</span>
+      <span class="chat-card-title">${esc(card.title || 'Read this story')}</span>
+      <span class="chat-news-open">Read article ↗</span></span>
+    </a>`;
+  }
   const mealCard = card.type === 'menu' || card.type === 'meal' || card.sourceType === 'meal';
   const eventCard = card.type === 'event';
   const icon = mealCard ? '🍽️' : card.type === 'homework' ? '📚' : card.type === 'event' ? '📅' : '🔗';
@@ -3707,9 +3719,9 @@ function renderChatMessages() {
   if (!el) return;
   const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
 
-  el.innerHTML = chatMessages.map((m) => {
+  const rows = chatMessages.map((m) => {
     if (m.deleted) {
-      return `<div class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
+      return `<div data-chat-id="${esc(m.id)}" class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
     }
     const own = isOwnMessage(m);
     const color = chatSenderColor(m);
@@ -3728,18 +3740,19 @@ function renderChatMessages() {
     const controls = !isKidSession() ? `
       <div class="chat-msg-controls">
         ${pinBtn}
-        <button class="chat-msg-ctrl" onclick="handleDeleteChatMessage('${m.id}')" title="Delete message">🗑️</button>
+        <button class="chat-msg-ctrl" onclick="handleDeleteChatMessage('${m.id}')" title="Delete message" aria-label="Delete message">${todayIcon('trash', 14)}</button>
       </div>` : `
       <div class="chat-msg-controls">
         ${pinBtn}
       </div>`;
-    return `<div class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}${m.senderType === 'kid' ? ' chat-msg-kid' : ''}">
-      ${m.senderType === 'kid' ? kidAvatarMarkup(m.senderId) : ''}
+    return `<div data-chat-id="${esc(m.id)}" class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}${m.senderType === 'kid' ? ' chat-msg-kid' : ''}">
+      ${m.senderType === 'kid' ? kidAvatarMarkup(m.senderId) : `<span class="chat-person-avatar" style="--avatar-color:${color}" aria-hidden="true">${m.senderType === 'agent' ? '✦' : esc(chatSenderName(m).trim().slice(0, 1).toUpperCase())}</span>`}
       ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}${m.senderType === 'agent' ? ' <span class="fr-helper-tag">HELPER</span>' : ''}</div>` : ''}
       <div class="chat-msg-bubble" style="--sender-color:${color}">
+        ${m.card?.type === 'news' ? renderChatCard(m.card, chatSenderName(m)) : ''}
         ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
         ${renderChatMedia(m.media)}
-        ${renderChatCard(m.card, chatSenderName(m))}
+        ${m.card?.type !== 'news' ? renderChatCard(m.card, chatSenderName(m)) : ''}
         ${renderMealPlanReviewAction(m)}
       </div>
       <div class="chat-msg-meta">
@@ -3750,20 +3763,47 @@ function renderChatMessages() {
         ${controls}
       </div>
     </div>`;
-  }).join('') || '<p class="text-muted chat-empty">No messages yet. Say hi! 👋</p>';
+  });
+
+  // Keep unchanged media, focus and selection alive when a new message arrives.
+  const existing = new Map(Array.from(el.children).map(node => [node.dataset.chatId, node]));
+  const retained = new Set();
+  const initial = !el.querySelector('[data-chat-id]');
+  rows.forEach((markup, index) => {
+    let row = existing.get(chatMessages[index].id);
+    if (!row || row._famChatMarkup !== markup) {
+      const template = document.createElement('template');
+      template.innerHTML = markup;
+      const replacement = template.content.firstElementChild;
+      replacement._famChatMarkup = markup;
+      if (row) row.replaceWith(replacement);
+      else if (!initial) replacement.classList.add('chat-msg-arriving');
+      row = replacement;
+    }
+    retained.add(row);
+    if (el.children[index] !== row) el.insertBefore(row, el.children[index] || null);
+  });
+  Array.from(el.children).forEach(row => { if (!retained.has(row)) row.remove(); });
+  if (!rows.length) el.innerHTML = '<p class="text-muted chat-empty">Your family’s little corner. Say hi! 👋</p>';
 
   if (wasAtBottom) el.scrollTop = el.scrollHeight;
   updateChatUnreadBadge();
 }
 
 async function loadChatMessages() {
+  const userId = sessionUser?.id;
+  const familyId = currentFamily?.id;
+  const previousIDs = new Set(chatMessages.map(m => m.id));
   try {
     const msgs = await window.auth.getMessages();
-    chatMessages = msgs;
-    chatLastAt = msgs.length ? msgs[msgs.length - 1].createdAt : null;
-    chatLastId = msgs.length ? msgs[msgs.length - 1].id : null;
-    renderChatMessages();
-    scrollChatToBottom(); // always land on the latest message when (re)loading
+    if (sessionUser?.id !== userId || currentFamily?.id !== familyId) return;
+    const concurrent = chatMessages.filter(m => !previousIDs.has(m.id));
+    chatMessages = [];
+    chatLastAt = null;
+    chatLastId = null;
+    mergeChatMessages([...msgs, ...concurrent.filter(m => !msgs.some(fresh => fresh.id === m.id))]);
+    if (!chatMessages.length) renderChatMessages();
+    if (!previousIDs.size) scrollChatToBottom();
   } catch (err) {
     toast(`❌ ${err.message}`);
   }
@@ -3775,8 +3815,12 @@ async function loadChatMessages() {
 function mergeChatMessages(msgs) {
   if (!msgs.length) return;
   const byId = new Map(chatMessages.map((m) => [m.id, m]));
-  for (const m of msgs) byId.set(m.id, m);
-  chatMessages = Array.from(byId.values()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  let changed = false;
+  for (const m of msgs) {
+    if (JSON.stringify(byId.get(m.id)) !== JSON.stringify(m)) { byId.set(m.id, m); changed = true; }
+  }
+  if (!changed) return;
+  chatMessages = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   chatLastAt = chatMessages[chatMessages.length - 1].createdAt;
   chatLastId = chatMessages[chatMessages.length - 1].id;
   renderChatMessages();
@@ -3796,8 +3840,8 @@ async function pollChatMessages() {
 // until a new message exists, render it, and immediately re-request — this
 // replaces the old fixed 2s setInterval with near-instant delivery and far
 // fewer idle requests. Paused entirely while the tab is hidden.
-async function chatLongPollFetch() {
-  const qs = `?afterId=${encodeURIComponent(chatLastId || '')}&wait=1`;
+async function chatLongPollFetch(afterId = chatLastId) {
+  const qs = `?afterId=${encodeURIComponent(afterId || '')}&wait=1`;
   chatPollAbort = new AbortController();
   const res = await fetch('/api/chat/messages' + qs, { credentials: 'same-origin', signal: chatPollAbort.signal });
   if (!res.ok) throw new Error(`poll failed (${res.status})`);
@@ -3805,43 +3849,63 @@ async function chatLongPollFetch() {
   return (data && data.messages) || [];
 }
 
-function chatWaitForVisible() {
-  return new Promise((resolve) => {
-    const onVis = () => {
-      if (document.hidden) return;
-      document.removeEventListener('visibilitychange', onVis);
+// Both visibility waits and retry delays end when their receive loop stops.
+function chatReceivePause(signal, milliseconds) {
+  return new Promise(resolve => {
+    let timer;
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', finish);
+      document.removeEventListener('visibilitychange', onVisible);
       resolve();
     };
-    document.addEventListener('visibilitychange', onVis);
+    const onVisible = () => { if (!document.hidden) finish(); };
+    if (signal.aborted) return resolve();
+    signal.addEventListener('abort', finish, { once: true });
+    if (milliseconds !== undefined) timer = setTimeout(finish, milliseconds);
+    else {
+      document.addEventListener('visibilitychange', onVisible);
+      onVisible();
+    }
   });
 }
 
-async function chatLongPollLoop() {
+async function chatLongPollLoop(lifetime) {
   let backoffIdx = 0;
-  while (chatPollTimer) {
-    if (document.hidden) { await chatWaitForVisible(); continue; }
+  let cursor = chatLastId; // sends may update the display, never the receive cursor
+  while (chatPollTimer === lifetime && !lifetime.signal.aborted) {
+    if (document.hidden) { await chatReceivePause(lifetime.signal); continue; }
+    const started = Date.now();
+    const previousId = cursor;
     try {
-      const msgs = await chatLongPollFetch();
-      if (!chatPollTimer) break;
+      const msgs = await chatLongPollFetch(cursor);
+      if (chatPollTimer !== lifetime || lifetime.signal.aborted) break;
       mergeChatMessages(msgs);
+      cursor = msgs.length ? msgs[msgs.length - 1].id : cursor;
       backoffIdx = 0;
+      // A proxy or waiter cap may answer immediately without new messages.
+      // Back off only in that case; real messages immediately rearm the listener.
+      if (cursor === previousId && Date.now() - started < 1000) {
+        await chatReceivePause(lifetime.signal, 1000 - (Date.now() - started));
+      }
     } catch (err) {
-      if (!chatPollTimer || err.name === 'AbortError') continue; // stopped, or woken early on purpose — retry now, no backoff
-      await new Promise((r) => setTimeout(r, CHAT_BACKOFF_MS[Math.min(backoffIdx, CHAT_BACKOFF_MS.length - 1)]));
-      backoffIdx++;
+      if (chatPollTimer !== lifetime || lifetime.signal.aborted) break;
+      if (err.name === 'AbortError') continue;
+      await chatReceivePause(lifetime.signal, CHAT_BACKOFF_MS[Math.min(backoffIdx++, CHAT_BACKOFF_MS.length - 1)]);
     }
   }
 }
 
 function startChatPolling() {
-  stopChatPolling();
-  chatPollTimer = true;
-  chatLongPollLoop();
+  if (chatPollTimer) return; // navigation must not multiply active listeners
+  chatPollTimer = new AbortController();
+  chatLongPollLoop(chatPollTimer);
   setupChatRealtimeNudges();
 }
 
 function stopChatPolling() {
-  chatPollTimer = false;
+  if (chatPollTimer) chatPollTimer.abort();
+  chatPollTimer = null;
   if (chatPollAbort) { chatPollAbort.abort(); chatPollAbort = null; }
 }
 
@@ -3861,8 +3925,9 @@ function setupChatRealtimeNudges() {
       if (e.data && e.data.type === 'fam-push') nudge();
     });
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) nudge(); });
+  document.addEventListener('visibilitychange', nudge);
   window.addEventListener('focus', nudge);
+  window.addEventListener('online', nudge);
 }
 
 /* ============================================================
@@ -4143,10 +4208,14 @@ async function handleSendChatMessage(e) {
   e.preventDefault();
   const input = document.getElementById('chat-input');
   const text = input ? input.value.trim() : '';
-  if (!text) return;
+  if (!text || chatSending) return;
+  chatSending = true;
+  const sentDraft = input.value;
+  const sendingUser = sessionUser?.id;
   try {
     const res = await window.auth.sendChatMessage(text);
-    if (input) input.value = '';
+    if (sessionUser?.id !== sendingUser) return;
+    if (input && input.value === sentDraft) input.value = '';
     // Merge (id-dedupe), never raw-push: the server emits to long-poll
     // waiters before this POST returns, so the in-flight poll can deliver
     // the same message first and a push would render it twice.
@@ -4158,6 +4227,8 @@ async function handleSendChatMessage(e) {
     scrollChatToBottom(); // your own message: always jump to the bottom
   } catch (err) {
     toast(`❌ ${err.message}`);
+  } finally {
+    chatSending = false;
   }
 }
 
@@ -4607,6 +4678,7 @@ const TODAY_ICONS = {
   flame: '<path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z" fill="currentColor" stroke="none"/>',
   pin: '<path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"/><path d="M12 14v7"/>',
   pencil: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
@@ -4983,7 +5055,7 @@ function renderTodayActionQueue() {
   const nowGroup = window.famActionQueue.groupActions(eligible, now).now;
   const count = document.getElementById('today-actions-count');
   if (count) { count.innerHTML = `See all ${eligible.length} ${todayIcon('arrow',14)}`; count.hidden = !canShowContents; }
-  const cleared = viewerItems.filter(item => item.status === 'done' && (item.completedAt || item.updatedAt) && isoDate(new Date(item.completedAt || item.updatedAt)) === isoDate(now)).length;
+  const cleared = viewerItems.filter(item => item.status === 'done' && item.completedAt && isoDate(new Date(item.completedAt)) === isoDate(now)).length;
   const ring = document.getElementById('today-parent-ring');
   if (ring) {
     ring.innerHTML = !canShowContents
@@ -5961,12 +6033,13 @@ function goalRingSvg(goal) {
   const weekChecks = goalChecksThisWeek(goal);
   const frac = Math.min(1, goal.target ? weekChecks / goal.target : 0);
   const dash = (frac * c).toFixed(1);
+  const hasProgress = frac > 0;
   const color = 'var(--fr-hab)';
   const checkedToday = (goal.checks || []).includes(isoDate(new Date()));
   return `<button type="button" class="goal-ring-btn" onclick="toggleGoalCheckIn('${goal.id}')" title="${checkedToday ? 'Checked in today — tap to undo' : 'Check in for today'}" aria-pressed="${checkedToday}" aria-label="${checkedToday ? 'Undo check-in' : 'Check in'}: ${esc(goal.title)}">
     <svg viewBox="0 0 66 66" width="66" height="66" role="img" aria-label="${esc(goal.title)}: ${weekChecks} of ${goal.target} check-ins this week">
-      <circle class="goal-ring-track" cx="33" cy="33" r="${r}"></circle>
-      <circle class="goal-ring-fill" cx="33" cy="33" r="${r}" style="stroke:${color};stroke-dasharray:${dash} ${c.toFixed(1)}"></circle>
+      <circle class="goal-ring-track" cx="33" cy="33" r="${r}" style="stroke:${color};stroke-opacity:var(--fr-track)"></circle>
+      <circle class="goal-ring-fill" cx="33" cy="33" r="${r}" style="stroke:${color};stroke-dasharray:${dash} ${c.toFixed(1)};visibility:${hasProgress ? 'visible' : 'hidden'}"></circle>
       <text x="33" y="38" class="goal-ring-text">${esc(String(weekChecks))}/${esc(String(goal.target))}</text>
     </svg>
   </button>`;
@@ -5976,7 +6049,7 @@ function renderGoalCard(goal) {
   const kidName = kidNameFor(goal.kidId);
   const canManage = !isKidSession();
   const deleteBtn = canManage
-    ? `<button type="button" class="btn-link-danger goal-card-delete" onclick="deleteGoalItem('${goal.id}')" title="Delete goal">🗑️</button>` : '';
+    ? `<button type="button" class="btn-link-danger goal-card-delete" onclick="deleteGoalItem('${goal.id}')" title="Delete goal" aria-label="Delete goal">${todayIcon('trash', 16)}</button>` : '';
 
   if (goal.type === 'habit') {
     const streak = goalCurrentStreak(goal);
@@ -6406,7 +6479,7 @@ async function openChildHomeworkReview(id) {
 ============================================================ */
 function toast(msg) {
   const el = document.getElementById('toast');
-  el.textContent = msg;
+  el.textContent = String(msg ?? '').replace(/^❌\s*/, '');
   el.classList.add('show');
   clearTimeout(el._timer);
   el._timer = setTimeout(() => el.classList.remove('show'), 2800);

@@ -36,10 +36,13 @@ test("chat videos are exported to a network-friendly smaller rendition before up
 
 test("composer keeps only plus, text entry, and send as top-level controls", () => {
   assert.match(chatView, /ChatComposerAddMenu\(/);
-  assert.match(attachmentSupport, /Label\("GIF",\s*systemImage:\s*"photo\.stack"\)/);
-  assert.match(attachmentSupport, /Label\("Buzz",\s*systemImage:\s*"wave\.3\.right\.circle\.fill"\)/);
-  assert.match(attachmentSupport, /Label\("Photo or Video",\s*systemImage:/);
-  assert.match(attachmentSupport, /Label\("File",\s*systemImage:\s*"doc"\)/);
+  assert.match(attachmentSupport, /action\("GIFs",\s*icon:/);
+  assert.match(attachmentSupport, /action\("Buzz",\s*icon:/);
+  assert.match(attachmentSupport, /action\("Photos",\s*icon:/);
+  assert.match(attachmentSupport, /action\("Files",\s*icon:/);
+  assert.match(attachmentSupport, /isSourceTypeAvailable\(\.camera\)/);
+  assert.match(attachmentSupport, /max\(0, lastKeyboardHeight - keyboardHeight\)/);
+  assert.match(attachmentSupport, /keyboardWillChangeFrameNotification/);
   assert.match(attachmentSupport, /struct ChatComposerAddMenu/);
   assert.doesNotMatch(compressionSource, /import\s+(PhotosUI|SwiftUI)/);
   assert.doesNotMatch(compressionSource, /CompactChat(PhotoVideo|Document)Picker/);
@@ -47,7 +50,7 @@ test("composer keeps only plus, text entry, and send as top-level controls", () 
   assert.match(attachmentSupport, /ChatDocumentPicker/);
   assert.equal((attachmentSupport.match(/private struct ChatPhotoVideoPicker/g) || []).length, 1);
   assert.equal((attachmentSupport.match(/private struct ChatDocumentPicker/g) || []).length, 1);
-  assert.match(chatView, /\.frame\(width:\s*44,\s*height:\s*44\)/);
+  assert.match(attachmentSupport, /\.frame\(width:\s*44,\s*height:\s*44\)/);
 
   const composerStart = chatView.indexOf("private var composer: some View");
   const composerEnd = chatView.indexOf("private func requestBuzz", composerStart);

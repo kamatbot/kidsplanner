@@ -73,7 +73,9 @@ test('parent hero keeps total eligible count separate from due-today progress an
       {id:'due',status:'open',dueDate:today},{id:'future',status:'open',dueDate:isoDate(future)},
       {id:'shared',status:'open'},{id:'fourth',status:'open'},
       {id:'snoozed',status:'snoozed',dueDate:today,snoozedUntil:future.toISOString()},
-      {id:'done',status:'done',updatedAt:now.toISOString()},
+      {id:'done',status:'done',completedAt:now.toISOString(),updatedAt:now.toISOString()},
+      {id:'edited',status:'done',completedAt:'2020-01-01T12:00:00Z',updatedAt:now.toISOString()},
+      {id:'legacy',status:'done',updatedAt:now.toISOString()},
     ], renderTodayActionRow:a=>`<article>${a.id}</article>`,famRing:options=>{ctx.ring=options;return '';},
   });
   vm.runInNewContext(fs.readFileSync('public/js/action-queue.js','utf8'),ctx);

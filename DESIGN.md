@@ -46,6 +46,8 @@ The source of truth is [the approved brief](docs/design/family-rings/BRIEF.md) a
 
 The 224px sidebar and resizable 340px family chat frame Today. The first card pairs a 188px violet ring with at most three actions. The center counts eligible open actions; its arc measures actions cleared today against cleared plus due by today. Future snoozes do not enter the preview. Parents review homework; their buttons never complete a child's assignment. All-actions retains creation, completion, snooze and delete according to existing permissions.
 
+“Cleared today” uses the server-recorded `completedAt` in the viewer's local day. Editing a completed action preserves that timestamp; reopening or snoozing clears it. Legacy completions and already-finished imported homework without a known completion time do not contribute to today's count.
+
 Child cards remain in family order. Their 156px rings always use rose outer homework, teal middle habits and azure inner Daily 3. Homework includes this Monday–Sunday plus unfinished overdue items; habits use today's recorded check-ins; Daily 3 includes only News, Quote and Word. Unknown Daily 3 is labeled unavailable and its ring is omitted. Empty denominators use dashed tracks. Fams balances and the gold weekly bar keep their actual numerator and limit visible.
 
 The day strip runs 7 AM–9 PM; overlapping events occupy separate lanes, and all-day/out-of-hours events remain accessible beside it. On narrow screens the track scrolls internally and centers the current time. Tonight links parents to Meals. News, Quote, Word and Challenge tiles lead to the existing mounted panels so drafts and puzzle state survive navigation.

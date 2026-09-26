@@ -437,6 +437,8 @@ struct NewsWidget: View {
                     .disabled(saving)
                     .accessibilityIdentifier("news.reflection")
                     .onChange(of: reflection) { _, value in if !value.isEmpty && !saving { saved = false; saveFailed = false } }
+                Text("Saves to Notes and shares the article and your response in Family chat.")
+                    .font(.footnote).foregroundStyle(Palette.textSecond)
                 if saveFailed {
                     LearningFeedback(title: "Your idea wasn't saved", message: "Your response is still here; try again.", kind: .retry)
                 }
@@ -465,7 +467,7 @@ struct NewsWidget: View {
                                 }
                             }
                         } label: {
-                            Label(saving ? "Saving…" : saveFailed ? "Retry save" : "Save response", systemImage: "square.and.arrow.down")
+                            Label(saving ? "Saving…" : saveFailed ? "Retry save" : "Save & share", systemImage: "square.and.arrow.down")
                                 .font(Typography.body.weight(.semibold))
                                 .foregroundStyle(Palette.onAccent)
                                 .frame(maxWidth: .infinity, minHeight: 44)

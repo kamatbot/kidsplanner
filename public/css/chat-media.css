@@ -24,3 +24,25 @@
 
 .chat-media-add { border-radius: 999px; color: var(--fr-ink-2, var(--text-2)); }.chat-media-add:hover { color: var(--fr-you-ink, var(--accent)); background: var(--fr-you-soft, var(--accent-soft)); }
 .chat-media-dialog { border: 0; border-radius: 24px; background: var(--fr-card, var(--panel)); box-shadow: var(--fr-shadow, var(--shadow)); }
+
+/* Family conversation: keep existing identity colors, with a face beside each bubble. */
+#chat-messages > .chat-msg:not(.chat-msg-deleted) { position:relative; max-width:calc(100% - 36px); margin-left:36px; }
+#chat-messages > .chat-msg > .kid-profile-avatar,
+#chat-messages .chat-person-avatar { position:absolute; left:-36px; top:0; width:28px; height:28px; margin:0; border-radius:50%; }
+#chat-messages .chat-person-avatar { display:grid; place-items:center; background:color-mix(in srgb,var(--avatar-color) 14%,var(--panel)); color:var(--avatar-color); font-size:12px; font-weight:750; border:1px solid color-mix(in srgb,var(--avatar-color) 18%,transparent); }
+#chat-messages .chat-msg-bubble { min-width:0; padding:11px 13px; box-shadow:0 2px 5px color-mix(in srgb,var(--text) 3%,transparent); }
+#chat-messages .chat-msg-meta { flex-wrap:wrap; row-gap:2px; }
+#chat-messages > .chat-msg-own { margin-left:0; margin-right:36px; }
+#chat-messages > .chat-msg-own > .kid-profile-avatar,
+#chat-messages .chat-msg-own .chat-person-avatar { left:auto; right:-36px; }
+#chat-messages .chat-msg:focus-within .chat-msg-controls { opacity:1; }
+.chat-news-card { text-decoration:none; color:inherit; align-items:flex-start; border:1px solid color-mix(in srgb,var(--accent) 18%,transparent); border-left:3px solid var(--accent); margin:0 0 10px; }
+.chat-news-card .chat-card-body { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.chat-news-card .chat-card-title { line-height:1.4; overflow-wrap:anywhere; }
+.chat-news-open { color:var(--accent); font-size:11px; font-weight:700; }
+.chat-news-card:hover .chat-card-title { text-decoration:underline; text-underline-offset:3px; }
+.chat-news-card:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+@keyframes fam-chat-arrive { from { opacity:0; transform:translateY(7px) scale(.98); } to { opacity:1; transform:none; } }
+.chat-msg-arriving { animation:fam-chat-arrive .2s ease-out; }
+@media(prefers-reduced-motion:reduce) { .chat-msg-arriving { animation:none; } }
+@media(hover:none) { #chat-messages .chat-msg-controls { opacity:1; } }

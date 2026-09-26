@@ -5,7 +5,7 @@ import SwiftUI
 //
 // Family group chat, native on iOS but backed by the SAME server thread as the
 // web. Playful, colorful bubbles (not a WhatsApp/Messenger clone): big rounded
-// bubbles, per-sender colored avatars, a purple→pink gradient for your own
+// bubbles, per-sender colored avatars, softly tinted outgoing
 // messages, GIFs (Giphy), and distinct animated cards for homework/calendar
 // system messages that deep-link to the item.
 //
@@ -14,9 +14,8 @@ import SwiftUI
 // `roomId`/`title` default to the family room, so every pre-Trips call site
 // (`ChatScreen()`) renders exactly as before.
 //
-// Keyboard note: SwiftUI's automatic keyboard avoidance lifts the column so the
-// composer rides flush on top of the keyboard; we only drop the tab-bar
-// clearance to zero while the keyboard is up.
+// The system keyboard and attachment panel share one measured input area.
+// The panel fills only the space not already reserved by keyboard avoidance.
 struct ChatScreen<HeaderAccessory: View>: View {
     var roomId: String = familyRoomId
     var title: String? = nil
@@ -34,6 +33,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @State private var hasUnreadMessages = false
     @State private var displayedRoomID: String?
     @State private var keyboardVisible = false
+    @State private var inputBottom: CGFloat = 0
     @State private var showGifPicker = false
     @State private var hwRef: HWRef?
     @State private var eventRef: EVRef?
@@ -44,7 +44,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @State private var scrollPos = ScrollPosition(edge: .bottom)
     @State private var buzzAlert: BuzzAlert?
     @State private var isSendingBuzz = false
-    @FocusState private var composerFocused: Bool
+    @State private var composerFocused = false
 
     private enum BuzzAlert: Identifiable {
         case confirmation
@@ -90,8 +90,9 @@ struct ChatScreen<HeaderAccessory: View>: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.bottom, bottomInset)
-            .animation(.easeOut(duration: 0.25), value: keyboardVisible)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: keyboardVisible)
         }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { inputBottom = $0 }
         // activeRoomId's didSet restarts the chat loop with an immediate plain
         // fetch as its first iteration — see AppStore.restartChatLoop — so
         // messages render right away with no tap needed, whether this is a
@@ -104,6 +105,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // immediately instead of waiting for the chat loop's first request.
         .task(id: roomId) { await store.consumeNotificationChatPrefetch(roomId: roomId) }
         .onChange(of: roomId) { _, newValue in
+            composerFocused = false
             displayedRoomID = newValue
             store.activeRoomId = newValue
             isNearBottom = true
@@ -111,12 +113,14 @@ struct ChatScreen<HeaderAccessory: View>: View {
             scrollToBottom(animated: false)
         }
         .onChange(of: store.me?.id) { _, _ in
+            composerFocused = false
             drafts = [:]
             sendingRooms = []
             failedRooms = []
             isSendingBuzz = false
         }
         .onDisappear {
+            composerFocused = false
             displayedRoomID = nil
             if store.activeRoomId == roomId { store.activeRoomId = nil }
         }
@@ -126,8 +130,6 @@ struct ChatScreen<HeaderAccessory: View>: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             store.chatWillEnterForeground()
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardVisible = false }
         .sheet(isPresented: $showGifPicker) {
             GifPickerSheet { gif in Task { await store.sendGif(gif, roomId: roomId) } }
         }
@@ -191,9 +193,20 @@ struct ChatScreen<HeaderAccessory: View>: View {
     // a stable programmatic position, and a bottom scroll AFTER the updated
     // content has laid out — unanimated for the initial population.
     private var messages: some View {
-        ScrollView {
+        // ForEach may evaluate retained rows after the store changes. Both the
+        // row and its date predecessor must come from this immutable snapshot.
+        let snapshot = currentMessages
+        return ScrollView {
             VStack(spacing: Space.md) {
-                ForEach(currentMessages) { m in
+                ForEach(Array(snapshot.enumerated()), id: \.element.id) { index, m in
+                    if index == 0 || ChatTime.day(m.createdAt) != ChatTime.day(snapshot[index - 1].createdAt) {
+                        Text(ChatTime.day(m.createdAt))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Palette.textSecond)
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(Palette.panel.opacity(0.9), in: Capsule())
+                            .padding(.vertical, 4)
+                    }
                     ChatMessageRow(message: m,
                                    isMine: store.isMine(m),
                                    senderName: store.senderName(for: m),
@@ -364,46 +377,25 @@ struct ChatScreen<HeaderAccessory: View>: View {
     private var canBuzz: Bool { canSend && !isSendingBuzz }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: Space.sm) {
-            ChatComposerAddMenu(
-                canBuzz: canBuzz,
-                onGif: {
-                    composerFocused = false
-                    showGifPicker = true
-                },
-                onBuzz: requestBuzz,
-                onSend: { picked in
-                    try await store.sendCompressedAttachment(picked, roomId: roomId)
-                }
-            )
-
-            TextField(isFamilyRoom ? "Message the family…" : "Message the trip…", text: Binding(get: { draft }, set: { draft = $0 }), axis: .vertical)
-                .font(.system(size: 17))
-                .foregroundStyle(Palette.text)
-                .lineLimit(1...5)
-                .focused($composerFocused)
-                .padding(.horizontal, Space.md).padding(.vertical, Space.sm + 3)
-                .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Palette.border, lineWidth: 1))
-                .accessibilityIdentifier("chat.composer")
-
-            Button(action: send) {
-                Group {
-                    if sendingRooms.contains(roomId) { ProgressView().tint(Palette.onAccent) }
-                    else { Image(systemName: "paperplane.fill") }
-                }
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Palette.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
+        ChatComposerAddMenu(
+            text: Binding(get: { draft }, set: { draft = $0 }),
+            isFocused: $composerFocused,
+            keyboardDocked: $keyboardVisible,
+            placeholder: isFamilyRoom ? "Message the family…" : "Message the trip…",
+            canBuzz: canBuzz,
+            canSend: canSend,
+            sendingMessage: sendingRooms.contains(roomId),
+            inputBottom: inputBottom,
+            onSubmit: send,
+            onGif: {
+                composerFocused = false
+                showGifPicker = true
+            },
+            onBuzz: requestBuzz,
+            onSend: { picked in
+                try await store.sendCompressedAttachment(picked, roomId: roomId)
             }
-            .disabled(!canSend)
-            .accessibilityLabel("Send message")
-            .accessibilityIdentifier("chat.send")
-        }
-        .padding(.horizontal, Space.md).padding(.top, Space.sm).padding(.bottom, Space.sm)
-        .background(Palette.panel)
-        .overlay(Divider().overlay(Palette.border), alignment: .top)
+        )
     }
 
     private func requestBuzz() {
@@ -497,6 +489,9 @@ struct ChatTabHost: View {
                 ChatRoomSwitcher(rooms: store.chatRooms, selection: $selectedRoomId)
             }
         }
+        // Keep the tab's identifier and unread badge on its container; letting
+        // them propagate overwrites every composer control's identifier/value.
+        .accessibilityElement(children: .contain)
         .onAppear {
             selectDefaultRoomIfNeeded()
             consumePendingRoom()
@@ -1808,6 +1803,7 @@ private struct ChatAddEventSheet: View {
 
 struct ChatMessageRow: View, Equatable {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
     let message: ChatMessage
     let isMine: Bool
     let senderName: String
@@ -1845,7 +1841,7 @@ struct ChatMessageRow: View, Equatable {
             // Buzz remains a normal text bubble even if a malformed or legacy
             // payload happens to carry another presentation field.
             bubbleRow
-        } else if message.card?.type == "meal-plan-draft" || message.card?.type == "trip-itinerary-draft" {
+        } else if message.deleted || message.card?.type == "news" || message.card?.type == "meal-plan-draft" || message.card?.type == "trip-itinerary-draft" {
             bubbleRow
         } else if message.card != nil {
             SystemCardRow(message: message, senderName: senderName, onTapCard: onTapCard)
@@ -1856,7 +1852,7 @@ struct ChatMessageRow: View, Equatable {
 
     private var bubbleRow: some View {
         HStack(alignment: .bottom, spacing: Space.sm) {
-            if isMine { Spacer(minLength: 52) }
+            if isMine { Spacer(minLength: typeSize.isAccessibilitySize ? 8 : 36) }
             if !isMine || senderKid != nil { avatar }
             VStack(alignment: isMine ? .trailing : .leading, spacing: 3) {
                 if !isMine {
@@ -1870,7 +1866,7 @@ struct ChatMessageRow: View, Equatable {
                 }
                 Text(ChatTime.short(message.createdAt)).font(Typography.mono(10.5)).foregroundStyle(Palette.textSecond).padding(.horizontal, 6)
             }
-            if !isMine { Spacer(minLength: 52) }
+            if !isMine { Spacer(minLength: typeSize.isAccessibilitySize ? 8 : 36) }
         }
     }
 
@@ -1878,15 +1874,25 @@ struct ChatMessageRow: View, Equatable {
         if let kid = senderKid {
             KidProfileAvatar(kid: kid, size: 38)
         } else {
-        Text(famAvatar(senderType: message.senderType, id: message.senderId))
-            .font(.system(size: 22))
+            Group {
+                if message.senderType == "agent" {
+                    Image(systemName: "sparkles").font(.system(size: 20, weight: .semibold)).foregroundStyle(Palette.accent)
+                } else {
+                    Text(famAvatar(senderType: message.senderType, id: message.senderId)).font(.system(size: 24))
+                }
+            }
             .frame(width: 38, height: 38)
-            .background(senderColor.opacity(0.22), in: Circle())
-            .overlay(Circle().strokeBorder(senderColor.opacity(0.4), lineWidth: 1))
+            .background(senderColor.opacity(0.14).gradient, in: Circle())
+            .overlay(Circle().strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
+            .accessibilityHidden(true)
         }
     }
 
-    private var bubbleShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+    private var bubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: isMine ? 22 : 6,
+                               bottomTrailingRadius: isMine ? 6 : 22, topTrailingRadius: 22)
+    }
+    private var bubbleFill: Color { isMine ? senderColor.opacity(0.12) : Palette.panel }
 
     private var mealPlanAction: some View {
         Button {
@@ -1945,19 +1951,21 @@ struct ChatMessageRow: View, Equatable {
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
                 .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
+        } else if let card = message.card, card.type == "news", !message.isBuzz {
+            ChatNewsCard(card: card, note: message.text)
         } else if message.isBuzz {
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 Label("BUZZ", systemImage: "wave.3.right")
                     .font(.system(size: 11, weight: .heavy))
                     .foregroundStyle(senderTextColor)
                 Text(ChatLinkText.attributed(message.text))
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.body)
                     .foregroundStyle(senderTextColor)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16).padding(.vertical, 11)
-            .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))
-            .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.55), lineWidth: 1))
+            .background(bubbleShape.fill(AnyShapeStyle(bubbleFill)))
+            .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
             .accessibilityElement(children: .combine)
             .accessibilityLabel("BUZZ message from \(senderName): \(message.text)")
             .accessibilityHint("Time Sensitive alert")
@@ -2002,12 +2010,12 @@ struct ChatMessageRow: View, Equatable {
             // label and message text; alignment and names remain the secondary
             // identity cues so color is never the only signal.
             Text(ChatLinkText.attributed(message.text))
-                .font(.system(size: 17, weight: .medium))
+                .font(.body)
                 .foregroundStyle(senderTextColor)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16).padding(.vertical, 11)
-                .background(bubbleShape.fill(AnyShapeStyle(Palette.panel2)))
-                .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.55), lineWidth: 1))
+                .background(bubbleShape.fill(AnyShapeStyle(bubbleFill)))
+                .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
                 .contextMenu {
                     shareMessageAction
                     if canImportMealPlan {
@@ -2054,6 +2062,62 @@ struct ChatMessageRow: View, Equatable {
                 Label("Share Message", systemImage: "square.and.arrow.up")
             }
         }
+    }
+}
+
+/// A news item keeps the original article and the family's note together.
+/// Never make arbitrary schemes or URLs containing credentials tappable.
+private struct ChatNewsCard: View {
+    let card: ChatCard
+    let note: String
+
+    private var articleURL: URL? {
+        guard let raw = card.url,
+              let components = URLComponents(string: raw),
+              components.scheme?.lowercased() == "https",
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil else { return nil }
+        return components.url
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let url = articleURL {
+                Link(destination: url) { articleLabel(hasLink: true) }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityLabel("Read article: \(card.title ?? "Shared article")")
+                    .accessibilityHint("Opens the original article")
+            } else {
+                articleLabel(hasLink: false)
+            }
+            if !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Divider().overlay(Palette.border)
+                Text(ChatLinkText.attributed(note))
+                    .font(.body).foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: 380, alignment: .leading)
+        .background(Palette.panel, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Palette.accent.opacity(0.3), lineWidth: 1))
+        .accessibilityIdentifier("chat.news.\(card.id)")
+    }
+
+    private func articleLabel(hasLink: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(card.source?.isEmpty == false ? card.source! : "In the news", systemImage: "newspaper.fill")
+                .font(.caption.weight(.semibold)).foregroundStyle(Palette.accent)
+            Text(card.title ?? "Shared article")
+                .font(.headline).foregroundStyle(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+            if hasLink {
+                Label("Read article", systemImage: "arrow.up.right")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.accent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -2105,6 +2169,15 @@ enum ChatTime {
     }()
     private static let isoNoFrac = ISO8601DateFormatter()
     private static let time: DateFormatter = { let f = DateFormatter(); f.dateFormat = "h:mm a"; return f }()
+
+    private static let dateLabel: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .medium; f.doesRelativeDateFormatting = true; return f
+    }()
+
+    static func day(_ createdAt: String) -> String {
+        guard let date = iso.date(from: createdAt) ?? isoNoFrac.date(from: createdAt) else { return "Chat" }
+        return dateLabel.string(from: date)
+    }
 
     static func short(_ createdAt: String) -> String {
         guard let date = iso.date(from: createdAt) ?? isoNoFrac.date(from: createdAt) else { return "" }

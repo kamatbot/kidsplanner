@@ -253,3 +253,55 @@ test("sendWebToUser: prunes a subscription the sender reports as gone (404/410)"
   assert.equal(notifications.tokenEntriesForUser("former-wearer", "watch").length, 0);
   assert.equal(notifications.tokenEntriesForUser("current-wearer", "watch")[0].topic, "com.fametc.app.watch");
 });
+
+test("chat previews include article or attachment context alongside the caption", () => {
+  const preview = notifications.chatMessagePreview;
+  assert.equal(preview({ text: "This is hopeful", card: { type: "news", title: "New coral growth" } }), "📰 New coral growth — This is hopeful");
+  assert.equal(preview({ text: "The school show", media: { type: "attachment", kind: "video", filename: "show.mp4" } }), "Video · show.mp4 — The school show");
+  assert.equal(preview({ media: { type: "attachment", kind: "photo", filename: "beach.jpg" } }), "Photo · beach.jpg");
+  assert.equal(preview({ media: { type: "attachment", filename: "worksheet.pdf" } }), "File · worksheet.pdf");
+  assert.equal(preview({ media: { type: "gif" } }), "GIF");
+  assert.equal(preview({ text: "Meet\n after school" }), "Meet after school");
+  assert.equal(preview({}), "Sent a message");
+});
+
+test("rich family/trip APNs and web payloads retain deep links and fit APNs limits", async () => {
+  const envKeys = ["APNS_TEAM_ID", "APNS_KEY_ID", "APNS_BUNDLE_ID", "APNS_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"];
+  const previous = envKeys.map((key) => process.env[key]);
+  Object.assign(process.env, { APNS_TEAM_ID: "t", APNS_KEY_ID: "k", APNS_BUNDLE_ID: "com.test", APNS_KEY: "fake", VAPID_PUBLIC_KEY: "p", VAPID_PRIVATE_KEY: "s", VAPID_SUBJECT: "mailto:test@example.test" });
+  const apns = require("../lib/apns-sender");
+  const web = require("../lib/webpush-sender");
+  const createApns = apns.createAPNsClient;
+  const createWeb = web.createWebPushClient;
+  const apnsCalls = [];
+  const webCalls = [];
+  apns.createAPNsClient = () => ({ send: async (request) => { apnsCalls.push(request); return { ok: true }; } });
+  web.createWebPushClient = () => ({ send: async (_sub, payload) => { webCalls.push(payload); return { ok: true }; } });
+  delete require.cache[require.resolve("../lib/fam-notifications")];
+  const fresh = require("../lib/fam-notifications");
+  try {
+    fresh.registerToken("rich-reader", "rich-device");
+    fresh.addWebSubscription("rich-reader", { endpoint: "https://push/rich", keys: { p256dh: "a", auth: "b" } });
+    await fresh.notifyChatMessage({ familyParentIds: ["rich-sender", "rich-reader"], familyKidUserIds: ["rich-reader"], senderUserId: "rich-sender", senderName: "🧑".repeat(4000), familyId: "f_rich", messageId: "m_rich", text: "🌍".repeat(4000), card: { type: "news", title: "📰".repeat(4000), url: "https://private.test/never-in-push" } });
+    assert.equal(apnsCalls.length, 1);
+    assert.equal(webCalls.length, 1);
+    const payload = apnsCalls[0].payload;
+    assert.equal(payload.aps.alert.subtitle, "News reflection");
+    assert.equal(payload.famType, "chat_message");
+    assert.equal(payload.messageId, "m_rich");
+    assert.ok(Buffer.byteLength(JSON.stringify(payload)) < 4096);
+    assert.ok(!JSON.stringify(payload).includes("private.test"));
+    assert.equal(webCalls[0].body, payload.aps.alert.body);
+    assert.equal(webCalls[0].data.familyId, "f_rich");
+    await fresh.notifyTripChatMessage({ id: "trip_rich", name: "Island holiday", members: [{ userId: "rich-reader" }] }, "rich-sender", "Dad", "Photo caption", "m_trip", { text: "Photo caption", media: { type: "attachment", kind: "photo", filename: "island.jpg" } });
+    const trip = apnsCalls.at(-1).payload;
+    assert.equal(trip.aps.alert.subtitle, "Island holiday");
+    assert.match(trip.aps.alert.body, /Photo · island.jpg — Photo caption/);
+    assert.equal(trip.tripId, "trip_rich");
+  } finally {
+    apns.createAPNsClient = createApns;
+    web.createWebPushClient = createWeb;
+    envKeys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; });
+    delete require.cache[require.resolve("../lib/fam-notifications")];
+  }
+});
