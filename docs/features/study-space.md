@@ -32,7 +32,7 @@ revocation, and deletes only the app's session-cookie pair in native and WK
 stores. Onboarding distinguishes a completed local sign-out from unconfirmed
 server revocation. Other cookies and other sites remain untouched.
 
-## Integration verification
+## Previous Study Pal branch verification (63c8e90)
 
 The accepted feature commits were integrated on top of the newer Daily 3
 source. An independent privacy review identified and led to corrections for
@@ -62,3 +62,8 @@ four cases passed in a completed recovery bundle after persistent fixture
 sessions replaced the short-lived processes. Logs preserve that distinction;
 the interrupted first bundle is not presented as a successful overall run.
 The accepted application source was unchanged between these test runs.
+
+
+## Family Rings integration (2026-09-26)
+
+`codex/ios-family-rings` restores these child-only features on the new native Today. Tapping visible Koko now opens a study panel with the next homework task, Energy check-in and My Corner. The native navigation stays on the iPad/iPhone app; parent sessions have no entry. Current build and acceptance evidence belongs in `.dev-data/ios-family-rings/` in that isolated worktree; the earlier results above describe the original Study Pal integration, not a fresh release. The owner subsequently authorized merging and deploying the combined web/backend changes; the release receipt records the actual external state.

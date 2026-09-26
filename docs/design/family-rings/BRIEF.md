@@ -57,7 +57,7 @@ Replace the text-heavy "Horizon" look with **Family Rings**: a bright, cool-grey
 - Light and dark mode, and phone layout.
 
 **Out of scope**
-- **iOS native app.** APP-BRIEF says Horizon tokens are 1:1 across web and iOS. This redesign breaks that parity, and a follow-up iOS brief should adopt these tokens (§9).
+- **iOS native app.** The native app adopts these tokens and ring formulas under [IOS-BRIEF.md](IOS-BRIEF.md). Native implementation and release evidence are tracked separately.
 - The marketing landing page (`landing.html` / `landing.css`).
 - Backend contracts, except the optional `completedAt` in §6.1.
 
@@ -408,7 +408,7 @@ Acceptance: at 1600×1000 and 390px, the page matches `today-desktop-light.png`,
   - FORM: Family Rings, seed `19a71449`.
 - Regenerate `DESIGN.md` from the built world, replacing Horizon.
 - Update the APP-BRIEF.md Design rows (Language, Palette, Typography) to Family Rings, "user-confirmed 2026-09-26".
-- Note iOS parity as pending.
+- Record native adoption and remaining device acceptance in the iOS handoff.
 
 ---
 
@@ -428,7 +428,7 @@ Acceptance: at 1600×1000 and 390px, the page matches `today-desktop-light.png`,
 
 ## 9. Open decisions and risks
 
-- **iOS parity:** web and iOS diverge until an iOS brief adopts these tokens. Recommend doing that next.
+- **iOS parity:** implemented on `codex/ios-family-rings` under [IOS-BRIEF.md](IOS-BRIEF.md), including shared tokens and native ring formulas. Live family parity and physical-device acceptance remain release checks; see [IOS-HANDOFF.md](IOS-HANDOFF.md).
 - **Kid Daily 3 data:** it relies on kids reporting progress (`/api/daily5/progress`). Families whose kids don't use the web see "not started". That's accurate, not an error.
 - **Rings as surveillance:** keep kid-facing copy positive, and never rank siblings.
 - **Homework ring completeness:** depends on the school import. Show the item count so parents can sanity-check it.

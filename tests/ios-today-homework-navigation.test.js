@@ -23,15 +23,15 @@ function structSource(source, name) {
 }
 
 test("iPhone and iPad Today tabs route to the native Homework tab", () => {
-  const routes = rootView.match(/TodayScreen\(onOpenHomework: \{ selection = \.homework \}\)/g) ?? [];
+  const routes = rootView.match(/TodayScreen\(onOpenHomework: \{ selection = \.homework \}, onOpenMeals:/g) ?? [];
   assert.equal(routes.length, 1, "one state-preserving Today screen routes to Homework at every size");
 });
 
 test("Today passes the homework route through both role stacks and cards", () => {
   assert.match(today, /let onOpenHomework: \(\) -> Void/);
-  assert.match(today, /init\(onOpenHomework: @escaping \(\) -> Void = \{\}\)/);
-  assert.match(today, /ParentTodayStack\(onOpenHomework: onOpenHomework\)/);
-  assert.match(today, /KidTodayStack\(onOpenHomework: onOpenHomework\)/);
+  assert.match(today, /init\(onOpenHomework: @escaping \(\) -> Void = \{\}, onOpenMeals: @escaping \(\) -> Void = \{\}\)/);
+  assert.match(today, /ParentTodayStack\(onOpenHomework: onOpenHomework, onOpenMeals:/);
+  assert.match(today, /KidTodayStack\(onOpenHomework: onOpenHomework, onDaily3:/);
 
   const parentStack = structSource(today, "ParentTodayStack");
   const kidStack = structSource(today, "KidTodayStack");

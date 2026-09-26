@@ -61,6 +61,29 @@ final class TodayVisualUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Interesting News"].waitForExistence(timeout: 8))
     }
 
+    func testChildHabitTouchUpdatesRingAndStaysScoped() throws {
+        XCUIDevice.shared.orientation = .portrait
+        let app = launch(.kid)
+        let card = wait("today.kidcard.qa-visual-kid-1", app)
+        reveal(card, app)
+        XCTAssertTrue(card.label.contains("Habits 1 of 2 today"))
+        // The card combines VoiceOver elements with named custom actions. This
+        // verifies the separate sighted touch target at standard iPad text size.
+        card.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.68)).tap()
+        XCTAssertTrue(app.navigationBars["Habits today"].waitForExistence(timeout: 5))
+        let habit = app.switches["today.habit.qa-visual-goal-2"]
+        XCTAssertTrue(habit.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["today.habit.qa-visual-goal-3"].exists)
+        let control = habit.switches.firstMatch
+        XCTAssertTrue(control.exists)
+        control.tap()
+        let checked = expectation(for: NSPredicate(format: "value == %@", "1"), evaluatedWith: habit)
+        wait(for: [checked], timeout: 8)
+        app.navigationBars["Habits today"].buttons["Done"].tap()
+        let updated = expectation(for: NSPredicate(format: "label CONTAINS %@", "Habits 2 of 2 today"), evaluatedWith: card)
+        wait(for: [updated], timeout: 8)
+    }
+
     func testEmptyAndErrorStatesKeepTodayAvailable() throws {
         let empty = launch(.parent, scenario: "family-rings-empty")
         XCTAssertTrue(wait("today.hero.summary", empty).label.contains("0"))

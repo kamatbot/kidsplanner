@@ -28,7 +28,6 @@ final class StudyPalUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["today.hero.summary"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertFalse(toggle.exists)
-        XCTAssertFalse(toggle.exists)
         XCTAssertFalse(app.buttons["today.studyPal.open"].exists)
     }
     func testLightLayoutAndHomeworkNavigation() {
@@ -56,6 +55,7 @@ final class StudyPalUITests: XCTestCase {
         openStudy.tap()
         let homework = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Next homework.")).firstMatch
         XCTAssertTrue(homework.waitForExistence(timeout: 5))
+        screenshot(app, "koko-study-panel")
         homework.tap()
         XCTAssertTrue(app.staticTexts["Visual coral field notes"].waitForExistence(timeout: 10))
         XCUIDevice.shared.orientation = .portrait

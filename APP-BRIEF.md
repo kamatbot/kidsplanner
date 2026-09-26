@@ -33,7 +33,7 @@
 | Uploads | yes — timetable/homework photos (JPG/PNG/PDF), feeds existing Claude parse pipeline | multer; native document scanner on iOS |
 | Min iOS | latest major minus 1 | modern SwiftUI @Observable |
 
-## Design (FINAL — Family Rings web, user-confirmed 2026-09-26; spec: docs/design/family-rings/)
+## Design (FINAL — Family Rings web + iOS, user-confirmed 2026-09-26; spec: docs/design/family-rings/)
 | Decision | Value |
 |---|---|
 | Language | Family Rings: the parent's Needs You ring and three action previews, then each child's concentric Homework/Habits/Daily 3 rings, day strip, and learning tiles. Existing sidebar → content → docked chat structure; phone bottom navigation. Every metric comes from recorded work, no sibling ranking. |
@@ -41,8 +41,9 @@
 | Hero | A progress ring, with empty dashed tracks for zero denominators; no decorative fill or momentum gradient. |
 | Dark mode | Auto/Light/Dark in Settings; matching Family Rings light and dark palettes. |
 | Typography | Self-hosted Geist variable 100–900 on the web, tabular numerals throughout; 30px greeting, 64px hero count, 30px child stats, 14px body. |
-| Native and marketing scope | iOS parity is pending a separate approved native brief. Marketing keeps its existing Horizon type and palette. |
-| Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). Native and marketing implementations remain outside this change. |
+| Native and marketing scope | Native Family Rings follows `docs/design/family-rings/IOS-BRIEF.md`: shared adaptive colors, bundled Geist, native Today and pure count formulas. Five native tabs stay native; secondary surfaces use HybridWebView. Widget/watch visual changes await device approval. Marketing keeps its existing Horizon type and palette. |
+| Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). The native contract supersedes the earlier native Today design; marketing remains separate. |
+| Child study space | Koko opens the next homework task, an energy check-in and My Corner. Available only in child sessions, primarily on iPad. Mood sharing requires explicit preview/send; My Corner notes and stickers remain private to the owning child account. |
 
 ## Monetization
 | Decision | Value | → Components |

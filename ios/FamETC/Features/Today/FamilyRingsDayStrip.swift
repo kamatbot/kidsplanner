@@ -67,8 +67,8 @@ struct FamilyRingsDayStrip: View {
     }
 
     private func chips(_ values: [AgendaItem]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Space.sm) { ForEach(values) { item in eventButton(item, compact: true) } }
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), alignment: .leading)], alignment: .leading, spacing: Space.sm) {
+            ForEach(values) { item in eventButton(item, compact: true) }
         }
     }
 

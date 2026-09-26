@@ -46,6 +46,8 @@ The source of truth is [the approved brief](docs/design/family-rings/BRIEF.md) a
 
 The 224px sidebar and resizable 340px family chat frame Today. The first card pairs a 188px violet ring with at most three actions. The center counts eligible open actions; its arc measures actions cleared today against cleared plus due by today. Future snoozes do not enter the preview. Parents review homework; their buttons never complete a child's assignment. All-actions retains creation, completion, snooze and delete according to existing permissions.
 
+“Cleared today” uses the server-recorded `completedAt` in the viewer's local day. Editing a completed action preserves that timestamp; reopening or snoozing clears it. Legacy completions and already-finished imported homework without a known completion time do not contribute to today's count.
+
 Child cards remain in family order. Their 156px rings always use rose outer homework, teal middle habits and azure inner Daily 3. Homework includes this Monday–Sunday plus unfinished overdue items; habits use today's recorded check-ins; Daily 3 includes only News, Quote and Word. Unknown Daily 3 is labeled unavailable and its ring is omitted. Empty denominators use dashed tracks. Fams balances and the gold weekly bar keep their actual numerator and limit visible.
 
 The day strip runs 7 AM–9 PM; overlapping events occupy separate lanes, and all-day/out-of-hours events remain accessible beside it. On narrow screens the track scrolls internally and centers the current time. Tonight links parents to Meals. News, Quote, Word and Challenge tiles lead to the existing mounted panels so drafts and puzzle state survive navigation.
@@ -56,4 +58,14 @@ Kid Today contains only the signed-in child's actionable work and progress, with
 
 Every ring includes a textual accessible label. Controls keep visible focus, native dialog/tab keyboard behavior, and textual counts alongside colors. Changes animate SVG arcs over 700ms, with a brief increment spark and completion glow; reduced-motion preference disables these effects. There is no confetti or ranking.
 
-Web-only adoption: native iOS parity is pending. The public landing retains its Horizon palette and typography through a scoped token preservation rule; its HTML and CSS are unchanged.
+The native implementation follows the same Family Rings contract below. The public landing retains its Horizon palette and typography through a scoped token preservation rule; its HTML and CSS are unchanged.
+
+## Native Family Rings
+
+The native contract is [IOS-BRIEF.md](docs/design/family-rings/IOS-BRIEF.md). `Theme.swift` aliases existing native color names to the exact adaptive `fr*` palette and bundles Geist (OFL). Borderless cards, tabular numerals and the shared `FamilyRing` keep native screens aligned with the web. Empty tracks are dashed, zero progress has no cap dot, missing data is omitted, and Reduce Motion removes fill animation, sparks and glow.
+
+Today retains the five native tabs. Parents get Needs You, up to three review/action rows, child cards, Tonight and Daily 3. Children get only their own work, their own ring card and their study space. Counts come from `FamilyRingsMath.swift`; cleared actions require a recorded `completedAt`. Goals are loaded as native models and habit changes refresh after the Goals sheet closes. Calendar event lanes use recorded start/end times; compact day strips scroll internally.
+
+Koko is a child-only entry to a study panel: the next open homework task, an energy check-in and My Corner. Energy stays local until the child explicitly sends the preview to family chat. My Corner stores a private note and a small sticker collection under the child account, with conflict handling and encrypted storage. Account changes dismiss private sheets and sign-out clears native state before waiting for server revocation.
+
+Widgets/watch remain on their existing design pending owner device approval. Native release still needs owner device checks and real-family web parity; native archive/upload remains owner-controlled and separate from the authorized web release.
