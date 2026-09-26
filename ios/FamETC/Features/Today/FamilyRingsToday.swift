@@ -323,9 +323,9 @@ struct FamilyRingsKidCard: View {
                             }
                         }.buttonStyle(.plain).disabled(!interactive)
                         VStack(alignment: .leading, spacing: compact ? 0 : 10) {
-                            metricButton(number: homeworkKnown ? "\(homework.left)" : "—", title: "Homework left", detail: homeworkKnown ? "this week" : "Homework unavailable", color: Palette.frHwInk, id: "homework", action: openHomework)
-                            metricButton(number: d3.map { "\($0)/4" } ?? "—", title: "Daily 4 today", detail: dailyStatus, color: Palette.frD3Ink, id: "daily3", action: onDaily3)
-                            metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", title: "Habits today", detail: habitStatus, color: Palette.frHabInk, id: "habits", action: openHabits)
+                            metricButton(number: homeworkKnown ? "\(homework.left)" : "—", line: (homeworkKnown ? "Homework left this week" : "Homework unavailable", nil), color: Palette.frHwInk, id: "homework", action: openHomework)
+                            metricButton(number: d3.map { "\($0)/4" } ?? "—", line: dailyLine, color: Palette.frD3Ink, id: "daily3", action: onDaily3)
+                            metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", line: habitLine, color: Palette.frHabInk, id: "habits", action: openHabits)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if dense { Spacer(minLength: 0) }
@@ -363,17 +363,18 @@ struct FamilyRingsKidCard: View {
         components.queryItems = [URLQueryItem(name: "child", value: kidID)]
         return components.string ?? "/"
     }
-    private var dailyStatus: String {
-        if loading { return "Loading…" }
-        guard let d3 else { return "Daily 4 unavailable" }
-        if d3 == 4 { return "Done ✓" }
-        return d3 > 0 || daily3Started ? "In progress" : "Not started"
+    /// Each stat reads on one line: a label, then "· status" in the metric's colour.
+    private var dailyLine: (String, String?) {
+        if loading { return ("Daily 4 today", "Loading…") }
+        guard let d3 else { return ("Daily 4 unavailable", nil) }
+        if d3 == 4 { return ("Daily 4 today", "Done ✓") }
+        return ("Daily 4 today", d3 > 0 || daily3Started ? "In progress" : "Not started")
     }
-    private var habitStatus: String {
+    private var habitLine: (String, String?) {
         switch store.goalsLoadState {
-        case .idle, .loading: return "Loading habits…"
-        case .error: return "Habits unavailable"
-        case .ready: return habits.total == 0 ? "No habits yet · Set a first habit" : habits.done == habits.total ? "Done ✓" : "Check in"
+        case .idle, .loading: return ("Habits today", "Loading…")
+        case .error: return ("Habits unavailable", nil)
+        case .ready: return habits.total == 0 ? ("No habits yet", "Set a first habit") : ("Habits today", habits.done == habits.total ? "Done ✓" : "Check in")
         }
     }
     private func header(_ kid: Kid) -> some View {
@@ -395,7 +396,7 @@ struct FamilyRingsKidCard: View {
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(!homeworkKnown ? Palette.frCard2 : homework.overdue > 0 ? Palette.frDangerSoft : homework.dueToday > 0 ? Palette.frHwSoft : Palette.frD3Soft, in: Capsule())
     }
-    private func metricButton(number: String, title: String, detail: String, color: Color, id: String, action: @escaping () -> Void) -> some View {
+    private func metricButton(number: String, line: (String, String?), color: Color, id: String, action: @escaping () -> Void) -> some View {
         Button { if interactive { action() } } label: {
             let layout = compact && !textSize.isAccessibilitySize
                 ? AnyLayout(HStackLayout(alignment: .center, spacing: 8))
@@ -404,10 +405,8 @@ struct FamilyRingsKidCard: View {
                 Text(number).font(compact ? Typography.statNumber : Typography.statNumeralRegular)
                     .tracking(-0.8).monospacedDigit().foregroundStyle(color)
                     .frame(minWidth: compact && !textSize.isAccessibilitySize ? 40 : nil, alignment: .leading)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(Typography.label).foregroundStyle(Palette.frInk2)
-                    Text(detail).font(Typography.caption).foregroundStyle(color)
-                }
+                (Text(line.0).foregroundStyle(Palette.frInk2) + Text(line.1.map { " · " + $0 } ?? "").foregroundStyle(color))
+                    .font(Typography.label)
             }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .contentShape(Rectangle())   // the whole row, not just its text
