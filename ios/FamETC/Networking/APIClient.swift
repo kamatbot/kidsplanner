@@ -476,9 +476,13 @@ final class APIClient: FamilyActionService, ChatMessageService {
     /// Trips (docs/TRIPS-PLAN.md): the family room keeps the EXACT legacy
     /// `/api/chat/messages` endpoints (zero behavior change for the common
     /// case); any `"trip:<tripId>"` room routes to that trip's own chat
-    /// endpoints instead. Every chat method below takes `roomId` with this
-    /// same default, so an un-migrated call site (family room) is unaffected.
-    private func chatBasePath(_ roomId: String) -> String {
+    /// endpoints instead; the private Hermes thread (roomId "hermes",
+    /// docs/HERMES-THREADS-CONTRACT.md §2) routes to its own endpoint. Every
+    /// chat method below takes `roomId` with this same default, so an
+    /// un-migrated call site (family room) is unaffected. `static` (like
+    /// `chatBuzzPath`) so the mapping is unit-testable without a live client.
+    static func chatBasePath(_ roomId: String) -> String {
+        if roomId == "hermes" { return "/api/hermes/thread/messages" }
         guard roomId.hasPrefix("trip:") else { return "/api/chat/messages" }
         let tripId = String(roomId.dropFirst("trip:".count))
         return "/api/trips/\(tripId)/chat/messages"
@@ -509,7 +513,7 @@ final class APIClient: FamilyActionService, ChatMessageService {
     /// `wait` requests a client-side timeout longer than the server's hold so
     /// the request doesn't get cut off right as new messages would arrive.
     func chatMessages(roomId: String = familyRoomId, since: String? = nil, limit: Int? = nil, afterId: String? = nil, wait: Bool = false) async throws -> [ChatMessage] {
-        var path = chatBasePath(roomId)
+        var path = Self.chatBasePath(roomId)
         var query: [String] = []
         if let since { query.append("since=\(since)") }
         if let limit { query.append("limit=\(limit)") }
@@ -528,7 +532,7 @@ final class APIClient: FamilyActionService, ChatMessageService {
         if let expectedContext { body["expectedContext"] = expectedContext }
         if let card { body["card"] = card }
         if let media { body["media"] = media }
-        let r: MessageResponse = try await request(chatBasePath(roomId), method: "POST", body: body)
+        let r: MessageResponse = try await request(Self.chatBasePath(roomId), method: "POST", body: body)
         return r.message
     }
     func trendingGifs(limit: Int = 24) async throws -> [GifResult] {
@@ -541,18 +545,31 @@ final class APIClient: FamilyActionService, ChatMessageService {
         return r.gifs
     }
     func deleteChatMessage(_ id: String, roomId: String = familyRoomId) async throws -> ChatMessage {
-        let r: MessageResponse = try await request("\(chatBasePath(roomId))/\(id)", method: "DELETE")
+        let r: MessageResponse = try await request("\(Self.chatBasePath(roomId))/\(id)", method: "DELETE")
         return r.message
     }
     func flagChatMessage(_ id: String, reason: String, roomId: String = familyRoomId) async throws -> ChatMessage {
-        let r: MessageResponse = try await request("\(chatBasePath(roomId))/\(id)/flag", method: "POST", body: ["reason": reason])
+        let r: MessageResponse = try await request("\(Self.chatBasePath(roomId))/\(id)/flag", method: "POST", body: ["reason": reason])
         return r.message
     }
     /// `GET /api/chat/rooms` — the family room (omitted for guests with no
-    /// family) plus one entry per trip the signed-in user is a member of.
+    /// family) plus one entry per trip the signed-in user is a member of,
+    /// plus the private Hermes thread for every signed-in family member.
     /// Drives the Chat tab's room list; a plain array response (not wrapped).
     func chatRooms() async throws -> [ChatRoom] {
         try await request("/api/chat/rooms")
+    }
+
+    /// Runs a `hermes-nudge` card's server-side action (docs/HERMES-THREADS-CONTRACT.md
+    /// §2-3). `open`-only actions never reach this — those are client-side
+    /// navigation with no server call.
+    func performHermesNudgeAction(messageId: String, action: String) async throws -> (message: ChatMessage, followUps: [ChatMessage]) {
+        let r: HermesNudgeActionResponse = try await request(
+            "/api/hermes/thread/messages/\(pathComponent(messageId))/actions",
+            method: "POST",
+            body: ["action": action]
+        )
+        return (r.message, r.messages)
     }
 
     // MARK: Push

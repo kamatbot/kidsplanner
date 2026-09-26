@@ -25,6 +25,10 @@ extension Notification.Name {
     /// trip to deep-link into. The app opens the Chat tab and selects that
     /// exact Trip room once the room list is available.
     static let famDeepLinkToTripChat = Notification.Name("famDeepLinkToTripChat")
+    /// Posted when a `meal_prep` push is received/tapped. There is no
+    /// Planning→Meals deep-link mechanism yet (unlike chat rooms/homework),
+    /// so this just brings the user to Today, same as a cold launch.
+    static let famDeepLinkToToday = Notification.Name("famDeepLinkToToday")
 }
 
 /// Reference payload shapes (lib/fam-notifications.js):
@@ -107,6 +111,23 @@ final class NotificationHandler {
             routeToChat(roomId: "trip:\(tripId)",
                         notification: .famDeepLinkToTripChat,
                         userInfo: routeInfo)
+        case "hermes_thread":
+            // docs/HERMES-THREADS-CONTRACT.md §4: routes exactly like a family
+            // chat push, just into the private "hermes" room — `routeToChat`
+            // stashes the room id before posting, so reusing the family chat
+            // notification name still lands on the Hermes room, not Family.
+            guard let familyId = userInfo["familyId"] as? String else { return }
+            var routeInfo: [AnyHashable: Any] = ["familyId": familyId]
+            if let messageId = userInfo["messageId"] as? String { routeInfo["messageId"] = messageId }
+            routeToChat(roomId: "hermes",
+                        notification: .famDeepLinkToChat,
+                        userInfo: routeInfo)
+        case "meal_prep":
+            // No Planning→Meals push route exists yet (see famDeepLinkToToday) —
+            // open Today, same as everywhere else that lacks a deep link today.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .famDeepLinkToToday, object: nil, userInfo: [:])
+            }
         default:
             break
         }

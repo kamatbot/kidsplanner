@@ -9,6 +9,14 @@ extension FamilyEvent {
     }
 }
 
+/// Client-navigation destinations for a `hermes-nudge` card's `open` action
+/// (docs/HERMES-THREADS-CONTRACT.md §3). The raw value matches the wire
+/// `open` string exactly, so an unrecognized value fails the `init?(rawValue:)`
+/// and is treated as plain text (no navigation), per contract.
+enum HermesNudgeOpenTarget: String {
+    case homework, meals, goals, today
+}
+
 /// The single source of truth for the native surfaces: the signed-in user's
 /// family (with its kids) and the chat thread. Cache-first load gives an
 /// instant, spinner-free cold start; chat is kept fresh with a long-poll loop
@@ -88,6 +96,10 @@ final class AppStore {
     /// (and cleared) by `ChatTabHost` to programmatically switch into that
     /// trip's room the next time it appears.
     var pendingChatRoomId: String?
+    /// Set by a tapped `hermes-nudge` card's `open` action (docs/HERMES-THREADS-CONTRACT.md
+    /// §3) — client navigation only, no server call. `RootView` observes and
+    /// clears this the same way it consumes `pendingChatRoomId`.
+    var pendingHermesOpen: HermesNudgeOpenTarget?
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
@@ -264,12 +276,12 @@ final class AppStore {
                 // Fail soft to just the family room (Trips-unaware/unreachable server).
                 let freshRooms = try? await rooms
                 guard generation == refreshGeneration else { return }
-                chatRooms = freshRooms ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
+                chatRooms = Self.sortedChatRooms(freshRooms ?? [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")])
             } else {
                 // A guest with zero families can still be on a trip.
                 let freshRooms = try? await api.chatRooms()
                 guard generation == refreshGeneration else { return }
-                chatRooms = freshRooms ?? []
+                chatRooms = Self.sortedChatRooms(freshRooms ?? [])
             }
             for room in chatRooms where lastSeenChatIdByRoom[room.roomId] == nil {
                 lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
@@ -967,13 +979,28 @@ final class AppStore {
         }
     }
 
+    /// Family first, the private Hermes thread right after it, then everything
+    /// else (trips) in the server's own order (docs/HERMES-THREADS-CONTRACT.md
+    /// §1: "make sure the Hermes room ... sorts right after Family"). Stable
+    /// (keeps relative order within a rank) regardless of server ordering.
+    private static func sortedChatRooms(_ rooms: [ChatRoom]) -> [ChatRoom] {
+        func rank(_ room: ChatRoom) -> Int {
+            if room.roomId == familyRoomId { return 0 }
+            if room.roomId == "hermes" { return 1 }
+            return 2
+        }
+        return rooms.enumerated()
+            .sorted { rank($0.element) != rank($1.element) ? rank($0.element) < rank($1.element) : $0.offset < $1.offset }
+            .map(\.element)
+    }
+
     /// Refresh the room directory when a push targets a newly joined trip that
     /// was not present at launch. Returns true when the server answered, even
     /// if the requested room is no longer available.
     @discardableResult
     func refreshChatRooms() async -> Bool {
         do {
-            chatRooms = try await api.chatRooms()
+            chatRooms = Self.sortedChatRooms(try await api.chatRooms())
             for room in chatRooms where lastSeenChatIdByRoom[room.roomId] == nil {
                 lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
             }
@@ -1634,6 +1661,22 @@ final class AppStore {
                 msgs[idx] = updated
                 messagesByRoom[roomId] = msgs
             }
+            persist()
+        } catch { handle(error) }
+    }
+
+    /// Runs a `hermes-nudge` card's button action (docs/HERMES-THREADS-CONTRACT.md
+    /// §2-3): replaces the tapped card in place with the server's updated state
+    /// and appends any new Hermes follow-ups not already in the thread. `open`
+    /// actions never call this — those are client navigation only.
+    func performHermesNudgeAction(_ id: String, action: String, roomId: String = "hermes") async {
+        do {
+            let result = try await api.performHermesNudgeAction(messageId: id, action: action)
+            if var msgs = messagesByRoom[roomId], let idx = msgs.firstIndex(where: { $0.id == id }) {
+                msgs[idx] = result.message
+                messagesByRoom[roomId] = msgs
+            }
+            mergeIncoming(result.followUps, roomId: roomId)
             persist()
         } catch { handle(error) }
     }

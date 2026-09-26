@@ -44,13 +44,42 @@ struct Family: Codable, Identifiable {
 }
 
 /// A structured chat card: family homework/event references are tappable;
-/// trip-* cards are informational timeline updates with category styling.
+/// trip-* cards are informational timeline updates with category styling;
+/// hermes-nudge cards are the private Hermes thread's actionable prompts
+/// (docs/HERMES-THREADS-CONTRACT.md §3).
 struct ChatCard: Codable, Equatable {
-    let type: String   // "homework" | "event" | "trip-flight" | ...
+    let type: String   // "homework" | "event" | "trip-flight" | "hermes-nudge" | ...
     let id: String
     var title: String?
     var url: String? = nil
     var source: String? = nil
+    /// hermes-nudge fields only — optional/additive so any other card type,
+    /// and any card decoded before this feature shipped, keeps decoding.
+    var kind: String? = nil
+    var lines: [String]? = nil
+    var actions: [HermesNudgeAction]? = nil
+    var state: HermesNudgeState? = nil
+}
+
+/// One button on a `hermes-nudge` card (docs/HERMES-THREADS-CONTRACT.md §3).
+/// `open` actions are client navigation only (no server call); anything else
+/// posts to the thread's `/actions` endpoint with this `id`.
+struct HermesNudgeAction: Codable, Equatable, Identifiable {
+    let id: String
+    var label: String
+    var style: String? = nil    // "primary" | "secondary"
+    var open: String? = nil     // "homework" | "meals" | "goals" | "today" | unknown (treated as plain text)
+    var done: Bool? = nil
+    var doneLabel: String? = nil
+}
+
+/// A `hermes-nudge` card's resolution state (docs/HERMES-THREADS-CONTRACT.md §3).
+struct HermesNudgeState: Codable, Equatable {
+    var status: String   // "open" | "done" | "dismissed" | "snoozed"
+    var label: String? = nil
+    var at: String? = nil
+    var by: String? = nil
+    var until: String? = nil
 }
 
 /// Media attached to a chat message. GIF fields remain optional for the Giphy
@@ -105,14 +134,19 @@ struct ChatMessage: Codable, Identifiable, Equatable {
 /// no trips behaves exactly as before.
 let familyRoomId = "family"
 
-/// One chat room (`GET /api/chat/rooms`): the family thread, or a per-trip
-/// thread scoped `"trip:<tripId>"`. Drives the iOS Chat tab's room list once a
-/// user has more than the family room.
+/// One chat room (`GET /api/chat/rooms`): the family thread, the private
+/// per-user Hermes thread (roomId "hermes"), or a per-trip thread scoped
+/// `"trip:<tripId>"`. Drives the iOS Chat tab's room list once a user has
+/// more than the family room.
 struct ChatRoom: Decodable, Identifiable {
     let roomId: String
     var tripId: String? = nil
     var title: String
     var memberCount: Int? = nil
+    /// "family" | "assistant" | "trip" (docs/HERMES-THREADS-CONTRACT.md §1).
+    /// Optional/additive — clients must ignore unknown keys, and a
+    /// pre-Hermes server response simply omits it.
+    var kind: String? = nil
 
     var id: String { roomId }
 }
@@ -508,6 +542,9 @@ struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
 struct KidAccessRequestsResponse: Codable { var requests: [KidAccessRequest] }
 struct MessagesResponse: Codable { var messages: [ChatMessage] }
 struct MessageResponse: Codable { var message: ChatMessage }
+/// `POST /api/hermes/thread/messages/:messageId/actions` (docs/HERMES-THREADS-CONTRACT.md §2):
+/// `message` is the tapped card, updated; `messages` are new Hermes follow-ups to append.
+struct HermesNudgeActionResponse: Codable { var message: ChatMessage; var messages: [ChatMessage] }
 struct OKResponse: Codable { var ok: Bool }
 
 struct UploadResponse: Codable {

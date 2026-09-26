@@ -14,6 +14,64 @@ final class ModelDecodingTests: XCTestCase {
         let legacy = try JSONDecoder().decode(ChatCard.self, from: Data(#"{"type":"event","id":"e_1","title":"Soccer"}"#.utf8))
         XCTAssertNil(legacy.url)
         XCTAssertNil(legacy.source)
+        // A card from before the Hermes nudge fields shipped (or any non-nudge
+        // card type) must keep decoding with all of them nil.
+        XCTAssertNil(legacy.kind)
+        XCTAssertNil(legacy.lines)
+        XCTAssertNil(legacy.actions)
+        XCTAssertNil(legacy.state)
+    }
+
+    // MARK: - Hermes private thread + nudges (docs/HERMES-THREADS-CONTRACT.md)
+
+    func testDecodesHermesNudgeCardWithActionsAndState() throws {
+        let payload = """
+        {
+          "messages": [{
+            "id": "m_hermes_1", "familyId": "f_1", "senderType": "agent", "senderId": "hermes",
+            "senderName": "Hermes", "text": "Ryshi's school ended now. Arya finishes in 30 min.",
+            "card": {
+              "type": "hermes-nudge", "id": "home-kid:2026-09-26", "kind": "home-kid", "title": null,
+              "lines": ["Paneer wraps · 20 min · you have 7 of 9"],
+              "actions": [
+                { "id": "open-homework", "label": "Open homework", "style": "primary", "open": "homework" },
+                { "id": "later", "label": "In 30 min", "style": "secondary", "done": false, "doneLabel": null }
+              ],
+              "state": { "status": "open", "label": null, "at": null, "by": null, "until": null }
+            },
+            "createdAt": "2026-09-26T08:10:00.000Z", "deleted": false, "deletedBy": null,
+            "flagged": false, "flagReason": null, "flaggedBy": null, "roomId": "hermes"
+          }]
+        }
+        """
+        let r = try JSONDecoder().decode(MessagesResponse.self, from: Data(payload.utf8))
+        let message = try XCTUnwrap(r.messages.first)
+        XCTAssertEqual(message.senderType, "agent")
+        XCTAssertEqual(message.senderId, "hermes")
+        XCTAssertEqual(message.roomId, "hermes")
+        XCTAssertEqual(message.card?.type, "hermes-nudge")
+        XCTAssertEqual(message.card?.kind, "home-kid")
+        XCTAssertEqual(message.card?.lines, ["Paneer wraps · 20 min · you have 7 of 9"])
+        XCTAssertEqual(message.card?.actions?.count, 2)
+        XCTAssertEqual(message.card?.actions?.first?.id, "open-homework")
+        XCTAssertEqual(message.card?.actions?.first?.style, "primary")
+        XCTAssertEqual(message.card?.actions?.first?.open, "homework")
+        XCTAssertEqual(message.card?.actions?.last?.id, "later")
+        XCTAssertEqual(message.card?.actions?.last?.done, false)
+        XCTAssertEqual(message.card?.state?.status, "open")
+
+        // Round-trips through Encodable too (local cache persistence).
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+        XCTAssertEqual(restored, message)
+    }
+
+    /// A resolved nudge (state.status != "open") is what a card looks like
+    /// once its buttons are gone and it just shows a quiet chip.
+    func testDecodesResolvedHermesNudgeState() throws {
+        let card = try JSONDecoder().decode(ChatCard.self, from: Data(#"{"type":"hermes-nudge","id":"n_1","kind":"kid-reminder","lines":[],"actions":[],"state":{"status":"done","label":"Done","at":"2026-09-26T09:00:00.000Z","by":"u_1"}}"#.utf8))
+        XCTAssertEqual(card.state?.status, "done")
+        XCTAssertEqual(card.state?.label, "Done")
+        XCTAssertNil(card.state?.until)
     }
 
     func testDailyNewsEditionDecodesMissingCategoryAndLegacyResponse() throws {
@@ -436,6 +494,40 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(rooms[1].tripId, "t_1")
         XCTAssertEqual(rooms[1].memberCount, 4)
         XCTAssertEqual(rooms[1].id, "trip:t_1")
+        // Pre-Hermes payload — `kind` must decode to nil, not fail.
+        XCTAssertNil(rooms[0].kind)
+        XCTAssertNil(rooms[1].kind)
+    }
+
+    /// docs/HERMES-THREADS-CONTRACT.md §1: the private Hermes thread room, with
+    /// `kind` tagging every room ("family" | "assistant" | "trip").
+    func testDecodesChatRoomsArrayWithHermesAndKind() throws {
+        let payload = """
+        [
+          { "roomId": "family", "title": "The Smiths", "kind": "family" },
+          { "roomId": "hermes", "title": "Hermes", "kind": "assistant" },
+          { "roomId": "trip:t_1", "tripId": "t_1", "title": "Lisbon 2026", "memberCount": 4, "kind": "trip" }
+        ]
+        """
+        let rooms = try JSONDecoder().decode([ChatRoom].self, from: Data(payload.utf8))
+        XCTAssertEqual(rooms.count, 3)
+        XCTAssertEqual(rooms[0].kind, "family")
+        XCTAssertEqual(rooms[1].roomId, "hermes")
+        XCTAssertEqual(rooms[1].title, "Hermes")
+        XCTAssertEqual(rooms[1].kind, "assistant")
+        XCTAssertNil(rooms[1].tripId)
+        XCTAssertEqual(rooms[2].kind, "trip")
+    }
+
+    /// Pure-logic guard for the room→endpoint mapping (`APIClient.chatBasePath`,
+    /// `static` like `chatBuzzPath` specifically so it's testable without a
+    /// live client/network): family and trip behavior must stay unchanged
+    /// while "hermes" routes to the private thread endpoint
+    /// (docs/HERMES-THREADS-CONTRACT.md §2).
+    func testChatBasePathMapsHermesFamilyAndTripRooms() {
+        XCTAssertEqual(APIClient.chatBasePath("hermes"), "/api/hermes/thread/messages")
+        XCTAssertEqual(APIClient.chatBasePath(familyRoomId), "/api/chat/messages")
+        XCTAssertEqual(APIClient.chatBasePath("trip:t_1"), "/api/trips/t_1/chat/messages")
     }
 
     // MARK: - Meals (parent composite + family shopping projection)

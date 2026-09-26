@@ -64,6 +64,7 @@ struct RootView: View {
     @State private var assistanceChild: AssistanceChildRoute?
     @State private var pendingAssistanceURL: URL?
     @State private var signingOut = false
+    @State private var showHermesGoals = false
     private struct AssistanceChildRoute: Identifiable { let id: String }
 
     private func openAssistanceRoute(_ url: URL) {
@@ -147,6 +148,25 @@ struct RootView: View {
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             routeFromLiveChatNotification(fallbackRoomId: "trip:\(tripId)")
         }
+        // meal_prep push (docs/HERMES-THREADS-CONTRACT.md §4): no Planning→Meals
+        // deep link exists yet, so this lands on Today.
+        .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToToday)) { _ in
+            selection = .today
+        }
+        // A tapped hermes-nudge card's `open` action (docs/HERMES-THREADS-CONTRACT.md
+        // §3) — same pending-route pattern as `pendingChatRoomId` above, just for
+        // a tab/destination instead of a chat room.
+        .onChange(of: store.pendingHermesOpen) { _, target in
+            guard let target else { return }
+            store.pendingHermesOpen = nil
+            switch target {
+            case .today: selection = .today
+            case .homework: selection = .homework
+            case .meals: planningSelection = .meals; selection = .planning
+            case .goals: showHermesGoals = true
+            }
+        }
+        .sheet(isPresented: $showHermesGoals) { RingsWebSheet(title: "Goals", path: "/?tab=goals") }
         .overlay { if store.needsAuth && !signingOut { ReauthOverlay() } }
         .onAppear {
             #if DEBUG

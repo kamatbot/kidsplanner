@@ -35,6 +35,20 @@ func famAvatar(senderType: String, id: String) -> String {
     return set[abs(stableHash(id)) % set.count]
 }
 
+/// "HELPER" tag shown next to "Hermes" for any senderType == "agent" message,
+/// in every room it appears — not just the private Hermes thread
+/// (docs/HERMES-THREADS-CONTRACT.md §2).
+struct HelperTag: View {
+    var body: some View {
+        Text("HELPER")
+            .font(Typography.caption.weight(.bold))
+            .foregroundStyle(Palette.frYouInk)
+            .padding(.horizontal, Space.sm)
+            .padding(.vertical, 2)
+            .background(Palette.frYouSoft, in: Capsule())
+    }
+}
+
 // MARK: - System card messages
 
 struct SystemCardRow: View {
