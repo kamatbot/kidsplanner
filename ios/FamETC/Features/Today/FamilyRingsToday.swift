@@ -151,24 +151,45 @@ private struct FamilyRingsActionRow: View {
     var body: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
                                                  : AnyLayout(HStackLayout(alignment: .center, spacing: compact ? 8 : 12))
-        layout {
-            HStack(spacing: compact ? 8 : 12) {
-                if let kid { KidProfileAvatar(kid: kid, size: compact ? 28 : 40) }
-                else { Text("F").font(Typography.itemTitle).foregroundStyle(Palette.frOnYou)
-                    .frame(width: compact ? 28 : 40, height: compact ? 28 : 40).background(Palette.frYou, in: Circle()).accessibilityHidden(true) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(action.title).font(compact ? Typography.body.weight(.semibold) : Typography.itemTitle).foregroundStyle(Palette.frInk)
-                        .lineLimit(textSize.isAccessibilitySize ? nil : 2)
-                    Text(meta).font(compact ? Typography.caption : Typography.label).foregroundStyle(overdue ? Palette.frDanger : Palette.frInk2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-            }
+        Group {
             if isReview, let sourceID = action.sourceId {
-                Button("Review") { homeworkRef = HWRef(id: sourceID) }
-                    .buttonStyle(RingsCapsuleStyle(filled: true, compact: compact))
-                    .accessibilityIdentifier("today.action.review.\(action.id)")
-            } else if store.canCompleteAction(action) {
+                // The whole row opens the homework to review; the chevron marks it as a link.
+                Button { homeworkRef = HWRef(id: sourceID) } label: {
+                    layout {
+                        summary
+                        Image(systemName: "chevron.right").font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Palette.frInk3).accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("today.action.review.\(action.id)")
+                .accessibilityHint("Opens the homework to review")
+            } else {
+                layout {
+                    summary
+                    if store.canCompleteAction(action) { doneButton }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .sheet(item: $homeworkRef) { HomeworkDetailSheet(homeworkId: $0.id) }
+    }
+    private var summary: some View {
+        HStack(spacing: compact ? 8 : 12) {
+            if let kid { KidProfileAvatar(kid: kid, size: compact ? 28 : 40) }
+            else { Text("F").font(Typography.itemTitle).foregroundStyle(Palette.frOnYou)
+                .frame(width: compact ? 28 : 40, height: compact ? 28 : 40).background(Palette.frYou, in: Circle()).accessibilityHidden(true) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(action.title).font(compact ? Typography.body.weight(.semibold) : Typography.itemTitle).foregroundStyle(Palette.frInk)
+                    .lineLimit(textSize.isAccessibilitySize ? nil : 2)
+                Text(meta).font(compact ? Typography.caption : Typography.label).foregroundStyle(overdue ? Palette.frDanger : Palette.frInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+        }
+    }
+    private var doneButton: some View {
                 Button("Done") {
                     let before = FamilyRingsMath.parentRing(viewerItems: store.actions.filter { store.canViewAction($0) })
                     Haptics.impact(.light)
@@ -182,10 +203,6 @@ private struct FamilyRingsActionRow: View {
                 .buttonStyle(RingsCapsuleStyle(compact: compact))
                 .disabled(store.completingActionIDs.contains(action.id))
                 .accessibilityIdentifier("today.action.done.\(action.id)")
-            }
-        }
-        .padding(.vertical, 4)
-        .sheet(item: $homeworkRef) { HomeworkDetailSheet(homeworkId: $0.id) }
     }
 }
 
