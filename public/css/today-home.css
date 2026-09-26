@@ -2,6 +2,8 @@
    docs/design/family-rings/today-reference.html. */
 #tab-today {
   container: today / inline-size;
+  /* Keep absolute screen-reader labels inside the scrolling Today panel. */
+  position: relative;
   width: 100%; min-width: 0; max-width: 1440px; margin: 0 auto; padding-bottom: 40px;
   color: var(--fr-ink); font: var(--t-body);
 }
