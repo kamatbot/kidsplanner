@@ -105,15 +105,15 @@ static let frYou       = Color.adaptive(Color(hex: 0x7B4DFF), Color(hex: 0xA68CF
 static let frYouInk    = Color.adaptive(Color(hex: 0x5B2EE6), Color(hex: 0xC3B1FF))
 static let frYouSoft   = Color.adaptive(Color(hex: 0xEFEAFF), Color(hex: 0xA68CFF, alpha: 0.16))
 static let frOnYou     = Color.adaptive(Color(hex: 0xFFFFFF), Color(hex: 0x15121F))
-static let frHw        = Color.adaptive(Color(hex: 0xE8467C), Color(hex: 0xFF6F9D))
-static let frHwInk     = Color.adaptive(Color(hex: 0xB8205A), Color(hex: 0xFF9CBB))
-static let frHwSoft    = Color.adaptive(Color(hex: 0xFDE8EF), Color(hex: 0xFF6F9D, alpha: 0.14))
-static let frHab       = Color.adaptive(Color(hex: 0x0EA58C), Color(hex: 0x2FD3B4))
-static let frHabInk    = Color.adaptive(Color(hex: 0x0B7866), Color(hex: 0x74E6CF))
-static let frHabSoft   = Color.adaptive(Color(hex: 0xDDF4EF), Color(hex: 0x2FD3B4, alpha: 0.14))
-static let frD3        = Color.adaptive(Color(hex: 0x4B7BF5), Color(hex: 0x7EA3FF))
-static let frD3Ink     = Color.adaptive(Color(hex: 0x2A57C9), Color(hex: 0xA9C1FF))
-static let frD3Soft    = Color.adaptive(Color(hex: 0xE7EEFE), Color(hex: 0x7EA3FF, alpha: 0.14))
+static let frHw        = Color.adaptive(Color(hex: 0xEF6A12), Color(hex: 0xFF8A3D))
+static let frHwInk     = Color.adaptive(Color(hex: 0xC2410C), Color(hex: 0xFFB27A))
+static let frHwSoft    = Color.adaptive(Color(hex: 0xFFEDD5), Color(hex: 0xFF8A3D, alpha: 0.14))
+static let frHab       = Color.adaptive(Color(hex: 0xD946EF), Color(hex: 0xE879F9))
+static let frHabInk    = Color.adaptive(Color(hex: 0xA21CAF), Color(hex: 0xF0ABFC))
+static let frHabSoft   = Color.adaptive(Color(hex: 0xFAE8FF), Color(hex: 0xE879F9, alpha: 0.14))
+static let frD3        = Color.adaptive(Color(hex: 0x0EA58C), Color(hex: 0x2FD3B4))
+static let frD3Ink     = Color.adaptive(Color(hex: 0x0B7866), Color(hex: 0x74E6CF))
+static let frD3Soft    = Color.adaptive(Color(hex: 0xDDF4EF), Color(hex: 0x2FD3B4, alpha: 0.14))
 static let frFams      = Color.adaptive(Color(hex: 0xD99A00), Color(hex: 0xFFC53D))
 static let frFamsInk   = Color.adaptive(Color(hex: 0x8A5A00), Color(hex: 0xFFD978))
 static let frFamsSoft  = Color.adaptive(Color(hex: 0xFFF3D6), Color(hex: 0xFFC53D, alpha: 0.14))
@@ -270,7 +270,7 @@ struct FamilyRing: View {
     enum Style { case kid, parent, mini }
     let style: Style
     let diameter: CGFloat
-    /// Outer → inner. A nil slot keeps its radius but draws nothing (Daily 3 unavailable).
+    /// Outer → inner. A nil slot keeps its radius but draws nothing (Daily 4 unavailable).
     let metrics: [RingMetric?]
     var accessibilityText: String? = nil
     // body: ZStack of tracks + trims; see rules below
@@ -359,14 +359,14 @@ Radius *i* = D/2 − stroke/2 − inset − *i*·(stroke + gap). Frame each circ
 | Otherwise | "Nothing due today" | `frHabInk` on `frHabSoft` |
 
 **Body**
-- `FamilyRing(.kid)`: outer Homework `frHw`, middle Habits `frHab`, inner Daily 3 `frD3`.
+- `FamilyRing(.kid)`: outer Homework `frHw`, middle Daily 4 `frD3`, inner Habits `frHab` (owner decision 2026-09-26; the order matches the stats column).
 - Stats column: three rows of numeral (`statNumeral`) plus a two-line label, all in the metric's `…Ink` colour:
   - **Homework:** `left` / "homework left / this week".
   - **Daily 3:** `n/3` / "Daily 3 today" plus a sub-line:
     - "Not started";
     - "In progress" (any part started or completed);
     - "Done ✓" (all 3).
-    - If unavailable: "—" / "Daily 3 unavailable", with the inner ring omitted. **Never show 0.**
+    - If unavailable: "—" / "Daily 3 unavailable", with the middle ring omitted. **Never show 0.**
   - **Habits:** `done/total` / "habits today" with a sub-line "Check in" or "Done ✓". With no habits: "—" / "No habits yet · Set a first habit", which opens the Goals web view.
 
 **Fams row** (1pt `frRule` above)
@@ -394,7 +394,7 @@ Radius *i* = D/2 − stroke/2 − inset − *i*·(stroke + gap). Frame each circ
 - Default activation opens the child brief.
 - Named `accessibilityAction`s: "Open homework", "Check habits" and "Daily 3", because nested buttons aren't reachable inside an ignored element.
 
-**Legend.** Once, under the cards: coloured dots plus "Homework (outer) · Habits (middle) · Daily 3 (inner) · Fams this week", in `caption` `frInk2`.
+**Legend.** Once, under the cards: coloured dots plus "Homework (outer) · Daily 4 (middle) · Habits (inner) · Fams this week", in `caption` `frInk2`.
 
 ### 4.4 Day strip and Tonight
 
@@ -770,7 +770,7 @@ The owner signs in on their own simulator or device. **Never enter credentials.*
   - numbers always beside the rings;
   - none of Apple's copy;
   - no triple rings on widgets or the watch.
-- **If review objects:** swap the middle and inner rings (Daily 3 middle, Habits inner) on **both** platforms. The ring order is one array, and the legend and tests follow it.
+- **Done 2026-09-26 (owner decision):** the rings are now orange, mint and fuchsia in the order Homework, Daily 4, Habits on **both** platforms, which no longer mirrors Activity's red, green and blue.
 - **Recommendation:** ship as designed; don't pre-empt.
 
 **D2 · Kid filter retired on Today.**

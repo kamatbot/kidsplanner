@@ -24,7 +24,7 @@ Replace the text-heavy "Horizon" look with **Family Rings**: a bright, cool-grey
 
 1. **Every ring is a real count** with a defined numerator and denominator (§6). Never decorative or pre-filled. A denominator of 0 renders a dashed empty track plus an empty-state line.
 2. **Violet (`--fr-you`) means you and actions only.** Buttons, the parent ring, the now-marker, selection and focus.
-3. **Ring colours are fixed per metric**: rose for Homework, teal for Habits, azure for Daily 3. Gold is only for fams. Kid identity uses the kid's profile colour on the avatar badge, never on rings.
+3. **Ring colours are fixed per metric**: orange for Homework, mint for Daily 4, fuchsia for Habits (owner decision 2026-09-26). Gold is only for fams. Kid identity uses the kid's profile colour on the avatar badge, never on rings.
 4. **Colour is never the only carrier.** Every ring has adjacent numbers and text, `role="img"` and an `aria-label`.
 5. **Keep product truth:**
    - parents review homework but never mark it done;
@@ -82,15 +82,15 @@ Define these in `public/css/horizon.css`, rewritten; §7 P1 covers the migration
 | Actions text | `--fr-you-ink` | `#5B2EE6` | `#C3B1FF` | 7.0 |
 | Actions tint | `--fr-you-soft` | `#EFEAFF` | `rgba(166,140,255,.16)` | — |
 | On violet | `--fr-on-you` | `#FFFFFF` | `#15121F` | 4.8 / 6.9 |
-| **Homework ring** | `--fr-hw` | `#E8467C` | `#FF6F9D` | 3.8 (graphic) |
-| Homework text | `--fr-hw-ink` | `#B8205A` | `#FF9CBB` | 6.2 |
-| Homework tint | `--fr-hw-soft` | `#FDE8EF` | `rgba(255,111,157,.14)` | — |
-| **Daily 3 ring** | `--fr-d3` | `#4B7BF5` | `#7EA3FF` | 3.9 (graphic) |
-| Daily 3 text | `--fr-d3-ink` | `#2A57C9` | `#A9C1FF` | 6.4 |
-| Daily 3 tint | `--fr-d3-soft` | `#E7EEFE` | `rgba(126,163,255,.14)` | — |
-| **Habits ring** | `--fr-hab` | `#0EA58C` | `#2FD3B4` | 3.1 (graphic) |
-| Habits text | `--fr-hab-ink` | `#0B7866` | `#74E6CF` | 5.4 |
-| Habits tint | `--fr-hab-soft` | `#DDF4EF` | `rgba(47,211,180,.14)` | — |
+| **Homework ring** | `--fr-hw` | `#EF6A12` | `#FF8A3D` | 3.1 (graphic) |
+| Homework text | `--fr-hw-ink` | `#C2410C` | `#FFB27A` | 5.2 |
+| Homework tint | `--fr-hw-soft` | `#FFEDD5` | `rgba(255,138,61,.14)` | — |
+| **Daily 4 ring** | `--fr-d3` | `#0EA58C` | `#2FD3B4` | 3.1 (graphic) |
+| Daily 4 text | `--fr-d3-ink` | `#0B7866` | `#74E6CF` | 5.4 |
+| Daily 4 tint | `--fr-d3-soft` | `#DDF4EF` | `rgba(47,211,180,.14)` | — |
+| **Habits ring** | `--fr-hab` | `#D946EF` | `#E879F9` | 3.5 (graphic) |
+| Habits text | `--fr-hab-ink` | `#A21CAF` | `#F0ABFC` | 6.3 |
+| Habits tint | `--fr-hab-soft` | `#FAE8FF` | `rgba(232,121,249,.14)` | — |
 | **Fams** | `--fr-fams` | `#D99A00` | `#FFC53D` | Bar only, always with numbers |
 | Fams text | `--fr-fams-ink` | `#8A5A00` | `#FFD978` | 5.9 |
 | Fams tint | `--fr-fams-soft` | `#FFF3D6` | `rgba(255,197,61,.14)` | — |
@@ -212,11 +212,11 @@ This is the one authored moment. Use `cubic-bezier(.2,.8,.2,1)` throughout.
 - **Header:** 34px badge, name (20/700), and a factual status chip:
   - `N overdue` → danger tint;
   - otherwise `N due today` → homework tint;
-  - otherwise "Nothing due today" → habits tint.
+  - otherwise "Nothing due today" → mint (Daily 4) tint.
   - Never "on track", or any other judgement.
 - **Rings**
   - 156px SVG (120px on phone), 14px strokes, radii 66 / 48 / 30.
-  - Order: outer Homework (`--fr-hw`), middle Habits (`--fr-hab`), inner Daily 3 (`--fr-d3`).
+  - Order: outer Homework (`--fr-hw`), middle Daily 4 (`--fr-d3`), inner Habits (`--fr-hab`).
   - Track: the same colour at `--fr-track`.
   - Habits with no habits: dashed track (`stroke-dasharray: 4 7`).
 - **Stats column:** three rows of numeral plus two-line label, in the ring colour's `-ink` token:

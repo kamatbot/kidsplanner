@@ -12,9 +12,9 @@ colors:
   ink-secondary: '#6B7280'
   action: '#7B4DFF'
   action-ink: '#5B2EE6'
-  homework: '#E8467C'
-  habits: '#0EA58C'
-  daily3: '#4B7BF5'
+  homework: '#EF6A12'
+  habits: '#D946EF'
+  daily3: '#0EA58C'
   fams: '#D99A00'
 typography:
   family: Geist

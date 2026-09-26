@@ -32,7 +32,7 @@
 #tab-today .today-summary > span:not(:empty) ~ span:not(:empty)::before { content: " · "; }
 #tab-today .today-summary .is-overdue { color: var(--fr-danger); }
 #tab-today .today-sync-status { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--fr-rule); border-radius: 999px; background: var(--fr-card); color: var(--fr-ink-2); font-size: 12px; }
-#tab-today .today-sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fr-hab); flex: none; }
+#tab-today .today-sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-teal); flex: none; }
 #tab-today .today-sync-dot.is-stale { background: var(--fr-fams); }
 #tab-today .today-sync-dot.is-never { background: transparent; border: 1px solid var(--fr-ink-2); }
 #tab-today :is(.fr-hero,.fr-kid-card,.today-agenda-card,.today-region,.today-setup-card,.today-homework-card) { background: var(--fr-card); border: 0; border-radius: 24px; box-shadow: var(--fr-shadow); }
@@ -57,7 +57,7 @@
 .fr-ring-spark { animation: fr-spark 1.2s ease-out both; }
 .fr-ring-completed { animation: fr-glow 600ms ease-out; }
 @keyframes fr-spark { from { opacity: .9; } to { opacity: 0; } }
-@keyframes fr-glow { 40% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--fr-hab) 35%, transparent)); } }
+@keyframes fr-glow { 40% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--c-teal) 35%, transparent)); } }
 #tab-today .fr-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; pointer-events: none; }
 #tab-today .fr-ring-center b { font-size: 64px; font-weight: 800; letter-spacing: -.04em; line-height: .95; }
 #tab-today .fr-ring-center span { font-size: 13px; font-weight: 600; color: var(--fr-you-ink); margin-top: 4px; }
@@ -108,7 +108,7 @@
 #tab-today .fr-kid-chip { margin-left: auto; border-radius: 999px; font-size: 12px; font-weight: 600; padding: 6px 12px; }
 #tab-today .fr-kid-chip.is-overdue { color: var(--fr-danger); background: color-mix(in srgb,var(--fr-danger) 10%,transparent); }
 #tab-today .fr-kid-chip.is-due { color: var(--fr-hw-ink); background: var(--fr-hw-soft); }
-#tab-today .fr-kid-chip.is-clear { color: var(--fr-hab-ink); background: var(--fr-hab-soft); }
+#tab-today .fr-kid-chip.is-clear { color: var(--fr-d3-ink); background: var(--fr-d3-soft); }
 #tab-today .fr-kid-body { display: grid; grid-template-columns: 156px minmax(0,1fr); gap: 18px; align-items: center; }
 #tab-today .fr-kid-rings { border: 0; padding: 0; width: 156px; height: 156px; background: none; cursor: pointer; }
 #tab-today .fr-kid-stats { display: grid; gap: 12px; min-width: 0; }

@@ -5780,10 +5780,10 @@ function todayKidRowHtml(kid, parent, state, todayIso, progressState = 'loading'
   const fmt = n => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(n);
   const rings = [
     ...(hwKnown ? [{ value: hw.done, total: hw.total, color: 'var(--fr-hw)', label: 'Homework done this week', radius:66 }] : []),
-    ...(habKnown ? [{ value: hab.done, total: hab.total, color: 'var(--fr-hab)', label: 'Habits checked today', radius:48 }] : []),
-    ...(daily3 ? [{ value: daily3.done, total: 4, color: 'var(--fr-d3)', label: 'Daily 4 today', radius:30 }] : [])
+    ...(daily3 ? [{ value: daily3.done, total: 4, color: 'var(--fr-d3)', label: 'Daily 4 today', radius:48 }] : []),
+    ...(habKnown ? [{ value: hab.done, total: hab.total, color: 'var(--fr-hab)', label: 'Habits checked today', radius:30 }] : [])
   ];
-  const summary = `${kid.name || 'Your day'}: ${hwKnown ? `homework ${hw.done} of ${hw.total} done this week` : hwUnknown}, ${habKnown ? hab.total ? `habits ${hab.done} of ${hab.total} today` : 'no habits yet' : habUnknown}, Daily 4 ${daily3 ? `${daily3.done} of 4 today` : progressState === 'loading' ? 'loading' : 'unavailable'}`;
+  const summary = `${kid.name || 'Your day'}: ${hwKnown ? `homework ${hw.done} of ${hw.total} done this week` : hwUnknown}, Daily 4 ${daily3 ? `${daily3.done} of 4 today` : progressState === 'loading' ? 'loading' : 'unavailable'}, ${habKnown ? hab.total ? `habits ${hab.done} of ${hab.total} today` : 'no habits yet' : habUnknown}`;
   let fams = state === 'error' ? '<span>Fams unavailable</span>' : '<span>Loading fams…</span>';
   if (state && typeof state === 'object') {
     const earned = state.weekly?.earned || 0, limit = state.weekly?.limit || 0;
