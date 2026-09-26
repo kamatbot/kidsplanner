@@ -475,6 +475,18 @@ struct CrosswordPuzzle: Codable {
     var entries: [CrosswordEntry]
 }
 
+/// A per-player review item supplied with a crossword. These are deliberately
+/// separate from the word-bank contract: reviewing one does not change its
+/// placement or mastery state.
+struct CrosswordPracticeWord: Codable, Identifiable {
+    var word: String
+    var definition: String
+    var example: String?
+    var reason: String
+
+    var id: String { word }
+}
+
 struct SudokuPuzzle: Codable {
     var puzzle: String
     var solution: String
@@ -520,6 +532,7 @@ struct DailyPuzzleResponse: Codable {
     var title: String?
     var instructions: String?
     var crossword: CrosswordPuzzle?
+    var practiceWords: [CrosswordPracticeWord]? = nil
     var sudoku: SudokuPuzzle?
     var mentalMath: MentalMathPuzzle? = nil
     var chart: PuzzleChart? = nil

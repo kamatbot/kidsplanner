@@ -1,4 +1,4 @@
-/* Today — Band 3 "learning" region (Daily 3 + Brain teaser/puzzle).
+/* Today — Band 3 "learning" region (Daily 4 + Brain teaser/puzzle).
    Owned by Agent B. Horizon tokens only; every text rule uses the
    #tab-today type scale from today-home.css (--t-h2 … --t-mono). This file
    only overrides legacy styles.css/app.css rules with #tab-today-scoped
@@ -29,7 +29,7 @@
 /* Shared by daily-quest-summary / quote-theme / word-root / puzzle-instructions. */
 #tab-today .puzzle-instructions { font: var(--t-meta); color: var(--text-2); margin: 0; }
 
-/* ---------- 2. Daily 3 head + streak + tabs ---------- */
+/* ---------- 2. Daily 4 head + streak + tabs ---------- */
 #tab-today .today-daily3 .daily5-streak { display: inline-flex; align-items: center; gap: 6px; font: var(--t-label); color: var(--text-2); }
 #tab-today .streak-flame { color: var(--coral); flex: none; }
 #tab-today #daily-quest-summary { margin: 2px 0 0; }
@@ -355,3 +355,17 @@
   #tab-today .fr-learning-tiles .daily5-tabs { display: contents; }
   #tab-today .fr-learning-tiles :is(.daily5-tabs button,.fr-challenge-tile) { padding: 14px; min-height: 76px; border-radius: 20px; gap: 10px; }
 }
+
+/* Clue hints and optional recall practice stay beside the puzzle. */
+.crossword-clue-row { display: flex; align-items: flex-start; gap: 8px; }
+.crossword-clue-row > .crossword-clue { flex: 1; min-width: 0; }
+.crossword-hint { flex: 0 0 auto; max-width: 48%; font-size: 13px; }
+.crossword-hint summary, .crossword-practice summary { min-height: 44px; align-content: center; cursor: pointer; color: var(--accent); }
+.crossword-hint p { overflow-wrap: anywhere; margin: 4px 0; }
+.crossword-practice { padding: 12px; margin-bottom: 12px; border-radius: 12px; background: var(--panel-2); }
+.crossword-practice > summary { font-weight: 600; }
+.crossword-practice > summary span { color: var(--text-2); font-weight: 400; }
+.crossword-practice-words { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+.crossword-practice article { scroll-snap-align: start; padding: 10px; border-radius: 8px; background: var(--panel); }
+.crossword-practice small { color: var(--text-2); }
+.crossword-practice p { font-size: 13px; line-height: 1.5; }

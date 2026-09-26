@@ -130,3 +130,7 @@ row changes. Full decisions + contract: [docs/TRIPS-PLAN.md](docs/TRIPS-PLAN.md)
 - [ ] Stripe test-mode checkout round-trip
 - [ ] Tests green · dark mode pass · (recommend /security-review before public)
 - [ ] App Store assets (iPhone + iPad) · TestFlight round
+
+### Daily 4 and crossword practice — 2026-09-26
+
+Daily 4 comprises News, Quote, Word, and one Challenge. A completed brain teaser or puzzle counts as the Challenge; completing both still counts once. Legacy daily5 routes/storage and daily3 component identifiers stay compatible. iOS shows a single Daily 4 heading. Crossword clues offer a first-letter hint and an explicit answer reveal without filling cells or completing the puzzle. Optional weekly recall cards show recorded mistakes and unattempted words, scoped to the signed-in player. Older aggregate mistake counts do not establish a weekly mistake date. My Corner adds 18 generated stickers to its existing six while retaining the 18-placement limit and kid-only privacy.

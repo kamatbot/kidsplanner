@@ -16,7 +16,7 @@
 .fam-corner-controls { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
 .fam-corner-controls p { flex-basis:100%; margin:0; }
 .fam-corner textarea { display:block; box-sizing:border-box; width:100%; font:inherit; color:inherit; background:var(--panel, #fff); border:1px solid var(--border, #d5cddd); padding:12px; border-radius:12px; margin:8px 0 20px; }
-.fam-corner-collection { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.fam-corner-collection { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-height:440px; overflow-y:auto; overscroll-behavior:contain; padding:4px; }
 .fam-corner-collection img { width:64px; height:64px; display:block; margin:auto; }
 .fam-corner-drawer { color:var(--text, #292335); background:var(--panel, #fff); border:0; border-radius:20px 20px 0 0; padding:20px; box-sizing:border-box; position:fixed; margin:auto auto 0; width:min(100%,460px); max-height:80dvh; }
 .fam-corner-conflict { border:2px solid var(--accent, #6f43d6); padding:16px; border-radius:16px; margin:16px 0; }

@@ -115,6 +115,15 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(legacy.lesson)
     }
 
+    func testCrosswordPracticeWordsAreOptionalAndDecodePerPlayerReviewDetails() throws {
+        let legacy = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(#"{"date":"2026-09-24","available":true}"#.utf8))
+        XCTAssertNil(legacy.practiceWords)
+
+        let puzzle = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(#"{"date":"2026-09-24","available":true,"practiceWords":[{"word":"pragmatic","definition":"Practical and sensible.","example":"A pragmatic plan.","reason":"Missed last week"}]}"#.utf8))
+        XCTAssertEqual(puzzle.practiceWords?.first?.word, "pragmatic")
+        XCTAssertEqual(puzzle.practiceWords?.first?.reason, "Missed last week")
+    }
+
     func testKidPhotoRemainsCompatibleWithLegacyProfiles() throws {
         let data = ##"{"id":"k1","name":"Maya","grade":"6","color":"#123456","createdAt":"2026-09-07"}"##.data(using: .utf8)!
         var kid = try JSONDecoder().decode(Kid.self, from: data)

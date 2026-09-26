@@ -32,18 +32,21 @@ test('homework rings use Monday–Sunday plus unfinished overdue and keep kids i
   assert.equal(ctx.todayKidProgress('a','2026-09-28').homework.done,0, 'last week completed work no longer counts');
 });
 
-test('Daily 3 distinguishes unavailable data from known zero and excludes challenges', () => {
+test('Daily 4 distinguishes unavailable data from known zero and counts either challenge once', () => {
   const ctx = setup(['todayDaily3Progress'], {load:()=>({news:true}),daily5DoneKey:()=> 'today',timeAgo:()=> 'just now'});
   for (const data of [null,'loading','error',{date:'2026-09-25',parts:{news:{status:'completed'}}}]) assert.equal(ctx.todayDaily3Progress(data,'2026-09-26'),null);
   const data = {date:'2026-09-26',parts:{puzzle:{status:'completed'},bt:{status:'completed'}}};
-  assert.equal(ctx.todayDaily3Progress(data,data.date).done,0);
-  assert.equal(ctx.todayDaily3Progress(data,data.date).total,3);
-  assert.equal(ctx.todayDaily3Progress(data,data.date).status,'Not started');
-  assert.equal(ctx.todayDaily3Progress(data,data.date,true).done,1,'own local completion may augment server state');
+  assert.equal(ctx.todayDaily3Progress(data,data.date).done,1);
+  assert.equal(ctx.todayDaily3Progress(data,data.date).total,4);
+  assert.equal(ctx.todayDaily3Progress(data,data.date).status,'Challenge done');
+  assert.equal(ctx.todayDaily3Progress(data,data.date,true).done,2,'own local completion may augment server state');
   data.parts.word={status:'started'};
-  assert.equal(ctx.todayDaily3Progress(data,data.date).status,'In progress');
+  assert.equal(ctx.todayDaily3Progress(data,data.date).status,'Challenge done');
   data.parts.quote={status:'completed',updatedAt:'2026-09-26T10:00:00Z'};
   assert.equal(ctx.todayDaily3Progress(data,data.date).status,'Quote done just now');
+  data.parts.news={status:'completed'}; data.parts.word={status:'completed'};
+  assert.equal(ctx.todayDaily3Progress(data,data.date).done,4, 'two challenge records still earn one credit');
+  assert.equal(ctx.todayDaily3Progress(data,data.date).status,'Done ✓');
 });
 
 test('SVG rings expose counts, empty tracks and change motion; reduced motion suppresses effects', () => {
@@ -88,7 +91,7 @@ test('parent hero keeps total eligible count separate from due-today progress an
   assert.doesNotMatch(nodes['today-actions-list'].innerHTML,/snoozed|done/);
 });
 
-test('unavailable parent insights omit the Daily 3 ring instead of rendering false zero', () => {
+test('unavailable parent insights omit the Daily 4 ring instead of rendering false zero', () => {
   const ctx = setup(['todayKidProgress','todayKidFacts','todayDaily3Progress','todayKidRowHtml'], {
     homeworkItems:[],goalsItems:[],sessionUser:{name:'Parent'},todayActionIdArg:x=>x,kidAvatarMarkup:()=>'',todayIcon:()=>'',
     famRing:options=>{ctx.rings=options.rings;return '<svg></svg>';},
@@ -97,11 +100,11 @@ test('unavailable parent insights omit the Daily 3 ring instead of rendering fal
   const unavailable=ctx.todayKidRowHtml(kid,true,'error','2026-09-26','error');
   assert.equal(ctx.rings.length,2);
   assert.match(unavailable,/Unavailable/);
-  assert.doesNotMatch(unavailable,/>0\/3</);
+  assert.doesNotMatch(unavailable,/>0\/4</);
   assert.match(unavailable,/No habits yet/);
   const zero=ctx.todayKidRowHtml(kid,true,'error','2026-09-26',{date:'2026-09-26',parts:{}});
   assert.equal(ctx.rings.length,3);
-  assert.match(zero,/>0\/3</);
+  assert.match(zero,/>0\/4</);
 });
 
 test('kid hero counts only own actions and own homework, excluding shared and sibling work', () => {

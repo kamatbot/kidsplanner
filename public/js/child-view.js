@@ -7,7 +7,7 @@
   let selected = null;
   const famsPending = new Set();
   const famsNumber = value => new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
-  const parts = [['news', 'News'], ['quote', 'Quote'], ['word', 'Word']];
+  const parts = [['news', 'News'], ['quote', 'Quote'], ['word', 'Word'], ['challenge', 'Challenge']];
   const paths = {
     book: '<path d="M12 5v15M3 4h5a4 4 0 0 1 4 2 4 4 0 0 1 4-2h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3z"/>',
     news: '<path d="M5 3h16v18H5zM5 7H2v12a2 2 0 0 0 3 2M9 7h8M9 11h8M9 15h3M15 15h2"/>',
@@ -100,6 +100,11 @@
       return `<span class="cv-week-day ${state}" title="${e(dateLabel(day, { weekday: 'long', month: 'short', day: 'numeric' }))}: ${detail}"><i style="--cv-week-color:${e(color)};--cv-week-progress:${progress}%"></i><b>${e(dateLabel(day, { weekday: 'narrow' }))}</b><small>${observed == null ? '—' : total ? `${value}/${total}` : '—'}</small></span>`;
     }).join('')}</div></section>`;
   }
+  function dailyPart(observed, key) {
+    if (key !== 'challenge') return observed[key];
+    const options = [observed.puzzle, observed.bt].filter(Boolean);
+    return options.find(part => part.status === 'completed') || options.find(part => part.status === 'started');
+  }
   function childMetrics(id, date, data, state, sources) {
     const days = weekDates(date);
     const monday = days[0]; const sunday = days[6];
@@ -111,7 +116,7 @@
     const habits = habitsKnown ? sources.goals.filter(goal => goal.kidId === id && goal.type === 'habit') : [];
     const habitsDone = habits.filter(goal => Array.isArray(goal.checks) && goal.checks.includes(date)).length;
     const observed = state === 'ready' && data && data.daily5 && data.daily5.date === date ? data.daily5.parts || {} : null;
-    const dailyComplete = observed ? parts.filter(([key]) => observed[key]?.status === 'completed').length : null;
+    const dailyComplete = observed ? parts.filter(([key]) => dailyPart(observed, key)?.status === 'completed').length : null;
     const homeworkDays = Object.fromEntries(days.map(day => {
       if (!homeworkKnown || day > date) return [day, null];
       const due = homework.filter(item => item.dueDate === day);
@@ -121,31 +126,29 @@
       if (!habitsKnown || day > date || !habits.every(goal => Array.isArray(goal.checks))) return [day, null];
       return [day, { value: habits.filter(goal => goal.checks.includes(day)).length, total: habits.length }];
     }));
-    const dailyDays = Object.fromEntries(days.map(day => [day, day === date && observed ? { value: dailyComplete, total: 3 } : null]));
+    const dailyDays = Object.fromEntries(days.map(day => [day, day === date && observed ? { value: dailyComplete, total: 4 } : null]));
     return { days, homework, hwDone, hwLeft, habits, habitsDone, dailyComplete, homeworkKnown, habitsKnown, homeworkDays, habitDays, dailyDays };
   }
   function hero(id, date, data, state, sources) {
     const metric = childMetrics(id, date, data, state, sources);
     const hwState = !metric.homeworkKnown ? (sources.loading ? 'Loading' : 'Unavailable') : metric.hwLeft || '—';
     const habitState = !metric.habitsKnown ? (sources.loading ? 'Loading' : 'Unavailable') : metric.habits.length ? `${metric.habitsDone}/${metric.habits.length}` : '—';
-    const d3State = metric.dailyComplete == null ? (state === 'loading' ? 'Loading' : 'Unavailable') : `${metric.dailyComplete}/3`;
-    const label = `Homework ${metric.homeworkKnown ? `${metric.hwDone} of ${metric.homework.length}` : hwState}; habits ${metric.habitsKnown ? `${metric.habitsDone} of ${metric.habits.length}` : habitState}; Daily 3 ${metric.dailyComplete == null ? d3State : `${metric.dailyComplete} of 3`}`;
+    const d3State = metric.dailyComplete == null ? (state === 'loading' ? 'Loading' : 'Unavailable') : `${metric.dailyComplete}/4`;
+    const label = `Homework ${metric.homeworkKnown ? `${metric.hwDone} of ${metric.homework.length}` : hwState}; habits ${metric.habitsKnown ? `${metric.habitsDone} of ${metric.habits.length}` : habitState}; Daily 4 ${metric.dailyComplete == null ? d3State : `${metric.dailyComplete} of 4`}`;
     const ringData = [
       ...(metric.homeworkKnown ? [{ value: metric.hwDone, total: metric.homework.length, color: 'var(--fr-hw)', label: 'Homework', radius: 94 }] : []),
       ...(metric.habitsKnown ? [{ value: metric.habitsDone, total: metric.habits.length, color: 'var(--fr-hab)', label: 'Habits', radius: 68 }] : []),
-      ...(metric.dailyComplete == null ? [] : [{ value: metric.dailyComplete, total: 3, color: 'var(--fr-d3)', label: 'Daily 3', radius: 42 }])
+      ...(metric.dailyComplete == null ? [] : [{ value: metric.dailyComplete, total: 4, color: 'var(--fr-d3)', label: 'Daily 4', radius: 42 }])
     ];
     const rings = ringData.length ? ringMarkup({ size: 220, stroke: 14, label, key: `${id}:${date}`, rings: ringData }) : `<div class="cv-ring-pending">${sources.loading ? 'Loading progress…' : 'Progress unavailable'}</div>`;
-    const dailyWeek = metric.dailyComplete == null ? '<p class="cv-week-note">Daily 3 history is unavailable.</p>' : weeklyBars('Daily 3', metric.days, metric.dailyDays, 'var(--fr-d3)');
-    return `<section class="cv-panel cv-hero" aria-label="${e(label)}"><div class="cv-hero-rings">${rings}</div><div class="cv-hero-stats"><div class="cv-metric cv-metric-hw"><strong>${hwState}</strong><span>${metric.homeworkKnown ? metric.hwLeft ? 'homework left<br>this week' : 'No homework left<br>this week' : 'Homework unavailable'}</span></div><div class="cv-metric cv-metric-hab"><strong>${habitState}</strong><span>${metric.habitsKnown ? metric.habits.length ? 'habits today' : 'No habits yet' : 'Habits unavailable'}</span></div><div class="cv-metric cv-metric-d3"><strong>${d3State}</strong><span>${metric.dailyComplete == null ? 'Daily 3 unavailable' : 'Daily 3 today'}</span></div></div></section><section class="cv-panel cv-weekly"><h2>This week</h2>${weeklyBars('Homework', metric.days, metric.homeworkDays, 'var(--fr-hw)')}${weeklyBars('Habits', metric.days, metric.habitDays, 'var(--fr-hab)')}${dailyWeek}<p class="cv-week-note">Unrecorded days remain unfilled.</p></section>`;
+    const dailyWeek = metric.dailyComplete == null ? '<p class="cv-week-note">Daily 4 history is unavailable.</p>' : weeklyBars('Daily 4', metric.days, metric.dailyDays, 'var(--fr-d3)');
+    return `<section class="cv-panel cv-hero" aria-label="${e(label)}"><div class="cv-hero-rings">${rings}</div><div class="cv-hero-stats"><div class="cv-metric cv-metric-hw"><strong>${hwState}</strong><span>${metric.homeworkKnown ? metric.hwLeft ? 'homework left<br>this week' : 'No homework left<br>this week' : 'Homework unavailable'}</span></div><div class="cv-metric cv-metric-hab"><strong>${habitState}</strong><span>${metric.habitsKnown ? metric.habits.length ? 'habits today' : 'No habits yet' : 'Habits unavailable'}</span></div><div class="cv-metric cv-metric-d3"><strong>${d3State}</strong><span>${metric.dailyComplete == null ? 'Daily 4 unavailable' : 'Daily 4 today'}</span></div></div></section><section class="cv-panel cv-weekly"><h2>This week</h2>${weeklyBars('Homework', metric.days, metric.homeworkDays, 'var(--fr-hw)')}${weeklyBars('Habits', metric.days, metric.habitDays, 'var(--fr-hab)')}${dailyWeek}<p class="cv-week-note">Unrecorded days remain unfilled.</p></section>`;
   }
   function progress(id, date, data, state, sources) {
     const habits = sources.goals.filter(g => g.kidId === id && g.type === 'habit');
     const days = datesEnding(date);
     const observed = data && data.daily5 && data.daily5.date === date ? data.daily5.parts || {} : {};
-    const validPart = key => observed[key] && ['started', 'completed'].includes(observed[key].status) && timestamp(observed[key].updatedAt) ? observed[key] : null;
-    const challengeKey = [1, 2].includes(new Date(`${date}T12:00:00Z`).getUTCDay()) ? 'bt' : 'puzzle';
-    const challenge = validPart(challengeKey);
+    const validPart = key => { const part = dailyPart(observed, key); return part && ['started', 'completed'].includes(part.status) && timestamp(part.updatedAt) ? part : null; };
     const complete = parts.filter(([key]) => validPart(key)?.status === 'completed').length;
     const latest = parts.map(([key]) => validPart(key)?.updatedAt).filter(Boolean).sort((a, b) => new Date(b) - new Date(a))[0];
     return `<section class="cv-panel cv-progress" aria-labelledby="cv-progress-title"><h2 id="cv-progress-title">Making progress</h2>
@@ -154,8 +157,7 @@
         const known = Array.isArray(g.checks); const checks = new Set(known ? g.checks : []);
         return `<div class="cv-habit"><div><strong>${e(g.title)}</strong><span>${known ? `${days.filter(d => checks.has(d)).length} of 7 days recorded` : 'Check-ins unavailable'}</span></div><div class="cv-days">${days.map(d => `<span class="cv-day" title="${e(dateLabel(d))}: ${known ? checks.has(d) ? 'checked in' : 'no check-in recorded' : 'unknown'}"><span>${e(dateLabel(d, { weekday: 'narrow' }))}</span><i class="${checks.has(d) ? 'is-done' : ''}" aria-label="${e(d)}: ${known ? checks.has(d) ? 'checked in' : 'no check-in recorded' : 'unknown'}"></i></span>`).join('')}</div></div>`;
       }).join('') : `<p>${sources.loading ? 'Loading habits…' : sources.errors.includes('Habits') ? 'Habit check-ins could not be loaded.' : 'No habits recorded for this child.'} ${button('goals', 'Review goals')}</p>`}</div>
-      <div class="cv-daily"><h3>Daily 3 <span>${state === 'ready' ? `${complete} of 3 done` : state === 'loading' ? 'Loading…' : 'Couldn’t sync progress'}</span></h3><div class="cv-parts">${parts.map(([key, label]) => { const part = validPart(key); const status = state !== 'ready' ? '—' : part?.status === 'completed' ? 'Done' : 'Not done'; return `<div class="cv-part"><span class="cv-symbol${part?.status === 'completed' ? ' is-complete' : ''}">${icon(key)}</span><strong>${label}</strong><span>${status}</span></div>`; }).join('')}</div><p class="cv-freshness">${state === 'ready' ? `Today’s synced activity${latest ? ` · Updated ${e(timestamp(latest))}` : ' · No completions recorded yet'}` : 'Refresh to try again.'}</p></div>
-      <div class="cv-daily"><h3>Brain Teaser / Puzzle</h3><p>${state !== 'ready' ? 'Progress unavailable' : challenge?.status === 'completed' ? 'Done' : 'Not done'} · ${challengeKey === 'bt' ? 'Brain teaser' : 'Today’s challenge'}</p></div>
+      <div class="cv-daily"><h3>Daily 4 <span>${state === 'ready' ? `${complete} of 4 done` : state === 'loading' ? 'Loading…' : 'Couldn’t sync progress'}</span></h3><div class="cv-parts">${parts.map(([key, label]) => { const part = validPart(key); const status = state !== 'ready' ? '—' : part?.status === 'completed' ? 'Done' : 'Not done'; return `<div class="cv-part"><span class="cv-symbol${part?.status === 'completed' ? ' is-complete' : ''}">${icon(key === 'challenge' ? 'puzzle' : key)}</span><strong>${label}</strong><span>${status}</span></div>`; }).join('')}</div><p class="cv-freshness">${state === 'ready' ? `Today’s synced activity${latest ? ` · Updated ${e(timestamp(latest))}` : ' · No completions recorded yet'}` : 'Refresh to try again.'}</p></div>
       <div class="cv-footer">${button('goals', `View all goals ${icon('arrow')}`)}${button('retry', 'Refresh progress')}</div></section>`;
   }
   function journey(id, date, data, sources) {
@@ -187,7 +189,7 @@
     const mutationKey = `${account.id}:${familyId}:${id}`;
     const sources = { homework: [], goals: [], activities: [], errors: [], loading: true };
     function draw(state) {
-      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 3 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-overview">${hero(id, date, data, state, sources)}</div><div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
+      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 4 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-overview">${hero(id, date, data, state, sources)}</div><div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
       root.setAttribute('aria-busy', String(state === 'loading'));
     }
     root.onclick = event => {

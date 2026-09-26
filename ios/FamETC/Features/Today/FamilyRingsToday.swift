@@ -217,7 +217,7 @@ struct FamilyRingsKidGrid: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 280 : 160), alignment: .leading)], alignment: .leading, spacing: 8) {
                 legend("Homework (outer)", Palette.frHw)
                 legend("Habits (middle)", Palette.frHab)
-                legend("Daily 3 (inner)", Palette.frD3)
+                legend("Daily 4 (inner)", Palette.frD3)
                 legend("Fams this week", Palette.frFams)
             }.accessibilityIdentifier("today.rings.legend")
         }
@@ -272,13 +272,13 @@ struct FamilyRingsKidCard: View {
     private var metrics: [RingMetric?] {
         [homeworkKnown ? RingMetric(id: "homework", value: homework.done, total: homework.total, color: Palette.frHw, label: "Homework") : nil,
          habitsKnown ? RingMetric(id: "habits", value: habits.done, total: habits.total, color: Palette.frHab, label: "Habits") : nil,
-         d3.map { RingMetric(id: "daily3", value: $0, total: 3, color: Palette.frD3, label: "Daily 3") }]
+         d3.map { RingMetric(id: "daily3", value: $0, total: 4, color: Palette.frD3, label: "Daily 4") }]
     }
     private var summary: String {
         var text = "\(kid?.name ?? "Child"): "
         text += homeworkKnown ? "\(FamilyRingsMath.statusChip(homework: homework)). Homework \(homework.done) of \(homework.total) done this week. " : "Homework unavailable. "
         text += habitsKnown ? "Habits \(habits.done) of \(habits.total) today. " : "Habits unavailable. "
-        text += d3.map { "Daily 3, \($0) of 3 today. " } ?? "Daily 3 unavailable. "
+        text += d3.map { "Daily 4, \($0) of 4 today. " } ?? "Daily 4 unavailable. "
         if let wallet = currentWallet { text += "\(famsAmount(wallet.balance)) fams, \(famsAmount(wallet.weekly.earned)) of \(famsAmount(wallet.weekly.limit)) this week." }
         return text
     }
@@ -300,7 +300,7 @@ struct FamilyRingsKidCard: View {
                         }.buttonStyle(.plain).disabled(!interactive)
                         VStack(alignment: .leading, spacing: compact ? 0 : 10) {
                             metricButton(number: homeworkKnown ? "\(homework.left)" : "—", title: "homework left", detail: homeworkKnown ? "this week" : "Homework unavailable", color: Palette.frHwInk, id: "homework", action: openHomework)
-                            metricButton(number: d3.map { "\($0)/3" } ?? "—", title: "Daily 3 today", detail: dailyStatus, color: Palette.frD3Ink, id: "daily3", action: onDaily3)
+                            metricButton(number: d3.map { "\($0)/4" } ?? "—", title: "Daily 4 today", detail: dailyStatus, color: Palette.frD3Ink, id: "daily3", action: onDaily3)
                             metricButton(number: habitsKnown && habits.total > 0 ? "\(habits.done)/\(habits.total)" : "—", title: "habits today", detail: habitStatus, color: Palette.frHabInk, id: "habits", action: openHabits)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -316,7 +316,7 @@ struct FamilyRingsKidCard: View {
             .accessibilityAction { openBrief() }
             .accessibilityAction(named: "Open homework") { openHomework() }
             .accessibilityAction(named: "Check habits") { openHabits() }
-            .accessibilityAction(named: "Daily 3") { if interactive { onDaily3() } }
+            .accessibilityAction(named: "Daily 4") { if interactive { onDaily3() } }
             .accessibilityAction(named: "Open fams") { if interactive { showFams = true } }
             .task(id: snapshotKey) { await loadSnapshot() }
             .onReceive(NotificationCenter.default.publisher(for: .famsRewardsChanged)) { _ in Task { await loadSnapshot() } }
@@ -339,8 +339,8 @@ struct FamilyRingsKidCard: View {
     }
     private var dailyStatus: String {
         if loading { return "Loading…" }
-        guard let d3 else { return "Daily 3 unavailable" }
-        if d3 == 3 { return "Done ✓" }
+        guard let d3 else { return "Daily 4 unavailable" }
+        if d3 == 4 { return "Done ✓" }
         return d3 > 0 || daily3Started ? "In progress" : "Not started"
     }
     private var habitStatus: String {
@@ -439,7 +439,7 @@ struct FamilyRingsKidCard: View {
         if user.role == "kid" {
             let payload = try? await APIClient.shared.dailyFiveProgress(date: day, cookie: cookie)
             completed = FamilyRingsMath.daily3(payload, today: day)?.done
-            started = ["news", "quote", "word"].contains { payload?.parts[$0]?.status == "started" }
+            started = ["news", "quote", "word", "puzzle", "bt"].contains { payload?.parts[$0]?.status == "started" }
         } else {
             let result = try? await APIClient.shared.childDailyFiveProgress(kidID: kidID, date: day, cookie: cookie)
             completed = result?.daily3Completed

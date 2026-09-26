@@ -390,6 +390,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === "/api/enrichment/puzzle/today") return send(res, 200, learningScenario ? {
     date: today, available: true, type: "crossword", title: "Shared vocabulary crossword",
     instructions: "Connect this week's words. Choose a clue and type your answer.",
+    practiceWords: [{ word: "Pragmatic", definition: "Practical and focused on what works.", example: "We chose a pragmatic plan.", reason: "missed" }, { word: "Rigor", definition: "Careful attention and thoroughness.", reason: "untried" }],
     crossword: { rows: 5, cols: 9, solution: ["PRAGMATIC", ".I.......", ".G.......", ".O.......", ".R......."], entries: [
       { number: 1, direction: "across", clue: "Practical and focused on what works", answer: "PRAGMATIC", row: 0, col: 0 },
       { number: 2, direction: "down", clue: "Careful attention and thoroughness", answer: "RIGOR", row: 0, col: 1 },

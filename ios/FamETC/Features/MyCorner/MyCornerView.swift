@@ -28,7 +28,7 @@ struct MyCornerScreen: View {
                             if adjacent {
                                 HStack(alignment: .top, spacing: Space.lg) {
                                     editor(draft).frame(maxWidth: .infinity)
-                                    collection.frame(width: 250)
+                                    ScrollView(.vertical, showsIndicators: true) { collection }.frame(width: 250, height: 520).accessibilityIdentifier("corner.collection")
                                 }
                             } else { editor(draft) }
                             if let latest = model.latest {
@@ -69,7 +69,7 @@ struct MyCornerScreen: View {
             }
             .sheet(isPresented: $showDrawer) {
                 NavigationStack {
-                    ScrollView { collection.padding() }
+                    ScrollView { collection.padding() }.accessibilityIdentifier("corner.collection")
                         .navigationTitle("Stickers")
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showDrawer = false } } }
                 }.presentationDetents([.medium, .large])
@@ -114,19 +114,21 @@ struct MyCornerScreen: View {
         }.disabled(model.busy)
     }
     private var collection: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             Text("Stickers").font(Typography.cardTitle)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 180 : 110))], spacing: 12) {
-                ForEach(CornerDocument.choices, id: \.self) { id in
-                    Button { model.add(id); showDrawer = false } label: {
-                        VStack { Image("Corner-" + id).resizable().scaledToFit().frame(width: 64, height: 64)
-                            Text(CornerDocument.label(id)).font(Typography.body)
-                        }.frame(maxWidth: .infinity, minHeight: 110)
-                            .padding(8)
-                            .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: 16))
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel("Add \(CornerDocument.label(id))")
-                        .disabled(model.busy || (model.draft?.stickers.count ?? 0) >= 18)
+            Group {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: textSize.isAccessibilitySize ? 180 : 110))], spacing: 12) {
+                    ForEach(CornerDocument.choices, id: \.self) { id in
+                        Button { model.add(id); showDrawer = false } label: {
+                            VStack { Image("Corner-" + id).resizable().scaledToFit().frame(width: 64, height: 64)
+                                Text(CornerDocument.label(id)).font(Typography.body)
+                            }.frame(maxWidth: .infinity, minHeight: 110)
+                                .padding(8)
+                                .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: 16))
+                        }.buttonStyle(.plain)
+                            .accessibilityLabel("Add \(CornerDocument.label(id))")
+                            .disabled(model.busy || (model.draft?.stickers.count ?? 0) >= 18)
+                    }
                 }
             }
         }

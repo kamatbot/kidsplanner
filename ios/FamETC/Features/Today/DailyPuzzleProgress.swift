@@ -222,6 +222,14 @@ struct DailyPuzzleCrosswordInput {
         }
     }
 
+    /// A clue hint is display-only. It must never write into the crossword
+    /// answers or affect check/completion state.
+    static func hint(for entry: CrosswordEntry) -> String {
+        let letters = Array(entry.answer)
+        guard let first = letters.first else { return "No letters available" }
+        return "Starts with \(String(first).uppercased()) · \(letters.count) letters"
+    }
+
     static func distribute(
         _ input: String,
         into answers: inout [String: String],

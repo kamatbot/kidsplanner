@@ -98,9 +98,12 @@ enum FamilyRingsMath {
                               dueNow: open.filter { ActionQueue.isDueNow($0, now: now) }.count)
     }
 
-    /// todayDaily3Progress: absence/stale data never masquerades as zero.
+    /// Daily 4 preserves its legacy method name and counts one challenge when
+    /// either the puzzle or brain teaser is complete.
     static func daily3(_ payload: DailyFiveProgressPayload?, today: String = DateFmt.ymd.string(from: Date())) -> Progress? {
         guard let payload, payload.date == today else { return nil }
-        return Progress(done: ["news", "quote", "word"].filter { payload.parts[$0]?.status == "completed" }.count, total: 3)
+        let core = ["news", "quote", "word"].filter { payload.parts[$0]?.status == "completed" }.count
+        let challenge = ["puzzle", "bt"].contains { payload.parts[$0]?.status == "completed" } ? 1 : 0
+        return Progress(done: core + challenge, total: 4)
     }
 }

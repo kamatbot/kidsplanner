@@ -12,7 +12,12 @@ struct CornerDocument: Codable, Equatable {
     var note: String
     var stickers: [CornerSticker]
     static let empty = CornerDocument(revision: 0, note: "", stickers: [])
-    static let choices = ["tuk-tuk", "mango-sticky-rice", "boba", "monsoon-cloud", "leaf-umbrella", "small-star"]
+    static let choices = [
+        "tuk-tuk", "mango-sticky-rice", "boba", "monsoon-cloud", "leaf-umbrella", "small-star",
+        "sleepy-cat", "happy-capybara", "space-rocket", "tiny-planet", "rainbow", "lucky-frog",
+        "bookworm", "clever-fox", "headphones", "game-controller", "roller-skate", "sunshine",
+        "strawberry", "ice-cream", "pizza-slice", "ocean-turtle", "mountain", "paper-plane"
+    ]
     static func label(_ id: String) -> String { id.replacingOccurrences(of: "-", with: " ") }
 }
 

@@ -2,6 +2,10 @@ import XCTest
 @testable import FamETC
 
 final class DailyPuzzleProgressTests: XCTestCase {
+    func testCrosswordHintOnlyDescribesFirstLetterAndLength() {
+        let entry = CrosswordEntry(number: 1, direction: "across", clue: "A test", answer: "puzzle", row: 0, col: 0)
+        XCTAssertEqual(DailyPuzzleCrosswordInput.hint(for: entry), "Starts with P · 6 letters")
+    }
     func testWeeklyIdentityIncludesMentalMathAnswerAndExplanation() throws {
         let json = #"{"date":"2026-09-23","available":true,"type":"sudoku","sudoku":{"puzzle":"0","solution":"1","size":9,"difficulty":"Easy"},"mentalMath":{"title":"Multiply","prompt":"48 × 25","answer":"1200","explanation":"Divide by four, multiply by100."}}"#
         var first = try JSONDecoder().decode(DailyPuzzleResponse.self, from: Data(json.utf8))
@@ -94,6 +98,13 @@ final class DailyPuzzleProgressTests: XCTestCase {
         XCTAssertNotEqual(DailyPuzzleProgressIdentity(puzzle: first).storageKey, DailyPuzzleProgressIdentity(puzzle: differentDate).storageKey)
         XCTAssertNotEqual(DailyPuzzleProgressIdentity(puzzle: first).storageKey, DailyPuzzleProgressIdentity(puzzle: differentType).storageKey)
         XCTAssertNotEqual(DailyPuzzleProgressIdentity(puzzle: first).storageKey, DailyPuzzleProgressIdentity(puzzle: differentPuzzle).storageKey)
+    }
+
+    func testCrosswordPracticeReviewDoesNotChangeSavedPuzzleIdentity() {
+        var puzzle = crossword()
+        let identity = DailyPuzzleProgressIdentity(puzzle: puzzle, userID: "kid-1")
+        puzzle.practiceWords = [CrosswordPracticeWord(word: "Pragmatic", definition: "Practical.", example: nil, reason: "missed")]
+        XCTAssertEqual(identity.storageKey, DailyPuzzleProgressIdentity(puzzle: puzzle, userID: "kid-1").storageKey)
     }
 
     func testMalformedStoredPayloadFailsClosed() {

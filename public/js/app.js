@@ -2313,10 +2313,11 @@ function applyDaily5Done() {
     const observed = todayRingData.get(todayRingDataKey(sessionUser.kidId,isoDate(new Date())))?.progress?.parts;
     ['news','quote','word','bt','puzzle'].forEach(key => { if (observed?.[key]?.status === 'completed') s[key] = true; });
   }
-  const parts = [['news', 'News reflection'], ['quote', 'Quote reflection'], ['word', 'Word activity']];
+  s.challenge = !!(s.puzzle || s.bt);
+  const parts = [['news', 'News reflection'], ['quote', 'Quote reflection'], ['word', 'Word activity'], ['challenge', 'Challenge']];
   const quest = document.getElementById('daily-quest-summary');
   if (quest) {
-    quest.textContent = `News, Quote & Word · ${parts.filter(([key]) => s[key]).length} of 3 complete`;
+    quest.textContent = `News, Quote, Word & Challenge · ${parts.filter(([key]) => s[key]).length} of 4 complete`;
     quest.title = parts.map(([key, label]) => `${label}${s[key] ? ': done' : ': try it'}`).join(' · ');
   }
   // CSS shows a small check after a tab's label when it carries data-done.
@@ -2348,7 +2349,7 @@ function renderTodayLearningRings(done = load(daily5DoneKey()) || {}) {
   });
 }
 
-// Daily 3 tabs preserve drafts. The separate challenge stays mounted.
+// Daily 4 tabs preserve drafts. The separate challenge stays mounted.
 // Selection is transient and resets on account/day changes.
 const DAILY5_ACTIVITIES = ['news', 'quote', 'word'];
 let daily5ActivityScope = '';
@@ -2464,6 +2465,7 @@ async function loadDailyPuzzle(now) {
   if (teaserPanel) teaserPanel.hidden = true;
   document.getElementById('puzzle-grid-wrap').innerHTML = '';
   document.getElementById('puzzle-clues').innerHTML = '';
+  document.getElementById('crossword-practice')?.remove();
   document.getElementById('puzzle-status').textContent = 'Loading today’s puzzle…';
   const retry = document.getElementById('puzzle-retry-btn');
   if (retry) retry.hidden = true;
@@ -2619,8 +2621,9 @@ function renderDailyPuzzle(result) {
     grid.innerHTML = `<div class="crossword-grid" style="--puzzle-cols:${Number(crossword.cols) || 1}">${cells.join('')}</div>`;
     clues.innerHTML = ['across', 'down'].map((direction) => {
       const entries = (crossword.entries || []).filter((entry) => entry.direction === direction);
-      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<button type="button" class="crossword-clue" data-entry-id="${Number(entry.number)}-${direction}" aria-label="${Number(entry.number)} ${direction}: ${esc(entry.clue)}"><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</button>${newsUrlIsHttps(entry.url) ? `<a class="news-link" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer">${esc(entry.source || 'Clue source')}</a>` : ''}`).join('')}</section>` : '';
+      return entries.length ? `<section><h4>${direction}</h4>${entries.map((entry) => `<div class="crossword-clue-row"><button type="button" class="crossword-clue" data-entry-id="${Number(entry.number)}-${direction}" aria-label="${Number(entry.number)} ${direction}: ${esc(entry.clue)}"><strong>${Number(entry.number)}.</strong> ${esc(entry.clue)}</button><details class="crossword-hint"><summary aria-label="Hint for ${Number(entry.number)} ${direction}">Hint</summary><p>Starts with <strong>${esc(entry.answer?.[0] || '')}</strong> · ${String(entry.answer || '').length} letters</p><details><summary>Show answer</summary><p>${esc(entry.answer)}</p></details></details></div>${newsUrlIsHttps(entry.url) ? `<a class="news-link" href="${esc(entry.url)}" target="_blank" rel="noopener noreferrer">${esc(entry.source || 'Clue source')}</a>` : ''}`).join('')}</section>` : '';
     }).join('');
+    renderCrosswordPractice(result.practiceWords, grid);
     wireCrosswordTyping(crossword, grid, clues);
   } else if (result.type === 'sudoku' && result.sudoku) {
     const sdk = result.sudoku;
@@ -2634,6 +2637,17 @@ function renderDailyPuzzle(result) {
     }).join('')}</div>`;
     clues.innerHTML = '';
   }
+}
+
+function renderCrosswordPractice(words, grid) {
+  document.getElementById('crossword-practice')?.remove();
+  if (!Array.isArray(words) || !words.length) return;
+  const panel = document.createElement('details');
+  panel.id = 'crossword-practice';
+  panel.className = 'crossword-practice';
+  panel.open = true;
+  panel.innerHTML = `<summary>Warm up with this week’s words <span>${words.length} to revisit</span></summary><p>Read the meaning, try saying the word, then reveal it. Practise as many as you like before the crossword.</p><div class="crossword-practice-words">${words.map(item => `<article><small>${item.reason === 'missed' ? 'Missed this week' : 'Not practised this week'}</small><p>${esc(item.definition)}</p><details><summary>Reveal word</summary><strong>${esc(item.word)}</strong>${item.example ? `<p>${esc(item.example)}</p>` : ''}</details></article>`).join('')}</div>`;
+  grid.before(panel);
 }
 
 function crosswordEntryCells(entry) {
@@ -5646,9 +5660,12 @@ function todayDaily3Progress(data, todayIso, own = false) {
   if (!data || data === 'loading' || data === 'error' || data.date !== todayIso) return null;
   const local = own ? load(daily5DoneKey()) || {} : {};
   const parts = ['news', 'quote', 'word'].map(key => ({ key, ...data.parts?.[key], ...(local[key] ? { status: 'completed' } : {}) }));
+  const challenge = ['puzzle', 'bt'].map(key => ({ ...data.parts?.[key], ...(local[key] ? { status: 'completed' } : {}) }));
+  const completed = challenge.filter(part => part.status === 'completed').sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0];
+  parts.push({ key: 'challenge', ...(completed || challenge.find(part => part.status === 'started') || {}) });
   const done = parts.filter(part => part.status === 'completed').length;
   const latest = parts.filter(part => part.status === 'completed').sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))[0];
-  return { done, total: 3, parts, status: done === 3 ? 'Done ✓' : latest ? `${latest.key[0].toUpperCase() + latest.key.slice(1)} done${latest.updatedAt ? ' ' + timeAgo(latest.updatedAt) : ''}` : parts.some(part => part.status === 'started') ? 'In progress' : 'Not started' };
+  return { done, total: 4, parts, status: done === 4 ? 'Done ✓' : latest ? `${latest.key[0].toUpperCase() + latest.key.slice(1)} done${latest.updatedAt ? ' ' + timeAgo(latest.updatedAt) : ''}` : parts.some(part => part.status === 'started') ? 'In progress' : 'Not started' };
 }
 
 let todayRingData = new Map();
@@ -5687,9 +5704,9 @@ function todayKidRowHtml(kid, parent, state, todayIso, progressState = 'loading'
   const rings = [
     ...(hwKnown ? [{ value: hw.done, total: hw.total, color: 'var(--fr-hw)', label: 'Homework done this week', radius:66 }] : []),
     ...(habKnown ? [{ value: hab.done, total: hab.total, color: 'var(--fr-hab)', label: 'Habits checked today', radius:48 }] : []),
-    ...(daily3 ? [{ value: daily3.done, total: 3, color: 'var(--fr-d3)', label: 'Daily 3 today', radius:30 }] : [])
+    ...(daily3 ? [{ value: daily3.done, total: 4, color: 'var(--fr-d3)', label: 'Daily 4 today', radius:30 }] : [])
   ];
-  const summary = `${kid.name || 'Your day'}: ${hwKnown ? `homework ${hw.done} of ${hw.total} done this week` : hwUnknown}, ${habKnown ? hab.total ? `habits ${hab.done} of ${hab.total} today` : 'no habits yet' : habUnknown}, Daily 3 ${daily3 ? `${daily3.done} of 3 today` : progressState === 'loading' ? 'loading' : 'unavailable'}`;
+  const summary = `${kid.name || 'Your day'}: ${hwKnown ? `homework ${hw.done} of ${hw.total} done this week` : hwUnknown}, ${habKnown ? hab.total ? `habits ${hab.done} of ${hab.total} today` : 'no habits yet' : habUnknown}, Daily 4 ${daily3 ? `${daily3.done} of 4 today` : progressState === 'loading' ? 'loading' : 'unavailable'}`;
   let fams = state === 'error' ? '<span>Fams unavailable</span>' : '<span>Loading fams…</span>';
   if (state && typeof state === 'object') {
     const earned = state.weekly?.earned || 0, limit = state.weekly?.limit || 0;
@@ -5701,7 +5718,7 @@ function todayKidRowHtml(kid, parent, state, todayIso, progressState = 'loading'
     <div class="fr-kid-body"><button type="button" class="fr-kid-rings" onclick="${open}" aria-label="${parent ? `Open ${name}'s progress` : 'Open your homework'}">${famRing({ rings, key: `kid-${kid.id}`, label: summary })}</button>
       <div class="fr-kid-stats">
         <button type="button" class="fr-stat fr-stat-hw" onclick="openTodayKidHomework('${id}')"><b>${hwKnown ? hw.left : '—'}</b><span>${hwKnown ? `homework left<br>this week${hw.total && !hw.left ? ' · Done ✓' : ''}` : hwUnknown}</span></button>
-        <button type="button" class="fr-stat fr-stat-d3" onclick="openTodayLearning()"><b>${daily3 ? `${daily3.done}/3` : '—'}</b><span>Daily 3 today<br>${daily3 ? esc(daily3.status) : progressState === 'loading' ? 'Loading…' : 'Unavailable'}</span></button>
+        <button type="button" class="fr-stat fr-stat-d3" onclick="openTodayLearning()"><b>${daily3 ? `${daily3.done}/4` : '—'}</b><span>Daily 4 today<br>${daily3 ? esc(daily3.status) : progressState === 'loading' ? 'Loading…' : 'Unavailable'}</span></button>
         ${!habKnown ? `<div class="fr-stat fr-stat-hab"><b>—</b><span>${habUnknown}</span></div>` : hab.total ? `<details class="fr-habit-details"><summary class="fr-stat fr-stat-hab"><b>${hab.done}/${hab.total}</b><span>habits today<br>${hab.done === hab.total ? 'Done ✓' : 'Check in'}</span></summary><div class="fr-habit-popover"><h3>${name}’s habits</h3>${habits.map(renderTodayHabitRow).join('')}<button class="today-link" type="button" onclick="switchNavTab('goals')">All goals ${todayIcon('arrow')}</button></div></details>` : `<button type="button" class="fr-stat fr-stat-hab" onclick="switchNavTab('goals')"><b>—</b><span>No habits yet<br><em>Set a first habit</em></span></button>`}
       </div>
     </div>

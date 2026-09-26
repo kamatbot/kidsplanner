@@ -1,6 +1,7 @@
 /* Private drafts live only in this closure, never localStorage or family notes. */
 (() => {
-  const choices = ['tuk-tuk', 'mango-sticky-rice', 'boba', 'monsoon-cloud', 'leaf-umbrella', 'small-star'];
+  const choices = ['tuk-tuk', 'mango-sticky-rice', 'boba', 'monsoon-cloud', 'leaf-umbrella', 'small-star', 'sleepy-cat', 'happy-capybara', 'space-rocket', 'tiny-planet', 'rainbow', 'lucky-frog', 'bookworm', 'clever-fox', 'headphones', 'game-controller', 'roller-skate', 'sunshine', 'strawberry', 'ice-cream', 'pizza-slice', 'ocean-turtle', 'mountain', 'paper-plane'];
+  const stickerPath = id => `/img/my-corner/${id}.${choices.indexOf(id) < 6 ? 'svg' : 'png'}`;
   const label = id => id.replaceAll('-', ' ');
   let owner = null, draft = null, latest = null, selected = null, dirty = false, busy = false, generation = 0;
   let dialog, body, status, saveButton, opener, drawer;
@@ -72,7 +73,7 @@
       const item = editable ? button('', () => { selected = s.id; render(); body.querySelector('.fam-corner-sticker[aria-pressed="true"]')?.focus(); }) : el('span');
       item.className = 'fam-corner-sticker'; item.style.left = `calc(48px + (100% - 96px) * ${s.x})`; item.style.top = `calc(48px + (100% - 96px) * ${s.y})`;
       item.style.transform = `translate(-50%, -50%) rotate(${s.rotation}deg)`;
-      const img = el('img'); img.src = `/img/my-corner/${s.stickerId}.svg`; img.alt = label(s.stickerId); item.append(img);
+      const img = el('img'); img.src = stickerPath(s.stickerId); img.alt = label(s.stickerId); item.append(img);
       if (editable) { item.setAttribute('aria-pressed', String(selected === s.id)); item.setAttribute('aria-label', `Select ${label(s.stickerId)}`); }
       board.append(item);
     });
@@ -93,7 +94,7 @@
   }
   function collection() {
     const box = el('div', '', 'fam-corner-collection');
-    choices.forEach(id => { const b = button(label(id), () => add(id)); const img = el('img'); img.src = `/img/my-corner/${id}.svg`; img.alt = ''; b.prepend(img); b.disabled = draft.stickers.length >= 18; box.append(b); }); return box;
+    choices.forEach(id => { const b = button(label(id), () => add(id)); const img = el('img'); img.src = stickerPath(id); img.alt = ''; b.prepend(img); b.disabled = draft.stickers.length >= 18; box.append(b); }); return box;
   }
   function showDrawer() {
     drawer = el('dialog', '', 'fam-corner-drawer'); drawer.setAttribute('aria-label', 'Sticker collection');

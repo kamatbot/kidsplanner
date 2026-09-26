@@ -60,6 +60,26 @@ final class MyCornerUITests: XCTestCase {
         XCTAssertTrue(panelClose.waitForExistence(timeout: 5))
         panelClose.tap()
     }
+    func testExpandedCollectionCanSaveAndReopenNewSticker() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+        let app = launch(try sessions()["child"]!)
+        open(app)
+        if app.buttons["Add sticker"].exists { app.buttons["Add sticker"].tap() }
+        let sticker = app.buttons["Add paper plane"]
+        let collection = app.scrollViews["corner.collection"]
+        XCTAssertTrue(collection.waitForExistence(timeout: 5))
+        for _ in 0..<12 where !sticker.isHittable { collection.swipeUp() }
+        XCTAssertTrue(sticker.isHittable)
+        sticker.tap()
+        let save = app.buttons["corner-save"]; reveal(save, in: app); save.tap()
+        XCTAssertTrue(app.staticTexts["Saved."].waitForExistence(timeout: 8))
+        closeCornerAndPanel(app); open(app)
+        XCTAssertTrue(app.buttons["Select paper plane"].waitForExistence(timeout: 5))
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "expanded-sticker-collection"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     func testTouchPlacementAndRemoval() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
