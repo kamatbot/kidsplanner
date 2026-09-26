@@ -33,6 +33,9 @@
   <link rel="stylesheet" href="/css/chat-media.css">
   <link rel="stylesheet" href="/css/settings.css">
   <link rel="stylesheet" href="/css/today-home.css">
+  <link rel="stylesheet" href="/css/study-pal.css">
+  <link rel="stylesheet" href="/css/mood-check-in.css">
+  <link rel="stylesheet" href="/css/my-corner.css">
   <link rel="stylesheet" href="/css/today-learning.css">
   <link rel="stylesheet" href="/css/child-view.css">
   <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
@@ -296,6 +299,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
             </div>
           </section>
+          <div id="fam-my-corner-entry" hidden></div>
           <section class="today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
             <div class="today-setup-header">
               <div>
@@ -323,6 +327,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                 </div>
                 <div id="today-homework-list"></div>
               </section>
+              <section class="card study-pal" id="today-study-pal" aria-label="Your study pal" hidden></section>
           </section>
           <section class="today-agenda-card" aria-labelledby="today-agenda-title">
             <div class="today-section-head">
@@ -345,6 +350,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <!-- Band 3: Daily 3 beside the weekly challenge. Learning band —
                owned by Agent B. Styles in today-learning.css. -->
           <div class="today-band today-band-learn">
+              <section id="mood-check-in" class="card mood-check-in" hidden aria-label="Optional energy check-in"></section>
               <section class="today-region daily5-card today-daily3" aria-labelledby="daily5-title">
                 <div class="today-section-head">
                   <h2 id="daily5-title">Daily 3</h2>
@@ -1522,6 +1528,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <script src="/js/settings.js"></script>
 <script src="/js/child-progress.js"></script>
 <script src="/js/child-view.js"></script>
+<script src="/js/mood-check-in.js"></script>
+<script src="/js/study-pal.js"></script>
+<script src="/js/my-corner.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

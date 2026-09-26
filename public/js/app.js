@@ -523,6 +523,7 @@ async function handlePinChatMessage(id) {
    SESSION / FAMILY BOOTSTRAP (backend-sourced)
 ============================================================ */
 async function bootstrapSession() {
+  window.famMoodCheckIn?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
@@ -532,6 +533,8 @@ async function bootstrapSession() {
     return false;
   }
   sessionUser = me.user;
+  window.FamStudyPal?.render(document.getElementById('today-study-pal'), sessionUser);
+  window.famMyCorner?.setUser(sessionUser);
   save('fam_user', sessionUser);
   applyRoleScopingToUI();
 
@@ -5350,6 +5353,9 @@ async function retryTodayProgress() {
 }
 
 function renderTodayScreen() {
+  window.famMoodCheckIn?.mount(() => sessionUser?.role === "kid" && currentFamily ? `${sessionUser.id}:${currentFamily.id}` : "");
+  window.FamStudyPal?.render(document.getElementById('today-study-pal'), sessionUser);
+  window.famMyCorner?.setUser(sessionUser);
   if (!sessionUser) return;
   const mobileAvatar = document.getElementById('mobile-user-avatar');
   if (mobileAvatar) {
@@ -6416,6 +6422,9 @@ function toast(msg) {
    LOGOUT
 ============================================================ */
 async function handleLogout() {
+  window.famMoodCheckIn?.clear();
+  window.FamStudyPal?.render(document.getElementById('today-study-pal'), null);
+  window.famMyCorner?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();

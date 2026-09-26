@@ -316,3 +316,79 @@ test("analytics: action events are allowlisted and summary remains aggregate-onl
   assert.equal(summary.events["title: Pack uniforms"], undefined);
   assert.equal(JSON.stringify(summary).includes("Pack uniforms"), false);
 });
+
+test("completion time records transitions, never edits or caller timestamps", (t) => {
+  const { fam } = makeFamily("completion-clock");
+  const yesterday = "2026-09-25T09:00:00.000Z";
+  const today = "2026-09-26T09:00:00.000Z";
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(yesterday) });
+  const created = actions.createAction(fam.id, { title: "Done yesterday", status: "done", completedAt: "2000-01-01T00:00:00Z" }).action;
+  assert.equal(created.completedAt, yesterday);
+  t.mock.timers.setTime(new Date(today).getTime());
+  const edited = actions.updateAction(fam.id, created.id, { title: "Edited today", status: "done", completedAt: today }).action;
+  assert.equal(edited.updatedAt, today);
+  assert.equal(edited.completedAt, yesterday);
+  const reopened = actions.updateAction(fam.id, created.id, { status: "open", completedAt: yesterday }).action;
+  assert.equal(reopened.completedAt, null);
+  assert.equal(actions.updateAction(fam.id, created.id, { status: "done", completedAt: yesterday }).action.completedAt, today);
+  assert.equal(actions.updateAction(fam.id, created.id, { snoozedUntil: "2026-09-27T09:00:00Z" }).action.completedAt, null);
+  t.mock.timers.setTime(new Date(today).getTime() + 1000);
+  assert.equal(actions.updateAction(fam.id, created.id, { status: "done" }).action.completedAt, "2026-09-26T09:00:01.000Z");
+});
+
+test("legacy completion remains unknown through detail and done updates", () => {
+  const { fam } = makeFamily("legacy-completion");
+  const item = actions.createAction(fam.id, { title: "Legacy done", status: "done" }).action;
+  delete item.completedAt;
+  item.updatedAt = "2026-09-25T09:00:00.000Z";
+  const edited = actions.updateAction(fam.id, item.id, { notes: "Edited later", status: "done", completedAt: new Date().toISOString() }).action;
+  assert.equal(edited.completedAt, null);
+});
+
+test("source refreshes preserve completion and imported done homework has unknown completion", (t) => {
+  const { fam, kidA } = makeFamily("projected-completion");
+  const yesterday = "2026-09-25T09:00:00.000Z";
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(yesterday) });
+  const homework = { id: "homework-completion", title: "Homework", kidId: kidA.id, source: "school-api", status: "done" };
+  actions.projectMoodleAssignments(fam.id, [homework]);
+  let projected = actions.getBySource(fam.id, "homework", homework.id);
+  assert.equal(projected.status, "done");
+  assert.equal(projected.completedAt, null);
+  actions.projectMoodleAssignments(fam.id, [{ ...homework, title: "Already done before import" }]);
+  assert.equal(actions.getAction(fam.id, projected.id).completedAt, null);
+  actions.updateAction(fam.id, projected.id, { status: "open" });
+  actions.updateAction(fam.id, projected.id, { status: "done" });
+  const event = { uid: "completion-event", subscriptionId: "completion-feed", title: "Deadline", kidId: kidA.id, isDeadline: true, allDay: true, start: "2026-09-27" };
+  actions.projectSchoolDeadlines(fam.id, [event]);
+  const school = actions.getBySource(fam.id, "school", actions.schoolSourceId(event.subscriptionId, event.uid));
+  assert.equal(school.completedAt, null);
+  actions.updateAction(fam.id, school.id, { status: "done" });
+  t.mock.timers.setTime(new Date("2026-09-26T09:00:00.000Z").getTime());
+  actions.projectMoodleAssignments(fam.id, [{ ...homework, title: "Refreshed homework" }]);
+  actions.projectSchoolDeadlines(fam.id, [{ ...event, title: "Refreshed deadline" }]);
+  for (const item of [projected, school]) {
+    const refreshed = actions.getAction(fam.id, item.id);
+    assert.equal(refreshed.completedAt, yesterday);
+    assert.equal(refreshed.updatedAt, "2026-09-26T09:00:00.000Z");
+  }
+});
+
+test("action API ignores caller completion timestamps on create and update", (t) => {
+  const { fam, parent } = makeFamily("api-completion");
+  const { routes } = buildHarness();
+  const now = "2026-09-26T09:00:00.000Z";
+  t.mock.timers.enable({ apis: ["Date"], now: new Date(now) });
+  const created = call(routes["POST /api/family/actions"], {
+    user: parent, body: { title: "API action", completedAt: now },
+  }).body.action;
+  assert.equal(created.completedAt, null);
+  const completed = call(routes["PATCH /api/family/actions/:id"], {
+    user: parent, params: { id: created.id }, body: { status: "done", completedAt: "2000-01-01T00:00:00Z" },
+  }).body.action;
+  assert.equal(completed.completedAt, now);
+  const edited = call(routes["PATCH /api/family/actions/:id"], {
+    user: parent, params: { id: created.id }, body: { notes: "Later edit", completedAt: null },
+  }).body.action;
+  assert.equal(edited.completedAt, now);
+  assert.equal(actions.getAction(fam.id, created.id).completedAt, now);
+});

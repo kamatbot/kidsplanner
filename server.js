@@ -646,6 +646,7 @@ require("./lib/routes/hermes")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/actions")(app, routeDeps);
+require("./lib/routes/my-corner")(app, routeDeps);
 require("./lib/routes/decisions")(app, routeDeps);
 require("./lib/routes/watch")(app, routeDeps);
 require("./lib/routes/goals")(app, routeDeps);

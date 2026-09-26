@@ -35,7 +35,7 @@ function renderNotesTimeline() {
   const el = document.getElementById('notes-timeline');
   if (!el) return;
   if (!notesItems.length) {
-    el.innerHTML = '<p class="text-muted">No notes yet — reflections you save from Quote, SAT, News, feelings check-ins, and pinned chat messages will show up here.</p>';
+    el.innerHTML = '<p class="text-muted">No notes yet — reflections you save from Quote, SAT, News, and pinned chat messages will show up here.</p>';
     return;
   }
   // Group by date, preserving the already-desc-by-date-then-createdAt server order.

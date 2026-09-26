@@ -1,0 +1,13 @@
+.study-pal[hidden], .study-pal-body[hidden] { display: none; }
+.study-pal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.study-pal-header h2 { font-size:1rem; margin:0; }
+.study-pal-toggle { min-height:44px; padding:8px 0; white-space:normal; }
+.study-pal-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:4px; border-radius:4px; }
+.study-pal-body { display:flex; align-items:center; gap:16px; margin-top:8px; }
+.study-pal-body img { flex:none; width:104px; height:104px; object-fit:contain; }
+.study-pal-body h3 { font-size:1rem; margin:0 0 6px; }
+.study-pal-body p { color:var(--text-2); line-height:1.5; margin:0; }
+@media (max-width:380px) { .study-pal-body { flex-wrap:wrap; } }
+/* Deliberately static: no animation, sound, or motion in either preference. */
+/* Match Today's explicit support-card ordering: homework stays first. */
+#tab-today .today-brief-support > .study-pal { order: 1; }
