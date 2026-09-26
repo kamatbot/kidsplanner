@@ -89,7 +89,7 @@ final class CornerService {
         do {
             let result = try await request(nil)
             guard token == generation else { return }
-            draft = result; dirty = false; message = "Add a sticker, then tap to place or use the controls."
+            draft = result; dirty = false; message = "Add a sticker, then drag it where you like."
         } catch { if token == generation { message = error.localizedDescription } }
         if token == generation { busy = false }
     }

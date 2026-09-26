@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// Run with the local synthetic My Corner server; uses real auth/routes/storage.
 final class MyCornerUITests: XCTestCase {
@@ -29,6 +30,14 @@ final class MyCornerUITests: XCTestCase {
     }
     private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
         for _ in 0..<9 { if element.exists && element.isHittable { return }; app.swipeUp() }
+    }
+    private func drag(_ element: XCUIElement, by offset: CGVector) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(offset))
+    }
+    private func percent(_ element: XCUIElement, _ axis: String) -> Int? {
+        guard let value = element.value as? String, let range = value.range(of: "\(axis) ") else { return nil }
+        return Int(value[range.upperBound...].prefix(while: { $0.isNumber }))
     }
     private func messages(_ cookie: String) throws -> [[String: Any]] {
         let done = expectation(description: "Real synthetic family chat")
@@ -88,7 +97,14 @@ final class MyCornerUITests: XCTestCase {
         if app.buttons["Add sticker"].exists { app.buttons["Add sticker"].tap() }
         let star = app.buttons["Add small star"]
         reveal(star, in: app); star.tap()
-        reveal(app.buttons["Up"], in: app); app.buttons["Up"].tap()
+        let placed = app.buttons["Select small star"]
+        reveal(placed, in: app)
+        let before = percent(placed, "vertical")
+        XCTAssertNotNil(before)
+        drag(placed, by: CGVector(dx: 0, dy: -80))
+        let after = percent(placed, "vertical")
+        XCTAssertNotNil(after)
+        XCTAssertLessThan(after!, before!)
         reveal(app.buttons["Remove sticker"], in: app); app.buttons["Remove sticker"].tap()
         let save = app.buttons["corner-save"]; reveal(save, in: app); save.tap()
         XCTAssertTrue(app.staticTexts["Saved."].waitForExistence(timeout: 8))
@@ -133,7 +149,14 @@ final class MyCornerUITests: XCTestCase {
         if app.buttons["Add sticker"].exists { app.buttons["Add sticker"].tap() }
         let mango = app.buttons["Add mango sticky rice"]
         XCTAssertTrue(mango.waitForExistence(timeout: 5)); mango.tap()
-        reveal(app.buttons["Right"], in: app); app.buttons["Right"].tap()
+        let placedMango = app.buttons["Select mango sticky rice"]
+        reveal(placedMango, in: app)
+        let mangoBefore = percent(placedMango, "Horizontal")
+        XCTAssertNotNil(mangoBefore)
+        drag(placedMango, by: CGVector(dx: 80, dy: 0))
+        let mangoAfter = percent(placedMango, "Horizontal")
+        XCTAssertNotNil(mangoAfter)
+        XCTAssertGreaterThan(mangoAfter!, mangoBefore!)
         reveal(app.buttons["Rotate 15°"], in: app); app.buttons["Rotate 15°"].tap()
         let field = app.textFields["corner-note"]
         let multiline = app.textViews["corner-note"]

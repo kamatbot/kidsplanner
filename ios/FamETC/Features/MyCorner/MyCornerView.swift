@@ -9,6 +9,9 @@ struct MyCornerScreen: View {
     @FocusState private var noteFocused: Bool
     @State private var showDrawer = false
     @State private var confirmDiscard = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private struct StickerDrag: Equatable { let id: String; let x: Double; let y: Double }
+    @State private var dragging: StickerDrag?
     let ownerID: String
     let familyID: String?
     let role: String?
@@ -110,10 +113,6 @@ struct MyCornerScreen: View {
             if let item = draft.stickers.first(where: { $0.id == model.selected }) {
                 Text("Selected: \(CornerDocument.label(item.stickerId))").font(Typography.cardTitle)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 105))], spacing: 8) {
-                    Button("Left") { model.move(dx: -0.05) }
-                    Button("Right") { model.move(dx: 0.05) }
-                    Button("Up") { model.move(dy: -0.05) }
-                    Button("Down") { model.move(dy: 0.05) }
                     Button("Rotate 15°") { model.move(rotate: true) }
                     Button("Remove sticker") { model.remove() }
                 }.buttonStyle(.bordered)
@@ -173,18 +172,39 @@ struct MyCornerScreen: View {
                     .background(Color(hex: 0xFFF1CE)).foregroundStyle(Color(hex: 0x44394D))
                     .padding(16)
                 ForEach(value.stickers) { item in
+                    let isDragging = editable && dragging?.id == item.id
                     Button { if editable { model.selected = item.id } } label: {
                         Image("Corner-" + item.stickerId).resizable().scaledToFit().frame(width: 64, height: 64)
                             .background(editable && model.selected == item.id ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: 12))
                     }.buttonStyle(.plain)
                         .rotationEffect(.degrees(item.rotation))
+                        .scaleEffect(isDragging ? 1.12 : 1)
+                        .shadow(color: .black.opacity(isDragging ? 0.18 : 0), radius: 8, y: 4)
+                        .animation(Motion.maybe(Motion.snappy, reduceMotion: reduceMotion), value: isDragging)
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 0, coordinateSpace: .named("corner-board"))
+                                .onChanged { value in
+                                    if dragging?.id != item.id {
+                                        dragging = StickerDrag(id: item.id, x: item.x, y: item.y)
+                                        model.selected = item.id
+                                        Haptics.selection()
+                                    }
+                                    guard let start = dragging, abs(value.translation.width) + abs(value.translation.height) > 1 else { return }
+                                    model.move(x: start.x + value.translation.width / max(1, geometry.size.width - 96),
+                                               y: start.y + value.translation.height / max(1, geometry.size.height - 96))
+                                }
+                                .onEnded { _ in dragging = nil },
+                            including: editable ? .all : .subviews
+                        )
                         .position(x: 48 + (geometry.size.width - 96) * item.x, y: 48 + (geometry.size.height - 96) * item.y)
                         .accessibilityLabel("\(editable ? "Select" : "") \(CornerDocument.label(item.stickerId))")
                         .accessibilityValue("Horizontal \(Int(item.x * 100)) percent, vertical \(Int(item.y * 100)) percent, rotation \(Int(item.rotation)) degrees")
                         .accessibilityAddTraits(editable && model.selected == item.id ? .isSelected : [])
                         .disabled(!editable)
+                        .zIndex(isDragging ? 1 : 0)
                 }
             }
+            .coordinateSpace(.named("corner-board"))
             .contentShape(Rectangle())
             .onTapGesture { point in
                 guard editable, model.selected != nil else { return }
