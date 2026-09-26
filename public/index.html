@@ -242,6 +242,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </div>
           </header>
 
+          <!-- Hermes strip (docs/HERMES-THREADS-CONTRACT.md §8) — up to 2 open
+               hermes-nudge/status cards from the signed-in person's own thread.
+               Filled by renderTodayHermesStrip() (app.js); hidden when empty. -->
+          <section class="fr-hermes-strip" id="today-hermes-strip" aria-label="From Hermes" hidden></section>
+
           <section class="today-actions-card fr-hero" id="today-actions-card" aria-labelledby="today-actions-title">
             <div id="today-parent-ring" class="fr-you-ring" aria-live="polite"></div>
             <div class="fr-hero-actions">

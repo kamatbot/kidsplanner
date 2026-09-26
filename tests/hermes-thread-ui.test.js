@@ -125,10 +125,12 @@ test('a non-open hermes-nudge action POSTs to the actions endpoint, replaces the
   const updated = { ...original, card: { type: 'hermes-nudge', state: { status: 'snoozed', label: 'Snoozed 30 min' } } };
   const followUp = { id: 'm2', senderType: 'agent', senderId: 'hermes', createdAt: '2026-09-26T08:30:00.000Z', text: 'Following up' };
   let renders = 0;
+  let stripRenders = 0;
   const c = {
     hermesMessages: [original, followUp], // followUp already shown — must not be duplicated
     fetch: async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 200, json: async () => ({ message: updated, messages: [followUp] }) }; },
     renderHermesMessages: () => renders++,
+    renderTodayHermesStrip: () => stripRenders++, // Today strip (contract §8) picks up the resolved card
     toast: () => assert.fail('should not toast on success'),
   };
   vm.createContext(c);
@@ -145,6 +147,7 @@ test('a non-open hermes-nudge action POSTs to the actions endpoint, replaces the
   assert.deepEqual(c.hermesMessages.map((m) => m.id), ['m1', 'm2']); // replaced, no duplicate append
   assert.equal(c.hermesMessages[0].card.state.status, 'snoozed');
   assert.equal(renders, 1);
+  assert.equal(stripRenders, 1);
 });
 
 test('a failed hermes-nudge action re-enables the button and surfaces the error', async () => {
