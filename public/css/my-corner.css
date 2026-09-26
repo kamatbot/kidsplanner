@@ -23,3 +23,5 @@
 .fam-corner-conflict button { margin:8px 8px 0 0; }
 #fam-my-corner-entry { margin:16px 0; }
 @media(max-width:650px) { .fam-corner { padding:16px; } .fam-corner-layout { display:block; } .fam-corner-desktop-drawer { display:none; } }
+
+.fam-corner select, .fam-corner-drawer select { display:block; width:100%; min-height:44px; margin-bottom:10px; padding:8px; font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--border); border-radius:10px; }

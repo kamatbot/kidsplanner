@@ -15,12 +15,28 @@ final class MyCornerTests: XCTestCase {
             }
         }
     }
+    func testServiceSendsCapturedFamilyAndRoleBindings() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CornerAccountProtocol.self]
+        let service = CornerService(ownerID: "parent-owner", familyID: "family-1", role: "parent", configuration: config)
+        let document = try await service.request()
+        XCTAssertEqual(document.revision, 0)
+    }
     func testServerShapeDecodes() throws {
         let payload = #"{"revision":3,"note":"Art club","stickers":[{"id":"one","stickerId":"tuk-tuk","x":0,"y":1,"rotation":-180}]}"#
         let value = try JSONDecoder().decode(CornerDocument.self, from: Data(payload.utf8))
         XCTAssertEqual(value.revision, 3)
         XCTAssertEqual(value.stickers[0].rotation, -180)
         XCTAssertEqual(try JSONDecoder().decode(CornerDocument.self, from: JSONEncoder().encode(value)), value)
+    }
+    func testExpandedStickerCatalogHasDisjointMoodActivityAndLittleThingGroups() {
+        XCTAssertEqual(CornerDocument.choices.count, 48)
+        XCTAssertEqual(CornerDocument.moods.count, 13)
+        XCTAssertEqual(CornerDocument.activities.count, 16)
+        XCTAssertEqual(CornerDocument.littleThings.count, 19)
+        XCTAssertEqual(Set(CornerDocument.choices).count, 48)
+        XCTAssertTrue(Set(CornerDocument.moods).isDisjoint(with: Set(CornerDocument.activities)))
+        XCTAssertEqual(Set(CornerDocument.choices), Set(CornerDocument.moods + CornerDocument.activities + CornerDocument.littleThings))
     }
     @MainActor func testEditsAndFailureKeepDraftThenRetry() async {
         var saved = CornerDocument.empty
@@ -74,7 +90,11 @@ private final class CornerAccountProtocol: URLProtocol {
     override func startLoading() {
         // The server belongs to a different child. Without the editor binding,
         // it would return that child's document using the captured session.
-        let bound = request.value(forHTTPHeaderField: "X-Fam-Corner-Account") == "editor-owner"
+        let account = request.value(forHTTPHeaderField: "X-Fam-Corner-Account")
+        let roleBindingMatches = account == "parent-owner"
+            && request.value(forHTTPHeaderField: "X-Fam-Corner-Family") == "family-1"
+            && request.value(forHTTPHeaderField: "X-Fam-Corner-Role") == "parent"
+        let bound = account == "editor-owner" || (account == "parent-owner" && !roleBindingMatches)
         let response = HTTPURLResponse(url: request.url!, statusCode: bound ? 403 : 200,
                                        httpVersion: nil, headerFields: nil)!
         let body = bound ? #"{"error":"The signed-in account changed."}"#

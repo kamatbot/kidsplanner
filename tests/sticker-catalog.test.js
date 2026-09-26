@@ -6,9 +6,9 @@ const path = require('node:path');
 const { STICKERS, validate } = require('../lib/my-corner');
 const web = fs.readFileSync(path.join(__dirname, '../public/js/my-corner.js'), 'utf8');
 const native = fs.readFileSync(path.join(__dirname, '../ios/FamETC/Features/MyCorner/MyCornerModel.swift'), 'utf8');
-test('all 24 stickers have web and bundled native assets and are accepted by the server', () => {
-  assert.equal(STICKERS.length, 24);
-  assert.equal(new Set(STICKERS).size, 24);
+test('all 48 stickers have web and bundled native assets and are accepted by the server', () => {
+  assert.equal(STICKERS.length, 48);
+  assert.equal(new Set(STICKERS).size, 48);
   for (const [i, id] of STICKERS.entries()) {
     assert.ok(web.includes(`'${id}'`), `web missing ${id}`);
     assert.ok(native.includes(`"${id}"`), `native missing ${id}`);

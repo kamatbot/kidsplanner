@@ -1,9 +1,11 @@
 /* Private drafts live only in this closure, never localStorage or family notes. */
 (() => {
-  const choices = ['tuk-tuk', 'mango-sticky-rice', 'boba', 'monsoon-cloud', 'leaf-umbrella', 'small-star', 'sleepy-cat', 'happy-capybara', 'space-rocket', 'tiny-planet', 'rainbow', 'lucky-frog', 'bookworm', 'clever-fox', 'headphones', 'game-controller', 'roller-skate', 'sunshine', 'strawberry', 'ice-cream', 'pizza-slice', 'ocean-turtle', 'mountain', 'paper-plane'];
+  const choices = ['tuk-tuk', 'mango-sticky-rice', 'boba', 'monsoon-cloud', 'leaf-umbrella', 'small-star', 'sleepy-cat', 'happy-capybara', 'space-rocket', 'tiny-planet', 'rainbow', 'lucky-frog', 'bookworm', 'clever-fox', 'headphones', 'game-controller', 'roller-skate', 'sunshine', 'strawberry', 'ice-cream', 'pizza-slice', 'ocean-turtle', 'mountain', 'paper-plane', 'joyful-panda', 'brave-lion', 'calm-koala', 'worried-hedgehog', 'sad-penguin', 'angry-dragon', 'proud-peacock', 'curious-owl', 'shy-bunny', 'silly-monkey', 'tired-sloth', 'grateful-otter', 'focused-robot', 'study-pencil', 'reading-bear', 'painting-palette', 'dancing-dino', 'music-guitar', 'soccer-ball', 'basketball-hoop', 'swimming-dolphin', 'cycling-bunny', 'cooking-chef', 'gardening-sprout'];
   const stickerPath = id => `/img/my-corner/${id}.${choices.indexOf(id) < 6 ? 'svg' : 'png'}`;
+  const moods = new Set(['joyful-panda', 'brave-lion', 'calm-koala', 'worried-hedgehog', 'sad-penguin', 'angry-dragon', 'proud-peacock', 'curious-owl', 'shy-bunny', 'silly-monkey', 'tired-sloth', 'grateful-otter', 'focused-robot']);
+  const activities = new Set(['study-pencil', 'reading-bear', 'painting-palette', 'dancing-dino', 'music-guitar', 'soccer-ball', 'basketball-hoop', 'swimming-dolphin', 'cycling-bunny', 'cooking-chef', 'gardening-sprout', 'bookworm', 'headphones', 'game-controller', 'roller-skate', 'paper-plane']);
   const label = id => id.replaceAll('-', ' ');
-  let owner = null, draft = null, latest = null, selected = null, dirty = false, busy = false, generation = 0;
+  let owner = null, ownerFamily = null, ownerRole = null, category = 'All', draft = null, latest = null, selected = null, dirty = false, busy = false, generation = 0;
   let dialog, body, status, saveButton, opener, drawer;
   function el(tag, text, className) { const e = document.createElement(tag); if (text) e.textContent = text; if (className) e.className = className; return e; }
   function button(text, action) { const b = el('button', text); b.type = 'button'; b.addEventListener('click', action); return b; }
@@ -12,9 +14,9 @@
     generation++; draft = latest = null; selected = null; dirty = busy = false;
     drawer?.remove(); dialog?.remove(); dialog = drawer = null;
   }
-  function setUser(user) {
-    const next = user?.role === 'kid' ? user.id : null;
-    if (next !== owner) { clear(); owner = next; }
+  function setUser(user, familyId = null) {
+    const next = ['kid', 'parent'].includes(user?.role) && familyId ? user.id : null;
+    if (next !== owner || familyId !== ownerFamily || user?.role !== ownerRole) { clear(); owner = next; ownerFamily = familyId; ownerRole = user?.role; category = 'All'; }
     const host = document.getElementById('fam-my-corner-entry');
     if (!host) return;
     host.hidden = !owner;
@@ -22,7 +24,7 @@
   }
   async function request(method, value) {
     const response = await fetch('/api/my-corner', { method, credentials: 'same-origin', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json', 'X-Fam-Corner-Account': owner }, body: value ? JSON.stringify(value) : undefined });
+      headers: { 'Content-Type': 'application/json', 'X-Fam-Corner-Account': owner, 'X-Fam-Corner-Family': ownerFamily, 'X-Fam-Corner-Role': ownerRole }, body: value ? JSON.stringify(value) : undefined });
     const data = await response.json();
     if (!response.ok) throw Object.assign(new Error(data.error || 'Please retry.'), { status: response.status });
     return data;
@@ -34,12 +36,12 @@
   }
   async function open() {
     if (!owner || dialog) return;
-    const token = ++generation, expectedOwner = owner;
+    const token = ++generation, expectedOwner = owner, expectedRole = ownerRole;
     try {
       const response = await fetch('/api/me', { credentials: 'same-origin', cache: 'no-store' });
       const data = response.ok ? await response.json() : null;
       if (token !== generation || document.hidden) return;
-      if (data?.user?.role !== 'kid' || data.user.id !== expectedOwner) {
+      if (!['kid', 'parent'].includes(data?.user?.role) || data.user.id !== expectedOwner || data.user.role !== expectedRole) {
         setUser(null);
         window.toast?.('Your account changed. Refresh before opening My Corner.');
         return;
@@ -55,7 +57,7 @@
     status = el('p', 'Loading your corner…'); status.setAttribute('role', 'status');
     body = el('div');
     saveButton = button('Save changes', save); saveButton.disabled = true;
-    dialog.append(header, el('p', 'Only your child account can open this corner. Nothing here is shared with family. Save before switching tabs; unsaved edits are cleared when this tab is hidden.'), status, body, saveButton);
+    dialog.append(header, el('p', 'Only you can open this corner. Nothing here is shared with family. Save before switching tabs; unsaved edits are cleared when this tab is hidden.'), status, body, saveButton);
     dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
     document.body.append(dialog); dialog.showModal(); load();
   }
@@ -93,8 +95,24 @@
     draft.stickers.push(item); selected = item.id; drawer?.close(); drawer?.remove(); drawer = null; render(); changed(); body.querySelector('.fam-corner-sticker[aria-pressed="true"]')?.focus();
   }
   function collection() {
+    const wrapper = el('div');
+    const picker = el('select'); picker.setAttribute('aria-label', 'Sticker category');
+    for (const name of ['All', 'Moods', 'Activities', 'Little things']) {
+      const option = el('option', name); option.value = name; picker.append(option);
+    }
+    picker.value = category;
     const box = el('div', '', 'fam-corner-collection');
-    choices.forEach(id => { const b = button(label(id), () => add(id)); const img = el('img'); img.src = stickerPath(id); img.alt = ''; b.prepend(img); b.disabled = draft.stickers.length >= 18; box.append(b); }); return box;
+    function paint() {
+      box.replaceChildren();
+      const visible = choices.filter(id => category === 'All' || (category === 'Moods' ? moods.has(id) : category === 'Activities' ? activities.has(id) : !moods.has(id) && !activities.has(id)));
+      for (const id of visible) {
+        const b = button(label(id), () => add(id));
+        const img = el('img'); img.src = stickerPath(id); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+        b.prepend(img); b.disabled = draft.stickers.length >= 18; box.append(b);
+      }
+    }
+    picker.addEventListener('change', () => { category = picker.value; paint(); });
+    paint(); wrapper.append(picker, box); return wrapper;
   }
   function showDrawer() {
     drawer = el('dialog', '', 'fam-corner-drawer'); drawer.setAttribute('aria-label', 'Sticker collection');
@@ -144,5 +162,5 @@
   // ponytail: hidden tabs discard drafts for privacy; encrypted recoverable drafts
   // need a separate design before preserving unsaved work across account changes.
   document.addEventListener('visibilitychange', () => { if (document.hidden) clear(); });
-  window.famMyCorner = { setUser, clear: () => { clear(); owner = null; } };
+  window.famMyCorner = { setUser, clear: () => { clear(); owner = ownerFamily = ownerRole = null; } };
 })();

@@ -23,27 +23,26 @@ const k2 = family.addKid(f2.id, p2.id, { name: 'Other' }).kid;
 const other = store.findOrCreateKidUser(f2.id, k2.id, 'Other');
 const app = express(); app.use(express.json());
 require('../lib/routes/my-corner')(app, {
-  requireAuth(req, res, next) { req.user = store.getUser(req.get('test-user')); if (!req.user) return res.sendStatus(401); next(); },
+  requireAuth(req, res, next) { req.user = store.getUser(req.get('test-user')); if (!req.user) return res.sendStatus(401); req.watchAuth = req.get('test-watch') === '1'; next(); },
   requireFamily(req, res, next) { req.family = req.user.data?.kid ? family.familyForKidUser(req.user) : family.familiesForUser(req.user.id)[0]; if (!req.family) return res.sendStatus(403); next(); },
   userRole: user => user.data?.profile?.role || 'parent', kidIdForUser: req => req.user.data?.kid?.kidId, family,
 });
 const server = app.listen(0, '127.0.0.1');
 after(() => { server.close(); db.flushSync(); });
-async function call(user, method = 'GET', body, query = '', expectedAccount) {
+async function call(user, method = 'GET', body, query = '', expectedAccount, expectedFamily, watch = false, expectedRole) {
   if (!server.listening) await new Promise(r => server.once('listening', r));
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api/my-corner${query}`, {
-    method, headers: { 'test-user': user?.id || '', 'content-type': 'application/json', ...(expectedAccount ? { 'X-Fam-Corner-Account': expectedAccount } : {}) }, body: body && JSON.stringify(body),
+    method, headers: { 'test-user': user?.id || '', 'content-type': 'application/json', ...(expectedAccount ? { 'X-Fam-Corner-Account': expectedAccount } : {}), ...(expectedFamily ? { 'X-Fam-Corner-Family': expectedFamily } : {}), ...(watch ? { 'test-watch': '1' } : {}), ...(expectedRole ? { 'X-Fam-Corner-Role': expectedRole } : {}) }, body: body && JSON.stringify(body),
   });
   return { status: res.status, body: await res.json().catch(() => null), cache: res.headers.get('cache-control') };
 }
 const draft = { revision: 0, note: 'Ask about art club — private', stickers: [{ id: 'one', stickerId: 'tuk-tuk', x: 0.5, y: 0.5, rotation: 15 }] };
 test('real HTTP: private read/write, second client, bounded edits and explicit conflicts', async () => {
   assert.equal((await call(null)).status, 401);
-  assert.equal((await call(parent)).status, 403);
+  assert.deepEqual((await call(parent)).body, { revision: 0, note: '', stickers: [] });
   assert.equal((await call(sibling, 'GET', null, '', child.id)).status, 403);
   assert.equal((await call(sibling, 'PUT', draft, '', child.id)).status, 403);
   assert.deepEqual((await call(sibling)).body, { revision: 0, note: '', stickers: [] });
-  assert.equal((await call(parent, 'PUT', draft)).status, 403);
   const saved = await call(child, 'PUT', draft);
   assert.equal(saved.status, 200); assert.equal(saved.body.revision, 1);
   const second = await call(child); assert.deepEqual(second.body, saved.body); assert.equal(second.cache, 'no-store');
@@ -65,6 +64,26 @@ test('real HTTP: private read/write, second client, bounded edits and explicit c
   assert.ok(!fs.readFileSync(db.DB_FILE, 'utf8').includes('Second note'));
   const restored = JSON.parse(require('../lib/datacrypto').decrypt(fs.readFileSync(db.DB_FILE, 'utf8'), require('../lib/datacrypto').loadKey()));
   assert.ok(restored.fam_my_corners);
+});
+test('parents have separate private corners without access to children or other parents', async () => {
+  const secondParent = store.createUser('second-parent@example.test', 'Second parent');
+  family.getFamily(fam.id).parentIds.push(secondParent.id);
+  const saved = await call(parent, 'PUT', { ...draft, note: 'Parent private corner' }, '', parent.id, fam.id);
+  assert.equal(saved.status, 200);
+  assert.equal((await call(parent)).body.note, 'Parent private corner');
+  assert.equal((await call(child)).body.note, 'Second note');
+  for (const user of [secondParent, p2]) {
+    assert.deepEqual((await call(user)).body, {revision:0,note:'',stickers:[]});
+    assert.equal((await call(user, 'GET', null, `?kidId=${a.id}`)).status, 400);
+    assert.equal((await call(user, 'GET', null, '', parent.id)).status, 403);
+  }
+  assert.equal((await call(parent, 'GET', null, `?kidId=${a.id}`)).status, 400);
+  assert.equal((await call(parent, 'PUT', {...saved.body, ownerId:a.id})).status, 400);
+  assert.equal((await call(parent, 'GET', null, '', parent.id, f2.id)).status, 403);
+  assert.equal((await call(parent, 'GET', null, '', parent.id, fam.id, true)).status, 403);
+  assert.equal((await call(parent, 'PUT', saved.body, '', parent.id, fam.id, false, 'kid')).status, 403);
+  assert.ok(!JSON.stringify(family.publicFamily(fam)).includes('Parent private corner'));
+  assert.ok(!JSON.stringify(db.load().fam_my_corners).includes('Parent private corner'));
 });
 test('reject malformed, spoofed, malicious and excessive payloads', () => {
   const bad = [ { ...draft, familyId: fam.id }, { ...draft, note: '<svg onload=alert(1)>' }, { ...draft, note: 'a'.repeat(241) },

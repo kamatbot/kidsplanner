@@ -16,8 +16,15 @@ struct CornerDocument: Codable, Equatable {
         "tuk-tuk", "mango-sticky-rice", "boba", "monsoon-cloud", "leaf-umbrella", "small-star",
         "sleepy-cat", "happy-capybara", "space-rocket", "tiny-planet", "rainbow", "lucky-frog",
         "bookworm", "clever-fox", "headphones", "game-controller", "roller-skate", "sunshine",
-        "strawberry", "ice-cream", "pizza-slice", "ocean-turtle", "mountain", "paper-plane"
+        "strawberry", "ice-cream", "pizza-slice", "ocean-turtle", "mountain", "paper-plane",
+        "joyful-panda", "brave-lion", "calm-koala", "worried-hedgehog", "sad-penguin", "angry-dragon",
+        "proud-peacock", "curious-owl", "shy-bunny", "silly-monkey", "tired-sloth", "grateful-otter",
+        "focused-robot", "study-pencil", "reading-bear", "painting-palette", "dancing-dino", "music-guitar",
+        "soccer-ball", "basketball-hoop", "swimming-dolphin", "cycling-bunny", "cooking-chef", "gardening-sprout"
     ]
+    static let moods = ["joyful-panda", "brave-lion", "calm-koala", "worried-hedgehog", "sad-penguin", "angry-dragon", "proud-peacock", "curious-owl", "shy-bunny", "silly-monkey", "tired-sloth", "grateful-otter", "focused-robot"]
+    static let activities = ["study-pencil", "reading-bear", "painting-palette", "dancing-dino", "music-guitar", "soccer-ball", "basketball-hoop", "swimming-dolphin", "cycling-bunny", "cooking-chef", "gardening-sprout", "bookworm", "headphones", "game-controller", "roller-skate", "paper-plane"]
+    static let littleThings = choices.filter { !moods.contains($0) && !activities.contains($0) }
     static func label(_ id: String) -> String { id.replacingOccurrences(of: "-", with: " ") }
 }
 
@@ -27,8 +34,12 @@ final class CornerService {
     private let session: URLSession
     private let cookie: String
     private let ownerID: String
-    init(ownerID: String, configuration: URLSessionConfiguration = .ephemeral) {
+    private let familyID: String?
+    private let role: String?
+    init(ownerID: String, familyID: String? = nil, role: String? = nil, configuration: URLSessionConfiguration = .ephemeral) {
         self.ownerID = ownerID
+        self.familyID = familyID
+        self.role = role
         let config = configuration
         config.httpShouldSetCookies = false
         config.httpCookieStorage = nil
@@ -45,6 +56,8 @@ final class CornerService {
         request.httpShouldHandleCookies = false
         request.setValue(cookie, forHTTPHeaderField: "Cookie")
         request.setValue(ownerID, forHTTPHeaderField: "X-Fam-Corner-Account")
+        if let familyID, !familyID.isEmpty { request.setValue(familyID, forHTTPHeaderField: "X-Fam-Corner-Family") }
+        if let role, !role.isEmpty { request.setValue(role, forHTTPHeaderField: "X-Fam-Corner-Role") }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let value { request.httpBody = try JSONEncoder().encode(value) }

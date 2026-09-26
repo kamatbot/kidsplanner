@@ -2,7 +2,7 @@ import XCTest
 import UIKit
 
 final class StudyPalUITests: XCTestCase {
-    func testChildVisibilityPersistsAndParentHasNoPal() {
+    func testStudyPalVisibilityPersistsPerAccountAndParentHasPal() {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchEnvironment = ["FAM_BASE_URL": "http://127.0.0.1:18257", "FAM_ONBOARDED": "1", "FAM_THEME": "dark", "FAM_SCREEN": "today", "FAM_DEV_COOKIE": "fam_sess=kid; fam_qa_scenario=family-rings"]
@@ -27,8 +27,17 @@ final class StudyPalUITests: XCTestCase {
         app.launchEnvironment["FAM_DEV_COOKIE"] = "fam_sess=parent; fam_qa_scenario=family-rings"
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["today.hero.summary"].firstMatch.waitForExistence(timeout: 20))
-        XCTAssertFalse(toggle.exists)
-        XCTAssertFalse(app.buttons["today.studyPal.open"].exists)
+        let parentToggle = app.buttons["today.studyPal.toggle"]
+        for _ in 0..<12 where !parentToggle.isHittable { app.swipeUp() }
+        XCTAssertTrue(parentToggle.isHittable)
+        if parentToggle.label == "Show Koko" { parentToggle.tap() }
+        let parentOpen = app.buttons["today.studyPal.open"]
+        XCTAssertTrue(parentOpen.exists)
+        for _ in 0..<8 where !parentOpen.isHittable { app.swipeUp() }
+        parentOpen.tap()
+        let needsYou = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Needs you.")).firstMatch
+        XCTAssertTrue(needsYou.waitForExistence(timeout: 5)); needsYou.tap()
+        XCTAssertTrue(app.textFields["today.action.newTitle"].waitForExistence(timeout: 5))
     }
     func testLightLayoutAndHomeworkNavigation() {
         continueAfterFailure = false
