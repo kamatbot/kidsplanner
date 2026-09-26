@@ -5459,7 +5459,7 @@ function renderTodayActionQueue() {
     ring.innerHTML = !canShowContents
       ? `<div class="fr-ring-skeleton" aria-label="${loadingWithoutData ? 'Loading actions' : 'Actions unavailable'}"></div><span class="fr-ring-loading">${loadingWithoutData ? 'Loading…' : 'Unavailable'}</span>`
       : famRing({ size:188, stroke:18, key:'needs-you', rings:[{ value:cleared,total:cleared + nowGroup.length,color:'var(--fr-you)',radius:80 }], label:`${eligible.length} ${isKidSession() ? 'things to do' : 'things need you'}, ${cleared} cleared today` }) +
-        `<div class="fr-ring-center"><b>${eligible.length || (cleared ? '✓' : '0')}</b><span>${eligible.length ? isKidSession() ? 'to do' : 'need you' : 'All clear'}</span><small>${cleared} cleared today</small></div>`;
+        `<div class="fr-ring-center"><b>${eligible.length || (cleared ? '✓' : '0')}</b><span>${eligible.length ? isKidSession() ? 'To do' : 'Need you' : 'All clear'}</span><small>${cleared} cleared today</small></div>`;
   }
   listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now)).join('') ||
     (canShowContents ? `<div class="today-actions-empty"><strong>All clear.</strong><p>Nothing waiting right now.</p><button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>` : loadingWithoutData ? '<div class="fr-row-skeleton"></div><div class="fr-row-skeleton"></div>' : '');
@@ -5794,9 +5794,9 @@ function todayKidRowHtml(kid, parent, state, todayIso, progressState = 'loading'
     <header class="fr-kid-head"><button type="button" class="fr-kid-identity" onclick="${open}" aria-label="${parent ? `Open ${name}'s page` : 'Open your homework'}">${kidAvatarMarkup(kid.id)}<b>${name}</b></button><span class="fr-kid-chip ${!hwKnown ? 'is-unknown' : hw.overdue ? 'is-overdue' : hw.dueToday ? 'is-due' : 'is-clear'}">${hwKnown ? todayKidFacts(kid.id,todayIso) : hwUnknown}</span></header>
     <div class="fr-kid-body"><button type="button" class="fr-kid-rings" onclick="${open}" aria-label="${parent ? `Open ${name}'s progress` : 'Open your homework'}">${famRing({ rings, key: `kid-${kid.id}`, label: summary })}</button>
       <div class="fr-kid-stats">
-        <button type="button" class="fr-stat fr-stat-hw" onclick="openTodayKidHomework('${id}')"><b>${hwKnown ? hw.left : '—'}</b><span>${hwKnown ? `homework left<br>this week${hw.total && !hw.left ? ' · Done ✓' : ''}` : hwUnknown}</span></button>
+        <button type="button" class="fr-stat fr-stat-hw" onclick="openTodayKidHomework('${id}')"><b>${hwKnown ? hw.left : '—'}</b><span>${hwKnown ? `Homework left<br>this week${hw.total && !hw.left ? ' · Done ✓' : ''}` : hwUnknown}</span></button>
         <button type="button" class="fr-stat fr-stat-d3" onclick="openTodayLearning()"><b>${daily3 ? `${daily3.done}/4` : '—'}</b><span>Daily 4 today<br>${daily3 ? esc(daily3.status) : progressState === 'loading' ? 'Loading…' : 'Unavailable'}</span></button>
-        ${!habKnown ? `<div class="fr-stat fr-stat-hab"><b>—</b><span>${habUnknown}</span></div>` : hab.total ? `<details class="fr-habit-details"><summary class="fr-stat fr-stat-hab"><b>${hab.done}/${hab.total}</b><span>habits today<br>${hab.done === hab.total ? 'Done ✓' : 'Check in'}</span></summary><div class="fr-habit-popover"><h3>${name}’s habits</h3>${habits.map(renderTodayHabitRow).join('')}<button class="today-link" type="button" onclick="switchNavTab('goals')">All goals ${todayIcon('arrow')}</button></div></details>` : `<button type="button" class="fr-stat fr-stat-hab" onclick="switchNavTab('goals')"><b>—</b><span>No habits yet<br><em>Set a first habit</em></span></button>`}
+        ${!habKnown ? `<div class="fr-stat fr-stat-hab"><b>—</b><span>${habUnknown}</span></div>` : hab.total ? `<details class="fr-habit-details"><summary class="fr-stat fr-stat-hab"><b>${hab.done}/${hab.total}</b><span>Habits today<br>${hab.done === hab.total ? 'Done ✓' : 'Check in'}</span></summary><div class="fr-habit-popover"><h3>${name}’s habits</h3>${habits.map(renderTodayHabitRow).join('')}<button class="today-link" type="button" onclick="switchNavTab('goals')">All goals ${todayIcon('arrow')}</button></div></details>` : `<button type="button" class="fr-stat fr-stat-hab" onclick="switchNavTab('goals')"><b>—</b><span>No habits yet<br><em>Set a first habit</em></span></button>`}
       </div>
     </div>
     <a class="fr-kid-fams" href="/finance${parent ? '?kidId=' + encodeURIComponent(kid.id) : ''}">${fams}</a>
@@ -6029,8 +6029,8 @@ function renderTodayHomeworkRow(item, todayIso) {
   const overdue = !done && item.dueDate && item.dueDate < todayIso;
   const isToday = !done && item.dueDate === todayIso;
   let when = '';
-  if (overdue) when = isKidSession() ? 'catch up!' : 'overdue';
-  else if (isToday) when = 'today';
+  if (overdue) when = isKidSession() ? 'Catch up!' : 'Overdue';
+  else if (isToday) when = 'Today';
   else if (item.dueDate) when = parseIso(item.dueDate).toLocaleDateString('en-US', { weekday: 'short' });
   const whenClass = overdue ? 'overdue' : (isToday ? 'today' : '');
   const checkCls = done ? 'done' : (overdue ? 'overdue' : '');

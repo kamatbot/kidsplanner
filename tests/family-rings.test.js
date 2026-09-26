@@ -105,6 +105,7 @@ test('unavailable parent insights omit the Daily 4 ring instead of rendering fal
   const zero=ctx.todayKidRowHtml(kid,true,'error','2026-09-26',{date:'2026-09-26',parts:{}});
   assert.equal(ctx.rings.length,3);
   assert.match(zero,/>0\/4</);
+  assert.match(zero,/Homework left<br>this week/);
 });
 
 test('kid hero counts only own actions and own homework, excluding shared and sibling work', () => {

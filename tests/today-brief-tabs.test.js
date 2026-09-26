@@ -91,6 +91,7 @@ test('compact homework preview counts unfinished work, shows two, and preserves 
   assert.equal(nodes['today-homework-count'].textContent, '3 due');
   assert.equal((nodes['today-homework-list'].innerHTML.match(/<button /g) || []).length, 2);
   assert.match(nodes['today-homework-list'].innerHTML, /openHomeworkDetail/);
+  assert.match(nodes['today-homework-list'].innerHTML, />Today</);
   assert.doesNotMatch(nodes['today-homework-list'].innerHTML, /toggleHomeworkDone|third/);
   ctx.kid = true;
   ctx.renderTodayHomework('2026-09-08');
