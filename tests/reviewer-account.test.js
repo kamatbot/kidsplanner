@@ -42,7 +42,8 @@ test("reviewer account seeding creates complete demo family", (t) => {
   assert.equal(fam.kids.length, 2);
 
   // Calendar events check
-  const famEvents = events.listEvents(result.familyId, {});
+  // Inspect the fixed demo fixture window, independent of the wall clock.
+  const famEvents = events.listEvents(result.familyId, { from: "2026-09-01", to: "2026-09-30" });
   assert.ok(famEvents.length >= 4, "Should have seeded multiple calendar events");
   const titles = famEvents.map((e) => e.title);
   assert.ok(titles.some((t) => t.includes("Soccer Practice")));
