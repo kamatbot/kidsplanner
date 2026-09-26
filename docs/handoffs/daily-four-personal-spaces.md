@@ -22,6 +22,10 @@ Artwork lives in public/img/my-corner and ios/FamETC/Assets.xcassets/Corner-*.im
 
 No real-account production navigation or passkey registration/authentication ceremony was exercised. Release checks cover public endpoints and unauthenticated contract responses.
 
+## Latest presentation change
+
+Moved the web My Corner entry into the Today header, immediately before the school-sync status. Responsive wrapping and open/close verified in Chromium at 390, 1024 and 1920 pixels. This localized presentation change uses UX_FAST focused evidence; no full CI rerun or deployment was performed for it.
+
 ## Current authorization and external state
 
 The owner has revoked deployment authorization for this task and reserved merge/deploy for Claude. Hostinger deployments must use merged main only, never a feature branch. The rule is recorded in repository AGENTS.md, the global Codex agreement and the Hostinger deployment skill.
@@ -30,6 +34,6 @@ The release worker had already initiated a Hostinger upload/build before the sto
 
 ## Security issue requiring resolution before another release
 
-The release worker reported that its uploaded archive is publicly downloadable and contains `.env.hostinger` and an APNs `.p8` key. Do not reuse that archive or publish its URL. The owner was informed and asked for permission to remove the exposed archive without changing the running app. Credential rotation and a safe private-file provisioning/upload path need resolution with the owner before further deployment. Do not expose secret values in logs, messages or commits.
+The release worker reported that its uploaded archive is publicly downloadable and contains `.env.hostinger` and an APNs `.p8` key. Do not reuse that archive or publish its URL. The owner was informed and authorized removing the exposed archive without changing the running app. The existing release worker owns this cleanup; final outcome is pending. Credential rotation and a safe private-file provisioning/upload path need resolution with the owner before further deployment. Do not expose secret values in logs, messages or commits.
 
 The private local incident receipt (including exact provider archive path) is `.dev-data/daily-four/release/deploy-revoked-20260926.json`. Cleanup status may be updated in a later handoff commit. This document contains no credentials or download URL.

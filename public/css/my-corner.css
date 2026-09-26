@@ -21,7 +21,9 @@
 .fam-corner-drawer { color:var(--text, #292335); background:var(--panel, #fff); border:0; border-radius:20px 20px 0 0; padding:20px; box-sizing:border-box; position:fixed; margin:auto auto 0; width:min(100%,460px); max-height:80dvh; }
 .fam-corner-conflict { border:2px solid var(--accent, #6f43d6); padding:16px; border-radius:16px; margin:16px 0; }
 .fam-corner-conflict button { margin:8px 8px 0 0; }
-#fam-my-corner-entry { margin:16px 0; }
+#fam-my-corner-entry { margin:0; }
+.today-header-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; margin-inline-start:auto; }
+@media(max-width:650px) { .today-header-actions { width:100%; margin-inline-start:0; justify-content:flex-start; } }
 @media(max-width:650px) { .fam-corner { padding:16px; } .fam-corner-layout { display:block; } .fam-corner-desktop-drawer { display:none; } }
 
 .fam-corner select, .fam-corner-drawer select { display:block; width:100%; min-height:44px; margin-bottom:10px; padding:8px; font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--border); border-radius:10px; }

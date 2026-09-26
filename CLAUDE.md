@@ -35,7 +35,8 @@ explicit confirmation first.
   retained only as rollback compatibility and is not presented in the UI.
 
 ## Deploy pipeline (standing authorization granted 2026-07-03)
-Every web change: **test → commit → deploy → verify on live fametc.com.**
+For an authorized web release: **test → commit → merge to main → deploy → verify on live fametc.com.**
+Hostinger deployments must come from committed, merged `main`, never a feature branch. Verify the release SHA equals current `origin/main` before packaging or uploading. A request for a branch handoff stops before merge/deploy, even under standing authorization.
 - **Canonical packer:** use [`scripts/pack-deploy.sh`](scripts/pack-deploy.sh)
   for the Hostinger artifact. It refreshes the approved `.env.hostinger`
   fallback, stamps the commit, excludes `ios/`, includes only the named APNs
