@@ -142,40 +142,56 @@ private struct FamilyRingsActionRow: View {
     private var isReview: Bool { store.isParent && action.sourceType == "homework" }
     private var overdue: Bool { ActionQueue.effectiveDue(action).map { $0.dateKey < Agenda.todayKey() } ?? false }
     private var meta: String { "\(kid?.name ?? "Family / shared") · \(action.sourceType.capitalized) · \(ActionQueue.dueLabel(for: action))" }
+    private var rowContent: some View {
+        HStack(spacing: compact ? 8 : 12) {
+            if let kid { KidProfileAvatar(kid: kid, size: compact ? 28 : 40) }
+            else { Text("F").font(Typography.itemTitle).foregroundStyle(Palette.frOnYou)
+                .frame(width: compact ? 28 : 40, height: compact ? 28 : 40).background(Palette.frYou, in: Circle()).accessibilityHidden(true) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(action.title).font(compact ? Typography.body.weight(.semibold) : Typography.itemTitle).foregroundStyle(Palette.frInk)
+                    .lineLimit(textSize.isAccessibilitySize ? nil : 2)
+                Text(meta).font(compact ? Typography.caption : Typography.label).foregroundStyle(overdue ? Palette.frDanger : Palette.frInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+        }
+    }
     var body: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
                                                  : AnyLayout(HStackLayout(alignment: .center, spacing: compact ? 8 : 12))
-        layout {
-            HStack(spacing: compact ? 8 : 12) {
-                if let kid { KidProfileAvatar(kid: kid, size: compact ? 28 : 40) }
-                else { Text("F").font(Typography.itemTitle).foregroundStyle(Palette.frOnYou)
-                    .frame(width: compact ? 28 : 40, height: compact ? 28 : 40).background(Palette.frYou, in: Circle()).accessibilityHidden(true) }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(action.title).font(compact ? Typography.body.weight(.semibold) : Typography.itemTitle).foregroundStyle(Palette.frInk)
-                        .lineLimit(textSize.isAccessibilitySize ? nil : 2)
-                    Text(meta).font(compact ? Typography.caption : Typography.label).foregroundStyle(overdue ? Palette.frDanger : Palette.frInk2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-            }
+        Group {
             if isReview, let sourceID = action.sourceId {
-                Button("Review") { homeworkRef = HWRef(id: sourceID) }
-                    .buttonStyle(RingsCapsuleStyle(filled: true, compact: compact))
-                    .accessibilityIdentifier("today.action.review.\(action.id)")
-            } else if store.canCompleteAction(action) {
-                Button("Done") {
-                    let before = FamilyRingsMath.parentRing(viewerItems: store.actions.filter { store.canViewAction($0) })
-                    Haptics.impact(.light)
-                    Task {
-                        await store.completeAction(action)
-                        let after = FamilyRingsMath.parentRing(viewerItems: store.actions.filter { store.canViewAction($0) })
-                        if store.actions.first(where: { $0.id == action.id })?.isDone == true,
-                           before.dueNow > 0, after.dueNow == 0, after.cleared > 0 { Haptics.notify(.success) }
+                // The whole row opens the homework review; no separate button.
+                Button { Haptics.selection(); homeworkRef = HWRef(id: sourceID) } label: {
+                    HStack(spacing: compact ? 8 : 12) {
+                        rowContent
+                        Image(systemName: "chevron.right").font(Typography.caption.weight(.semibold))
+                            .foregroundStyle(Palette.frInk2).accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableStyle(scale: 0.99))
+                .accessibilityHint("Opens the homework to review")
+                .accessibilityIdentifier("today.action.review.\(action.id)")
+            } else {
+                layout {
+                    rowContent
+                    if store.canCompleteAction(action) {
+                        Button("Done") {
+                            let before = FamilyRingsMath.parentRing(viewerItems: store.actions.filter { store.canViewAction($0) })
+                            Haptics.impact(.light)
+                            Task {
+                                await store.completeAction(action)
+                                let after = FamilyRingsMath.parentRing(viewerItems: store.actions.filter { store.canViewAction($0) })
+                                if store.actions.first(where: { $0.id == action.id })?.isDone == true,
+                                   before.dueNow > 0, after.dueNow == 0, after.cleared > 0 { Haptics.notify(.success) }
+                            }
+                        }
+                        .buttonStyle(RingsCapsuleStyle(compact: compact))
+                        .disabled(store.completingActionIDs.contains(action.id))
+                        .accessibilityIdentifier("today.action.done.\(action.id)")
                     }
                 }
-                .buttonStyle(RingsCapsuleStyle(compact: compact))
-                .disabled(store.completingActionIDs.contains(action.id))
-                .accessibilityIdentifier("today.action.done.\(action.id)")
             }
         }
         .padding(.vertical, 4)
