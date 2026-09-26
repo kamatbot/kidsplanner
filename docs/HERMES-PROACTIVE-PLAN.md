@@ -1,6 +1,12 @@
 # Hermes proactive assistant: analysis and completion plan
 
-**Status:** analysis and plan, 2026-09-26. The decisions in §12 are pending the owner.
+**Status:** analysis and plan, 2026-09-26. **Superseded where it conflicts with the owner's decisions below**, and v1 shipped the same day. The build contract is [HERMES-THREADS-CONTRACT.md](HERMES-THREADS-CONTRACT.md).
+
+> **Owner decisions (2026-09-26)**
+> - **Where the loop runs:** the proactive loop and nudges run on the always-on Mac inside the Hermes plugin (`integrations/hermes/fametc/proactive.py`), not on the server. This supersedes D1.
+> - **Private threads:** every parent and every kid has a private Hermes thread (D3: yes). Kids get messages on their own devices from day one (D5: yes).
+> - **Pickup:** no claim flow, travel times or time settings (D4, D6). Parents get plain status instead: "Ryshi's school ended now. Arya finishes in 30 min." Location-based features come later.
+> - **Still to do:** §9 #2 (approval pushes), §9 #4 and #5 for meal prep, and the Today "Hermes" strip.
 **Author:** Claude (Opus). **Implementer:** Astra.
 **Builds on:**
 - [FAMILY-TIME-SAVER-PLAN.md](FAMILY-TIME-SAVER-PLAN.md), which already calls for "one notification preference and quiet-hours service" and decisions like "Can someone pick up Sam?".
