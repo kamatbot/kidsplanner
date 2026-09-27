@@ -66,6 +66,7 @@ private struct ParentTodayStack: View {
     let onDaily3: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
+            ScreenTimePromoCard()
             FamilyRingsHero(onSeeAll: { showActions = true })
             FamilyRingsKidGrid(onOpenHomework: onOpenHomework, onDaily3: onDaily3)
             FamilyRingsDayStrip(onOpenMeals: onOpenMeals)
