@@ -650,7 +650,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <button type="button" data-settings-nav="security" aria-controls="settings-security" onclick="showSettingsSection('security')">Security</button>
           </nav>
           <div class="settings-content">
-            <div id="settings-family" data-settings-section="family">        <section class="card">
+            <div id="settings-family" data-settings-section="family">        <section class="card" id="settings-your-name-card" hidden>
+          <h2>Your name</h2><p class="settings-description">How Fam ETC greets you and signs your messages.</p>
+          <form id="settings-your-name-form" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap" onsubmit="handleSettingsSaveName(event)">
+            <div class="form-group" style="margin:0;flex:1;min-width:180px">
+              <label for="settings-your-name">First and last name</label>
+              <input type="text" id="settings-your-name" maxlength="60" autocomplete="name" placeholder="e.g. Sam Rivera" required>
+            </div>
+            <button type="submit" class="btn-primary">Save</button>
+          </form>
+          <p id="settings-your-name-status" class="text-muted" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card">
           <h2>Family</h2><p class="settings-description">A familiar face and color for everyone, wherever you plan or chat.</p>
           <!-- Kid sessions are role-scoped: family management (parents, invite,
                kid add/remove) is parent-only — see APP-BRIEF.md "Kid sign-in". -->

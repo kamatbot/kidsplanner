@@ -148,6 +148,11 @@
     }
   }
 
+  async function updateMyName(name) {
+    const data = await api("/api/me", { method: "PATCH", body: JSON.stringify({ name: name || "" }) });
+    return data && data.user;
+  }
+
   /* ---------- family ---------- */
   async function getFamilies() {
     const data = await api("/api/family", { method: "GET" });
@@ -1120,6 +1125,7 @@
     backupCodeSignIn,
     getCredentials,
     renameCredential,
+    updateMyName,
     removeCredential,
     registerAdditionalPasskey,
     requestKidAccess,

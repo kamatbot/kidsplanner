@@ -517,6 +517,19 @@ app.get("/api/me", (req, res) => {
   res.json({ user: publicProfile(user) });
 });
 
+// A parent's own display name (greetings, chat). Early iOS sign-ups stored the
+// family name here, so parents need a way to set their real name.
+app.patch("/api/me", requireAuth, requireParent, (req, res) => {
+  const name = String((req.body || {}).name || "").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: "Please enter your name." });
+  const data = store.updateData(req.user.id, (d) => {
+    if (!d.profile) d.profile = {};
+    d.profile.name = name;
+  });
+  if (!data) return res.status(404).json({ error: "User not found." });
+  res.json({ user: publicProfile(store.getUser(req.user.id)) });
+});
+
 // ===================== HEALTH =====================
 app.get(["/api/health", "/healthz"], (req, res) => {
   res.set("Cache-Control", "no-store");

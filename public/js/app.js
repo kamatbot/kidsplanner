@@ -988,6 +988,37 @@ async function handleHermesDisconnect() {
   }
 }
 
+function renderYourNameSettings() {
+  const card = document.getElementById('settings-your-name-card');
+  if (!card) return;
+  card.hidden = isKidSession();
+  const input = document.getElementById('settings-your-name');
+  if (input && document.activeElement !== input) input.value = ownName();
+}
+
+// Early iOS sign-ups stored the family name as the parent's own name; treat that as blank.
+function ownName() {
+  const own = (sessionUser?.name || '').trim();
+  return own !== (currentFamily?.name || '').trim() ? own : '';
+}
+
+async function handleSettingsSaveName(event) {
+  event.preventDefault();
+  const input = document.getElementById('settings-your-name');
+  const status = document.getElementById('settings-your-name-status');
+  const name = (input?.value || '').trim();
+  if (!name) { if (status) status.textContent = 'Please enter your name.'; return; }
+  try {
+    const user = await window.auth.updateMyName(name);
+    if (user) sessionUser = Object.assign({}, sessionUser, { name: user.name });
+    if (input) input.value = sessionUser.name || name;
+    if (status) status.textContent = 'Saved.';
+    renderTodayScreen();
+  } catch (e) {
+    if (status) status.textContent = e.message || 'Could not save your name. Please try again.';
+  }
+}
+
 function renderManageFamily() {
   applyRoleScopingToUI();
   renderChatDockAvatars();
@@ -5839,7 +5870,7 @@ function renderTodayScreen() {
 
   const greetingEl = document.getElementById('today-greeting');
   if (greetingEl) {
-    const firstName = (sessionUser.name || '').split(' ')[0] || 'there';
+    const firstName = ownName().split(' ')[0] || 'there';
     const hour = now.getHours();
     const salutation = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
     greetingEl.textContent = `${salutation}, ${firstName}`;
@@ -6836,7 +6867,7 @@ function switchNavTab(tab) {
 
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
-  if (tab === 'settings') { renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); renderSecuritySettings(); showSettingsSection(settingsSection); }
+  if (tab === 'settings') { renderYourNameSettings(); renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); renderSecuritySettings(); showSettingsSection(settingsSection); }
   if (tab === 'homework') { const pending = loadHomework(); renderHomeworkHub(); pending.then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
