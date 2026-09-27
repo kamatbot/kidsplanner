@@ -5,9 +5,9 @@ import ManagedSettings
 import DeviceActivity
 
 extension ManagedSettingsStore.Name {
-    static let downtime = Self("downtime")
-    static let pause = Self("pause")
-    static func limit(_ id: String) -> Self { Self("limit.\(id)") }
+    static let downtime = Self(ScreenTimeSchedule.downtimeStore)
+    static let pause = Self(ScreenTimeSchedule.pauseStore)
+    static func limit(_ id: String) -> Self { Self(ScreenTimeSchedule.limitStore(id)) }
 }
 
 extension DeviceActivityName {
@@ -62,6 +62,9 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let usageSelection = "fam_st_usageSelection"
         static let usageRecord = "fam_st_usageRecord"
         static let usageHeartbeatAt = "fam_st_usageHeartbeatAt"
+        static let registeredAt = "fam_st_registeredAt"
+        static let registeredTotalMinutes = "fam_st_registeredTotalMinutes"
+        static func limitEventAt(_ id: String) -> String { "fam_st_limitEventAt.\(id)" }
     }
 
     let defaults: UserDefaults
@@ -182,8 +185,32 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     var lastMonitorAt: Date? { defaults.object(forKey: Key.lastMonitorAt) as? Date }
     func recordMonitorFire(_ now: Date = Date()) { defaults.set(now, forKey: Key.lastMonitorAt) }
 
+    /// When the app last (re)registered the DeviceActivity schedules (registration-burst filter).
+    var registeredAt: Date? { defaults.object(forKey: Key.registeredAt) as? Date }
+
+    /// Weekday ("1"…"7") → the `limit.total` threshold minutes the app last registered.
+    private var registeredTotalMinutes: [String: Int] {
+        defaults.dictionary(forKey: Key.registeredTotalMinutes) as? [String: Int] ?? [:]
+    }
+
+    /// When `limit.<id>` last fired (only an event from today counts).
+    func limitEventAt(_ id: String) -> Date? { defaults.object(forKey: Key.limitEventAt(id)) as? Date }
+    func recordLimitEvent(_ id: String, now: Date = Date()) { defaults.set(now, forKey: Key.limitEventAt(id)) }
+
+    /// Forgets recorded `limit.*` events (a new day, or thresholds re-registered).
+    func forgetLimitEvents(extraIds: [String] = []) {
+        let ids = Set((storedPolicy?.limits.map(\.id) ?? []) + extraIds).union(shieldedLimitIds)
+        ids.forEach { defaults.removeObject(forKey: Key.limitEventAt($0)) }
+    }
+
     /// Store name → human reason, read by the shield configuration extension.
     var shieldReasons: [String: String] { defaults.dictionary(forKey: Key.shieldReasons) as? [String: String] ?? [:] }
+
+    /// Limit ids whose `limit.<id>` store has a shield reason recorded.
+    private var shieldedLimitIds: Set<String> {
+        let prefix = "limit."
+        return Set(shieldReasons.keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) })
+    }
     private func setReason(_ reason: String?, for store: String) {
         var r = shieldReasons
         r[store] = reason
@@ -228,7 +255,8 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     func shieldLimit(id: String) {
-        guard let limit = storedPolicy?.limits.first(where: { $0.id == id }) else { return }
+        guard let policy = storedPolicy, policy.enabled,
+              let limit = policy.limits.first(where: { $0.id == id }) else { return }
         if limit.isTotal {
             // Whole-device screen time: shield everything, not just the selection.
             shieldAll(.limit(id), reason: "Daily screen time is up")
@@ -250,9 +278,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// Clears every `limit.*` store we know of (stored policy + shielded reasons).
     func clearLimitStores(extraIds: [String] = []) {
-        let prefix = "limit."
-        let shielded = shieldReasons.keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
-        let ids = Set((storedPolicy?.limits.map(\.id) ?? []) + shielded + extraIds)
+        let ids = Set((storedPolicy?.limits.map(\.id) ?? []) + extraIds).union(shieldedLimitIds)
         ids.forEach { clear(.limit($0)) }
     }
 
@@ -262,13 +288,103 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         clear(.pause)
     }
 
-    /// Downtime window `id` started: shield all if it started on a listed day.
-    func downtimeDidStart(id: String, now: Date = Date()) {
-        guard let dt = storedPolicy?.downtime.first(where: { $0.id == id }) else { return }
+    // MARK: Guards (docs/SCREEN-TIME-UX.md §5 — shield only when the stored policy says so now)
+
+    /// Removes every shield the stored policy doesn't justify right now; never adds one.
+    /// Safe from the monitor extension. Runs after every device response, at every
+    /// interval start/end and at the start of `apply`.
+    func reconcileShields(now: Date = Date()) {
+        let policy = storedPolicy
+        let shielded = shieldedLimitIds
+        let today = ScreenTimeSchedule.dayString(now)
+        let stale = shielded.filter { id in limitEventAt(id).map { ScreenTimeSchedule.dayString($0) != today } ?? false }
+        let stores = ScreenTimeSchedule.storesToClear(policy: policy, isEnrolled: isEnrolled, shieldedLimitIds: shielded,
+                                                      todayMinutes: todayUsage(now: now)?.minutes ?? 0,
+                                                      totalEventCounts: totalEventCounts(policy, now: now),
+                                                      staleLimitIds: stale, now: now)
+        stores.forEach { clear(ManagedSettingsStore.Name($0)) }
+    }
+
+    /// Does today's `limit.total` event (if any) count towards the decision?
+    private func totalEventCounts(_ policy: ScreenTimePolicy?, now: Date) -> Bool {
+        guard let total = policy?.limits.first(where: \.isTotal),
+              let threshold = ScreenTimeSchedule.todayAllowance(policy, now: now) else { return false }
         let weekday = Calendar.current.component(.weekday, from: now)
-        if ScreenTimeSchedule.isScheduled(today: weekday, days: dt.days) {
-            shieldAll(.downtime, reason: "Downtime")
+        return ScreenTimeSchedule.totalEventCounts(eventAt: limitEventAt(total.id),
+                                                   registeredMinutes: registeredTotalMinutes[String(weekday)],
+                                                   threshold: threshold, now: now)
+    }
+
+    /// Shields `total` iff `ScreenTimeSchedule.totalShieldDecision` says today's usage reached
+    /// the allowance. Returns true only the first time today (the caller heartbeats).
+    @discardableResult
+    func decideTotalShield(now: Date = Date()) -> Bool {
+        guard isEnrolled, let policy = storedPolicy, policy.enabled,
+              let total = policy.limits.first(where: \.isTotal),
+              let threshold = ScreenTimeSchedule.todayAllowance(policy, now: now) else { return false }
+        let usage = todayUsage(now: now)
+        // Never trust more minutes than have passed since midnight (spurious milestones).
+        guard ScreenTimeSchedule.isPlausibleUsage(minutes: usage?.minutes ?? 0, now: now),
+              ScreenTimeSchedule.totalShieldDecision(recorded: usage?.minutes ?? 0, threshold: threshold,
+                                                     limitEventSeenToday: totalEventCounts(policy, now: now)) else { return false }
+        shieldLimit(id: total.id)
+        guard usage?.limitReachedAt == nil else { return false }
+        recordUsage(limitReached: true, now: now)
+        return true
+    }
+
+    /// A `limit.<id>` event on today's `day.N`. `total` is decided from milestones; an apps
+    /// limit shields unless it's the registration burst. Returns true when the daily screen
+    /// time was first reached today (the caller heartbeats).
+    func limitEventDidFire(id: String, now: Date = Date()) -> Bool {
+        guard isEnrolled, let policy = storedPolicy, policy.enabled,
+              let limit = policy.limits.first(where: { $0.id == id }) else { return false }
+        let threshold = ScreenTimeSchedule.minutes(for: limit, weekday: Calendar.current.component(.weekday, from: now),
+                                                   bonus: policy.bonus, today: now)
+        guard threshold > 0 else { return false }
+        if limit.isTotal {
+            recordLimitEvent(id, now: now)
+            return decideTotalShield(now: now)
         }
+        let recorded = todayUsage(now: now)?.minutes ?? 0
+        guard !ScreenTimeSchedule.shouldIgnoreAppsLimitEvent(
+            now: now, registeredAt: registeredAt,
+            recordedMinutes: ScreenTimeSchedule.isPlausibleUsage(minutes: recorded, now: now) ? recorded : 0,
+            threshold: threshold) else { return false }
+        recordLimitEvent(id, now: now)
+        shieldLimit(id: id)
+        return false
+    }
+
+    /// Would downtime window `id` shield right now (enabled, inside the window that began
+    /// on a listed day)?
+    func downtimeShouldShield(id: String, now: Date = Date()) -> Bool {
+        guard isEnrolled, let policy = storedPolicy, policy.enabled,
+              let window = policy.downtime.first(where: { $0.id == id }) else { return false }
+        return ScreenTimeSchedule.downtimeShouldShield(window, now: now)
+    }
+
+    /// Downtime window `id` started: shield all only if `downtimeShouldShield`.
+    func downtimeDidStart(id: String, now: Date = Date()) {
+        guard downtimeShouldShield(id: id, now: now) else { return }
+        shieldAll(.downtime, reason: "Downtime")
+    }
+
+    /// Downtime window `id` ended: clear unless another window is still on.
+    func downtimeDidEnd(id: String, now: Date = Date()) {
+        guard ScreenTimeSchedule.activeDowntimeIds(storedPolicy, now: now).allSatisfy({ $0 == id }) else { return }
+        clear(.downtime)
+    }
+
+    /// Would the pause shield right now (enabled and `pauseUntil` still ahead)?
+    func pauseShouldShield(now: Date = Date()) -> Bool {
+        guard isEnrolled, let policy = storedPolicy, policy.enabled else { return false }
+        return ScreenTimeSchedule.pauseInterval(now: now, until: policy.pauseUntilDate) != nil
+    }
+
+    func pauseDidStart(now: Date = Date()) {
+        guard pauseShouldShield(now: now) else { return }
+        shieldAll(.pause, reason: "Paused by a parent")
     }
 
     // MARK: Apply (app only — calls DeviceActivityCenter)
@@ -279,26 +395,35 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         let previousLimitIds = storedPolicy?.limits.map(\.id) ?? []
         storedPolicy = policy
         defer { defaults.set(policy.version, forKey: Key.appliedVersion) }
+        reconcileShields(now: now)
         let center = DeviceActivityCenter()
+        let registered = Set(center.activities)
 
         guard policy.enabled else {
-            center.stopMonitoring()
+            // Off: stop everything except the heartbeats, so the device keeps checking in.
+            // Never pass [] — stopMonitoring([]) stops every activity.
+            let stop = registered.filter { !$0.rawValue.hasPrefix("heartbeat.") }
+            if !stop.isEmpty { center.stopMonitoring(Array(stop)) }
+            registerHeartbeats(center: center, skipping: registered)
+            forgetLimitEvents(extraIds: previousLimitIds)
             clearAllStores(extraLimitIds: previousLimitIds)
             defaults.removeObject(forKey: Key.scheduleSignature)
             defaults.removeObject(forKey: Key.pauseSignature)
             return
         }
 
-        let registered = Set(center.activities)
         // Today's bonus is part of the signature, so a new/raised bonus re-registers
         // today's day.N with the higher threshold and the limit stores (incl.
         // `limit.total`) are cleared right away; the next day it drops back out.
-        // ponytail: if the app never applies again that day, day.N keeps the bonus
-        // threshold for the same weekday next week (late, never early, shield);
-        // apply from the monitor's day.N start if that ever matters.
+        // If the app never applies again that day, day.N keeps the bonus threshold for
+        // the same weekday next week, but `decideTotalShield` still shields on time from
+        // the milestones against the stored policy's allowance.
         let signature = Self.scheduleSignature(policy, usage: usageSelection, now: now)
         if signature != defaults.string(forKey: Key.scheduleSignature) || !registered.contains(.day(1)) {
-            center.stopMonitoring(Array(registered.filter { $0 != .pause }))
+            let stop = registered.filter { $0 != .pause }
+            if !stop.isEmpty { center.stopMonitoring(Array(stop)) }
+            // Events recorded against the old thresholds no longer vouch for the new ones.
+            forgetLimitEvents(extraIds: previousLimitIds)
             clearLimitStores(extraIds: previousLimitIds)
             register(policy, center: center, now: now)
             defaults.set(signature, forKey: Key.scheduleSignature)
@@ -337,12 +462,26 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// Stops every schedule and removes all shields, credentials and the stored policy.
     func reset() {
         DeviceActivityCenter().stopMonitoring()
+        forgetLimitEvents()
         clearAllStores()
         clearCredentials()
         storedPolicy = nil
         storedAgreement = nil
         storedRequests = nil
-        [Key.scheduleSignature, Key.pauseSignature, Key.appliedVersion, Key.mode].forEach(defaults.removeObject(forKey:))
+        [Key.scheduleSignature, Key.pauseSignature, Key.appliedVersion, Key.mode,
+         Key.registeredAt, Key.registeredTotalMinutes].forEach(defaults.removeObject(forKey:))
+    }
+
+    /// Registers the quarter-day heartbeat activities that aren't in `registered`.
+    private func registerHeartbeats(center: DeviceActivityCenter, skipping registered: Set<DeviceActivityName> = []) {
+        for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() where !registered.contains(.heartbeat(n)) {
+            do {
+                try center.startMonitoring(.heartbeat(n), during: DeviceActivitySchedule(intervalStart: w.start,
+                                                                                         intervalEnd: w.end, repeats: true))
+            } catch {
+                print("[screentime] heartbeat.\(n) schedule failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func register(_ policy: ScreenTimePolicy, center: DeviceActivityCenter, now: Date) {
@@ -355,15 +494,19 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         // DeviceActivity allows ~20 monitored activities per app (usage milestones are
         // events, not activities). Budget:
         // day.1…7 (7) + heartbeat.0…3 (4) + downtime (≤ 4, capped below) + pause (1) = 16.
+        // Stamped before registering: the includesPastActivity burst follows immediately.
+        defaults.set(now, forKey: Key.registeredAt)
         let everything = everythingSelection(policy)
         let selections = policy.limits.compactMap { l -> (ScreenTimeLimit, FamilyActivitySelection)? in
             guard let sel = Self.decodeSelection(l.selection), !Self.isEmpty(sel) else { return nil }
             return (l, sel)
         }
+        var totalMinutes: [String: Int] = [:]
         for weekday in 1...7 {
             var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
             for (limit, sel) in selections {
                 let minutes = max(1, ScreenTimeSchedule.minutes(for: limit, weekday: weekday, bonus: policy.bonus, today: now))
+                if limit.isTotal { totalMinutes[String(weekday)] = minutes }
                 events[DeviceActivityEvent.Name("limit.\(limit.id)")] = DeviceActivityEvent(
                     applications: sel.applicationTokens,
                     categories: sel.categoryTokens,
@@ -387,6 +530,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                                                         intervalEnd: DateComponents(hour: 23, minute: 59, weekday: weekday),
                                                         repeats: true), events: events)
         }
+        defaults.set(totalMinutes, forKey: Key.registeredTotalMinutes)
 
         for dt in policy.downtime.prefix(4) {
             guard let s = ScreenTimeSchedule.parseTime(dt.start), let e = ScreenTimeSchedule.parseTime(dt.end),
@@ -394,9 +538,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             start(.downtime(dt.id), DeviceActivitySchedule(intervalStart: s, intervalEnd: e, repeats: true))
         }
 
-        for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() {
-            start(.heartbeat(n), DeviceActivitySchedule(intervalStart: w.start, intervalEnd: w.end, repeats: true))
-        }
+        registerHeartbeats(center: center)
     }
 
     /// Stable hash of everything that shapes the DeviceActivity registration.
@@ -462,16 +604,19 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         return saved.agreement
     }
 
-    /// Device request whose response is `{ policy, agreement }`: stores both (does not apply).
+    /// Device request whose response is `{ policy, agreement }`: stores both (does not apply)
+    /// and removes any shield the new policy no longer justifies — so a parent's "turn off"
+    /// clears the shields even from the extension or while authorization is revoked.
     private func policyRequest(_ path: String, method: String, body: [String: Any],
                                completion: @escaping (Result<ScreenTimePolicy, Error>) -> Void) {
         deviceRequest(path, method: method, body: body) { [weak self] (result: Result<ScreenTimePolicyResponse, Error>) in
-            completion(result.map { r in
-                self?.storedPolicy = r.policy
-                self?.storedAgreement = r.agreement
-                if let requests = r.requests { self?.storedRequests = requests }
-                return r.policy
-            })
+            if case .success(let r) = result, let self {
+                self.storedPolicy = r.policy
+                self.storedAgreement = r.agreement
+                if let requests = r.requests { self.storedRequests = requests }
+                self.reconcileShields()
+            }
+            completion(result.map(\.policy))
         }
     }
 

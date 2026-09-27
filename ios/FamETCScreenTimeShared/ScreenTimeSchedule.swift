@@ -131,4 +131,116 @@ enum ScreenTimeSchedule {
         f.formatOptions = [.withInternetDateTime]
         return f.date(from: text)
     }
+
+    // MARK: Enforcement guards (docs/SCREEN-TIME-UX.md §5)
+
+    /// `ManagedSettingsStore.Name` raw values the enforcer shields with.
+    static let downtimeStore = "downtime"
+    static let pauseStore = "pause"
+    static func limitStore(_ id: String) -> String { "limit.\(id)" }
+
+    /// DeviceActivity can deliver an interval start a moment before its scheduled minute.
+    static let callbackLeeway: TimeInterval = 60
+
+    /// Milestones are the truth for `total`: shield iff today's recorded minutes reached the
+    /// allowance, or a real `limit.total` event fired and the minutes are within one
+    /// 15-minute milestone of it. A spurious event with nothing recorded shields nothing.
+    static func totalShieldDecision(recorded: Int, threshold: Int, limitEventSeenToday: Bool) -> Bool {
+        guard threshold > 0 else { return false }
+        if recorded >= threshold { return true }
+        return limitEventSeenToday && recorded > 0 && recorded >= threshold - 15
+    }
+
+    /// Usage can't exceed the time since local midnight (day.N starts at 00:00), with under a
+    /// minute of slack. Rejects spurious `usage.<m>` milestones (seen on iOS 26.2/26.3), e.g.
+    /// usage.120 at 01:00 or usage.15 at 00:14.
+    static func isPlausibleUsage(minutes: Int, now: Date, calendar: Calendar = .current) -> Bool {
+        let elapsed = now.timeIntervalSince(calendar.startOfDay(for: now)) / 60
+        return Double(minutes) < elapsed + 1
+    }
+
+    /// Does a `limit.total` event recorded at `eventAt` still vouch for today's `threshold`?
+    /// Only when it fired today on a registration at least that high (a bonus the app
+    /// hasn't registered yet raises the threshold past the event). nil registration = same.
+    static func totalEventCounts(eventAt: Date?, registeredMinutes: Int?, threshold: Int, now: Date,
+                                 calendar: Calendar = .current) -> Bool {
+        guard let eventAt, dayString(eventAt, calendar: calendar) == dayString(now, calendar: calendar) else { return false }
+        return (registeredMinutes ?? threshold) >= threshold
+    }
+
+    /// Is `name` today's `day.N` activity? Anything else (another weekday, downtime, pause,
+    /// heartbeat, a malformed name) is never a reason to shield on a threshold event.
+    static func isTodayActivity(_ name: String, now: Date, calendar: Calendar = .current) -> Bool {
+        guard name.hasPrefix("day."), let n = Int(name.dropFirst("day.".count)) else { return false }
+        return n == calendar.component(.weekday, from: now)
+    }
+
+    /// Within 60 s of the app (re)registering the schedules (or with the clock set back):
+    /// DeviceActivity's `includesPastActivity` burst, not a real crossing.
+    static func isRegistrationEcho(now: Date, registeredAt: Date?) -> Bool {
+        guard let registeredAt else { return false }
+        return now.timeIntervalSince(registeredAt) <= 60
+    }
+
+    /// Apps limits have no milestone cross-check, so a `limit.<id>` event in the
+    /// registration burst is ignored — unless today's recorded total (apps ⊆ everything)
+    /// already vouches for it, e.g. a limit reached this morning and re-registered by a
+    /// bonus. The defaults give the plain 60 s rule.
+    static func shouldIgnoreAppsLimitEvent(now: Date, registeredAt: Date?,
+                                           recordedMinutes: Int = 0, threshold: Int = 0) -> Bool {
+        guard isRegistrationEcho(now: now, registeredAt: registeredAt) else { return false }
+        return !totalShieldDecision(recorded: recordedMinutes, threshold: threshold, limitEventSeenToday: true)
+    }
+
+    /// Ids of the enabled policy's downtime windows `now` is inside (empty when off).
+    static func activeDowntimeIds(_ policy: ScreenTimePolicy?, now: Date, calendar: Calendar = .current) -> [String] {
+        guard let policy, policy.enabled else { return [] }
+        return policy.downtime
+            .filter { isInsideWindow(start: $0.start, end: $0.end, days: $0.days, now: now, calendar: calendar) }
+            .map(\.id)
+    }
+
+    /// `downtime.<id>` started: shield only when `now` (or just after, for an early
+    /// callback) is inside the window that began on a listed day — not "today is listed".
+    static func downtimeShouldShield(_ window: ScreenTimeDowntime, now: Date, calendar: Calendar = .current) -> Bool {
+        isInsideWindow(start: window.start, end: window.end, days: window.days, now: now, calendar: calendar)
+            || isInsideWindow(start: window.start, end: window.end, days: window.days,
+                              now: now.addingTimeInterval(callbackLeeway), calendar: calendar)
+    }
+
+    /// What `ScreenTimeEnforcer.reconcileShields` clears: the store names the stored policy
+    /// doesn't justify right now. Removes only — it never names a store to shield.
+    /// - shieldedLimitIds: limit ids with a shield reason recorded.
+    /// - todayMinutes, totalEventCounts: `total` keeps its shield only while
+    ///   `totalShieldDecision` still says so (a new day or a bonus lifts it).
+    /// - staleLimitIds: apps limits whose shielding event was on another day.
+    static func storesToClear(policy: ScreenTimePolicy?, isEnrolled: Bool, shieldedLimitIds: Set<String>,
+                              todayMinutes: Int = 0, totalEventCounts: Bool = false,
+                              staleLimitIds: Set<String> = [], now: Date,
+                              calendar: Calendar = .current) -> Set<String> {
+        guard isEnrolled, let policy, policy.enabled else {
+            let ids = shieldedLimitIds.union(policy?.limits.map(\.id) ?? [])
+            return Set(ids.map { limitStore($0) }).union([downtimeStore, pauseStore])
+        }
+        var clear = Set<String>()
+        if pauseInterval(now: now, until: policy.pauseUntilDate) == nil { clear.insert(pauseStore) }
+        if activeDowntimeIds(policy, now: now, calendar: calendar).isEmpty { clear.insert(downtimeStore) }
+        let weekday = calendar.component(.weekday, from: now)
+        for id in shieldedLimitIds {
+            guard let limit = policy.limits.first(where: { $0.id == id }) else {
+                clear.insert(limitStore(id))
+                continue
+            }
+            if limit.isTotal {
+                let threshold = minutes(for: limit, weekday: weekday, bonus: policy.bonus, today: now, calendar: calendar)
+                if !isPlausibleUsage(minutes: todayMinutes, now: now, calendar: calendar)
+                    || !totalShieldDecision(recorded: todayMinutes, threshold: threshold, limitEventSeenToday: totalEventCounts) {
+                    clear.insert(limitStore(id))
+                }
+            } else if staleLimitIds.contains(id) {
+                clear.insert(limitStore(id))
+            }
+        }
+        return clear
+    }
 }
