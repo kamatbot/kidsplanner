@@ -52,7 +52,7 @@ only. Alerts capped at 50 per kid.
   "version": 3, "enabled": true, "updatedAt": "ISO",
   "pauseUntil": "ISO or null",
   "limits": [{
-    "id": "lim_x", "name": "Games", "minutesPerDay": 60,
+    "id": "total", "kind": "total", "name": "Screen time", "minutesPerDay": 120, "weekendMinutes": 180,
     "selection": "base64(JSON FamilyActivitySelection) or null",
     "selectionSummary": { "apps": 3, "categories": 1, "webDomains": 0 },
     "deviceSelections": { "dev_x": { "apps": 2, "categories": 0, "webDomains": 0 } }
@@ -64,6 +64,12 @@ only. Alerts capped at 50 per kid.
   downtime applies when it **starts** on a listed day; `end < start` crosses
   midnight.
 - Limits: 1–720 minutes/day, max 8. Downtime: max 4. Names ≤ 40 chars.
+- `kind`: `total` (whole-device daily screen time; at most one, id is always
+  `total`) or `apps` (default; per-app/category limit, Advanced). 
+- `weekendMinutes`: minutes on Saturday + Sunday (weekday 7 and 1); `null` =
+  same as `minutesPerDay` (which then means Monday–Friday).
+- Well-known ids the **Basic** parent screen edits: limit `total` and
+  downtime `bedtime`. Everything else is Advanced.
 - `selection` is an opaque blob; the server never decodes it (≤ 64 KB).
 - **Device projection** (heartbeat/enroll responses): `selection` is replaced by
   that device's own uploaded selection when one exists, otherwise the parent's;
@@ -121,11 +127,11 @@ Group `group.com.fametc.app.family-assistance`. App Info.plist adds
 
 ### Shared (`ios/FamETCScreenTimeShared/`)
 - `ScreenTimeModels.swift`: `ScreenTimePolicy`, `ScreenTimeLimit`, `ScreenTimeDowntime`, `SelectionSummary`, `ScreenTimeDevice`, `ScreenTimeAlert`, `ScreenTimeKidState`, `ScreenTimeOverview` — Codable mirrors of the JSON above.
-- `ScreenTimeEnforcer.swift`: App Group storage (policy, device credentials, last monitor fire), selection encode/decode, `apply(policy)` (named `ManagedSettingsStore`s `downtime`, `pause`, `limit.<id>`; `DeviceActivityCenter` activities `daily` [limit events `limit.<id>`], `downtime.<id>`, `heartbeat.0…3`, `pause`), and a tiny `heartbeat(source:)` HTTP client usable from the extension.
+- `ScreenTimeEnforcer.swift`: App Group storage (policy, device credentials, last monitor fire), selection encode/decode, `apply(policy)` (named `ManagedSettingsStore`s `downtime`, `pause`, `limit.<id>`; `DeviceActivityCenter` activities `day.1…7` (one weekly-repeating 00:00–23:59 activity per weekday, each carrying events `limit.<id>` with that day's minutes — weekday vs weekend thresholds), `downtime.<id>`, `heartbeat.0…3`, `pause`), and a tiny `heartbeat(source:)` HTTP client usable from the extension.
 - Pure schedule helpers (unit-tested): time parsing, weekday check, pause interval (≥ 15 min).
 
 ### Monitor extension
-`intervalDidStart`: `daily` → clear all `limit.*` stores; `downtime.<id>` → shield all categories/web if today is listed; `heartbeat.*` → heartbeat(source: monitor). `intervalDidEnd`: `downtime.<id>`/`pause` → clear that store. `eventDidReachThreshold(limit.<id>)` → shield that limit's selection. Every callback records `lastMonitorAt`. Stays well under the ~6 MB memory cap: no SwiftUI, no big decoders.
+`intervalDidStart`: `day.*` → clear all `limit.*` stores; `downtime.<id>` → shield all categories/web if today is listed; `heartbeat.*` → heartbeat(source: monitor). `intervalDidEnd`: `downtime.<id>`/`pause` → clear that store. `eventDidReachThreshold(limit.<id>)` → shield that limit's selection; for `limit.total` shield **all** app categories + web (`.all()`), not just the selection. Every callback records `lastMonitorAt`. Stays well under the ~6 MB memory cap: no SwiftUI, no big decoders.
 
 ### Shield configuration
 Fam ETC-branded shield: title "Paused by Fam ETC", subtitle names the reason (limit name / Downtime / Paused by a parent), single "OK" button. Shield action extension ("ask for more time") is deferred.
@@ -139,7 +145,25 @@ Fam ETC-branded shield: title "Paused by Fam ETC", subtitle names the reason (li
 - Handles `screen_time_sync`/`screen_time_ping` silent pushes (AppDelegate `didReceiveRemoteNotification`) by calling `sync(source: "push")`.
 
 ### UX (`ios/FamETC/Features/ScreenTime/*View.swift`)
-- Parent Today: `ScreenTimeSummaryCard` (per-kid status chip) → `ScreenTimeParentSheet` (kid switcher; status + devices with mode badge and last check-in; Pause now 15m/1h/until tomorrow/Resume; Daily limits with minutes + Choose apps; Downtime windows; alert history; "How protection works" explaining both modes).
+
+**Simple first — non-technical parents are the key audience.** Intended flow:
+parent opens Screen Time for Mia → two switches, **Bedtime** (no phone from
+9:00 PM to 7:00 AM) and **Daily screen time** (2 h on school days, 3 h on
+weekends) → Save → "Now set it up on Mia's phone" with 3 plain steps → on
+Mia's phone, Fam ETC → Set up → approve → tap "All Apps & Categories" → done.
+No jargon on the Basic screen (no "tokens", "authorization", "cooperative",
+"categories"). Everything else (per-app limits, extra downtime windows,
+choosing apps on the parent phone, device list, check-in details, forgetting
+devices, how-protection-works) lives under a collapsed **Advanced** section.
+Pause now and alerts stay visible on Basic because parents need them.
+
+The whole-device `total` limit needs an "everything" selection, which Apple
+only lets a person pick: the kid-device setup ends with the picker and the
+instruction "Tap **All Apps & Categories**, then Done" (uploaded as that
+device's selection for `total`). Until that's done the kid card and the parent
+status say "Finish setup on Mia's phone".
+
+- Parent Today: `ScreenTimeSummaryCard` (per-kid status chip) → `ScreenTimeParentSheet`. **Basic**: kid switcher; one-line status in plain words ("On for Mia's iPhone", "Mia turned it off — 4:12 PM", "Finish setup on Mia's phone"); Bedtime switch + two times; Daily screen time switch + School days / Weekends steppers (15-min steps, presets); Pause now (1 hour / Until tomorrow / Resume); unacknowledged alerts; setup steps when no device. **Advanced** (collapsed): per-app limits (with weekend minutes + Choose apps), extra downtime windows with weekdays, devices with mode badge/last check-in/applied/forget, alert history, "How protection works" explaining both modes.
 - App-wide parent banner `ScreenTimeAlertBanner` for unacknowledged alerts (next to `KidApprovalBanner`); `screen_time_alert` push deep-links to the sheet for that kid.
 - Kid Today: `ScreenTimeKidCard` → `ScreenTimeKidSetupSheet` (explain → Family Sharing first → fallback to without Family Sharing → enroll) and, once enrolled, the rules list, per-limit "Choose apps with a parent", and the transparency line "Turning this off tells your parents."
 
