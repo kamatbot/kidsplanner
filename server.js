@@ -54,6 +54,7 @@ try {
 const trips = require("./lib/trips");
 const activities = require("./lib/activities");
 const notes = require("./lib/notes");
+const screenTime = require("./lib/screen-time");
 const news = require("./lib/news");
 const dailyPuzzles = require("./lib/daily-puzzles");
 const wordbank = require("./lib/wordbank");
@@ -643,7 +644,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications,
+  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications, screenTime,
   requireAuth, requireParent, requireFamily, requireAdmin, requireOperatorAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter, buzzLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -672,6 +673,7 @@ require("./lib/routes/child-insights")(app, routeDeps);
 require("./lib/routes/fams")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
 require("./lib/routes/push")(app, routeDeps);
+require("./lib/routes/screen-time")(app, routeDeps);
 require("./lib/routes/ai")(app, routeDeps);
 
 // ===================== PAGES =====================
@@ -813,6 +815,7 @@ const server = app.listen(listenTarget, () => {
   console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD_INFO.label}${BUILD_INFO.builtAt ? " @ " + BUILD_INFO.builtAt : ""}, assets ${BUILD})`);
 });
 schoolApi.startScheduler();
+screenTime.startMonitor();
 require("./lib/chat-attachments").startMaintenance();
 
 // Tests require this module directly and need the bound `server` (e.g. to
