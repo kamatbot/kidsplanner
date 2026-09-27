@@ -45,3 +45,10 @@ if (sentinel && header && 'IntersectionObserver' in window) {
 window.setTimeout(function () {
   reveal.forEach(function (el) { el.classList.add('is-in'); });
 }, 2000);
+
+// Hero film: the live canvas film (public/video/film/) replaces its poster once the page has loaded, so it
+// never competes with first paint (the retireodds.com/familyoffice pattern).
+window.addEventListener('load', function () {
+  var film = document.getElementById('hero-film');
+  if (film && !film.getAttribute('src')) film.src = film.dataset.src;
+});

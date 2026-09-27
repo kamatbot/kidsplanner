@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Fam ETC film</title>
+<style>
+@font-face{font-family:"Caveat";src:url(caveat.woff2) format("woff2");font-weight:400 700;font-display:block;}
+@font-face{font-family:"Space Grotesk";src:url(/fonts/spacegrotesk.woff2) format("woff2");font-weight:300 700;font-display:block;}
+@font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrainsmono.woff2) format("woff2");font-weight:100 800;font-display:block;}
+@font-face{font-family:"Geist";src:url(/fonts/geist.woff2) format("woff2");font-weight:100 900;font-display:block;}
+html,body{margin:0;height:100%;overflow:hidden;background:transparent;}
+[hidden]{display:none!important;}
+.stage{position:relative;width:100%;height:100%;}
+canvas{display:block;width:100%;height:100%;cursor:pointer;}
+.play{position:absolute;inset:0;display:grid;place-items:center;border:0;padding:0;background:rgba(33,30,27,.16);cursor:pointer;}
+.play span{display:inline-flex;align-items:center;gap:10px;padding:14px 24px;border-radius:999px;background:#6f43d6;color:#fff;font:700 clamp(15px,2.6vw,19px)/1 "Space Grotesk",system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+.play:focus-visible{outline:none;}
+.play:focus-visible span{outline:3px solid #211e1b;outline-offset:3px;}
+.track{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(33,30,27,.12);pointer-events:none;}
+.track i{display:block;height:100%;width:0;background:#6f43d6;}
+.sound{position:absolute;left:12px;bottom:14px;margin:0;display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.94);color:#211e1b;font:600 13px "Space Grotesk",system-ui,sans-serif;}
+.sound button{font:inherit;color:#6f43d6;background:none;border:0;padding:4px;cursor:pointer;text-decoration:underline;}
+.ctl{position:absolute;right:12px;bottom:14px;display:flex;gap:6px;}
+.ctl button{min-height:36px;padding:0 14px;border-radius:999px;border:0;background:rgba(255,255,255,.94);color:#211e1b;font:600 13px "Space Grotesk",system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(33,30,27,.18);}
+.ctl button.on{background:#6f43d6;color:#fff;}
+.ctl button:focus-visible{outline:3px solid #211e1b;outline-offset:2px;}
+@media (max-width:520px){.ctl{right:8px;bottom:10px;gap:4px;}.ctl button{min-height:28px;padding:0 10px;font-size:12px;}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="c" width="1920" height="1080" aria-label="Animated film: the Walker family uses Fam ETC to turn a chat message into the shared shopping list and to see homework from school, sorted by due date."></canvas>
+  <button class="play" id="play" type="button" aria-label="Play the film with sound" hidden><span>▶&nbsp; Play with sound</span></button>
+  <div class="track" aria-hidden="true"><i id="progress"></i></div>
+  <p id="sound" class="sound" role="status" hidden>Sound didn't load. <button id="retry" type="button">Retry</button></p>
+  <div class="ctl"><button id="mute" class="on" type="button">🔊&nbsp;Sound on</button><button id="toggle" type="button">Pause</button></div>
+  <div hidden><button id="replay" type="button">Replay</button><span id="time"></span></div>
+</div>
+<audio id="audio" preload="none"></audio>
+<script type="module" src="promo.js"></script>
+</body>
+</html>

@@ -47,25 +47,25 @@ test("landing offers keyboard users a direct route to main content", () => {
   assert.match(styles, /\.skip-link:focus\{transform:none\}/);
 });
 
-// The 2026 re-composition. Hero = ONE legible surface (the Today card) plus a
-// few floating elements, NOT the whole app scaled down to 6px type.
-test("landing hero shows one legible Today card with floating context", () => {
+// The hero is the live storybook film (public/video/film/, a canvas animation, not an MP4): a poster
+// paints first and landing.js loads the film after the page, as retireodds.com/familyoffice does.
+test("landing hero plays the storybook film over a poster, loaded after the page", () => {
   const hero = landing.match(/<section class="section hero"[\s\S]*?<\/section>/)?.[0];
   assert.ok(hero);
   assert.match(hero, /class="hero-copy"/);
   assert.match(hero, /class="hero-stage"/);
   assert.match(hero, /Everyone knows what today looks like\./);
-  assert.match(hero, /class="today-card"/);
-  assert.match(hero, /Good morning, Kate/);
-  // exactly three floating elements, each with its own accessible label
-  assert.equal((hero.match(/class="float float-/g) || []).length, 3);
-  assert.match(hero, /class="float float-chat" aria-label="Family chat message"/);
-  assert.match(hero, /class="float float-due" aria-label="Homework due"/);
-  assert.match(hero, /class="float float-sync" aria-label="School sync notice"/);
+  assert.match(hero, /<iframe id="hero-film" data-src="\/video\/film\/index\.html" title="[^"]+"/);
+  assert.doesNotMatch(hero, /<iframe[^>]* src=/, "the film must not load before the page does");
+  assert.doesNotMatch(landing, /<video|\.mp4/, "no MP4 on the landing page");
+  assert.match(script, /addEventListener\('load'[\s\S]*film\.src = film\.dataset\.src/);
+  assert.match(styles, /\.hero-film\{[^}]*aspect-ratio:16\/9[^}]*url\(\/video\/film\/poster\.webp\)/);
+  for (const f of ["index.html", "promo.js", "ui.js", "poster.webp", "assets/audio/mix.mp3"]) {
+    assert.ok(fs.existsSync(path.join(root, "public/video/film", f)), `film embed ships ${f}`);
+  }
   // the old scaled-down application mock is gone for good
   assert.doesNotMatch(landing, /dashboard-|preview-card|preview-browser|product-window|proof-section|calendar-times|audience-chip/);
   assert.match(styles, /\.hero\s*\{[^}]*grid-template-columns:\s*minmax\(0,520px\)/);
-  assert.match(styles, /\.today-card\{[^}]*width:460px/);
 });
 
 test("landing keeps one wide stage token for header, sections and footer", () => {
@@ -198,7 +198,6 @@ test("reduced motion resolves every animation to its final visible frame", () =>
     assert.ok(block.includes(needle), `reduced-motion block covers ${needle}`);
   }
   assert.match(block, /opacity: 1 !important/);
-  assert.match(block, /\.momentum-fill, \.float \{ animation: none/);
 });
 
 test("hover motion is limited to real controls", () => {
@@ -280,11 +279,10 @@ test("landing CSS protects anchors, focus, touch targets, and narrow layouts", (
 });
 
 // The design system is a contract (APP-BRIEF "Design (FINAL)"): tokens only,
-// and the coral->violet gradient is rationed to one momentum element.
-test("landing CSS uses Horizon tokens and rations the hero gradient", () => {
+// and no gradients (the hero film carries the colour since the momentum mock left the hero).
+test("landing CSS uses Horizon tokens and no gradients", () => {
   assert.doesNotMatch(styles, /#[0-9a-fA-F]{3,8}\b/);
-  assert.equal((styles.match(/linear-gradient|radial-gradient/g) || []).length, 1);
-  assert.match(styles, /\.momentum-fill\{[^}]*linear-gradient\(90deg,var\(--coral\),var\(--accent\)\)/);
+  assert.equal((styles.match(/linear-gradient|radial-gradient/g) || []).length, 0);
 });
 
 test("manifest and linked icons use the four-tile mark at exact sizes", () => {
