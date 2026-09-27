@@ -763,3 +763,56 @@ final class APIClient: FamilyActionService, ChatMessageService {
                           body: ["date": date, "part": part, "status": status], cookie: cookie)
     }
 }
+
+// MARK: Screen Time (docs/SCREEN-TIME-PLAN.md)
+
+extension APIClient {
+    /// Parent: every kid's policy, devices and alerts.
+    func screenTimeOverview() async throws -> ScreenTimeOverview {
+        try await request("/api/screen-time")
+    }
+
+    /// Parent. Limits without an id get one server-side; `selection: null` clears it.
+    func saveScreenTimePolicy(kidId: String, enabled: Bool, limits: [ScreenTimeLimit], downtime: [ScreenTimeDowntime]) async throws -> ScreenTimeKidState {
+        let limitBodies: [[String: Any]] = limits.map { l in
+            var b: [String: Any] = ["name": l.name, "minutesPerDay": l.minutesPerDay,
+                                    "weekendMinutes": l.weekendMinutes ?? NSNull(), "selection": l.selection ?? NSNull()]
+            if !l.id.isEmpty { b["id"] = l.id }
+            if let kind = l.kind { b["kind"] = kind }
+            return b
+        }
+        let downtimeBodies: [[String: Any]] = downtime.map { d in
+            var b: [String: Any] = ["name": d.name, "start": d.start, "end": d.end, "days": d.days]
+            if !d.id.isEmpty { b["id"] = d.id }
+            return b
+        }
+        return try await request("/api/screen-time/kids/\(pathComponent(kidId))/policy", method: "PUT",
+                                 body: ["enabled": enabled, "limits": limitBodies, "downtime": downtimeBodies])
+    }
+
+    /// Parent. `minutes` 0 resumes, else 15–1440.
+    func pauseScreenTime(kidId: String, minutes: Int) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/pause", method: "POST", body: ["minutes": minutes])
+    }
+
+    func ackScreenTimeAlerts(kidId: String) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/alerts/ack", method: "POST", body: [:])
+    }
+
+    func forgetScreenTimeDevice(kidId: String, deviceId: String) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))", method: "DELETE")
+    }
+
+    /// Kid session: the family's policy for this kid (no device projection).
+    func myScreenTimePolicy() async throws -> ScreenTimePolicy {
+        let r: ScreenTimePolicyResponse = try await request("/api/screen-time/mine")
+        return r.policy
+    }
+
+    /// Kid session (cookie). Returns the device credentials + device-projected policy.
+    func enrollScreenTimeDevice(label: String, mode: ScreenTimeMode, authStatus: ScreenTimeAuthState, pushToken: String?) async throws -> ScreenTimeEnrollResponse {
+        var body: [String: Any] = ["label": label, "mode": mode.rawValue, "authStatus": authStatus.rawValue]
+        if let pushToken { body["pushToken"] = pushToken }
+        return try await request("/api/screen-time/device/enroll", method: "POST", body: body)
+    }
+}

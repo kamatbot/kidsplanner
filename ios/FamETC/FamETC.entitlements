@@ -37,6 +37,15 @@
     <key>aps-environment</key>
     <string>development</string>
 
+    <!--
+      Screen Time (FamilyControls / ManagedSettings / DeviceActivity). Development
+      builds work now; TestFlight/App Store distribution needs Apple's Family
+      Controls (Distribution) approval for this app AND both extensions
+      (com.fametc.app.screentime-monitor, com.fametc.app.shield-config).
+    -->
+    <key>com.apple.developer.family-controls</key>
+    <true/>
+
     <!-- Credential-free, file-protected family projection for the iOS widget. -->
     <key>com.apple.security.application-groups</key>
     <array>

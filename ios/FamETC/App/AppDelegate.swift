@@ -14,11 +14,32 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                       didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // BGTaskScheduler requires handlers to be registered before launch completes.
+        ScreenTimeService.registerBackgroundTask()
         return true
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         PushRegistrationService.shared.didRegister(deviceToken: deviceToken)
+        // Screen Time heartbeats (incl. the monitor extension) report this token via the App Group.
+        ScreenTimeEnforcer.shared.pushToken = deviceToken.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Silent Screen Time pings from the server (`content-available`). Other
+    /// payloads keep their existing handling via UNUserNotificationCenterDelegate.
+    func application(_ application: UIApplication,
+                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let famType = userInfo["famType"] as? String
+        guard famType == "screen_time_sync" || famType == "screen_time_ping" else {
+            completionHandler(.noData)
+            return
+        }
+        Task { @MainActor in
+            let service = ScreenTimeService.shared
+            await service.sync(source: "push")
+            completionHandler(service.isEnrolled && service.lastError == nil ? .newData : .noData)
+        }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
