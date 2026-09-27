@@ -1,7 +1,10 @@
 # Screen Time — parent controls + child enforcement
 
 Status: building on `feat/screen-time` (2026-09-27). This file is the contract
-the server, iOS enforcement and iOS UX work are built against.
+the server, iOS enforcement and iOS UX work are built against. States, alert
+lifecycle, presentation and enforcement rules were refined by
+[SCREEN-TIME-UX.md](SCREEN-TIME-UX.md) (2026-09-27); where the two disagree,
+that spec wins and this file mirrors it.
 
 ## Core tenet: both modes are first-class
 
@@ -29,16 +32,41 @@ Pending vs Applied, never "blocked" on server acceptance alone.
 The server holds per-device state and alerts all family parents (APNs alert +
 web push) — never the family chat, which kids can read.
 
-| Signal | Detected by | Alert `type` |
-|---|---|---|
-| Authorization went `approved` → `denied`/`notDetermined` | Kid app reports `authStatus` in every heartbeat (launch, foreground, `AuthorizationCenter` status observer, BGAppRefresh, silent push) | `revoked` |
-| Access turned back on | Next heartbeat with `approved` after `revoked` | `restored` |
-| No heartbeat for `SCREEN_TIME_STALE_HOURS` (default 24) | Server sweep. While authorized, the DeviceActivity monitor extension heartbeats at 4 quarter-day schedule boundaries even if the app is never opened/force-quit; after revocation it stops | `stale` |
-| APNs says the token is gone (410 / Unregistered) on a silent ping | Server ping every `SCREEN_TIME_PING_HOURS` (default 4) | `removed` |
-| Kid changed the apps in a limit on their device | Device selection upload | `selection_changed` |
+Alerts are parent-only and raised through one choke point (`raise()`), which
+does nothing while the kid's `policy.enabled` is false: the parent turned
+Screen Time off, so device state is still tracked but nothing is listed,
+pushed or pinged.
 
-A heartbeat after `stale`/`removed` sets the device back to `ok` (alert
-`restored`, no push unless it was `revoked`).
+| Type | Raised when | Never raised when | Auto-resolved (acked) | Banner | Push |
+|---|---|---|---|---|---|
+| `revoked` | heartbeat `authStatus != approved` and device `state != revoked` | policy off (state still updated silently) | next `approved` heartbeat | yes, danger | yes |
+| `removed` | sweep/sync ping: APNs says the token is gone (410 / Unregistered) | policy off; no push token | next heartbeat | yes, danger | yes |
+| `stale` | sweep: `state == ok` and no heartbeat for `SCREEN_TIME_STALE_HOURS` (default 24) | policy off (sweep skips the kid) | next heartbeat | yes, warning | yes |
+| `selection_changed` | device replaces its own earlier selection with different counts | policy off; a device's first pick | never (parent acks) | yes, info | yes |
+| `restored` | `approved` heartbeat from a revoked/stale/removed device | policy off | created **pre-acked** (`ackedAt = at`) | never | only if it was `revoked` |
+
+While authorized, the DeviceActivity monitor extension heartbeats at 4
+quarter-day schedule boundaries even if the app is never opened/force-quit
+(and keeps doing so while the policy is off). Revocation is reported by the
+kid app in every heartbeat (launch, foreground, `AuthorizationCenter` status
+observer, BGAppRefresh, silent push). Keep-alive pings go every
+`SCREEN_TIME_PING_HOURS` (default 4) to kids whose policy is on.
+
+Lifecycle:
+1. **Turn off** (`PUT policy` `enabled` true → false): ack every open alert,
+   `pauseUntil = null`, bump `version`, ping devices (`screen_time_sync`) so
+   they drop their shields. Rules (limits/downtime) are kept as sent.
+2. **Turn on** (false → true), per device: `stale` (or `ok` but silent for
+   longer than the stale window, since the sweep skipped it while off) →
+   `state = ok`, `lastSeenAt = now` (24 h grace, no alert); `revoked` → raise
+   `revoked` now; `removed` → raise `removed` now. Then bump + ping.
+3. **Restore**: an `approved` heartbeat from a revoked/stale/removed device
+   acks that device's open revoked/stale/removed alerts and adds the pre-acked
+   `restored` entry. Any heartbeat acks that device's open stale/removed alerts.
+4. **Forget device** acks that device's open alerts.
+5. **Expiry**: an unacked alert older than 7 days is acked when the kid state
+   is read (persisted on that read).
+6. **Ack**: per alert (`POST …/alerts/:alertId/ack`) or all (`POST …/alerts/ack`).
 
 ## Server (`lib/screen-time.js`, `lib/routes/screen-time.js`)
 
@@ -85,15 +113,27 @@ only. Alerts capped at 50 per kid.
 
 ### Alert JSON
 `{ id, kidId, deviceId, type, message, at, ackedAt }` — `message` is the
-human sentence shown in the app (e.g. "Mia turned off Screen Time on iPhone").
+human sentence shown in the app: revoked "Mia turned off Screen Time on
+iPad"; removed "Fam ETC may have been removed from Mia's iPad"; stale "Mia's
+iPad hasn't checked in since Sat 9:12 PM. It may be off or offline."
+(family timezone); restored "Screen Time is back on for Mia's iPad";
+selection_changed "Mia changed the apps in Games (1 app → 2 apps)".
+
+### States (client-derived, see SCREEN-TIME-UX.md §1)
+**Not set up** = policy off and no devices; **Off** = policy off with enrolled
+devices (the parent turned it off — rules and deal are kept, no alerts, the
+kid sees a quiet "Screen Time is off right now" card); then revoked, removed,
+stale, waiting for setup, finish setup, paused, downtime, limit reached,
+pending, on — first match wins.
 
 ### Endpoints
 Parent (`requireAuth, requireParent, requireFamily`; kid must belong to family):
 - `GET  /api/screen-time` → `{ kids: [{ kidId, policy, devices: [], alerts: [] }] }` (every kid in the family, default policy `{version:0, enabled:false, limits:[], downtime:[], pauseUntil:null}`).
-- `PUT  /api/screen-time/kids/:kidId/policy` body `{ enabled, limits, downtime }` → kid state. Limit without `id` gets one; a limit body **without** a `selection` key keeps the stored selection, `selection: null` clears it. Bumps `version`, pings the kid's devices (`screen_time_sync`).
+- `PUT  /api/screen-time/kids/:kidId/policy` body `{ enabled, limits, downtime }` → kid state. Limit without `id` gets one; a limit body **without** a `selection` key keeps the stored selection, `selection: null` clears it. Bumps `version`, pings the kid's devices (`screen_time_sync`). `enabled` true → false / false → true run the turn-off / turn-on lifecycle above. "Turn off" sends the current lists with `enabled: false`; both switches off + Save sends `{ enabled: false, limits: [], downtime: [] }` ("remove the rules").
 - `POST /api/screen-time/kids/:kidId/pause` body `{ minutes }` (0 = resume, else 15–1440) → kid state. Bumps version, pings.
 - `POST /api/screen-time/kids/:kidId/alerts/ack` → kid state (acks all).
-- `DELETE /api/screen-time/kids/:kidId/devices/:deviceId` → kid state.
+- `POST /api/screen-time/kids/:kidId/alerts/:alertId/ack` → kid state (acks that one alert; idempotent). 404 when the id is not one of this kid's alerts.
+- `DELETE /api/screen-time/kids/:kidId/devices/:deviceId` → kid state (acks that device's alerts).
 
 Kid session (`requireAuth, requireFamily`, role kid):
 - `GET  /api/screen-time/mine` → `{ policy }` (parent selection projection, no device).
@@ -109,7 +149,7 @@ Unknown/forgotten secret → 401.
 - Device ping: background push `{ aps: { "content-available": 1 }, famType: "screen_time_sync" | "screen_time_ping" }`, `pushType: "background"`, priority 5, sent to the device's `pushToken` directly.
 
 ### Monitor
-`screenTime.startMonitor()` from server.js (unref'd 10-minute interval): stale sweep + pings. Clock and sender injectable for tests.
+`screenTime.startMonitor()` from server.js (unref'd 10-minute interval): stale sweep + pings, skipping kids whose policy is off. Clock and sender injectable for tests.
 
 ## iOS
 
@@ -164,7 +204,8 @@ device's selection for `total`). Until that's done the kid card and the parent
 status say "Finish setup on Mia's phone".
 
 - Parent Today: `ScreenTimeSummaryCard` (per-kid status chip) → `ScreenTimeParentSheet`. **Basic**: kid switcher; one-line status in plain words ("On for Mia's iPhone", "Mia turned it off — 4:12 PM", "Finish setup on Mia's phone"); Bedtime switch + two times; Daily screen time switch + School days / Weekends steppers (15-min steps, presets); Pause now (1 hour / Until tomorrow / Resume); unacknowledged alerts; setup steps when no device. **Advanced** (collapsed): per-app limits (with weekend minutes + Choose apps), extra downtime windows with weekdays, devices with mode badge/last check-in/applied/forget, alert history, "How protection works" explaining both modes.
-- App-wide parent banner `ScreenTimeAlertBanner` for unacknowledged alerts (next to `KidApprovalBanner`); `screen_time_alert` push deep-links to the sheet for that kid.
+- App-wide parent banner `ScreenTimeAlertBanner` for unacknowledged alerts (next to `KidApprovalBanner`); `screen_time_alert` push deep-links to the sheet for that kid. Shows only the newest bannerable alert (unacked revoked/removed/stale/selection_changed, < 7 days, kid's policy on) with a ✕ that acks that alert and a Review that always opens the controls (SCREEN-TIME-UX.md §2).
+- Presentation (SCREEN-TIME-UX.md §3, by `horizontalSizeClass`): kid deal flow is a `fullScreenCover` on every size; parent controls are a large sheet on compact width and a `fullScreenCover` with a kid sidebar (`NavigationSplitView`) on regular width; other Screen Time sheets use `.large` detents on compact. The Off state has an explicit "Turn off Screen Time" row + confirmation and a "Turn Screen Time back on" button.
 - Kid Today: `ScreenTimeKidCard` → `ScreenTimeKidSetupSheet` (explain → Family Sharing first → fallback to without Family Sharing → enroll) and, once enrolled, the rules list, per-limit "Choose apps with a parent", and the transparency line "Turning this off tells your parents."
 
 ## Our Screen Time Deal (kid setup = a social contract)
@@ -209,16 +250,17 @@ chars; stamp ≤ 8 chars (an emoji); signer 1–40 chars.
 ## Parent promo + welcome (owner direction 2026-09-27)
 
 A Screen Time promo sits at the **very top** of parent Today (above the
-Family Rings hero) while no kid has Screen Time set up (no kid with an enabled
-policy). It is compact, friendly and dismissible ("Not now" hides it for 7
+Family Rings hero) while no kid has ever set Screen Time up (every kid's
+`policy.version == 0`; turning Screen Time off never brings it back). It is compact, friendly and dismissible ("Not now" hides it for 7
 days on this device). Tapping it opens a **full-screen welcome**
 (`fullScreenCover`) that explains the product in 3 short panels — what it does
 (bedtime + daily time, simple), how it works with or without Family Sharing
 (honest: without it, a kid could switch it off and you'll be told), and how
 setup goes (you pick the rules here → make the deal together on your kid's
 phone) — ending in "Set up for <kid>" (one button per kid; opens
-`ScreenTimeParentSheet(initialKidId:)`). Once any kid has an enabled policy
-the promo is gone; the regular `ScreenTimeSummaryCard` remains.
+`ScreenTimeParentSheet(initialKidId:)`). Once any kid's policy has been saved
+(`version > 0`) the promo is gone for good; the regular `ScreenTimeSummaryCard`
+remains.
 
 ## More time for fams (owner direction 2026-09-27)
 
