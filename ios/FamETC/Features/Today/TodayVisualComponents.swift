@@ -11,6 +11,9 @@ struct TodayParentHeader: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dynamicTypeSize) private var textSize
+    @State private var editingName = false
+    @State private var nameDraft = ""
+    @State private var nameError: String?
 
     private var isCompactPhone: Bool {
         !textSize.isAccessibilitySize && (
@@ -48,6 +51,10 @@ struct TodayParentHeader: View {
 
                 Menu {
                     Button(action: onMore) { Label("Notes", systemImage: "note.text") }
+                    Button {
+                        nameDraft = store.ownName
+                        editingName = true
+                    } label: { Label("Your name", systemImage: "person.text.rectangle") }
                 } label: {
                     TodayInitialAvatar(
                         text: store.me?.name?.first.map(String.init) ?? "F",
@@ -59,6 +66,19 @@ struct TodayParentHeader: View {
                 .accessibilityLabel("More")
                 .accessibilityHint("Open Notes and other family tools")
             }
+        }
+        .alert("Your name", isPresented: $editingName) {
+            TextField("First and last name", text: $nameDraft)
+                .textContentType(.name)
+            Button("Save") { Task { nameError = await store.updateMyName(nameDraft) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("How Fam ETC greets you and signs your messages.")
+        }
+        .alert("Couldn't save your name", isPresented: Binding(get: { nameError != nil }, set: { if !$0 { nameError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(nameError ?? "")
         }
     }
 

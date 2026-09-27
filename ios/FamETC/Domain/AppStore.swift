@@ -1181,6 +1181,26 @@ final class AppStore {
         } catch { handle(error) }
     }
 
+    /// The signed-in person's own name. Early iOS sign-ups stored the family name
+    /// there, so that value reads as blank rather than being shown as a person.
+    var ownName: String {
+        let own = me?.name?.trimmingCharacters(in: .whitespaces) ?? ""
+        return own == family?.name.trimmingCharacters(in: .whitespaces) ? "" : own
+    }
+
+    /// Saves the signed-in parent's own name; returns an error message on failure.
+    func updateMyName(_ name: String) async -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Please enter your name." }
+        do {
+            if let user = try await api.updateMyName(trimmed).user { me = user; persist() }
+            return nil
+        } catch {
+            handle(error)
+            return error.localizedDescription
+        }
+    }
+
     /// Pull-to-refresh on the Today / Calendar screens — forces a fresh feed sync.
     func refreshDashboard() async {
         assistanceIdentityVerified = false

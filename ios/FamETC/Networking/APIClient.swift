@@ -601,6 +601,10 @@ final class APIClient: FamilyActionService, ChatMessageService {
     func me() async throws -> MeResponse {
         try await request("/api/me")
     }
+    /// A parent's own display name (greetings, chat signatures).
+    func updateMyName(_ name: String) async throws -> MeResponse {
+        try await request("/api/me", method: "PATCH", body: ["name": name])
+    }
     @MainActor func logout() async -> Bool {
         SessionSignOut.generation += 1
         let cookies = HTTPCookieStorage.shared.cookies(for: base) ?? []

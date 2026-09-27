@@ -62,6 +62,7 @@ struct OnboardingView: View {
 
     @State private var signupInviteCode = ""
     @State private var familyName = ""
+    @State private var parentName = ""
     @State private var joinInviteCode = ""
     @State private var isJoiningExistingFamily = false
     @State private var familyBusy = false
@@ -223,6 +224,14 @@ struct OnboardingView: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
+                        Text("Your name").font(.system(size: 13, weight: .medium)).foregroundColor(FamTokens.textSub)
+                        TextField("First and last name", text: $parentName)
+                            .textFieldStyle(.roundedBorder)
+                            .textContentType(.name)
+                            .autocorrectionDisabled()
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Invite code").font(.system(size: 13, weight: .medium)).foregroundColor(FamTokens.textSub)
                         TextField("Enter your invite code", text: $signupInviteCode)
                             .textFieldStyle(.roundedBorder)
@@ -318,6 +327,11 @@ struct OnboardingView: View {
     }
 
     private func createOrJoinFamilyWithPasskey() {
+        let yourName = parentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !yourName.isEmpty else {
+            authError = "Please enter your name."
+            return
+        }
         let code = signupInviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !code.isEmpty else {
             authError = "Please enter your invite code to continue."
@@ -341,9 +355,10 @@ struct OnboardingView: View {
 
         Task {
             do {
+                // The account carries the parent's own name; the family keeps its name.
                 try await AuthService.shared.signUpWithPasskey(
                     inviteCode: code,
-                    name: resolvedFamilyName
+                    name: yourName
                 )
 
                 if joining {

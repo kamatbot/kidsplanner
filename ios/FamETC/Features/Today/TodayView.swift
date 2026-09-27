@@ -47,7 +47,7 @@ struct TodayScreen: View {
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         let part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-        let name = store.me?.name?.split(separator: " ").first.map(String.init) ?? ""
+        let name = store.ownName.split(separator: " ").first.map(String.init) ?? ""
         return name.isEmpty ? part : "\(part), \(name)"
     }
     private var dateLabel: String { Date().formatted(.dateTime.weekday(.wide).day().month(.wide)) }
