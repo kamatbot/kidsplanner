@@ -157,7 +157,8 @@ struct DailyFiveCard: View {
             onOpenChallenge: openChallenge,
             dense: dense
         )
-        .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") { await loadDailyExtras() }
+        // Also reloads once a failed launch sync recovers, so the cards don't sit on "Loading".
+        .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())|\(store.syncError == nil)") { await loadDailyExtras() }
         .onReceive(NotificationCenter.default.publisher(for: .famsRewardsChanged)) { _ in
             Task { await refreshServerProgress() }
         }

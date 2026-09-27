@@ -70,8 +70,9 @@ struct HybridWebView: UIViewRepresentable {
         func attach(to container: HybridWebContainer) {
             guard self.container !== container else { return }
             self.container = container
-            progressObservation = container.webView.observe(\.estimatedProgress, options: [.initial, .new]) { [weak container] webView, _ in
-                container?.setLoadingProgress(webView.isLoading ? webView.estimatedProgress : nil)
+            progressObservation = container.webView.observe(\.estimatedProgress, options: [.initial, .new]) { [weak self, weak container] webView, _ in
+                // Keep a sliver of progress up while a quiet retry is scheduled, so it never reads as a blank page.
+                container?.setLoadingProgress(webView.isLoading ? webView.estimatedProgress : (self?.retryPending == true ? 0.1 : nil))
             }
             container.retryAction = { [weak self] in self?.retry() }
         }
@@ -97,6 +98,13 @@ struct HybridWebView: UIViewRepresentable {
         private static func url(for path: String) -> URL? {
             URL(string: Config.baseURL.absoluteString + path)
         }
+
+        private var quietRetries = 0
+        private var retryPending = false
+        private static let quietRetryDelays: [TimeInterval] = [1.2, 5, 15]
+        private static let transientCodes: Set<Int> = [NSURLErrorNetworkConnectionLost, NSURLErrorTimedOut,
+            NSURLErrorCannotConnectToHost, NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed,
+            NSURLErrorSecureConnectionFailed, NSURLErrorNotConnectedToInternet]
 
         /// Recovery only replays app URLs. This does not change WebKit's
         /// existing navigation decisions or its shared cookie/data store.
@@ -129,6 +137,7 @@ struct HybridWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             if let url = Self.internalURL(webView.url) { latestMainFrameURL = url }
             latestFailureURL = nil
+            quietRetries = 0
             container?.setLoadingProgress(nil)
         }
 
@@ -155,6 +164,18 @@ struct HybridWebView: UIViewRepresentable {
             let failedURL = (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL)
                 ?? (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String).flatMap(URL.init(string:))
             latestFailureURL = Self.internalURL(failedURL) ?? latestMainFrameURL
+            // A first load after launch can hit a stale connection or a server restart: reload quietly.
+            if quietRetries < Self.quietRetryDelays.count, Self.transientCodes.contains(nsError.code) {
+                let delay = Self.quietRetryDelays[quietRetries]
+                quietRetries += 1
+                retryPending = true
+                container?.setLoadingProgress(0.1)
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.retryPending = false
+                    self?.container?.retryAction?()
+                }
+                return
+            }
             container?.showFailure("This page couldn’t load. Check your connection and try again.")
         }
 

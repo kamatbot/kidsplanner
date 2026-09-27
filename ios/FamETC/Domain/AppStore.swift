@@ -17,6 +17,16 @@ enum HermesNudgeOpenTarget: String {
     case homework, meals, goals, today
 }
 
+extension Error {
+    /// A request cancelled because its view went away, a refresh was interrupted
+    /// or a newer load replaced it. Not a failure to show the user.
+    var isCancellation: Bool {
+        if self is CancellationError { return true }
+        if let api = self as? APIError, case .transport(let underlying) = api { return underlying.isCancellation }
+        return (self as? URLError)?.code == .cancelled
+    }
+}
+
 /// The single source of truth for the native surfaces: the signed-in user's
 /// family (with its kids) and the chat thread. Cache-first load gives an
 /// instant, spinner-free cold start; chat is kept fresh with a long-poll loop
@@ -103,6 +113,7 @@ final class AppStore {
     var isRefreshing = false
     var needsAuth = false
     var syncError: String?
+    private var refreshRetries = 0
 
     /// Family-room convenience so existing call sites (and ChatMergeTests)
     /// keep working unchanged — every other room goes through `messagesByRoom`.
@@ -287,6 +298,7 @@ final class AppStore {
                 lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
             }
             syncError = nil
+            refreshRetries = 0
             needsAuth = false
             persist()
             await ParentFamilyAssistancePublisher.publish(from: self)
@@ -298,7 +310,18 @@ final class AppStore {
             needsAuth = true
         } catch {
             guard generation == refreshGeneration else { return }
-            syncError = error.localizedDescription
+            if !error.isCancellation { syncError = error.localizedDescription }
+            // Don't leave the first screen stuck on an error until someone taps retry;
+            // a server restart during a deploy can take ~30s.
+            let delays: [Duration] = [.seconds(2), .seconds(6), .seconds(20)]
+            guard refreshRetries < delays.count else { return }
+            let delay = delays[refreshRetries]
+            refreshRetries += 1
+            Task { [weak self] in
+                try? await Task.sleep(for: delay)
+                guard let self, generation == self.refreshGeneration, !self.needsAuth else { return }
+                await self.refresh()
+            }
         }
     }
 
@@ -681,6 +704,7 @@ final class AppStore {
         } catch {
             guard generation == goalsLoadGeneration, session == sessionGeneration,
                   accountID == me?.id, familyID == family?.id else { return }
+            if error.isCancellation { goalsLoadState = goals.isEmpty ? .idle : .ready; return }
             goalsLoadState = .error
             goalsError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
@@ -755,6 +779,7 @@ final class AppStore {
             meals = loaded
         } catch {
             guard generation == mealsLoadGeneration, me?.id == accountID, family?.id == familyID else { return }
+            if error.isCancellation { return }
             mealsError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
         }
@@ -1077,7 +1102,7 @@ final class AppStore {
                 homeworkLoaded = true
             }
         } catch {
-            if loadGeneration == homeworkLoadGeneration {
+            if loadGeneration == homeworkLoadGeneration, !error.isCancellation {
                 homeworkError = error.localizedDescription
                 if case APIError.unauthenticated = error { handle(error) }
             }
@@ -1090,7 +1115,7 @@ final class AppStore {
         do { freshFamilyEvents = try await familyEventsRequest } catch { calendarLoadError = error }
         guard me?.id == accountID, family?.id == familyID,
               loadGeneration == homeworkLoadGeneration else { return }
-        if let calendarLoadError {
+        if let calendarLoadError, !calendarLoadError.isCancellation {
             calendarError = calendarLoadError.localizedDescription
             if case APIError.unauthenticated = calendarLoadError { handle(calendarLoadError) }
         }
@@ -1133,6 +1158,7 @@ final class AppStore {
             updateAttentionFreshness()
         } catch {
             guard generation == actionLoadGeneration, me?.id == accountID, family?.id == familyID else { return }
+            if error.isCancellation { isLoadingActions = false; return }
             actionError = error.localizedDescription
             if case APIError.unauthenticated = error { handle(error) }
         }
@@ -1710,6 +1736,7 @@ final class AppStore {
     }
 
     private func handle(_ error: Error) {
+        if error.isCancellation { return }
         if case APIError.unauthenticated = error { _ = requireAuthentication(for: error) }
         else { syncError = error.localizedDescription }
     }

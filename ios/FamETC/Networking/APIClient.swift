@@ -58,7 +58,10 @@ final class APIClient: FamilyActionService, ChatMessageService {
         c.httpCookieAcceptPolicy = .always
         c.httpShouldSetCookies = true
         c.timeoutIntervalForRequest = 30
-        c.waitsForConnectivity = true
+        // Fail fast: a refused or reset first connection (server restarting, app
+        // just updated) otherwise parks the request for days while the screen
+        // stays blank. Transient failures are retried in `rawSend` and `refresh`.
+        c.waitsForConnectivity = false
         // Tags every native request as the iOS app so the server keeps it free of
         // the web subscription gate (in-app purchases ship later). Carries the
         // shared-secret header when configured — see Config.clientHeaders.
@@ -674,6 +677,12 @@ final class APIClient: FamilyActionService, ChatMessageService {
         Self.encodedPathComponent(value)
     }
 
+    static func isTransient(_ error: Error) -> Bool {
+        guard let code = (error as? URLError)?.code else { return false }
+        return [.networkConnectionLost, .timedOut, .cannotConnectToHost, .cannotFindHost,
+                .dnsLookupFailed, .secureConnectionFailed, .notConnectedToInternet].contains(code)
+    }
+
     private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, timeout: TimeInterval? = nil) async throws -> T {
         let data = try await rawSend(path, method: method, body: body, timeout: timeout)
         do {
@@ -702,11 +711,25 @@ final class APIClient: FamilyActionService, ChatMessageService {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
 
-        let data: Data, resp: URLResponse
-        do {
-            (data, resp) = try await (cookie == nil ? session : progressSession).data(for: req)
-        } catch {
-            throw APIError.transport(error)
+        // The first requests after a launch or an app update can land on a
+        // connection the server already closed, or on a server restart. A GET
+        // is safe to repeat, so give it two quiet retries before surfacing an error.
+        let attempts = method == "GET" ? 3 : 1
+        var data = Data(), resp: URLResponse = URLResponse()
+        for attempt in 1...attempts {
+            do {
+                (data, resp) = try await (cookie == nil ? session : progressSession).data(for: req)
+            } catch {
+                guard attempt < attempts, Self.isTransient(error), !Task.isCancelled else { throw APIError.transport(error) }
+                try? await Task.sleep(for: .milliseconds(attempt == 1 ? 600 : 1800))
+                continue
+            }
+            if let code = (resp as? HTTPURLResponse)?.statusCode, [502, 503, 504].contains(code),
+               attempt < attempts, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(attempt == 1 ? 600 : 1800))
+                continue
+            }
+            break
         }
         guard let http = resp as? HTTPURLResponse else { throw APIError.transport(URLError(.badServerResponse)) }
         if http.statusCode == 401 { throw APIError.unauthenticated }
