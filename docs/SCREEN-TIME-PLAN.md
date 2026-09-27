@@ -302,7 +302,7 @@ Apple keeps detailed Screen Time usage on the device that produced it (the
 Development builds work with the `family-controls` entitlement today. App
 Store/TestFlight distribution needs Apple's **Family Controls (Distribution)**
 approval for `com.fametc.app`, `com.fametc.app.screentime-monitor` and
-`com.fametc.app.shield-config` — request at
+`com.fametc.app.shield-config`, `com.fametc.app.usage-report` — request at
 developer.apple.com/contact/request/family-controls-distribution.
 
 ## Deferred (not built)
@@ -318,7 +318,7 @@ developer.apple.com/contact/request/family-controls-distribution.
 - **App name**: Fam ETC
 - **Team ID**: B4F73U5RGR
 - **Bundle IDs**: com.fametc.app, com.fametc.app.screentime-monitor,
-  com.fametc.app.shield-config
+  com.fametc.app.shield-config, com.fametc.app.usage-report
 
 **How your app uses the Family Controls framework** (description, ~120 words):
 
