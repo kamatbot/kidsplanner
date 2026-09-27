@@ -450,8 +450,49 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { date: today, parts });
   }
 
+  if (url.pathname.startsWith("/api/screen-time")) {
+    return screenTimeRoute(req, res, url, role === "kid"
+      ? { id: "qa-kid-user", data: { profile: { role: "kid" }, kid: { familyId: sessionFamily.id, kidId: sessionKid.id } } }
+      : { id: "qa-parent-1", data: { profile: { role: "parent" } } }, sessionFamily);
+  }
+
   return send(res, 404, { error: `Synthetic fixture has no route for ${req.method} ${url.pathname}` });
 });
+
+// Screen Time runs the REAL route module + lib/screen-time.js against a
+// throwaway data dir, so native parent/kid screens exercise production logic.
+// Pushes are no-ops here (no APNs keys). Device-secret routes 401 because the
+// synthetic family isn't in the db — enforcement needs a real device anyway.
+let screenTimeRoutes = null;
+async function screenTimeRoute(req, res, url, user, fam) {
+  if (!screenTimeRoutes) {
+    process.env.FAM_DATA_DIR ||= require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "fam-qa-st-"));
+    const screenTime = require("../../lib/screen-time");
+    screenTime.configure({ notify: async () => ({}), sendPing: async () => ({ ok: false }) });
+    screenTimeRoutes = [];
+    const add = (method) => (pattern, ...handlers) => screenTimeRoutes.push({ method, pattern, handler: handlers[handlers.length - 1] });
+    require("../../lib/routes/screen-time")({ get: add("GET"), post: add("POST"), put: add("PUT"), delete: add("DELETE") }, {
+      screenTime, requireAuth() {}, requireParent() {}, requireFamily() {},
+      userRole: (u) => u.data.profile.role, kidIdForUser: (r) => r.user.data.kid && r.user.data.kid.kidId,
+    });
+  }
+  for (const route of screenTimeRoutes) {
+    const keys = [];
+    const re = new RegExp("^" + route.pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return "([^/]+)"; }) + "$");
+    const m = route.method === req.method && re.exec(url.pathname);
+    if (!m) continue;
+    if (user.data.profile.role === "kid" && !/\/(mine|device\/)/.test(route.pattern)) return send(res, 403, { error: "Parents only." });
+    const body = ["POST", "PUT"].includes(req.method) ? await readJSON(req) : {};
+    const params = Object.fromEntries(keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
+    const out = { status: 200 };
+    return route.handler({ user, family: fam, params, body, get: (h) => req.headers[h.toLowerCase()] }, {
+      set() { return this; },
+      status(c) { out.status = c; return this; },
+      json(v) { send(res, out.status, v); return this; },
+    });
+  }
+  return send(res, 404, { error: `Synthetic fixture has no route for ${req.method} ${url.pathname}` });
+}
 
 server.on("error", (error) => {
   console.error(`[fam-assistance-fixture] ${error.code || "ERROR"}: ${error.message}`);

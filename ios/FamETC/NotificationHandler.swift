@@ -29,6 +29,11 @@ extension Notification.Name {
     /// Planning→Meals deep-link mechanism yet (unlike chat rooms/homework),
     /// so this just brings the user to Today, same as a cold launch.
     static let famDeepLinkToToday = Notification.Name("famDeepLinkToToday")
+    /// Posted when a `screen_time_alert` push is received/tapped (a kid's
+    /// device turned Screen Time off, stopped checking in, etc. —
+    /// docs/SCREEN-TIME-PLAN.md), or when the in-app alert banner's Review is
+    /// tapped. `userInfo["kidId"]` carries the child whose Screen Time sheet opens.
+    static let famDeepLinkToScreenTime = Notification.Name("famDeepLinkToScreenTime")
 }
 
 /// Reference payload shapes (lib/fam-notifications.js):
@@ -49,11 +54,17 @@ extension Notification.Name {
 ///   { aps: { alert: { title: senderName, body: text }, sound: "default",
 ///            "thread-id": "trip-<tripId>" },
 ///     famType: "trip_chat_message" | "trip_chat_buzz" | "trip_update", tripId, url }
+///
+///   // screen_time_alert (docs/SCREEN-TIME-PLAN.md "Pushes") — parents only
+///   { aps: { alert: { title, body }, sound: "default",
+///            "thread-id": "screen-time-<familyId>" },
+///     famType: "screen_time_alert", familyId, kidId }
 final class NotificationHandler {
     static let shared = NotificationHandler()
 
     private let pendingRouteLock = NSLock()
     private var pendingChatRoomId: String?
+    private var pendingScreenTimeKidId: String?
 
     private init() {}
 
@@ -66,6 +77,15 @@ final class NotificationHandler {
         let roomId = pendingChatRoomId
         pendingChatRoomId = nil
         return roomId
+    }
+
+    /// Same cold-launch concern as chat: keep the kid until RootView consumes it.
+    func consumePendingScreenTimeKidId() -> String? {
+        pendingRouteLock.lock()
+        defer { pendingRouteLock.unlock() }
+        let kidId = pendingScreenTimeKidId
+        pendingScreenTimeKidId = nil
+        return kidId
     }
 
     private func routeToChat(roomId: String, notification: Notification.Name, userInfo: [AnyHashable: Any]) {
@@ -127,6 +147,16 @@ final class NotificationHandler {
             // open Today, same as everywhere else that lacks a deep link today.
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .famDeepLinkToToday, object: nil, userInfo: [:])
+            }
+        case "screen_time_alert":
+            guard let kidId = userInfo["kidId"] as? String else { return }
+            pendingRouteLock.lock()
+            pendingScreenTimeKidId = kidId
+            pendingRouteLock.unlock()
+            let familyId = (userInfo["familyId"] as? String) ?? ""
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .famDeepLinkToScreenTime, object: nil,
+                                                userInfo: ["kidId": kidId, "familyId": familyId])
             }
         default:
             break

@@ -79,6 +79,7 @@ private struct ParentTodayStack: View {
             }
             TodayUtilitiesRow(onScanNotice: { showSchoolNotice = true },
                               onOpenActions: { showActions = true }, onAddEvent: { showAddEvent = true })
+            ScreenTimeSummaryCard()
             TodaySecondaryDisclosure(isExpanded: $showSecondary, role: .parent,
                                      extra: AnyView(HomeworkDueCard(onOpenHomework: onOpenHomework)))
         }
@@ -485,6 +486,7 @@ private struct KidTodayStack: View {
                     StudyStartCard()
                     studyPal
                     KidHomeworkCard(onOpenHomework: onOpenHomework)
+                    ScreenTimeKidCard()
                 }
             }
         }
@@ -522,6 +524,7 @@ private struct KidTodayStack: View {
                 VStack(alignment: .leading, spacing: 20) {
                     KidHomeworkCard(onOpenHomework: onOpenHomework)
                     studyPal
+                    ScreenTimeKidCard()
                 }
             }
         }

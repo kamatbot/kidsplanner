@@ -1,0 +1,1316 @@
+import SwiftUI
+import FamilyControls
+
+// Parent Screen Time UX (docs/SCREEN-TIME-PLAN.md "UX"). Simple first: the Basic
+// part of the sheet is two switches (Bedtime, Daily screen time), Pause and new
+// alerts, in plain words. Everything technical lives under Advanced.
+// Remote actions are best-effort, so delivery is always shown as Pending vs
+// Applied from each device's `appliedVersion`, never assumed from the server.
+
+// MARK: - Shared formatting
+
+enum ScreenTimeFormat {
+    /// Well-known ids the Basic screen edits.
+    static let totalID = "total"
+    static let bedtimeID = "bedtime"
+    static let everyDay = [1, 2, 3, 4, 5, 6, 7]
+
+    static func date(_ value: String?) -> Date? { ScreenTimeSchedule.date(fromISO: value) }
+
+    static func relative(_ date: Date?) -> String {
+        guard let date else { return "never" }
+        if Date().timeIntervalSince(date) < 60 { return "just now" }
+        return date.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+    }
+
+    static func clock(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// "21:00" → "9:00 PM" in the user's locale.
+    static func time(_ hhmm: String) -> String {
+        guard let date = dateFromHHMM(hhmm) else { return hhmm }
+        return clock(date)
+    }
+
+    static func dateFromHHMM(_ hhmm: String) -> Date? {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        return Calendar.current.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: Date())
+    }
+
+    static func hhmm(_ date: Date) -> String {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+    }
+
+    /// 45 → "45 min", 120 → "2 h", 150 → "2 h 30 min".
+    static func minutes(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        let h = m / 60, r = m % 60
+        return r == 0 ? "\(h) h" : "\(h) h \(r) min"
+    }
+
+    /// `Calendar.weekday` numbers (1 = Sunday) → "Every day" / "Weekdays" / "Mon, Wed".
+    static func days(_ days: [Int]) -> String {
+        let set = Set(days)
+        if set.count == 7 { return "Every day" }
+        if set == [2, 3, 4, 5, 6] { return "Weekdays" }
+        if set == [1, 7] { return "Weekends" }
+        if set.isEmpty { return "No days" }
+        let symbols = Calendar.current.shortWeekdaySymbols
+        return orderedWeekdays.filter(set.contains).map { symbols[$0 - 1] }.joined(separator: ", ")
+    }
+
+    /// Weekday numbers in the user's locale order (e.g. Mon…Sun in the UK).
+    static var orderedWeekdays: [Int] {
+        let first = Calendar.current.firstWeekday
+        return (0..<7).map { (first - 1 + $0) % 7 + 1 }
+    }
+
+    static func summary(_ s: SelectionSummary?) -> String {
+        guard let s, !s.isEmpty else { return "No apps chosen yet" }
+        var parts: [String] = []
+        if s.apps > 0 { parts.append("\(s.apps) app\(s.apps == 1 ? "" : "s")") }
+        if s.categories > 0 { parts.append("\(s.categories) categor\(s.categories == 1 ? "y" : "ies")") }
+        if s.webDomains > 0 { parts.append("\(s.webDomains) website\(s.webDomains == 1 ? "" : "s")") }
+        return parts.joined(separator: ", ")
+    }
+
+    /// "2 h a day on school days, 3 h on weekends" / "1 h a day".
+    static func allowance(_ limit: ScreenTimeLimit) -> String {
+        let weekday = minutes(limit.minutesPerDay)
+        guard let weekend = limit.weekendMinutes, weekend != limit.minutesPerDay else { return "\(weekday) a day" }
+        return "\(weekday) a day on school days, \(minutes(weekend)) on weekends"
+    }
+
+    /// Kid-facing rule line: total → "2 h a day on school days, 3 h on weekends"; apps → "Games · 1 h a day".
+    static func limitLine(_ limit: ScreenTimeLimit) -> String {
+        limit.isTotal ? allowance(limit) : "\(limit.name) · \(allowance(limit))"
+    }
+
+    static func downtimeLine(_ d: ScreenTimeDowntime) -> String {
+        "\(d.name) \(time(d.start))–\(time(d.end))"
+    }
+
+    static func pauseUntil(_ policy: ScreenTimePolicy?) -> Date? {
+        guard let until = policy?.pauseUntilDate, until > Date() else { return nil }
+        return until
+    }
+
+    /// The whole-device limit needs an "All Apps & Categories" selection picked
+    /// on the kid's device; true while an enrolled device still lacks one.
+    static func needsFinishSetup(_ state: ScreenTimeKidState) -> Bool {
+        guard let total = state.policy.limits.first(where: \.isTotal), !state.devices.isEmpty else { return false }
+        if let parentSummary = total.selectionSummary, !parentSummary.isEmpty { return false }
+        return state.devices.contains { total.deviceSelections?[$0.id]?.isEmpty ?? true }
+    }
+
+    static func deviceNames(_ devices: [ScreenTimeDevice], kidName: String) -> String {
+        let labels = devices.map(\.label)
+        guard let first = labels.first else { return "\(kidName)'s phone" }
+        return labels.count == 1 ? "\(kidName)'s \(first)" : "\(kidName)'s \(labels.dropLast().joined(separator: ", ")) and \(labels.last!)"
+    }
+}
+
+// MARK: - Kid status (Today chip)
+
+/// One status per kid, derived only from server-reported device state.
+enum ScreenTimeKidStatus: Equatable {
+    case notSetUp, waiting, finishSetup, family, cooperative, turnedOff(Date?), notCheckingIn, paused(Date)
+
+    init(state: ScreenTimeKidState?) {
+        guard let state, state.policy.enabled else { self = .notSetUp; return }
+        let devices = state.devices
+        if devices.isEmpty { self = .waiting; return }
+        if devices.contains(where: { $0.state == "revoked" }) {
+            let at = state.alerts.filter { $0.type == "revoked" }
+                .compactMap { ScreenTimeFormat.date($0.at) }.max()
+            self = .turnedOff(at)
+            return
+        }
+        if devices.contains(where: { $0.state == "stale" || $0.state == "removed" }) {
+            self = .notCheckingIn
+            return
+        }
+        if ScreenTimeFormat.needsFinishSetup(state) { self = .finishSetup; return }
+        if let until = ScreenTimeFormat.pauseUntil(state.policy) { self = .paused(until); return }
+        self = devices.contains(where: \.isFamily) ? .family : .cooperative
+    }
+
+    var text: String {
+        switch self {
+        case .notSetUp: return "Not set up"
+        case .waiting: return "Set up on their phone"
+        case .finishSetup: return "Finish setup on their phone"
+        case .family: return "Protected · Family Sharing"
+        case .cooperative: return "On · without Family Sharing"
+        case .turnedOff(let at): return at.map { "Turned off · \(ScreenTimeFormat.clock($0))" } ?? "Turned off"
+        case .notCheckingIn: return "Not checking in"
+        case .paused(let until): return "Paused until \(ScreenTimeFormat.clock(until))"
+        }
+    }
+
+    var colors: (ink: Color, soft: Color) {
+        switch self {
+        case .notSetUp: return (Palette.frInk2, Palette.frCard2)
+        case .waiting, .finishSetup: return (Palette.frFamsInk, Palette.frFamsSoft)
+        case .family: return (Palette.frD3Ink, Palette.frD3Soft)
+        case .cooperative, .paused: return (Palette.frYouInk, Palette.frYouSoft)
+        case .turnedOff: return (Palette.frDanger, Palette.frDangerSoft)
+        case .notCheckingIn: return (Palette.frFamsInk, Palette.frFamsSoft)
+        }
+    }
+}
+
+struct ScreenTimeChip: View {
+    let text: String
+    let ink: Color
+    let soft: Color
+
+    var body: some View {
+        Text(text)
+            .font(Typography.chip)
+            .foregroundStyle(ink)
+            .padding(.horizontal, Space.sm + 2)
+            .padding(.vertical, 5)
+            .background(soft, in: Capsule())
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+extension ScreenTimeDevice {
+    func applied(_ policy: ScreenTimePolicy) -> Bool { (appliedVersion ?? -1) >= policy.version }
+
+    var isFamily: Bool { mode == ScreenTimeMode.family.rawValue }
+
+    var modeTitle: String { isFamily ? "With Family Sharing" : "Without Family Sharing" }
+
+    var modeMeaning: String {
+        isFamily
+            ? "Strong: your child can't remove Fam ETC or turn Screen Time access off."
+            : "Real limits, but your child could turn access off. If they do, you'll be alerted."
+    }
+}
+
+// MARK: - Parent Today card
+
+struct ScreenTimeSummaryCard: View {
+    @Environment(AppStore.self) private var store
+    @State private var sheetKid: SheetKid?
+    private var service: ScreenTimeService { .shared }
+
+    private struct SheetKid: Identifiable { let id: String }
+
+    var body: some View {
+        if store.isParent, !store.kids.isEmpty {
+            Card(padding: Space.lg) {
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    HStack {
+                        MicroLabel(text: "Screen Time")
+                        Spacer()
+                        Image(systemName: "hourglass")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Palette.frInk2)
+                            .accessibilityHidden(true)
+                    }
+                    ForEach(store.kids) { kid in
+                        row(kid)
+                    }
+                }
+            }
+            .sheet(item: $sheetKid) { ScreenTimeParentSheet(initialKidId: $0.id) }
+            .onChange(of: store.me?.id) { _, _ in sheetKid = nil }
+        }
+    }
+
+    private func row(_ kid: Kid) -> some View {
+        let status = ScreenTimeKidStatus(state: service.state(for: kid.id))
+        return Button {
+            Haptics.selection()
+            sheetKid = SheetKid(id: kid.id)
+        } label: {
+            HStack(spacing: Space.md) {
+                KidProfileAvatar(kid: kid, size: 30)
+                Text(kid.name)
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1)
+                Spacer(minLength: Space.sm)
+                ScreenTimeChip(text: status == .notSetUp ? "Set up" : status.text,
+                               ink: status.colors.ink, soft: status.colors.soft)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.frInk3)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(kid.name), Screen Time")
+        .accessibilityValue(status.text)
+        .accessibilityHint(status == .notSetUp ? "Set up Screen Time for \(kid.name)" : "Opens Screen Time controls")
+    }
+}
+
+// MARK: - App-wide parent alert banner
+
+struct ScreenTimeAlertBanner: View {
+    @Environment(AppStore.self) private var store
+    private var service: ScreenTimeService { .shared }
+
+    private var newest: ScreenTimeAlert? {
+        service.unackedAlerts.max { (ScreenTimeFormat.date($0.at) ?? .distantPast) < (ScreenTimeFormat.date($1.at) ?? .distantPast) }
+    }
+
+    var body: some View {
+        if store.isParent, !store.needsAuth, let alert = newest {
+            let warning = ["revoked", "removed", "stale"].contains(alert.type)
+            let tone = warning ? Palette.frDanger : Palette.accent
+            let more = service.unackedAlerts.count - 1
+            HStack(spacing: Space.md) {
+                Image(systemName: warning ? "exclamationmark.shield.fill" : "hourglass")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(tone)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alert.message)
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(more > 0 ? "Screen Time · \(more) more" : "Screen Time · \(ScreenTimeFormat.relative(ScreenTimeFormat.date(alert.at)))")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                Spacer(minLength: Space.sm)
+                Button("Review") {
+                    Haptics.selection()
+                    NotificationCenter.default.post(name: .famDeepLinkToScreenTime, object: nil,
+                                                    userInfo: ["kidId": alert.kidId])
+                }
+                .font(Typography.caption.weight(.bold))
+                .foregroundStyle(Palette.onAccent)
+                .padding(.horizontal, Space.md)
+                .frame(minHeight: 44)
+                .background(Palette.accent, in: Capsule())
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens Screen Time for this child")
+            }
+            .padding(Space.md)
+            .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                    .strokeBorder(tone, lineWidth: 2)
+            )
+            .cardShadow()
+            .padding(.horizontal, Space.md)
+            .padding(.top, Space.sm)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
+// MARK: - Parent sheet
+
+/// The Basic switches, edited as a draft and saved together.
+private struct BasicDraft: Equatable {
+    var bedtimeOn = false
+    var bedStart = "21:00"
+    var bedEnd = "07:00"
+    var totalOn = false
+    var school = 120
+    var weekend = 180
+
+    init() {}
+
+    init(_ policy: ScreenTimePolicy?) {
+        if let bed = policy?.downtime.first(where: { $0.id == ScreenTimeFormat.bedtimeID }) {
+            bedtimeOn = true; bedStart = bed.start; bedEnd = bed.end
+        }
+        if let total = policy?.limits.first(where: \.isTotal) {
+            totalOn = true
+            school = total.minutesPerDay
+            weekend = total.weekendMinutes ?? total.minutesPerDay
+        }
+    }
+}
+
+struct ScreenTimeParentSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var kidId: String
+    @State private var draft = BasicDraft()
+    @State private var baseline = BasicDraft()
+    @State private var loadedKey = ""
+    @State private var error: String?
+    @State private var working = false
+    @State private var pausing = false
+    @State private var justSaved = false
+    @State private var showAdvanced = false
+    @State private var showHow = false
+    @State private var editingLimit: ScreenTimeLimit?
+    @State private var editingDowntime: ScreenTimeDowntime?
+    @State private var forgetting: ScreenTimeDevice?
+    private var service: ScreenTimeService { .shared }
+
+    init(initialKidId: String) {
+        _kidId = State(initialValue: initialKidId)
+    }
+
+    private var kid: Kid? { store.kids.first { $0.id == kidId } }
+    private var kidName: String { kid?.name ?? "your child" }
+    private var state: ScreenTimeKidState? { service.state(for: kidId) }
+    private var policy: ScreenTimePolicy? { state?.policy }
+    private var devices: [ScreenTimeDevice] { state?.devices ?? [] }
+    private var appLimits: [ScreenTimeLimit] { policy?.limits.filter { !$0.isTotal } ?? [] }
+    private var extraDowntime: [ScreenTimeDowntime] { policy?.downtime.filter { $0.id != ScreenTimeFormat.bedtimeID } ?? [] }
+    private var unacked: [ScreenTimeAlert] {
+        (state?.alerts ?? []).filter { $0.ackedAt == nil }
+            .sorted { (ScreenTimeFormat.date($0.at) ?? .distantPast) > (ScreenTimeFormat.date($1.at) ?? .distantPast) }
+    }
+    private var hasRules: Bool { !(policy?.limits.isEmpty ?? true) || !(policy?.downtime.isEmpty ?? true) }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if store.kids.count > 1 {
+                    Section {
+                        Picker("Child", selection: $kidId) {
+                            ForEach(store.kids) { Text($0.name).tag($0.id) }
+                        }
+                        .pickerStyle(.segmented)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                    }
+                }
+                if state == nil {
+                    Section {
+                        if service.overview == nil {
+                            HStack(spacing: Space.sm) { ProgressView(); Text("Loading…").foregroundStyle(Palette.textSecond) }
+                        } else {
+                            Text("Screen Time for \(kidName) isn't available right now. Pull down to try again.")
+                                .foregroundStyle(Palette.textSecond)
+                        }
+                    }
+                } else {
+                    statusSection
+                    if let error { errorSection(error) }
+                    bedtimeSection
+                    dailySection
+                    saveSection
+                    if devices.isEmpty { setupStepsSection }
+                    if !devices.isEmpty && hasRules { pauseSection }
+                    advancedToggle
+                    if showAdvanced {
+                        limitsSection
+                        downtimeSection
+                        devicesSection
+                        alertHistorySection
+                        howSection
+                    }
+                }
+            }
+            .font(Typography.body)
+            .scrollContentBackground(.hidden)
+            .background(ScreenBackground())
+            .refreshable { await service.loadOverview() }
+            .navigationTitle(kid.map { "Screen Time for \($0.name)" } ?? "Screen Time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+            .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
+            .onChange(of: kidId) { _, _ in error = nil; justSaved = false }
+            .sheet(item: $editingLimit) { limit in
+                ScreenTimeLimitEditor(kidName: kidName, limit: limit,
+                                      isNew: !appLimits.contains { $0.id == limit.id && !limit.id.isEmpty },
+                                      devices: devices) { updated in
+                    try await saveAdvancedLimit(replacing: limit.id, with: updated)
+                }
+            }
+            .sheet(item: $editingDowntime) { d in
+                ScreenTimeDowntimeEditor(downtime: d,
+                                         isNew: !extraDowntime.contains { $0.id == d.id && !d.id.isEmpty }) { updated in
+                    try await saveAdvancedDowntime(replacing: d.id, with: updated)
+                }
+            }
+            .confirmationDialog("Forget this device?", isPresented: Binding(
+                get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }
+            ), titleVisibility: .visible, presenting: forgetting) { device in
+                Button("Forget \(kidName)'s \(device.label)", role: .destructive) {
+                    run { try await service.forgetDevice(kidId: kidId, deviceId: device.id) }
+                }
+            } message: { _ in
+                Text("Fam ETC stops tracking this device. Set it up again on the device to reconnect.")
+            }
+        }
+        .task { if service.overview == nil { await service.loadOverview() } }
+    }
+
+    /// Reload the Basic draft from the server policy unless the parent has unsaved edits
+    /// for this kid (a kid switch always reloads).
+    private func syncDraft() {
+        let kidChanged = !loadedKey.hasPrefix("\(kidId)|")
+        loadedKey = "\(kidId)|\(policy?.version ?? -1)"
+        let fresh = BasicDraft(policy)
+        if kidChanged || draft == baseline { draft = fresh }
+        baseline = fresh
+    }
+
+    // MARK: Basic — status
+
+    private var statusLine: (text: String, icon: String, tone: Color) {
+        guard let state, hasRules else {
+            return ("Screen Time is off for \(kidName). Turn on a switch below and tap Save.", "hourglass", Palette.frInk2)
+        }
+        if devices.isEmpty {
+            return ("Saved. Now set it up on \(kidName)'s phone.", "iphone", Palette.frFamsInk)
+        }
+        if devices.contains(where: { $0.state == "revoked" }) {
+            let at = state.alerts.filter { $0.type == "revoked" }.compactMap { ScreenTimeFormat.date($0.at) }.max()
+            return ("\(kidName) turned it off\(at.map { " — \(ScreenTimeFormat.clock($0))" } ?? "")", "exclamationmark.shield.fill", Palette.frDanger)
+        }
+        if let d = devices.first(where: { $0.state == "removed" }) {
+            return ("Fam ETC may have been removed from \(kidName)'s \(d.label)", "exclamationmark.shield.fill", Palette.frDanger)
+        }
+        if let d = devices.first(where: { $0.state == "stale" }) {
+            return ("\(kidName)'s \(d.label) hasn't checked in since \(ScreenTimeFormat.relative(ScreenTimeFormat.date(d.lastSeenAt)))", "clock.badge.exclamationmark", Palette.frFamsInk)
+        }
+        if ScreenTimeFormat.needsFinishSetup(state) {
+            return ("Finish setup on \(kidName)'s phone", "iphone", Palette.frFamsInk)
+        }
+        if let until = ScreenTimeFormat.pauseUntil(state.policy) {
+            return ("Paused until \(ScreenTimeFormat.clock(until))", "pause.circle.fill", Palette.frYouInk)
+        }
+        return ("On for \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))", "checkmark.shield.fill", Palette.green)
+    }
+
+    private var statusSection: some View {
+        let line = statusLine
+        return Section {
+            Label {
+                Text(line.text)
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: line.icon).foregroundStyle(line.tone)
+            }
+            .accessibilityElement(children: .combine)
+            if let state, ScreenTimeFormat.needsFinishSetup(state) {
+                Text("On \(kidName)'s phone, open Fam ETC, tap “Finish setup” on Today, then tap All Apps & Categories and Done.")
+                    .font(Typography.label)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            ForEach(unacked) { alert in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alert.message)
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
+                    Text(ScreenTimeFormat.relative(ScreenTimeFormat.date(alert.at)))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if !unacked.isEmpty {
+                Button("Got it") {
+                    Haptics.selection()
+                    Task { await service.ackAlerts(kidId: kidId) }
+                }
+                .frame(minHeight: 44)
+                .accessibilityHint("Marks these Screen Time alerts as seen")
+            }
+        }
+    }
+
+    private func errorSection(_ message: String) -> some View {
+        Section {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(Typography.label)
+                .foregroundStyle(Palette.frDanger)
+        }
+    }
+
+    // MARK: Basic — switches
+
+    private func timeBinding(_ key: WritableKeyPath<BasicDraft, String>) -> Binding<Date> {
+        Binding(
+            get: { ScreenTimeFormat.dateFromHHMM(draft[keyPath: key]) ?? Date() },
+            set: { draft[keyPath: key] = ScreenTimeFormat.hhmm($0) }
+        )
+    }
+
+    private var bedtimeSection: some View {
+        Section {
+            Toggle(isOn: $draft.bedtimeOn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bedtime").font(Typography.body.weight(.semibold))
+                    Text("No phone from \(ScreenTimeFormat.time(draft.bedStart)) to \(ScreenTimeFormat.time(draft.bedEnd))")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                        .monospacedDigit()
+                }
+            }
+            if draft.bedtimeOn {
+                DatePicker("From", selection: timeBinding(\.bedStart), displayedComponents: .hourAndMinute)
+                DatePicker("Until", selection: timeBinding(\.bedEnd), displayedComponents: .hourAndMinute)
+            }
+        } footer: {
+            if draft.bedtimeOn { Text("Every night. Phone calls still work.") }
+        }
+    }
+
+    private func minutesStepper(_ title: String, value: Binding<Int>) -> some View {
+        Stepper(value: value, in: 15...720, step: 15) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(ScreenTimeFormat.minutes(value.wrappedValue))
+                    .font(Typography.body.weight(.semibold))
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityValue(ScreenTimeFormat.minutes(value.wrappedValue))
+    }
+
+    private var dailySection: some View {
+        Section {
+            Toggle(isOn: $draft.totalOn) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Daily screen time").font(Typography.body.weight(.semibold))
+                    Text("\(ScreenTimeFormat.minutes(draft.school)) on school days, \(ScreenTimeFormat.minutes(draft.weekend)) on weekends")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                        .monospacedDigit()
+                }
+            }
+            if draft.totalOn {
+                minutesStepper("School days", value: $draft.school)
+                minutesStepper("Weekends", value: $draft.weekend)
+            }
+        } footer: {
+            if draft.totalOn { Text("When the time is used up, apps pause until tomorrow.") }
+        }
+    }
+
+    private var saveSection: some View {
+        Section {
+            if working {
+                HStack(spacing: Space.sm) { ProgressView(); Text("Saving…") }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .foregroundStyle(Palette.textSecond)
+            } else {
+                AccentButton(title: "Save") { saveBasic() }
+                    .disabled(draft == baseline)
+                    .opacity(draft == baseline ? 0.5 : 1)
+            }
+            if draft == baseline, let policy, hasRules, !devices.isEmpty, justSaved || devices.contains(where: { !$0.applied(policy) }) {
+                deliveryLine(policy)
+            }
+        }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets())
+    }
+
+    private func saveBasic() {
+        guard let policy else { return }
+        var downtime = policy.downtime.filter { $0.id != ScreenTimeFormat.bedtimeID }
+        if draft.bedtimeOn {
+            var bed = policy.downtime.first { $0.id == ScreenTimeFormat.bedtimeID }
+                ?? ScreenTimeDowntime(id: ScreenTimeFormat.bedtimeID, name: "Bedtime", start: "21:00", end: "07:00",
+                                      days: ScreenTimeFormat.everyDay)
+            bed.start = draft.bedStart
+            bed.end = draft.bedEnd
+            downtime.insert(bed, at: 0)
+        }
+        var limits = policy.limits.filter { !$0.isTotal }
+        if draft.totalOn {
+            var total = policy.limits.first(where: \.isTotal) ?? .newLimit(id: ScreenTimeFormat.totalID, kind: "total", name: "Screen time")
+            total.minutesPerDay = draft.school
+            total.weekendMinutes = draft.weekend
+            limits.insert(total, at: 0)
+        }
+        run {
+            try await save(limits: limits, downtime: downtime)
+            Haptics.notify(.success)
+            justSaved = true
+        }
+    }
+
+    private var setupStepsSection: some View {
+        Section {
+            ForEach(Array(setupSteps.enumerated()), id: \.offset) { i, step in
+                HStack(alignment: .firstTextBaseline, spacing: Space.md) {
+                    Text("\(i + 1)")
+                        .font(Typography.label.weight(.bold))
+                        .foregroundStyle(Palette.onAccent)
+                        .frame(width: 26, height: 26)
+                        .background(Palette.accent, in: Circle())
+                        .accessibilityHidden(true)
+                    Text(step)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Step \(i + 1). \(step)")
+            }
+        } header: {
+            Text("Set it up on \(kidName)'s phone")
+        } footer: {
+            Text("Your rules start working once this is done. You'll see it here.")
+        }
+    }
+
+    private var setupSteps: [String] {
+        ["On \(kidName)'s phone, open Fam ETC and sign in as \(kidName).",
+         "Tap Set up Screen Time.",
+         "Approve, then tap All Apps & Categories."]
+    }
+
+    // MARK: Basic — pause
+
+    private var pauseSection: some View {
+        let until = ScreenTimeFormat.pauseUntil(policy)
+        return Section {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.sm) { pauseButtons(paused: until != nil) }
+                VStack(alignment: .leading, spacing: Space.sm) { pauseButtons(paused: until != nil) }
+            }
+            .disabled(pausing || working)
+            if pausing {
+                HStack(spacing: Space.sm) { ProgressView(); Text("Sending…") }
+                    .font(Typography.caption).foregroundStyle(Palette.textSecond)
+            } else if let policy, until != nil {
+                deliveryLine(policy)
+            }
+        } header: {
+            Text("Pause now")
+        } footer: {
+            Text("Pauses all apps except phone calls on \(ScreenTimeFormat.deviceNames(devices, kidName: kidName)) as soon as it's online.")
+        }
+    }
+
+    @ViewBuilder
+    private func pauseButtons(paused: Bool) -> some View {
+        pauseButton("1 hour", minutes: 60)
+        pauseButton("Until tomorrow", minutes: minutesUntilMorning)
+        if paused { pauseButton("Resume", minutes: 0) }
+    }
+
+    private func pauseButton(_ title: String, minutes: Int) -> some View {
+        Button {
+            Haptics.impact(.light)
+            pausing = true
+            error = nil
+            justSaved = false
+            Task {
+                do { try await service.pause(kidId: kidId, minutes: minutes) } catch { self.error = error.localizedDescription }
+                pausing = false
+            }
+        } label: {
+            Text(title)
+                .font(Typography.label.weight(.semibold))
+                .foregroundStyle(minutes == 0 ? Palette.onAccent : Palette.frYouInk)
+                .padding(.horizontal, Space.md)
+                .frame(minHeight: 44)
+                .background {
+                    if minutes == 0 { Capsule().fill(Palette.accent) }
+                    else { Capsule().strokeBorder(Palette.frYou, lineWidth: 1) }
+                }
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(minutes == 0 ? "Resume apps" : "Pause apps for \(title)")
+    }
+
+    /// Minutes until the next 7 AM (server accepts 15–1440).
+    private var minutesUntilMorning: Int {
+        let cal = Calendar.current
+        let today7 = cal.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
+        let next = today7 > Date() ? today7 : cal.date(byAdding: .day, value: 1, to: today7) ?? today7
+        return min(1440, max(15, Int((next.timeIntervalSinceNow / 60).rounded(.up))))
+    }
+
+    /// "Applied on Mia's iPhone" vs "Pending on Mia's iPad" — from each device's reported version.
+    private func deliveryLine(_ policy: ScreenTimePolicy) -> some View {
+        let pending = devices.filter { !$0.applied(policy) }
+        return HStack(spacing: Space.xs) {
+            Image(systemName: pending.isEmpty ? "checkmark.circle.fill" : "clock.arrow.circlepath")
+                .foregroundStyle(pending.isEmpty ? Palette.green : Palette.frFamsInk)
+                .accessibilityHidden(true)
+            Text(pending.isEmpty
+                 ? "Applied on \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))"
+                 : "Pending on \(ScreenTimeFormat.deviceNames(pending, kidName: kidName))")
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: Space.xs)
+            if !pending.isEmpty {
+                Button("Check") { Task { await service.loadOverview() } }
+                    .buttonStyle(.borderless)
+                    .frame(minHeight: 44)
+                    .accessibilityHint("Checks whether the change reached the device")
+            }
+        }
+        .font(Typography.caption)
+        .foregroundStyle(Palette.text)
+        .padding(.horizontal, Space.xs)
+    }
+
+    // MARK: Advanced
+
+    private var advancedToggle: some View {
+        Section {
+            Button {
+                Haptics.selection()
+                withAnimation(Motion.snappy) { showAdvanced.toggle() }
+            } label: {
+                HStack {
+                    Text("Advanced").font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(showAdvanced ? 90 : 0))
+                        .foregroundStyle(Palette.frInk3)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showAdvanced ? "Expanded" : "Collapsed")
+        } footer: {
+            if !showAdvanced { Text("Limits for single apps, more quiet times, devices and alert history.") }
+        }
+    }
+
+    private var limitsSection: some View {
+        Section {
+            ForEach(appLimits) { limit in
+                Button { editingLimit = limit } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ScreenTimeFormat.limitLine(limit))
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Palette.text)
+                            .monospacedDigit()
+                        Text(limit.selection == nil ? "Apps chosen on \(kidName)'s device" : ScreenTimeFormat.summary(limit.selectionSummary))
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                        ForEach(deviceSummaries(limit), id: \.self) {
+                            Text($0).font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Edit this limit")
+            }
+            if (policy?.limits.count ?? 0) < 8 {
+                Button {
+                    editingLimit = .newLimit(id: "", kind: "apps", name: "")
+                } label: {
+                    Label("Add an app limit", systemImage: "plus.circle.fill")
+                }
+            }
+        } header: {
+            Text("App limits")
+        } footer: {
+            Text("For example, Games for 1 h a day. When the time is used up, those apps pause until tomorrow.")
+        }
+    }
+
+    private func deviceSummaries(_ limit: ScreenTimeLimit) -> [String] {
+        (limit.deviceSelections ?? [:]).sorted { $0.key < $1.key }.map { id, summary in
+            let label = devices.first { $0.id == id }?.label ?? "another device"
+            return "On \(kidName)'s \(label): \(ScreenTimeFormat.summary(summary))"
+        }
+    }
+
+    private var downtimeSection: some View {
+        Section {
+            ForEach(extraDowntime) { d in
+                Button { editingDowntime = d } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ScreenTimeFormat.downtimeLine(d))
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Palette.text)
+                            .monospacedDigit()
+                        Text(ScreenTimeFormat.days(d.days))
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Edit this quiet time")
+            }
+            if (policy?.downtime.count ?? 0) < 4 {
+                Button {
+                    editingDowntime = ScreenTimeDowntime(id: "", name: "", start: "16:00", end: "18:00",
+                                                         days: [2, 3, 4, 5, 6])
+                } label: {
+                    Label("Add a quiet time", systemImage: "moon.fill")
+                }
+            }
+        } header: {
+            Text("More quiet times")
+        } footer: {
+            Text("Like Bedtime: all apps except phone calls pause. Set the days each one starts.")
+        }
+    }
+
+    private var devicesSection: some View {
+        Section {
+            if devices.isEmpty {
+                Text("No devices yet.").foregroundStyle(Palette.textSecond)
+            }
+            ForEach(devices) { deviceRow($0) }
+        } header: {
+            Text("Devices")
+        }
+    }
+
+    private func deviceRow(_ device: ScreenTimeDevice) -> some View {
+        let applied = policy.map(device.applied) ?? false
+        return VStack(alignment: .leading, spacing: Space.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(device.label, systemImage: device.label.localizedCaseInsensitiveContains("ipad") ? "ipad" : "iphone")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                Spacer()
+                deviceStateChip(device)
+            }
+            ScreenTimeChip(text: device.modeTitle,
+                           ink: device.isFamily ? Palette.frD3Ink : Palette.frYouInk,
+                           soft: device.isFamily ? Palette.frD3Soft : Palette.frYouSoft)
+            Text(device.modeMeaning)
+                .font(Typography.label)
+                .foregroundStyle(Palette.textSecond)
+            HStack(spacing: Space.xs) {
+                Image(systemName: applied ? "checkmark.circle.fill" : "clock.arrow.circlepath")
+                    .foregroundStyle(applied ? Palette.green : Palette.frFamsInk)
+                    .accessibilityHidden(true)
+                Text(applied ? "Applied" : "Pending on \(kidName)'s \(device.label)")
+                Text("· last check-in \(ScreenTimeFormat.relative(ScreenTimeFormat.date(device.lastSeenAt)))")
+                    .foregroundStyle(Palette.textSecond)
+            }
+            .font(Typography.caption)
+            .monospacedDigit()
+            Button("Forget device", role: .destructive) { forgetting = device }
+                .font(Typography.caption.weight(.semibold))
+                .buttonStyle(.borderless)
+                .frame(minHeight: 44)
+        }
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func deviceStateChip(_ device: ScreenTimeDevice) -> some View {
+        switch device.state {
+        case "revoked":
+            ScreenTimeChip(text: "Turned off", ink: Palette.frDanger, soft: Palette.frDangerSoft)
+        case "removed":
+            ScreenTimeChip(text: "May be removed", ink: Palette.frDanger, soft: Palette.frDangerSoft)
+        case "stale":
+            ScreenTimeChip(text: "Not checking in", ink: Palette.frFamsInk, soft: Palette.frFamsSoft)
+        default:
+            ScreenTimeChip(text: "On", ink: Palette.frD3Ink, soft: Palette.frD3Soft)
+        }
+    }
+
+    private var alertHistorySection: some View {
+        let alerts = (state?.alerts ?? []).sorted {
+            (ScreenTimeFormat.date($0.at) ?? .distantPast) > (ScreenTimeFormat.date($1.at) ?? .distantPast)
+        }
+        return Section {
+            if alerts.isEmpty {
+                Text("No alerts yet. You'll be told if Screen Time is turned off, a device stops checking in, or apps are changed on the device.")
+                    .font(Typography.label)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            ForEach(alerts.prefix(20)) { alert in
+                HStack(alignment: .top, spacing: Space.sm) {
+                    Circle()
+                        .fill(alert.ackedAt == nil ? Palette.frDanger : Color.clear)
+                        .frame(width: 8, height: 8)
+                        .padding(.top, 6)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(alert.message)
+                            .font(Typography.body.weight(alert.ackedAt == nil ? .semibold : .regular))
+                            .foregroundStyle(Palette.text)
+                        Text(ScreenTimeFormat.relative(ScreenTimeFormat.date(alert.at)))
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(alert.ackedAt == nil ? "New" : "")
+            }
+            if alerts.contains(where: { $0.ackedAt == nil }) {
+                Button("Acknowledge all") {
+                    Haptics.selection()
+                    Task { await service.ackAlerts(kidId: kidId) }
+                }
+            }
+        } header: {
+            Text("Alert history")
+        }
+    }
+
+    private var howSection: some View {
+        Section {
+            DisclosureGroup("How protection works", isExpanded: $showHow) {
+                VStack(alignment: .leading, spacing: Space.md) {
+                    howRow("With Family Sharing",
+                           "\(kidName)'s Apple Account is a child in your Family Sharing group, and a parent approves on their device. \(kidName) can't delete Fam ETC or turn Screen Time access off, and you can choose apps from this phone.")
+                    howRow("Without Family Sharing",
+                           "For devices set up without a child Apple Account. Limits and bedtime are real, but \(kidName) approves with their own Face ID and could turn access off in Settings or delete Fam ETC. Apps are chosen on \(kidName)'s device.")
+                    howRow("You'll be alerted when",
+                           "Screen Time is turned off, a device stops checking in for a day, Fam ETC may have been removed, apps in a limit are changed on the device, or protection comes back on.")
+                    howRow("Changes and pauses",
+                           "Changes are saved right away and reach each device when it next checks in. “Pending” means that device hasn't picked them up yet.")
+                }
+                .padding(.vertical, Space.xs)
+            }
+        }
+    }
+
+    private func howRow(_ title: String, _ body: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+            Text(body).font(Typography.label).foregroundStyle(Palette.textSecond)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Saving
+
+    private func run(_ op: @escaping () async throws -> Void) {
+        working = true
+        error = nil
+        justSaved = false
+        Task {
+            do { try await op() } catch { self.error = error.localizedDescription }
+            working = false
+        }
+    }
+
+    /// Always sends the full lists, so Basic saves keep Advanced items and vice versa.
+    private func save(limits: [ScreenTimeLimit], downtime: [ScreenTimeDowntime]) async throws {
+        try await service.savePolicy(kidId: kidId,
+                                     enabled: !limits.isEmpty || !downtime.isEmpty,
+                                     limits: limits,
+                                     downtime: downtime)
+    }
+
+    /// `updated == nil` deletes. Basic items come from the saved policy, not the draft.
+    private func saveAdvancedLimit(replacing id: String, with updated: ScreenTimeLimit?) async throws {
+        var list = policy?.limits ?? []
+        if !id.isEmpty, let i = list.firstIndex(where: { $0.id == id }) {
+            if let updated { list[i] = updated } else { list.remove(at: i) }
+        } else if let updated { list.append(updated) }
+        try await save(limits: list, downtime: policy?.downtime ?? [])
+    }
+
+    private func saveAdvancedDowntime(replacing id: String, with updated: ScreenTimeDowntime?) async throws {
+        var list = policy?.downtime ?? []
+        if !id.isEmpty, let i = list.firstIndex(where: { $0.id == id }) {
+            if let updated { list[i] = updated } else { list.remove(at: i) }
+        } else if let updated { list.append(updated) }
+        try await save(limits: policy?.limits ?? [], downtime: list)
+    }
+}
+
+extension ScreenTimeLimit {
+    /// A limit the parent is creating; an empty `id` lets the server assign one.
+    static func newLimit(id: String, kind: String, name: String) -> ScreenTimeLimit {
+        ScreenTimeLimit(id: id, kind: kind, name: name, minutesPerDay: kind == "total" ? 120 : 60,
+                        weekendMinutes: kind == "total" ? 180 : nil,
+                        selection: nil, selectionSummary: nil, deviceSelections: nil)
+    }
+}
+
+// MARK: - App limit editor (Advanced)
+
+private struct ScreenTimeLimitEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    let kidName: String
+    let isNew: Bool
+    let devices: [ScreenTimeDevice]
+    let onSave: (ScreenTimeLimit?) async throws -> Void
+
+    @State private var limit: ScreenTimeLimit
+    @State private var weekendDifferent: Bool
+    @State private var selection: FamilyActivitySelection
+    @State private var selectionChanged = false
+    @State private var showPicker = false
+    @State private var saving = false
+    @State private var error: String?
+    @State private var confirmDelete = false
+
+    private static let presets = [15, 30, 45, 60, 90, 120, 180, 240]
+
+    init(kidName: String, limit: ScreenTimeLimit, isNew: Bool, devices: [ScreenTimeDevice],
+         onSave: @escaping (ScreenTimeLimit?) async throws -> Void) {
+        self.kidName = kidName
+        self.isNew = isNew
+        self.devices = devices
+        self.onSave = onSave
+        _limit = State(initialValue: limit)
+        _weekendDifferent = State(initialValue: limit.weekendMinutes.map { $0 != limit.minutesPerDay } ?? false)
+        _selection = State(initialValue: ScreenTimeService.shared.selection(for: limit))
+    }
+
+    private var anyFamilyDevice: Bool { devices.contains(where: \.isFamily) }
+    private var trimmedName: String { limit.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var weekendBinding: Binding<Int> {
+        Binding(get: { limit.weekendMinutes ?? limit.minutesPerDay }, set: { limit.weekendMinutes = $0 })
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Games", text: $limit.name)
+                        .onChange(of: limit.name) { _, v in if v.count > 40 { limit.name = String(v.prefix(40)) } }
+                }
+                Section {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: Space.sm)], spacing: Space.sm) {
+                        ForEach(Self.presets, id: \.self) { m in
+                            let on = limit.minutesPerDay == m
+                            Button {
+                                Haptics.selection()
+                                limit.minutesPerDay = m
+                            } label: {
+                                Text(ScreenTimeFormat.minutes(m))
+                                    .font(Typography.label.weight(.semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(on ? Palette.onAccent : Palette.frYouInk)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .background {
+                                        if on { Capsule().fill(Palette.accent) }
+                                        else { Capsule().strokeBorder(Palette.frYou, lineWidth: 1) }
+                                    }
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, Space.xs)
+                    Stepper(value: $limit.minutesPerDay, in: 5...720, step: 5) {
+                        Text("\(weekendDifferent ? "School days" : "Every day"): \(ScreenTimeFormat.minutes(limit.minutesPerDay))")
+                            .monospacedDigit()
+                    }
+                    Toggle("Different time on weekends", isOn: $weekendDifferent)
+                    if weekendDifferent {
+                        Stepper(value: weekendBinding, in: 5...720, step: 5) {
+                            Text("Weekends: \(ScreenTimeFormat.minutes(weekendBinding.wrappedValue))").monospacedDigit()
+                        }
+                    }
+                } header: {
+                    Text("Time per day")
+                }
+                Section {
+                    Button {
+                        showPicker = true
+                    } label: {
+                        Label("Choose apps on this iPhone", systemImage: "square.grid.2x2")
+                    }
+                    Text(selectionChanged ? ScreenTimeFormat.summary(ScreenTimeService.summary(of: selection))
+                                          : ScreenTimeFormat.summary(limit.selectionSummary))
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                    ForEach((limit.deviceSelections ?? [:]).sorted { $0.key < $1.key }, id: \.key) { id, summary in
+                        Text("On \(kidName)'s \(devices.first { $0.id == id }?.label ?? "device"): \(ScreenTimeFormat.summary(summary))")
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                } header: {
+                    Text("Apps")
+                } footer: {
+                    Text(anyFamilyDevice
+                         ? "Choosing here works for devices set up with Family Sharing. For a device without Family Sharing, choose the apps on \(kidName)'s device instead."
+                         : "Choosing here works when \(kidName)'s device uses Family Sharing. Otherwise choose the apps on \(kidName)'s device: Fam ETC → Today → Screen Time → See my rules.")
+                }
+                if let error {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(Typography.label)
+                            .foregroundStyle(Palette.frDanger)
+                    }
+                }
+                if !isNew {
+                    Section {
+                        Button("Delete limit", role: .destructive) { confirmDelete = true }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ScreenBackground())
+            .navigationTitle(isNew ? "New app limit" : "Edit app limit")
+            .navigationBarTitleDisplayMode(.inline)
+            .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+            .onChange(of: selection) { _, _ in selectionChanged = true }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving { ProgressView() } else {
+                        Button("Save") { commit(delete: false) }.disabled(trimmedName.isEmpty)
+                    }
+                }
+            }
+            .confirmationDialog("Delete this limit?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete \(trimmedName.isEmpty ? "limit" : trimmedName)", role: .destructive) { commit(delete: true) }
+            }
+            .interactiveDismissDisabled(saving)
+        }
+    }
+
+    private func commit(delete: Bool) {
+        var out = limit
+        out.name = trimmedName
+        out.kind = "apps"
+        out.weekendMinutes = weekendDifferent ? (limit.weekendMinutes ?? limit.minutesPerDay) : nil
+        if selectionChanged {
+            out.selection = ScreenTimeService.encode(selection)
+            out.selectionSummary = ScreenTimeService.summary(of: selection)
+        }
+        saving = true
+        error = nil
+        Task {
+            do {
+                try await onSave(delete ? nil : out)
+                Haptics.notify(.success)
+                dismiss()
+            } catch {
+                self.error = error.localizedDescription
+            }
+            saving = false
+        }
+    }
+}
+
+// MARK: - Quiet time editor (Advanced)
+
+private struct ScreenTimeDowntimeEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    let isNew: Bool
+    let onSave: (ScreenTimeDowntime?) async throws -> Void
+
+    @State private var downtime: ScreenTimeDowntime
+    @State private var start: Date
+    @State private var end: Date
+    @State private var saving = false
+    @State private var error: String?
+    @State private var confirmDelete = false
+
+    init(downtime: ScreenTimeDowntime, isNew: Bool, onSave: @escaping (ScreenTimeDowntime?) async throws -> Void) {
+        self.isNew = isNew
+        self.onSave = onSave
+        _downtime = State(initialValue: downtime)
+        _start = State(initialValue: ScreenTimeFormat.dateFromHHMM(downtime.start) ?? Date())
+        _end = State(initialValue: ScreenTimeFormat.dateFromHHMM(downtime.end) ?? Date())
+    }
+
+    private var trimmedName: String { downtime.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Homework time", text: $downtime.name)
+                        .onChange(of: downtime.name) { _, v in if v.count > 40 { downtime.name = String(v.prefix(40)) } }
+                }
+                Section {
+                    DatePicker("From", selection: $start, displayedComponents: .hourAndMinute)
+                    DatePicker("Until", selection: $end, displayedComponents: .hourAndMinute)
+                } header: {
+                    Text("Time")
+                } footer: {
+                    if ScreenTimeFormat.hhmm(end) < ScreenTimeFormat.hhmm(start) {
+                        Text("Ends the next morning.")
+                    }
+                }
+                Section {
+                    HStack(spacing: Space.xs) {
+                        ForEach(ScreenTimeFormat.orderedWeekdays, id: \.self) { day in
+                            let on = downtime.days.contains(day)
+                            Button {
+                                Haptics.selection()
+                                if on { downtime.days.removeAll { $0 == day } } else { downtime.days.append(day); downtime.days.sort() }
+                            } label: {
+                                Text(Calendar.current.veryShortWeekdaySymbols[day - 1])
+                                    .font(Typography.label.weight(.semibold))
+                                    .foregroundStyle(on ? Palette.onAccent : Palette.frYouInk)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .background {
+                                        if on { Capsule().fill(Palette.accent) }
+                                        else { Capsule().strokeBorder(Palette.frYou, lineWidth: 1) }
+                                    }
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(Calendar.current.weekdaySymbols[day - 1])
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, Space.xs)
+                } header: {
+                    Text("Starts on")
+                } footer: {
+                    Text(ScreenTimeFormat.days(downtime.days))
+                }
+                if let error {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(Typography.label)
+                            .foregroundStyle(Palette.frDanger)
+                    }
+                }
+                if !isNew {
+                    Section {
+                        Button("Delete quiet time", role: .destructive) { confirmDelete = true }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ScreenBackground())
+            .navigationTitle(isNew ? "New quiet time" : "Edit quiet time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving { ProgressView() } else {
+                        Button("Save") { commit(delete: false) }
+                            .disabled(trimmedName.isEmpty || downtime.days.isEmpty || ScreenTimeFormat.hhmm(start) == ScreenTimeFormat.hhmm(end))
+                    }
+                }
+            }
+            .confirmationDialog("Delete this quiet time?", isPresented: $confirmDelete, titleVisibility: .visible) {
+                Button("Delete \(trimmedName.isEmpty ? "quiet time" : trimmedName)", role: .destructive) { commit(delete: true) }
+            }
+            .interactiveDismissDisabled(saving)
+        }
+    }
+
+    private func commit(delete: Bool) {
+        var out = downtime
+        out.name = trimmedName
+        out.start = ScreenTimeFormat.hhmm(start)
+        out.end = ScreenTimeFormat.hhmm(end)
+        saving = true
+        error = nil
+        Task {
+            do {
+                try await onSave(delete ? nil : out)
+                Haptics.notify(.success)
+                dismiss()
+            } catch {
+                self.error = error.localizedDescription
+            }
+            saving = false
+        }
+    }
+}

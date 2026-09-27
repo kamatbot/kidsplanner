@@ -65,7 +65,28 @@ struct RootView: View {
     @State private var pendingAssistanceURL: URL?
     @State private var signingOut = false
     @State private var showHermesGoals = false
+    @State private var screenTimeKid: ScreenTimeKidRoute?
     private struct AssistanceChildRoute: Identifiable { let id: String }
+    private struct ScreenTimeKidRoute: Identifiable { let id: String }
+
+    /// Parent-only: opens the Screen Time sheet for a kid in this family.
+    private func openScreenTime(kidId: String?) {
+        guard let kidId, !store.needsAuth, store.isParent,
+              store.kids.contains(where: { $0.id == kidId }) else { return }
+        selection = .today
+        screenTimeKid = ScreenTimeKidRoute(id: kidId)
+    }
+
+    private func loadScreenTime() async {
+        guard !store.needsAuth, store.me != nil else { return }
+        if store.isParent {
+            await ScreenTimeService.shared.loadOverview()
+            openScreenTime(kidId: NotificationHandler.shared.consumePendingScreenTimeKidId())
+        } else {
+            ScreenTimeService.shared.startObserving()
+            await ScreenTimeService.shared.sync(source: "app")
+        }
+    }
 
     private func openAssistanceRoute(_ url: URL) {
         guard url.scheme == "https", let host = url.host?.lowercased(),
@@ -100,19 +121,26 @@ struct RootView: View {
         .sheet(item: $assistanceChild) { route in
             ParentAttentionSheet(childID: route.id)
         }
+        .sheet(item: $screenTimeKid) { route in
+            ScreenTimeParentSheet(initialKidId: route.id)
+        }
         .onChange(of: store.isRefreshing) { _, refreshing in
             guard !refreshing else { return }
             if store.assistanceIdentityVerified, let url = pendingAssistanceURL { openAssistanceRoute(url) }
             else { pendingAssistanceURL = nil }
         }
-        .onChange(of: store.me?.id) { _, _ in assistanceChild = nil }
+        .onChange(of: store.me?.id) { _, _ in assistanceChild = nil; screenTimeKid = nil }
         .onChange(of: store.needsAuth) { _, needsAuth in
-            if needsAuth { assistanceChild = nil; pendingAssistanceURL = nil }
+            if needsAuth { assistanceChild = nil; pendingAssistanceURL = nil; screenTimeKid = nil }
         }
         // Parents: kids waiting to be let in appear as a banner above everything.
         .safeAreaInset(edge: .top, spacing: 0) {
-            KidApprovalBanner()
-                .animation(Motion.snappy, value: store.kidRequests.map(\.id))
+            VStack(spacing: 0) {
+                KidApprovalBanner()
+                    .animation(Motion.snappy, value: store.kidRequests.map(\.id))
+                ScreenTimeAlertBanner()
+                    .animation(Motion.snappy, value: ScreenTimeService.shared.unackedAlerts.map(\.id))
+            }
         }
         .task {
             await store.load()
@@ -128,6 +156,7 @@ struct RootView: View {
                 PushRegistrationService.shared.requestAuthorizationAndRegister()
                 #endif
             }
+            await loadScreenTime()
         }
         // A kid_access_request push (or returning to the foreground) refreshes the
         // pending list so the approval banner is current without waiting for a poll.
@@ -136,6 +165,17 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await store.refreshKidRequests() }
+            if store.isParent, !store.needsAuth, store.me != nil {
+                Task { await ScreenTimeService.shared.loadOverview() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToScreenTime)) { note in
+            // Cold launch: the family isn't loaded yet, so leave the pending kid
+            // for `loadScreenTime()` in `.task` to consume.
+            guard store.me != nil, store.isParent else { return }
+            _ = NotificationHandler.shared.consumePendingScreenTimeKidId()
+            openScreenTime(kidId: note.userInfo?["kidId"] as? String)
+            Task { await ScreenTimeService.shared.loadOverview() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToChat)) { _ in
             routeFromLiveChatNotification(fallbackRoomId: familyRoomId)
@@ -263,6 +303,7 @@ struct RootView: View {
         signingOut = true
         assistanceChild = nil
         pendingAssistanceURL = nil
+        screenTimeKid = nil
         // Unmount private native/web content before the network revocation wait.
         store.signedOut()
         Task {
