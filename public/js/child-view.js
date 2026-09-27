@@ -177,6 +177,55 @@
       ${finance.schoolPoints.resetPending ? `<div class="cv-fams-reset"><p>School points fell below the previous total. Confirm only if the school started a new points period; this allows the new period’s points to earn rewards.</p>${button('fams-reset', 'Confirm school points reset')}</div>` : ''}
       <details class="cv-fams-history"><summary>Recent rewards</summary><ul class="cv-fams-list">${finance.transactions.length ? finance.transactions.slice(0, 12).map(transaction => `<li><div><strong>${e(transaction.reason)}</strong><p>${e(timestamp(transaction.createdAt) || '')}</p></div><span>${transaction.amount > 0 ? '+' : ''}${e(famsNumber(transaction.amount))} fams</span></li>`).join('') : '<li>No rewards yet. The first reward will appear here.</li>'}</ul></details>`;
   }
+  /* Screen time: coarse 15-minute totals the kid's device reports (SCREEN-TIME-PLAN "Usage details" 3). */
+  const count = value => Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+  function duration(minutes) {
+    const m = count(minutes) || 0; const h = Math.floor(m / 60); const rest = m % 60;
+    return h ? rest ? `${h} h ${rest} min` : `${h} h` : `${rest} min`;
+  }
+  function todayLine(day) {
+    const minutes = count(day?.minutes); const limit = count(day?.limitMinutes);
+    if (minutes == null) return 'No screen time reported today';
+    return limit ? `About ${duration(minutes)} of ${duration(limit)} today` : `About ${duration(minutes)} today`;
+  }
+  // Oldest first; each bar scales to the week's max(limit, minutes). Extra = approved fams time inside the allowance.
+  function chartDays(days) {
+    const list = (Array.isArray(days) ? days : []).filter(d => d && typeof d.date === 'string').slice().sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
+    const scale = Math.max(60, ...list.map(d => Math.max(count(d.minutes) || 0, count(d.limitMinutes) || 0)));
+    const pct = value => Math.round((value / scale) * 1000) / 10;
+    return list.map(d => {
+      const minutes = count(d.minutes); const limit = count(d.limitMinutes); const extra = limit ? Math.min(count(d.extraMinutes) || 0, limit) : 0;
+      const used = minutes || 0; const base = limit ? limit - extra : used;
+      const within = Math.min(used, base); const extraUsed = Math.min(extra, Math.max(0, used - base)); const over = used - within - extraUsed;
+      return { date: d.date, minutes, limit, extra, base: pct(within), extraPct: pct(extraUsed), over: pct(over), limitPct: limit ? pct(limit) : null };
+    });
+  }
+  const stStatus = { approved: 'Approved', declined: 'Declined', expired: 'Expired', pending: 'Waiting for approval' };
+  function screenTimeMarkup(name, st, state, date) {
+    const header = `<h2 id="cv-st-title">${e(name)}’s screen time</h2>`;
+    if (state === 'loading') return `${header}<div class="cv-st-skeleton" aria-hidden="true"><i></i><i></i><i></i></div><p role="status">Loading screen time…</p>`;
+    if (state === 'error' || !st) return `${header}<p role="status">Screen time couldn’t be loaded. Your other child information is still available.</p>${button('st-retry', 'Try screen time again')}`;
+    const kid = st.state;
+    if (!kid || (!kid.policy?.enabled && !(kid.devices || []).length)) return `${header}<p class="cv-st-empty">Screen Time isn’t set up for ${e(name)} yet — set it up in the Fam ETC app.</p>`;
+    const days = st.usage?.days || [];
+    const today = days.find(d => d.date === date) || null;
+    const bars = chartDays(days);
+    const hit = (today?.devices || []).map(d => d.limitReachedAt).filter(at => at && Number.isFinite(+new Date(at))).sort()[0];
+    const reported = bars.filter(d => d.minutes != null);
+    const top = reported.slice().sort((a, b) => b.minutes - a.minutes)[0];
+    const summary = reported.length ? `Last 7 days: screen time reported on ${reported.length} of ${bars.length} days, about ${duration(reported.reduce((sum, d) => sum + d.minutes, 0) / reported.length)} a day on average, most about ${duration(top.minutes)} on ${dateLabel(top.date, { weekday: 'long' })}.` : 'No screen time reported in the last 7 days.';
+    const requests = (st.usage?.requests || kid.requests || []).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 3);
+    const alerts = (kid.alerts || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 3);
+    const extraToday = count(today?.extraMinutes);
+    return `${header}
+      <div class="cv-st-today"><strong>${e(todayLine(today))}</strong>${extraToday ? `<p>Includes ${e(duration(extraToday))} extra time with fams.</p>` : ''}${hit ? `<span class="cv-st-chip">Daily limit reached at ${e(new Date(hit).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</span>` : ''}</div>
+      <div class="cv-st-chart" role="img" aria-label="${e(summary)}">${bars.map(d => `<div class="cv-st-day${d.date === date ? ' is-today' : ''}${d.minutes == null ? ' is-unknown' : ''}" aria-hidden="true"><div class="cv-st-track"><i class="cv-st-used" style="height:${d.base}%"></i><i class="cv-st-extra" style="height:${d.extraPct}%"></i><i class="cv-st-used" style="height:${d.over}%"></i>${d.limitPct == null ? '' : `<span class="cv-st-limit" style="bottom:${d.limitPct}%"></span>`}</div><b>${e(dateLabel(d.date, { weekday: 'narrow' }))}</b><small>${d.minutes == null ? '—' : e(duration(d.minutes))}</small></div>`).join('')}</div>
+      <p class="cv-st-legend" aria-hidden="true"><span class="is-used">Used</span>${bars.some(d => d.extra) ? '<span class="is-extra">Extra time with fams</span>' : ''}${bars.some(d => d.limit) ? '<span class="is-limit">Allowance</span>' : ''}</p>
+      <table class="cv-sr"><caption>Screen time per day</caption><thead><tr><th scope="col">Day</th><th scope="col">Minutes</th><th scope="col">Allowance</th></tr></thead><tbody>${bars.map(d => `<tr><th scope="row">${e(dateLabel(d.date, { weekday: 'long', month: 'short', day: 'numeric' }))}</th><td>${d.minutes == null ? 'Not reported' : e(d.minutes)}</td><td>${d.limit == null ? 'No daily limit' : `${e(d.limit)}${d.extra ? ` (includes ${e(d.extra)} extra)` : ''}`}</td></tr>`).join('')}</tbody></table>
+      <div class="cv-st-lists"><div><h3>Extra time requests</h3><ul class="cv-st-list">${requests.length ? requests.map(r => `<li><strong>Asked for ${e(duration(r.minutes))} · ${e(famsNumber(Number.isFinite(r.fams) ? r.fams : r.minutes / 3))} fams · ${e(stStatus[r.status] || r.status)}</strong><span>${e(r.date ? dateLabel(r.date) : '')}</span></li>`).join('') : '<li>No extra time requests yet.</li>'}</ul></div>
+      <div><h3>Alerts</h3><ul class="cv-st-list">${alerts.length ? alerts.map(a => `<li><strong>${e(a.message)}</strong><span>${e(timestamp(a.at) || '')}</span></li>`).join('') : '<li>No alerts.</li>'}</ul></div></div>
+      <p class="cv-st-note">Counted in 15-minute steps. App-by-app details stay on ${e(name)}’s device.</p>`;
+  }
   async function render(id) {
     const kid = child(id); const root = document.getElementById('tab-child');
     if (!kid || !root) { clear(); return; }
@@ -186,16 +235,20 @@
     let finance = null;
     let financeState = 'loading';
     let financeRead = 0;
+    let screen = null;
+    let screenState = 'loading';
+    let screenRead = 0;
     const mutationKey = `${account.id}:${familyId}:${id}`;
     const sources = { homework: [], goals: [], activities: [], errors: [], loading: true };
     function draw(state) {
-      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 4 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-overview">${hero(id, date, data, state, sources)}</div><div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
+      root.innerHTML = `<div class="cv-page"><header class="cv-header"><div class="cv-identity">${kidAvatarMarkup(id)}<div><h1>${e(kid.name)}</h1><p>Parent view</p></div></div><time datetime="${date}">${e(dateLabel(date, { weekday: 'long', month: 'long', day: 'numeric' }))}</time></header>${state === 'error' ? `<div class="cv-error" role="alert">School and Daily 4 updates couldn’t be loaded. ${button('retry', 'Try again')}</div>` : ''}<div class="cv-overview">${hero(id, date, data, state, sources)}</div><div class="cv-columns">${support(id, date, sources)}${progress(id, date, data, state, sources)}</div><section id="cv-screen-time" class="cv-panel cv-st" aria-labelledby="cv-st-title" aria-busy="${screenState === 'loading'}">${screenTimeMarkup(kid.name, screen, screenState, date)}</section><section id="cv-fams" class="cv-panel cv-fams">${financeMarkup(finance, financeState)}</section>${journey(id, date, data, sources)}</div>`;
       root.setAttribute('aria-busy', String(state === 'loading'));
     }
     root.onclick = event => {
       const b = event.target.closest('[data-cv-action]'); if (!b || !current()) return;
       const action = b.dataset.cvAction;
       if (action === 'fams-retry') { refreshFinance(); return; }
+      if (action === 'st-retry') { refreshScreenTime(); return; }
       if (action === 'fams-approve') { mutateFinance(`/chores/${encodeURIComponent(b.dataset.id)}/approve`, {}, 'Reward approved.'); return; }
       if (action === 'fams-reset') { mutateFinance('/school-reset', {}, 'School points period confirmed.'); return; }
       if (action === 'retry') { render(id); return; }
@@ -229,6 +282,33 @@
       } catch (_) {
         if (current() && request === financeRead) { finance = null; financeState = 'error'; panel.innerHTML = financeMarkup(null, 'error'); }
       } finally { if (current() && request === financeRead) panel.setAttribute('aria-busy', 'false'); }
+    }
+    async function screenTimeRequest() {
+      const get = async url => {
+        if (!current()) throw new Error('Child selection changed.');
+        const response = await fetch(url, { credentials: 'same-origin' });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Screen time unavailable.');
+        return result;
+      };
+      const [all, usage] = await Promise.allSettled([get('/api/screen-time'), get(`/api/screen-time/kids/${encodeURIComponent(id)}/usage?days=7`)]);
+      if (!current()) throw new Error('Child selection changed.');
+      if (all.status === 'rejected') throw all.reason;
+      const state = (all.value.kids || []).find(k => k.kidId === id) || null;
+      if (!state || (!state.policy?.enabled && !(state.devices || []).length)) return { state, usage: null };
+      if (usage.status === 'rejected') throw usage.reason;
+      if (usage.value.kidId !== id) throw new Error('Wrong screen time scope.');
+      return { state, usage: usage.value };
+    }
+    async function refreshScreenTime() {
+      const request = ++screenRead;
+      const panel = document.getElementById('cv-screen-time');
+      if (!current() || !panel) return;
+      const paint = () => { panel.innerHTML = screenTimeMarkup(kid.name, screen, screenState, date); panel.setAttribute('aria-busy', String(screenState === 'loading')); };
+      screenState = 'loading'; paint();
+      try { const result = await screenTimeRequest(); if (!current() || request !== screenRead) return; screen = result; screenState = 'ready'; }
+      catch (_) { if (!current() || request !== screenRead) return; screen = null; screenState = 'error'; }
+      paint();
     }
     async function mutateFinance(path, payload, message) {
       if (!current()) return;
@@ -267,8 +347,10 @@
     }
     renderNavigation(); draw('loading');
     try {
-      const results = await Promise.allSettled([window.auth.getChildInsights(id, date), window.auth.getHomework({ kidId: id }), window.auth.getGoals({ kidId: id }), window.auth.getActivities({ kidId: id }), financeRequest()]);
+      const results = await Promise.allSettled([window.auth.getChildInsights(id, date), window.auth.getHomework({ kidId: id }), window.auth.getGoals({ kidId: id }), window.auth.getActivities({ kidId: id }), financeRequest(), screenTimeRequest()]);
       if (!current()) return;
+      screen = results[5].status === 'fulfilled' ? results[5].value : null;
+      screenState = screen ? 'ready' : 'error';
       sources.loading = false;
       finance = results[4].status === 'fulfilled' ? results[4].value : null;
       financeState = finance ? 'ready' : 'error';
@@ -282,5 +364,5 @@
       data = result; draw('ready');
     } catch (_) { if (current()) draw('error'); }
   }
-  window.famChildView = { renderNavigation, render, clear, cancel() { generation++; selected = null; } };
+  window.famChildView = { renderNavigation, render, clear, cancel() { generation++; selected = null; }, screenTime: { duration, todayLine, chartDays } };
 })();
