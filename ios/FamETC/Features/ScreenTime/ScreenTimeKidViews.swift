@@ -127,12 +127,49 @@ struct ScreenTimeKidCard: View {
     private var deviceName: String { UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "phone" }
 
     var body: some View {
-        if !store.isParent, !store.needsAuth, let policy = service.policy, policy.enabled {
-            content(policy)
-                .sheet(item: $setup) { ScreenTimeKidSetupSheet(makeDeal: $0.makeDeal) }
+        // Not set up (off, never enrolled here) → nothing. Off with this device
+        // enrolled → the quiet Off card (docs/SCREEN-TIME-UX.md §1).
+        if !store.isParent, !store.needsAuth, let policy = service.policy, policy.enabled || service.isEnrolled {
+            card(policy)
+                // The deal is made together on the kid's device — mostly an iPad — so
+                // it takes the whole screen on every size (§3). "Not now" always closes it.
+                .fullScreenCover(item: $setup) { ScreenTimeKidSetupSheet(makeDeal: $0.makeDeal) }
                 .sheet(isPresented: $showDeal) { ScreenTimeKidRulesSheet() }
                 .sheet(isPresented: $showMoreTime) { ScreenTimeMoreTimeSheet() }
                 .onChange(of: store.me?.id) { _, _ in setup = nil; showDeal = false; showMoreTime = false }
+        }
+    }
+
+    @ViewBuilder
+    private func card(_ policy: ScreenTimePolicy) -> some View {
+        if policy.enabled {
+            content(policy)
+        } else {
+            offCard
+        }
+    }
+
+    /// A grown-up turned Screen Time off: one calm line, no button, nothing red.
+    private var offCard: some View {
+        Card(padding: Space.lg) {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                HStack(alignment: .top) {
+                    MicroLabel(text: "Screen Time")
+                    Spacer()
+                    Image(systemName: "pause.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Palette.frInk2)
+                        .accessibilityHidden(true)
+                }
+                Text(service.currentDeal == nil
+                     ? "Screen Time is off right now — your grown-ups turned it off."
+                     : "Screen Time is off right now — your grown-ups turned it off. Your deal is saved.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("screen-time-kid-off")
         }
     }
 
@@ -164,7 +201,58 @@ struct ScreenTimeKidCard: View {
                                                       : "One more tap so you can see your screen time each day.",
                    button: "Finish setup", icon: "checkmark.circle", bright: false) { setup = SetupKind(makeDeal: false) }
         } else if let deal {
-            signedCard(deal, policy: policy)
+            // Re-read every minute so "Bedtime now" / "used up" follow the clock.
+            TimelineView(.everyMinute) { context in
+                signedCard(deal, policy: policy, now: context.date)
+            }
+        }
+    }
+
+    /// The one status line on the signed deal card, first match wins (§1 precedence):
+    /// paused → inside a downtime window → today's daily time used up.
+    private enum DealStatus {
+        case paused(Date)
+        case downtime(name: String, backAt: String)
+        case usedUp
+    }
+
+    private func dealStatus(_ policy: ScreenTimePolicy, now: Date) -> DealStatus? {
+        if let until = ScreenTimeFormat.pauseUntil(policy) { return .paused(until) }
+        if let window = policy.downtime.first(where: {
+            ScreenTimeSchedule.isInsideWindow(start: $0.start, end: $0.end, days: $0.days, now: now)
+        }) {
+            let name = window.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .downtime(name: name.isEmpty ? "Bedtime" : name, backAt: ScreenTimeFormat.time(window.end))
+        }
+        // Device-local: the monitor records the moment the whole-device limit shielded.
+        // A grown-up's "more time" today lifts it until the new allowance is reached.
+        if let usage = ScreenTimeEnforcer.shared.todayUsage(now: now), usage.limitReachedAt != nil,
+           let allowance = ScreenTimeSchedule.todayAllowance(policy, now: now),
+           service.bonusToday == nil || usage.minutes >= allowance {
+            return .usedUp
+        }
+        return nil
+    }
+
+    @ViewBuilder
+    private func statusLine(_ status: DealStatus) -> some View {
+        switch status {
+        case .paused(let until):
+            Label("Paused by a grown-up until \(ScreenTimeFormat.clock(until))", systemImage: "pause.circle.fill")
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.frYouInk)
+                .monospacedDigit()
+        case .downtime(let name, let backAt):
+            Label("\(name) now — back at \(backAt)", systemImage: "moon.zzz.fill")
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.frYouInk)
+                .monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+        case .usedUp:
+            Label("Daily time is used up — back tomorrow", systemImage: "hourglass.bottomhalf.filled")
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.frHwInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -203,7 +291,7 @@ struct ScreenTimeKidCard: View {
         }
     }
 
-    private func signedCard(_ deal: ScreenTimeAgreement, policy: ScreenTimePolicy) -> some View {
+    private func signedCard(_ deal: ScreenTimeAgreement, policy: ScreenTimePolicy, now: Date) -> some View {
         Card(padding: Space.lg) {
             VStack(alignment: .leading, spacing: Space.sm) {
                 HStack {
@@ -217,10 +305,8 @@ struct ScreenTimeKidCard: View {
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Signed by \(DealWords.kidName(store)) and \(deal.parentSigner)")
-                if let until = ScreenTimeFormat.pauseUntil(policy) {
-                    Label("Paused by a grown-up until \(ScreenTimeFormat.clock(until))", systemImage: "pause.circle.fill")
-                        .font(Typography.body.weight(.semibold))
-                        .foregroundStyle(Palette.frYouInk)
+                if let status = dealStatus(policy, now: now) {
+                    statusLine(status)
                 }
                 if let bed = DealWords.bedtime(deal.rules) {
                     Label(bed.title, systemImage: "moon.stars.fill")
@@ -292,6 +378,8 @@ struct ScreenTimeKidSetupSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     enum Page: Hashable { case hello, plan, kidPromises, handOff, parentPromises, turnOn, sign, celebrate }
 
@@ -351,6 +439,15 @@ struct ScreenTimeKidSetupSheet: View {
     private var parents: [String] { DealWords.parentNames(store) }
     private var stepCount: Int { pages.count - 1 }
 
+    // Layout by size class, never by device (§3): regular width (iPad full / ⅔) gets a
+    // wider column and side-by-side panels instead of a stretched phone column.
+    private var regular: Bool { sizeClass == .regular }
+    /// Side-by-side panels: regular width and a non-accessibility text size.
+    private var wide: Bool { regular && !typeSize.isAccessibilitySize }
+    private var column: CGFloat { regular ? 680 : 560 }
+    private var titleFont: Font { Theme.font(regular ? 36 : 30, weight: .bold, relativeTo: .largeTitle) }
+    private var heroSize: CGFloat { regular ? 120 : 88 }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -360,7 +457,8 @@ struct ScreenTimeKidSetupSheet: View {
                         .id(page)
                         .transition(pageTransition)
                         .padding(Space.xl)
-                        .frame(maxWidth: 560, alignment: .leading)
+                        .padding(.top, regular ? Space.xl : 0)
+                        .frame(maxWidth: column, alignment: .leading)
                         .frame(maxWidth: .infinity)
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -370,7 +468,7 @@ struct ScreenTimeKidSetupSheet: View {
                 footer
                     .padding(.horizontal, Space.xl)
                     .padding(.vertical, Space.md)
-                    .frame(maxWidth: 560)
+                    .frame(maxWidth: regular ? 480 : 560)
                     .frame(maxWidth: .infinity)
                     .background(Palette.bg.opacity(0.94))
             }
@@ -379,7 +477,20 @@ struct ScreenTimeKidSetupSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if page != .celebrate { Button("Not now") { dismiss() }.disabled(working) }
+                    if page != .celebrate {
+                        Button { dismiss() } label: {
+                            if regular {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "xmark").font(.system(size: 15, weight: .semibold))
+                                    Text("Not now")
+                                }
+                            } else {
+                                Text("Not now")
+                            }
+                        }
+                        .disabled(working)
+                        .accessibilityLabel("Not now")
+                    }
                 }
             }
             .interactiveDismissDisabled(working || saveState == .saving || ((kidSigned || parentSigned) && saveState != .saved))
@@ -504,9 +615,9 @@ struct ScreenTimeKidSetupSheet: View {
 
     private var hello: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            Text("🤝").font(.system(size: 64)).accessibilityHidden(true)
+            Text("🤝").font(.system(size: regular ? 88 : 64)).accessibilityHidden(true)
             Text("Let's make a deal")
-                .font(Typography.largeTitle)
+                .font(titleFont)
                 .foregroundStyle(Palette.text)
             Text("Do this together, \(kidName) and your grown-up. It takes about 30 seconds.")
                 .font(Typography.body)
@@ -548,19 +659,32 @@ struct ScreenTimeKidSetupSheet: View {
         let appLimits = policy.limits.filter { !$0.isTotal }
         return VStack(alignment: .leading, spacing: Space.lg) {
             Text("The plan")
-                .font(Typography.largeTitle)
+                .font(titleFont)
                 .foregroundStyle(Palette.text)
             Text("Here's what your grown-ups set up. Talk it over — does it feel fair?")
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
                 .fixedSize(horizontal: false, vertical: true)
-            if let bed = DealWords.bedtime(rules) {
-                ruleCard(icon: "moon.stars.fill", tint: Palette.frYou, soft: Palette.frYouSoft,
-                         label: "Bedtime", title: bed.title, detail: bed.detail)
-            }
-            if let daily = DealWords.daily(rules) {
-                ruleCard(icon: "hourglass", tint: Palette.frHw, soft: Palette.frHwSoft,
-                         label: "Daily time", title: daily.title, detail: daily.detail)
+            let bed = DealWords.bedtime(rules)
+            let daily = DealWords.daily(rules)
+            if wide, let bed, let daily {
+                // Side by side when both fit (ideal width 280 each); stacked otherwise.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: Space.lg) {
+                        bedtimeCard(bed, fill: true)
+                            .frame(minWidth: 0, idealWidth: 280, maxWidth: .infinity)
+                        dailyCard(daily, fill: true)
+                            .frame(minWidth: 0, idealWidth: 280, maxWidth: .infinity)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)   // equal-height cards
+                    VStack(spacing: Space.lg) {
+                        bedtimeCard(bed, fill: false)
+                        dailyCard(daily, fill: false)
+                    }
+                }
+            } else {
+                if let bed { bedtimeCard(bed, fill: false) }
+                if let daily { dailyCard(daily, fill: false) }
             }
             if !appLimits.isEmpty {
                 VStack(alignment: .leading, spacing: Space.sm) {
@@ -585,7 +709,20 @@ struct ScreenTimeKidSetupSheet: View {
         }
     }
 
-    private func ruleCard(icon: String, tint: Color, soft: Color, label: String, title: String, detail: String) -> some View {
+    private func bedtimeCard(_ bed: (title: String, detail: String), fill: Bool) -> some View {
+        ruleCard(icon: "moon.stars.fill", tint: Palette.frYou, soft: Palette.frYouSoft,
+                 label: "Bedtime", title: bed.title, detail: bed.detail, fill: fill)
+            .accessibilityIdentifier("deal-plan-bedtime")
+    }
+
+    private func dailyCard(_ daily: (title: String, detail: String), fill: Bool) -> some View {
+        ruleCard(icon: "hourglass", tint: Palette.frHw, soft: Palette.frHwSoft,
+                 label: "Daily time", title: daily.title, detail: daily.detail, fill: fill)
+            .accessibilityIdentifier("deal-plan-daily")
+    }
+
+    private func ruleCard(icon: String, tint: Color, soft: Color, label: String, title: String, detail: String,
+                          fill: Bool = false) -> some View {
         HStack(spacing: Space.lg) {
             Image(systemName: icon)
                 .font(.system(size: 34, weight: .semibold))
@@ -608,7 +745,7 @@ struct ScreenTimeKidSetupSheet: View {
             }
         }
         .padding(Space.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: fill ? CGFloat.infinity : nil, alignment: .leading)
         .background(soft, in: RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous))
         .accessibilityElement(children: .combine)
     }
@@ -622,20 +759,21 @@ struct ScreenTimeKidSetupSheet: View {
         let custom = chosen.filter { p in !options.contains { $0.text == p } }
         return VStack(alignment: .leading, spacing: Space.lg) {
             Text(title)
-                .font(Typography.largeTitle)
+                .font(titleFont)
                 .foregroundStyle(Palette.text)
             Text(subtitle)
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
-            VStack(spacing: Space.sm) {
-                ForEach(options, id: \.text) { option in
-                    PromiseChip(emoji: option.emoji, text: option.text, selected: chosen.contains(option.text),
-                                disabled: full, tint: tint, soft: soft) { toggle(option.text, in: promises) }
+            if wide {
+                // Regular width: an adaptive grid (2+ chips a row) instead of a stretched list.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: Space.sm)], spacing: Space.sm) {
+                    promiseChips(options: options, chosen: chosen, custom: custom, full: full,
+                                 promises: promises, tint: tint, soft: soft)
                 }
-                ForEach(custom, id: \.self) { text in
-                    PromiseChip(emoji: "✏️", text: text, selected: true, disabled: false, tint: tint, soft: soft) {
-                        toggle(text, in: promises)
-                    }
+            } else {
+                VStack(spacing: Space.sm) {
+                    promiseChips(options: options, chosen: chosen, custom: custom, full: full,
+                                 promises: promises, tint: tint, soft: soft)
                 }
             }
             if writing {
@@ -683,6 +821,20 @@ struct ScreenTimeKidSetupSheet: View {
         }
     }
 
+    @ViewBuilder
+    private func promiseChips(options: [(emoji: String, text: String)], chosen: [String], custom: [String], full: Bool,
+                              promises: Binding<[String]>, tint: Color, soft: Color) -> some View {
+        ForEach(options, id: \.text) { option in
+            PromiseChip(emoji: option.emoji, text: option.text, selected: chosen.contains(option.text),
+                        disabled: full, tint: tint, soft: soft) { toggle(option.text, in: promises) }
+        }
+        ForEach(custom, id: \.self) { text in
+            PromiseChip(emoji: "✏️", text: text, selected: true, disabled: false, tint: tint, soft: soft) {
+                toggle(text, in: promises)
+            }
+        }
+    }
+
     private func toggle(_ promise: String, in promises: Binding<[String]>) {
         if let i = promises.wrappedValue.firstIndex(of: promise) {
             promises.wrappedValue.remove(at: i)
@@ -704,10 +856,10 @@ struct ScreenTimeKidSetupSheet: View {
 
     private var handOff: some View {
         VStack(alignment: .center, spacing: Space.lg) {
-            Text("👋").font(.system(size: 88)).accessibilityHidden(true)
+            Text("👋").font(.system(size: heroSize)).accessibilityHidden(true)
                 .padding(.top, Space.xxl)
             Text("Pass the phone to your grown-up")
-                .font(Typography.largeTitle)
+                .font(titleFont)
                 .foregroundStyle(Palette.text)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -725,7 +877,7 @@ struct ScreenTimeKidSetupSheet: View {
     private var turnOnPage: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             Text(turnOn == .on ? "Screen Time is on" : "Turn it on")
-                .font(Typography.largeTitle)
+                .font(titleFont)
                 .foregroundStyle(Palette.text)
             switch turnOn {
             case .ready:
@@ -889,7 +1041,7 @@ struct ScreenTimeKidSetupSheet: View {
     private var sign: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
             Text("Sign it")
-                .font(Typography.largeTitle)
+                .font(titleFont)
                 .foregroundStyle(Palette.text)
             Label {
                 Text(DealWords.fairness(parents))
@@ -903,83 +1055,98 @@ struct ScreenTimeKidSetupSheet: View {
             .background(Palette.frHwSoft, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             .accessibilityElement(children: .combine)
 
-            // Kid
-            VStack(alignment: .leading, spacing: Space.md) {
-                Text("\(kidName), pick your stamp")
-                    .font(Typography.cardTitle)
-                    .foregroundStyle(Palette.text)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: Space.sm)], spacing: Space.sm) {
-                    ForEach(DealWords.stamps, id: \.self) { emoji in
-                        Button {
-                            Haptics.selection()
-                            stamp = emoji
-                        } label: {
-                            Text(emoji)
-                                .font(.system(size: 30))
-                                .frame(width: 52, height: 52)
-                                .background(stamp == emoji ? Palette.frYouSoft : Palette.frCard, in: Circle())
-                                .overlay(Circle().stroke(stamp == emoji ? Palette.frYou : Palette.frRule,
-                                                         lineWidth: stamp == emoji ? 2.5 : 1))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Stamp \(emoji)")
-                        .accessibilityAddTraits(stamp == emoji ? .isSelected : [])
-                    }
+            if wide {
+                // Regular width: the kid and the grown-up sign side by side.
+                HStack(alignment: .top, spacing: Space.lg) {
+                    signPanel(fill: true) { kidSignContent }
+                    signPanel(fill: true) { parentSignContent }
                 }
-                HStack(spacing: Space.lg) {
-                    HoldToSign(stamp: stamp, signed: $kidSigned)
-                    Text(kidSigned ? "Signed! 🎉" : (stamp == nil ? "Pick a stamp, then press and hold your thumb here." : "Press and hold to sign."))
-                        .font(Typography.body.weight(.semibold))
-                        .foregroundStyle(kidSigned ? Palette.frD3Ink : Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityHidden(true)
-                }
+                .fixedSize(horizontal: false, vertical: true)   // equal-height panels
+            } else {
+                signPanel(fill: false) { kidSignContent }
+                signPanel(fill: false) { parentSignContent }
             }
-            .padding(Space.lg)
-            .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-
-            // Grown-up
-            VStack(alignment: .leading, spacing: Space.md) {
-                Text("Grown-up, type your name")
-                    .font(Typography.cardTitle)
-                    .foregroundStyle(Palette.text)
-                if parents.count > 1 && !parentSigned {
-                    HStack(spacing: Space.sm) {
-                        ForEach(parents, id: \.self) { name in
-                            Button(name) { Haptics.selection(); signer = name }
-                                .font(Typography.label.weight(.semibold))
-                                .foregroundStyle(signer == name ? Palette.frOnYou : Palette.frYouInk)
-                                .padding(.horizontal, Space.md)
-                                .frame(minHeight: 44)
-                                .background(signer == name ? Palette.frYou : Palette.frYouSoft, in: Capsule())
-                                .buttonStyle(.plain)
-                        }
-                    }
-                }
-                TextField("Your name", text: $signer)
-                    .font(Typography.title)
-                    .textContentType(.givenName)
-                    .submitLabel(.done)
-                    .padding(Space.md)
-                    .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    .disabled(parentSigned)
-                    .onChange(of: signer) { _, v in if v.count > 40 { signer = String(v.prefix(40)) } }
-                if parentSigned {
-                    Label("\(trimmedSigner) is in!", systemImage: "checkmark.seal.fill")
-                        .font(Typography.body.weight(.semibold))
-                        .foregroundStyle(Palette.frD3Ink)
-                } else {
-                    BigButton(title: "I'm in", systemImage: "hand.thumbsup.fill", enabled: !trimmedSigner.isEmpty) {
-                        Haptics.notify(.success)
-                        withAnimation(Motion.maybe(Motion.overshoot, reduceMotion: reduceMotion)) { parentSigned = true }
-                    }
-                }
-            }
-            .padding(Space.lg)
-            .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         }
         .onAppear {
             if signer.isEmpty { signer = parents.first ?? "" }
+        }
+    }
+
+    private func signPanel<C: View>(fill: Bool, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: Space.md) { content() }
+            .padding(Space.lg)
+            .frame(maxWidth: .infinity, maxHeight: fill ? CGFloat.infinity : nil, alignment: .topLeading)
+            .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+    }
+
+    /// Kid: pick a stamp, then press and hold.
+    @ViewBuilder private var kidSignContent: some View {
+        Text("\(kidName), pick your stamp")
+            .font(Typography.cardTitle)
+            .foregroundStyle(Palette.text)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: Space.sm)], spacing: Space.sm) {
+            ForEach(DealWords.stamps, id: \.self) { emoji in
+                Button {
+                    Haptics.selection()
+                    stamp = emoji
+                } label: {
+                    Text(emoji)
+                        .font(.system(size: 30))
+                        .frame(width: 52, height: 52)
+                        .background(stamp == emoji ? Palette.frYouSoft : Palette.frCard, in: Circle())
+                        .overlay(Circle().stroke(stamp == emoji ? Palette.frYou : Palette.frRule,
+                                                 lineWidth: stamp == emoji ? 2.5 : 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Stamp \(emoji)")
+                .accessibilityAddTraits(stamp == emoji ? .isSelected : [])
+            }
+        }
+        HStack(spacing: Space.lg) {
+            HoldToSign(stamp: stamp, signed: $kidSigned)
+            Text(kidSigned ? "Signed! 🎉" : (stamp == nil ? "Pick a stamp, then press and hold your thumb here." : "Press and hold to sign."))
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(kidSigned ? Palette.frD3Ink : Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Grown-up: type a name, then "I'm in".
+    @ViewBuilder private var parentSignContent: some View {
+        Text("Grown-up, type your name")
+            .font(Typography.cardTitle)
+            .foregroundStyle(Palette.text)
+        if parents.count > 1 && !parentSigned {
+            HStack(spacing: Space.sm) {
+                ForEach(parents, id: \.self) { name in
+                    Button(name) { Haptics.selection(); signer = name }
+                        .font(Typography.label.weight(.semibold))
+                        .foregroundStyle(signer == name ? Palette.frOnYou : Palette.frYouInk)
+                        .padding(.horizontal, Space.md)
+                        .frame(minHeight: 44)
+                        .background(signer == name ? Palette.frYou : Palette.frYouSoft, in: Capsule())
+                        .buttonStyle(.plain)
+                }
+            }
+        }
+        TextField("Your name", text: $signer)
+            .font(Typography.title)
+            .textContentType(.givenName)
+            .submitLabel(.done)
+            .padding(Space.md)
+            .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .disabled(parentSigned)
+            .onChange(of: signer) { _, v in if v.count > 40 { signer = String(v.prefix(40)) } }
+        if parentSigned {
+            Label("\(trimmedSigner) is in!", systemImage: "checkmark.seal.fill")
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.frD3Ink)
+        } else {
+            BigButton(title: "I'm in", systemImage: "hand.thumbsup.fill", enabled: !trimmedSigner.isEmpty) {
+                Haptics.notify(.success)
+                withAnimation(Motion.maybe(Motion.overshoot, reduceMotion: reduceMotion)) { parentSigned = true }
+            }
         }
     }
 
@@ -991,9 +1158,9 @@ struct ScreenTimeKidSetupSheet: View {
         VStack(alignment: .center, spacing: Space.lg) {
             ZStack {
                 if !reduceMotion { DealConfetti() }
-                Text(makingDeal ? "🎉" : "👍").font(.system(size: 88)).accessibilityHidden(true)
+                Text(makingDeal ? "🎉" : "👍").font(.system(size: heroSize)).accessibilityHidden(true)
             }
-            .frame(height: 160)
+            .frame(height: regular ? 200 : 160)
             .padding(.top, Space.xl)
             Text(makingDeal ? "Deal!" : "You're back on")
                 .font(Typography.display(40, .heavy))
@@ -1304,6 +1471,7 @@ struct ScreenTimeDealSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        .presentationDetents([.large])
     }
 }
 
@@ -1388,6 +1556,7 @@ struct ScreenTimeKidRulesSheet: View {
                 }
             }
         }
+        .presentationDetents([.large])
     }
 
     private func appLimitsCard(_ limits: [ScreenTimeLimit]) -> some View {
@@ -1559,6 +1728,7 @@ struct ScreenTimeMoreTimeSheet: View {
                 Task { await service.loadFamsBalance(kidId: store.me?.kidId) }
             }
         }
+        .presentationDetents([.large])
     }
 
     // MARK: Pick
