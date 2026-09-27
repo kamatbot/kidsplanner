@@ -206,6 +206,55 @@ chars; stamp ≤ 8 chars (an emoji); signer 1–40 chars.
 - On a new signature, parents get a positive push (not an alert-list entry):
   "🤝 Mia signed your Screen Time deal".
 
+## Parent promo + welcome (owner direction 2026-09-27)
+
+A Screen Time promo sits at the **very top** of parent Today (above the
+Family Rings hero) while no kid has Screen Time set up (no kid with an enabled
+policy). It is compact, friendly and dismissible ("Not now" hides it for 7
+days on this device). Tapping it opens a **full-screen welcome**
+(`fullScreenCover`) that explains the product in 3 short panels — what it does
+(bedtime + daily time, simple), how it works with or without Family Sharing
+(honest: without it, a kid could switch it off and you'll be told), and how
+setup goes (you pick the rules here → make the deal together on your kid's
+phone) — ending in "Set up for <kid>" (one button per kid; opens
+`ScreenTimeParentSheet(initialKidId:)`). Once any kid has an enabled policy
+the promo is gone; the regular `ScreenTimeSummaryCard` remains.
+
+## More time for fams (owner direction 2026-09-27)
+
+Intended flow: kid taps "Ask for more time" (kid Screen Time card / Our deal) →
+picks 15, 30, 45 or 60 minutes at **1 fam per 3 minutes** (5/10/15/20 fams),
+optional short note → parents get a push "Mia asks for 15 more minutes (5
+fams)" → a parent approves or declines in the parent sheet or the app-wide
+banner → on approve the fams are **deducted** and today's `total` allowance
+grows by those minutes on the kid's devices; the kid gets a push either way.
+Only for the `total` limit; bedtime/downtime are never extended. One pending
+request per kid; a request expires at the end of its `date`.
+
+Server:
+- `lib/fams.js` gains `spend(familyId, kidId, { event, amount, title })` —
+  idempotent by `event`, refuses when balance < amount, records a negative
+  transaction (category `screen_time`); `summary().totalEarned` counts only
+  positive transactions.
+- Kid session: `POST /api/screen-time/requests` `{ minutes, date, note? }`
+  (minutes ∈ 15/30/45/60; date = kid device's local YYYY-MM-DD; note ≤ 80) →
+  `{ request }`; 409 if one is pending or balance is too low.
+  `GET /api/screen-time/mine` + heartbeat add `requests` (the kid's last 10).
+- Parent: `POST /api/screen-time/kids/:kidId/requests/:id/approve|decline`
+  → kid state. Approve spends `minutes/3` fams (409 + no grant if the balance
+  is now too low), adds `minutes` to `policy.bonus` for that date
+  (`bonus: { date, minutes }`, replaced when the date changes), bumps version,
+  pings devices. Kid state adds `requests`.
+- Request JSON: `{ id, kidId, minutes, fams, date, note, status:
+  pending|approved|declined|expired, createdAt, decidedAt, decidedBy }`.
+- Pushes: parents `famType: "screen_time_request"` (+ kidId); kid
+  `famType: "screen_time_request_result"`.
+
+iOS enforcement: today's threshold for `total` = weekday/weekend minutes +
+`bonus.minutes` when `bonus.date` == device-local today; applying a new bonus
+re-registers today's `day.N` activity (events use `includesPastActivity`) and
+clears the `limit.total` shield immediately.
+
 ## Distribution gate (owner action)
 Development builds work with the `family-controls` entitlement today. App
 Store/TestFlight distribution needs Apple's **Family Controls (Distribution)**
