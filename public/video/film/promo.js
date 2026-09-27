@@ -211,7 +211,7 @@ function inPiece(p, x, y, o, fn) {
 // ───────────────────────────── sprites (AI-illustrated cut-outs) ─────────────────────────────
 // Storybook cut-outs from assets/raw/img/sheet{A,B,C}.jpg (cutout.mjs, border 0; the AI drew its own white rim).
 const SPR = {};
-const SPRITES = ["kate", "tom", "mia_desk", "leo", "family", "dinner", "school", "stall", "fridge", "backpack", "football", "slip", "stickies", "mug", "tomatoes", "basil", "pasta"];
+const SPRITES = ["kate", "tom", "mia_desk", "leo", "family", "dinner", "school", "stall", "fridge", "backpack", "slip", "stickies", "mug"];
 async function loadSprites() {
   await Promise.all(SPRITES.map((name) => new Promise((ok, fail) => {
     const im = new Image();
