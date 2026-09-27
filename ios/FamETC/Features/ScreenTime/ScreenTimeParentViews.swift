@@ -875,8 +875,8 @@ struct ScreenTimeParentSheet: View {
 
     private var setupSteps: [String] {
         ["On \(kidName)'s phone, open Fam ETC and sign in as \(kidName).",
-         "Tap Set up Screen Time.",
-         "Approve, then tap All Apps & Categories."]
+         "Tap “Make our Screen Time deal” on Today.",
+         "Make the deal together: add your promises, approve when the phone asks, and sign."]
     }
 
     // MARK: Basic — pause
