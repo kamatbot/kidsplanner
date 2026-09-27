@@ -23,6 +23,13 @@ explicit confirmation first.
   `WebShellController`, was superseded by the plain-WKWebView `HybridWebView`
   (no bridge). Re-wire the bridge into `HybridWebView` before relying on the
   scanner — see the iOS note in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
+- **Screen Time** (parent controls): both with-Family-Sharing (`.child`,
+  strong enforcement) and without-Family-Sharing (`.individual`, revocable,
+  detected) modes are first-class. Server: `lib/screen-time.js` +
+  `lib/routes/screen-time.js`. iOS: `ScreenTimeService` plus the
+  FamETCScreenTimeMonitor/FamETCShieldConfig extensions. Tamper alerts
+  (revoked/stale/removed/etc.) go to parents only, never family chat — full
+  contract in [docs/SCREEN-TIME-PLAN.md](docs/SCREEN-TIME-PLAN.md).
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
 - **Private child feeds** (`lib/school-api.js`): parents connect each child in

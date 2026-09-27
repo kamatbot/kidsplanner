@@ -45,6 +45,17 @@
 | Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). The native contract supersedes the earlier native Today design; marketing remains separate. |
 | Personal study space | Koko opens a child’s next homework task or a parent’s Needs you actions, an energy check-in and My Corner. Available to kids and parents, primarily on iPad. Mood sharing requires explicit preview/send; once someone answers, the check-in hides until the next day on that device (only the day is kept, never the energy). Each account owns a private Corner; parents cannot open children’s or other parents’ Corners. Koko, My Corner and its stickers are iOS-only; the web has none of them, and keeps only the explicit energy check-in (owner decisions 2026-09-26). |
 
+## Screen Time (parent controls, added 2026-09-27; spec: docs/SCREEN-TIME-PLAN.md)
+| Decision | Value |
+|---|---|
+| Core tenet | Both with-Family-Sharing and without-Family-Sharing modes are first-class — many kids' devices were set up without a child Apple Account and can't easily move into Family Sharing. |
+| Modes | `family` — `.child` authorization, strong (kid cannot delete the app or revoke access). `cooperative` — `.individual` authorization, revocable by the kid; Fam ETC detects revocation and alerts parents. |
+| Enforcement | Policy lives on our server; the kid's device enforces it locally via ManagedSettings/DeviceActivity. "Pause now" is best-effort, shown to parents as Pending vs Applied, never a hard "blocked" guarantee. |
+| Tamper alerts | `revoked` / `restored` / `stale` / `removed` / `selection_changed` go to parents only, via APNs + web push — never into family chat, which kids can read. |
+| Extensions | FamETCScreenTimeMonitor (DeviceActivity monitor) and FamETCShieldConfig (ManagedSettings shield configuration). |
+| Distribution gate | Apple's Family Controls (Distribution) entitlement is required for com.fametc.app and both extensions before TestFlight/App Store distribution. |
+| Deferred | Shared allowance across a kid's iPhone+iPad, "ask for more time" shield action, usage reports, always-allowed apps during downtime, web (desktop) Screen Time UI, Android. |
+
 ## Monetization
 | Decision | Value | → Components |
 |---|---|---|
