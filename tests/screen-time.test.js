@@ -85,6 +85,16 @@ function heartbeat(secret, authStatus = "approved", extra = {}) {
   });
 }
 const overview = (ctx) => call("GET /api/screen-time", { user: ctx.parent }).body.kids.find((k) => k.kidId === ctx.mia.id);
+const dealBody = (extra = {}) => ({
+  kidPromises: ["Phone charges outside my room at night"],
+  parentPromises: ["We'll give a 10-minute heads-up before bedtime"],
+  kidStamp: "🦊", parentSigner: "Kate",
+  rules: { bedStart: "21:00", bedEnd: "07:00", school: 120, weekend: 180 },
+  ...extra,
+});
+function saveAgreement(secret, body) {
+  return call("PUT /api/screen-time/device/agreement", { auth: `FamDevice ${secret}`, body });
+}
 
 test("parent GET lists every kid with the default policy, no-store", () => {
   const ctx = setup();
@@ -325,6 +335,51 @@ test("ack clears unacked alerts; forget device revokes its secret", () => {
   assert.equal(gone.statusCode, 200);
   assert.deepEqual(gone.body.devices, []);
   assert.equal(heartbeat(deviceSecret).statusCode, 401);
+});
+
+test("agreement: valid save round-trips via parent GET, /mine and heartbeat", () => {
+  const ctx = setup();
+  const { deviceSecret } = enroll(ctx).body;
+  const res = saveAgreement(deviceSecret, dealBody());
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.agreement.parentSigner, "Kate");
+  assert.equal(res.body.agreement.signedAt, clock.toISOString(), "server sets signedAt");
+  assert.match(res.body.agreement.deviceId, /^std_/, "server sets deviceId");
+
+  const expected = { ...dealBody(), signedAt: clock.toISOString(), deviceId: res.body.agreement.deviceId };
+  assert.deepEqual(overview(ctx).agreement, expected);
+  assert.deepEqual(heartbeat(deviceSecret).body.agreement, expected);
+  const mine = call("GET /api/screen-time/mine", { user: ctx.kidUser });
+  assert.deepEqual(mine.body.agreement, expected);
+});
+
+test("agreement: rejects bad promises/stamp/rules; wrong secret is 401", () => {
+  const ctx = setup();
+  const { deviceSecret } = enroll(ctx).body;
+  assert.equal(saveAgreement(deviceSecret, dealBody({ kidPromises: Array.from({ length: 6 }, (_, i) => `p${i}`) })).statusCode, 400, "6 promises");
+  assert.equal(saveAgreement(deviceSecret, dealBody({ parentPromises: ["x".repeat(81)] })).statusCode, 400, "81-char promise");
+  assert.equal(saveAgreement(deviceSecret, dealBody({ rules: { bedStart: "25:00", bedEnd: "07:00", school: 120, weekend: 180 } })).statusCode, 400, "bad HH:mm");
+  assert.equal(saveAgreement("x".repeat(43), dealBody()).statusCode, 401, "wrong secret");
+});
+
+test("agreement: signing notifies parents once and adds no alert; a second save replaces the first", () => {
+  const ctx = setup();
+  const { deviceSecret } = enroll(ctx).body;
+  notified.length = 0;
+  saveAgreement(deviceSecret, dealBody());
+  assert.equal(notified.length, 1);
+  assert.equal(notified[0].type, "agreement_signed");
+  assert.equal(notified[0].title, "🤝 Screen Time deal signed");
+  assert.equal(notified[0].body, "Mia signed your Screen Time deal");
+  assert.deepEqual(notified[0].familyParentIds, [ctx.parent.id]);
+  assert.deepEqual(overview(ctx).alerts, [], "no alert-list entry");
+
+  const second = saveAgreement(deviceSecret, dealBody({ kidStamp: "🐸", parentSigner: "Tom" }));
+  assert.equal(second.statusCode, 200);
+  assert.equal(notified.length, 2, "second save notifies again");
+  const agreement = overview(ctx).agreement;
+  assert.equal(agreement.kidStamp, "🐸");
+  assert.equal(agreement.parentSigner, "Tom");
 });
 
 test("alerts are capped at 50 per kid", () => {
