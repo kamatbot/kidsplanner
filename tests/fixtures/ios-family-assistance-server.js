@@ -242,6 +242,55 @@ const server = http.createServer(async (req, res) => {
     require("../../lib/db").load().fams[sessionFamily.id][kidId].transactions.push({ id: `qa-${Date.now()}`, event: `qa:${Date.now()}`, units: amount * 100, category: "qa", title: "QA credit", date: "2026-01-01", weekStart: "2025-12-29", regular: false, createdAt: new Date().toISOString() });
     return send(res, 200, { balance: fams.balance(sessionFamily.id, kidId) });
   }
+  // Screen Time QA hooks (throwaway db only): wipe this family's Screen Time
+  // state so the promo's "never set up" state is reachable again; enroll an
+  // approved device (the parent Off state needs one); or raise a real alert by
+  // calling the real heartbeat() with authStatus "denied" from a fresh device.
+  if (["/__qa/screen-time/reset", "/__qa/screen-time/device", "/__qa/screen-time/alert"].includes(url.pathname)
+      && req.method === "POST") {
+    const body = await readJSON(req);
+    await screenTimeRoute({ method: "NONE", headers: {} }, { writeHead() {}, end() {} }, url, { data: { profile: { role: "parent" } } }, sessionFamily);
+    const db = require("../../lib/db");
+    const screenTime = require("../../lib/screen-time");
+    if (url.pathname === "/__qa/screen-time/reset") {
+      const root = db.load();
+      if (root.screenTime) delete root.screenTime[sessionFamily.id];
+      db.persist();
+      return send(res, 200, { ok: true });
+    }
+    const qaKid = sessionFamily.kids.find((k) => k.id === body.kidId);
+    if (!qaKid) return send(res, 404, { error: "No such fixture kid." });
+    if (url.pathname === "/__qa/screen-time/alert" && body.type !== "revoked") {
+      return send(res, 400, { error: "Only type \"revoked\" can be seeded (it runs the real heartbeat)." });
+    }
+    const current = screenTime.kidState(sessionFamily, qaKid.id).policy;
+    if (url.pathname === "/__qa/screen-time/alert" && !current.enabled) {
+      // raise() is suppressed while Screen Time is off: turn it on with the saved
+      // rules (or a plain bedtime) first, exactly like the parent's Save.
+      const hasRules = current.limits.length || current.downtime.length;
+      const saved = screenTime.savePolicy(sessionFamily, qaKid.id, {
+        enabled: true,
+        limits: current.limits,
+        downtime: hasRules ? current.downtime : [{ id: "bedtime", name: "Bedtime", start: "21:00", end: "07:00", days: [1, 2, 3, 4, 5, 6, 7] }],
+      });
+      if (saved.error) return send(res, saved.status || 400, { error: saved.error });
+    }
+    const label = typeof body.label === "string" && body.label ? body.label : "iPad";
+    const enrolled = screenTime.enroll(sessionFamily, qaKid.id, { label, mode: "cooperative", authStatus: "approved" });
+    if (enrolled.error) return send(res, enrolled.status || 400, { error: enrolled.error });
+    const entry = db.load().screenTime[sessionFamily.id].kids[qaKid.id];
+    const device = entry.devices.find((d) => d.id === enrolled.deviceId);
+    const denied = url.pathname === "/__qa/screen-time/alert";
+    const beat = screenTime.heartbeat({ fam: sessionFamily, kid: qaKid, entry, device }, {
+      authStatus: denied ? "denied" : "approved", mode: "cooperative",
+      appliedVersion: entry.policy.version, source: "app",
+    });
+    if (beat.error) return send(res, beat.status || 400, { error: beat.error });
+    const after = screenTime.kidState(sessionFamily, qaKid.id);
+    const alert = denied ? after.alerts.find((a) => a.deviceId === device.id && a.type === "revoked") : null;
+    if (denied && !alert) return send(res, 409, { error: "No alert was raised." });
+    return send(res, 200, { deviceId: device.id, alert });
+  }
   if (url.pathname === "/__qa/reset" && req.method === "POST") {
     state.eventPosts.length = 0; state.chatPosts.length = 0; state.notePosts.length = 0;
     state.daily5Posts.length = 0; state.notes.length = 0; state.requests.length = 0;

@@ -69,10 +69,11 @@ struct RootView: View {
     private struct AssistanceChildRoute: Identifiable { let id: String }
     private struct ScreenTimeKidRoute: Identifiable { let id: String }
 
-    /// Parent-only: opens the Screen Time sheet for a kid in this family.
+    /// Parent-only: opens the Screen Time controls for a kid. "Review" must always do
+    /// something, so there is no family-membership guard here: the controls render
+    /// "isn't available right now" for a kid this family doesn't have (yet).
     private func openScreenTime(kidId: String?) {
-        guard let kidId, !store.needsAuth, store.isParent,
-              store.kids.contains(where: { $0.id == kidId }) else { return }
+        guard let kidId, !store.needsAuth, store.isParent else { return }
         selection = .today
         screenTimeKid = ScreenTimeKidRoute(id: kidId)
     }
@@ -121,7 +122,8 @@ struct RootView: View {
         .sheet(item: $assistanceChild) { route in
             ParentAttentionSheet(childID: route.id)
         }
-        .sheet(item: $screenTimeKid) { route in
+        // Full screen with the kid sidebar at regular width (iPad), a large sheet on iPhone.
+        .screenTimeControlsCover(item: $screenTimeKid) { route in
             ScreenTimeParentSheet(initialKidId: route.id).tint(Palette.frYou)
         }
         .onChange(of: store.isRefreshing) { _, refreshing in
@@ -139,7 +141,7 @@ struct RootView: View {
                 KidApprovalBanner()
                     .animation(Motion.snappy, value: store.kidRequests.map(\.id))
                 ScreenTimeAlertBanner()
-                    .animation(Motion.snappy, value: ScreenTimeService.shared.unackedAlerts.map(\.id))
+                    .animation(Motion.snappy, value: ScreenTimeService.shared.bannerAlerts.map(\.id))
             }
         }
         .task {

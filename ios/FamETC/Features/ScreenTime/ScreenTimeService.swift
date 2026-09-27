@@ -79,11 +79,37 @@ enum ScreenTimeServiceError: LocalizedError {
             .sorted { ($0.createdAt ?? "") < ($1.createdAt ?? "") }
     }
 
+    /// Alert types the app-wide banner may show (docs/SCREEN-TIME-UX.md §2).
+    nonisolated static let bannerAlertTypes: Set<String> = ["revoked", "removed", "stale", "selection_changed"]
+    /// Alerts older than this never reach the banner (the server also expires them).
+    nonisolated static let alertMaxAge: TimeInterval = 7 * 24 * 3600
+
+    /// Alerts the parent dismissed on this device; hidden right away while the ack is sent.
+    /// A failed ack's alert comes back on the next successful `loadOverview()`.
+    var hiddenAlertIds: Set<String> = []
+
+    /// What the banner may show, newest first: unacked, a bannerable type, younger than
+    /// 7 days, not dismissed here, and only for kids whose Screen Time is on.
+    var bannerAlerts: [ScreenTimeAlert] {
+        let cutoff = Date().addingTimeInterval(-Self.alertMaxAge)
+        let alerts = (overview?.kids ?? []).filter(\.policy.enabled).flatMap(\.alerts).filter { alert in
+            guard alert.ackedAt == nil, Self.bannerAlertTypes.contains(alert.type),
+                  !hiddenAlertIds.contains(alert.id),
+                  let at = ScreenTimeSchedule.date(fromISO: alert.at) else { return false }
+            return at > cutoff
+        }
+        return alerts.sorted {
+            (ScreenTimeSchedule.date(fromISO: $0.at) ?? .distantPast) > (ScreenTimeSchedule.date(fromISO: $1.at) ?? .distantPast)
+        }
+    }
+
     @ObservationIgnored private let enforcer = ScreenTimeEnforcer.shared
     @ObservationIgnored private let api = APIClient.shared
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var pendingSource: String?
     @ObservationIgnored private var observers: [AnyCancellable] = []
+    /// Per-alert acks still in flight (their alerts stay hidden across an overview reload).
+    @ObservationIgnored private var ackingAlertIds: Set<String> = []
 
     private init() {
         authState = ScreenTimeEnforcer.currentAuthState
@@ -320,6 +346,8 @@ enum ScreenTimeServiceError: LocalizedError {
     func loadOverview() async {
         do {
             overview = try await api.screenTimeOverview()
+            // Dismissed alerts whose ack failed reappear now; in-flight ones stay hidden.
+            hiddenAlertIds.formIntersection(ackingAlertIds)
             lastError = nil
         } catch {
             lastError = error.localizedDescription
@@ -348,6 +376,16 @@ enum ScreenTimeServiceError: LocalizedError {
 
     func ackAlerts(kidId: String) async {
         do { merge(try await api.ackScreenTimeAlerts(kidId: kidId)) }
+        catch { lastError = error.localizedDescription }
+    }
+
+    /// Dismisses one alert: hidden immediately, then acked on the server
+    /// (`POST /api/screen-time/kids/:kidId/alerts/:alertId/ack`).
+    func ackAlert(kidId: String, alertId: String) async {
+        hiddenAlertIds.insert(alertId)
+        ackingAlertIds.insert(alertId)
+        defer { ackingAlertIds.remove(alertId) }
+        do { merge(try await api.ackScreenTimeAlert(kidId: kidId, alertId: alertId)) }
         catch { lastError = error.localizedDescription }
     }
 

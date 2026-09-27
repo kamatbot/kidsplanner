@@ -2,7 +2,8 @@ import SwiftUI
 
 // Parent Screen Time promo + full-screen welcome (docs/SCREEN-TIME-PLAN.md
 // "Parent promo + welcome"). The promo sits at the very top of parent Today
-// while no kid has Screen Time on; "Not now" hides it for 7 days on this device.
+// while no kid has ever set Screen Time up (docs/SCREEN-TIME-UX.md §1) — turning
+// it off never brings it back; "Not now" hides it for 7 days on this device.
 // Plain words for non-technical parents — no Apple jargon anywhere.
 
 // MARK: - Promo card (parent Today, top)
@@ -18,10 +19,14 @@ struct ScreenTimePromoCard: View {
 
     private struct SheetKid: Identifiable { let id: String }
 
-    /// Only once the overview has loaded (no flicker), and only while no kid has Screen Time on.
+    /// Only once the overview has loaded (no flicker), and only while no kid has ever had
+    /// Screen Time saved (`policy.version == 0`). Off, waiting etc. never bring it back.
     private var eligible: Bool {
         guard store.isParent, !store.needsAuth, !store.kids.isEmpty, service.overview != nil else { return false }
-        return !store.kids.contains { service.state(for: $0.id)?.policy.enabled == true }
+        return !store.kids.contains { kid in
+            guard let policy = service.state(for: kid.id)?.policy else { return false }
+            return policy.version > 0 || policy.enabled
+        }
     }
 
     private var snoozed: Bool { snoozedUntil > Date().timeIntervalSince1970 }
@@ -37,8 +42,11 @@ struct ScreenTimePromoCard: View {
                 }) {
                     ScreenTimeWelcomeView(onSetup: { pendingKid = $0 })
                 }
-                .sheet(item: $sheetKid) { ScreenTimeParentSheet(initialKidId: $0.id) }
+                .screenTimeControlsCover(item: $sheetKid) { ScreenTimeParentSheet(initialKidId: $0.id) }
                 .onChange(of: store.me?.id) { _, _ in showWelcome = false; pendingKid = nil; sheetKid = nil }
+                .onChange(of: store.needsAuth) { _, needsAuth in
+                    if needsAuth { showWelcome = false; pendingKid = nil; sheetKid = nil }
+                }
         }
     }
 
@@ -138,7 +146,8 @@ private struct TrailingIconLabel: LabelStyle {
 // MARK: - Full-screen welcome
 
 struct ScreenTimeWelcomeView: View {
-    /// Called with a kid id right before the cover closes; the host opens that kid's sheet.
+    /// Called with a kid id right before the cover closes; the host then opens that kid's
+    /// controls (full screen at regular width, a large sheet on iPhone).
     let onSetup: (String) -> Void
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss

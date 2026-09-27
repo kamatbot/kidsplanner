@@ -799,6 +799,12 @@ extension APIClient {
         try await request("/api/screen-time/kids/\(pathComponent(kidId))/alerts/ack", method: "POST", body: [:])
     }
 
+    /// Parent: acks one alert (the banner's and the sheet's ✕). 404 for an unknown alert.
+    func ackScreenTimeAlert(kidId: String, alertId: String) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/alerts/\(pathComponent(alertId))/ack",
+                          method: "POST", body: [:])
+    }
+
     func forgetScreenTimeDevice(kidId: String, deviceId: String) async throws -> ScreenTimeKidState {
         try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))", method: "DELETE")
     }
