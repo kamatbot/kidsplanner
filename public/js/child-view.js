@@ -201,12 +201,24 @@
     });
   }
   const stStatus = { approved: 'Approved', declined: 'Declined', expired: 'Expired', pending: 'Waiting for approval' };
+  /* Alert history (last 3): open alerts keep the chip, toned like the app banner (danger only for tamper
+     signals); acknowledged, auto-resolved or expired ones are labelled plainly. Legacy stale copy is shown
+     in the SCREEN-TIME-UX §6 wording so history never implies Screen Time was turned off. */
+  const stAlertTone = { revoked: '', removed: '', stale: ' is-warning', selection_changed: ' is-info' };
+  const alertMessage = a => a.type === 'stale' ? String(a.message == null ? '' : a.message).replace(/ — it may be off, offline, or Screen Time was turned off$/, '. It may be off or offline.') : a.message;
+  function alertItem(a) {
+    const when = e(timestamp(a.at) || '');
+    if (a.ackedAt) return `<li class="is-acked"><strong>${e(alertMessage(a))}</strong><span>${when ? `${when} · ` : ''}No action needed</span></li>`;
+    return `<li class="is-open"><strong>${e(alertMessage(a))}</strong><span><span class="cv-st-chip${Object.hasOwn(stAlertTone, a.type) ? stAlertTone[a.type] : ' is-info'}">Needs a look</span>${when ? ` ${when}` : ''}</span></li>`;
+  }
   function screenTimeMarkup(name, st, state, date) {
     const header = `<h2 id="cv-st-title">${e(name)}’s screen time</h2>`;
     if (state === 'loading') return `${header}<div class="cv-st-skeleton" aria-hidden="true"><i></i><i></i><i></i></div><p role="status">Loading screen time…</p>`;
     if (state === 'error' || !st) return `${header}<p role="status">Screen time couldn’t be loaded. Your other child information is still available.</p>${button('st-retry', 'Try screen time again')}`;
     const kid = st.state;
     if (!kid || (!kid.policy?.enabled && !(kid.devices || []).length)) return `${header}<p class="cv-st-empty">Screen Time isn’t set up for ${e(name)} yet — set it up in the Fam ETC app.</p>`;
+    // SCREEN-TIME-UX §1 "Off": the parent turned it off but a device is enrolled; history and rules stay.
+    const off = !kid.policy?.enabled ? `<p class="cv-st-off">Screen Time is off for ${e(name)} right now. Turn it back on in the Fam ETC app.</p>` : '';
     const days = st.usage?.days || [];
     const today = days.find(d => d.date === date) || null;
     const bars = chartDays(days);
@@ -217,13 +229,13 @@
     const requests = (st.usage?.requests || kid.requests || []).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 3);
     const alerts = (kid.alerts || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 3);
     const extraToday = count(today?.extraMinutes);
-    return `${header}
+    return `${header}${off}
       <div class="cv-st-today"><strong>${e(todayLine(today))}</strong>${extraToday ? `<p>Includes ${e(duration(extraToday))} extra time with fams.</p>` : ''}${hit ? `<span class="cv-st-chip">Daily limit reached at ${e(new Date(hit).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</span>` : ''}</div>
       <div class="cv-st-chart" role="img" aria-label="${e(summary)}">${bars.map(d => `<div class="cv-st-day${d.date === date ? ' is-today' : ''}${d.minutes == null ? ' is-unknown' : ''}" aria-hidden="true"><div class="cv-st-track"><i class="cv-st-used" style="height:${d.base}%"></i><i class="cv-st-extra" style="height:${d.extraPct}%"></i><i class="cv-st-used" style="height:${d.over}%"></i>${d.limitPct == null ? '' : `<span class="cv-st-limit" style="bottom:${d.limitPct}%"></span>`}</div><b>${e(dateLabel(d.date, { weekday: 'narrow' }))}</b><small>${d.minutes == null ? '—' : e(duration(d.minutes))}</small></div>`).join('')}</div>
       <p class="cv-st-legend" aria-hidden="true"><span class="is-used">Used</span>${bars.some(d => d.extra) ? '<span class="is-extra">Extra time with fams</span>' : ''}${bars.some(d => d.limit) ? '<span class="is-limit">Allowance</span>' : ''}</p>
       <table class="cv-sr"><caption>Screen time per day</caption><thead><tr><th scope="col">Day</th><th scope="col">Minutes</th><th scope="col">Allowance</th></tr></thead><tbody>${bars.map(d => `<tr><th scope="row">${e(dateLabel(d.date, { weekday: 'long', month: 'short', day: 'numeric' }))}</th><td>${d.minutes == null ? 'Not reported' : e(d.minutes)}</td><td>${d.limit == null ? 'No daily limit' : `${e(d.limit)}${d.extra ? ` (includes ${e(d.extra)} extra)` : ''}`}</td></tr>`).join('')}</tbody></table>
       <div class="cv-st-lists"><div><h3>Extra time requests</h3><ul class="cv-st-list">${requests.length ? requests.map(r => `<li><strong>Asked for ${e(duration(r.minutes))} · ${e(famsNumber(Number.isFinite(r.fams) ? r.fams : r.minutes / 3))} fams · ${e(stStatus[r.status] || r.status)}</strong><span>${e(r.date ? dateLabel(r.date) : '')}</span></li>`).join('') : '<li>No extra time requests yet.</li>'}</ul></div>
-      <div><h3>Alerts</h3><ul class="cv-st-list">${alerts.length ? alerts.map(a => `<li><strong>${e(a.message)}</strong><span>${e(timestamp(a.at) || '')}</span></li>`).join('') : '<li>No alerts.</li>'}</ul></div></div>
+      <div><h3>Alerts</h3><ul class="cv-st-list">${alerts.length ? alerts.map(alertItem).join('') : '<li>No alerts.</li>'}</ul></div></div>
       <p class="cv-st-note">Counted in 15-minute steps. App-by-app details stay on ${e(name)}’s device.</p>`;
   }
   async function render(id) {

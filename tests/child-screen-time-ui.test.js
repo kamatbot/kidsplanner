@@ -122,12 +122,86 @@ test('a stale screen time response for Mia never paints after switching to Leo',
 test('all dynamic screen time text is escaped', async () => {
   const evil = '<img src=x onerror=alert(1)>';
   const { context, nodes, view } = setup({ routes: {
-    '/api/screen-time': async () => ({ kids: [kidState('mia', { alerts: [{ message: evil, at: evil }] })] }),
+    '/api/screen-time': async () => ({ kids: [kidState('mia', { policy: { enabled: false, limits: [] }, alerts: [{ message: evil, at: evil }, { type: evil, message: evil, at: evil, ackedAt: evil }] })] }),
     '/api/screen-time/kids/mia/usage': async () => usage('mia', { requests: [{ minutes: 15, fams: 5, status: evil, date: TODAY, createdAt: '1' }] }),
   } });
   context.currentFamily.kids[0].name = `Mia${evil}`;
   await view.render('mia');
   const html = section(nodes['tab-child'].innerHTML);
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(html, /class="cv-st-off">Screen Time is off for Mia&lt;img src=x onerror=alert\(1\)&gt; right now\./); // Off line path
+  assert.match(html, /class="cv-st-chip is-info">Needs a look/); // unknown type never reaches the class attribute
   assert.doesNotMatch(html, /<img/);
+});
+
+test('Off: a parent-disabled policy with an enrolled device shows the quiet line above the chart and keeps history', async () => {
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids: [kidState('mia', { policy: { enabled: false, limits: [{ id: 'total' }] }, alerts: [{ id: 'a1', type: 'revoked', message: 'Mia turned off Screen Time on iPhone', at: '2026-09-07T16:12:00Z', ackedAt: '2026-09-08T09:00:00Z' }] })] }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia', { [TODAY]: { minutes: 45, limitMinutes: null } }),
+  } });
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  assert.match(html, /<p class="cv-st-off">Screen Time is off for Mia right now\. Turn it back on in the Fam ETC app\.<\/p>/);
+  assert.ok(html.indexOf('cv-st-off') < html.indexOf('cv-st-chart'), 'Off line sits above the chart');
+  assert.equal((html.match(/class="cv-st-day/g) || []).length, 7); // chart still renders
+  assert.match(html, /About 45 min today/);
+  assert.match(html, /Mia turned off Screen Time on iPhone[\s\S]*No action needed/);
+  assert.doesNotMatch(html, /isn’t set up|Needs a look/);
+});
+
+test('On: no Off line; not set up still wins over Off when no device is enrolled', async () => {
+  let kids = [kidState('mia')];
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia'),
+  } });
+  await view.render('mia');
+  assert.doesNotMatch(section(nodes['tab-child'].innerHTML), /cv-st-off|is off for Mia/);
+  kids = [kidState('mia', { policy: { enabled: false, limits: [] }, devices: [] })];
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  assert.match(html, /Screen Time isn’t set up for Mia yet/);
+  assert.doesNotMatch(html, /cv-st-off|cv-st-chart/);
+});
+
+test('alert history: unacked keep the chip (toned by type), acked are labelled plainly, newest three only', async () => {
+  const alerts = [
+    { id: 'a1', type: 'revoked', message: 'Mia turned off Screen Time on iPhone', at: '2026-09-08T10:00:00Z', ackedAt: null },
+    { id: 'a2', type: 'stale', message: 'Mia’s iPhone hasn’t checked in since Sat 9:12 PM. It may be off or offline.', at: '2026-09-07T10:00:00Z', ackedAt: null },
+    { id: 'a3', type: 'restored', message: 'Screen Time is back on for Mia’s iPhone', at: '2026-09-06T10:00:00Z', ackedAt: '2026-09-06T10:00:00Z' },
+    { id: 'a4', type: 'selection_changed', message: 'Oldest alert', at: '2026-09-01T10:00:00Z', ackedAt: null },
+  ];
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids: [kidState('mia', { alerts })] }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia'),
+  } });
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  const items = (html.match(/<h3>Alerts<\/h3><ul class="cv-st-list">([\s\S]*?)<\/ul>/) || [])[1].match(/<li[\s\S]*?<\/li>/g);
+  assert.equal(items.length, 3);
+  assert.doesNotMatch(html, /Oldest alert/);
+  assert.match(items[0], /^<li class="is-open"><strong>Mia turned off Screen Time on iPhone<\/strong><span><span class="cv-st-chip">Needs a look<\/span>/); // danger tone
+  assert.match(items[1], /^<li class="is-open">[\s\S]*<span class="cv-st-chip is-warning">Needs a look<\/span>/);
+  assert.match(items[2], /^<li class="is-acked"><strong>Screen Time is back on for Mia’s iPhone<\/strong><span>[^<]* · No action needed<\/span><\/li>$/);
+  assert.doesNotMatch(items[2], /cv-st-chip/);
+});
+
+test('stale alerts use the new wording, including legacy history that said Screen Time was turned off', async () => {
+  const legacy = 'Mia\'s iPhone hasn\'t checked in since Sat 9:12 PM — it may be off, offline, or Screen Time was turned off';
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids: [kidState('mia', { alerts: [{ id: 'a1', type: 'stale', message: legacy, at: '2026-09-07T10:00:00Z', ackedAt: null }] })] }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia'),
+  } });
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  assert.match(html, /Mia's iPhone hasn't checked in since Sat 9:12 PM\. It may be off or offline\./);
+  assert.doesNotMatch(html, /was turned off/);
+});
+
+test('child-view.css styles the Off line with ink-2 and distinct acked/unacked alert rows', () => {
+  const css = fs.readFileSync(require('node:path').join(__dirname, '../public/css/child-view.css'), 'utf8');
+  assert.match(css, /\.cv-st-off \{[^}]*color: var\(--fr-ink-2/);
+  assert.match(css, /\.cv-st-chip\.is-warning \{[^}]*--fr-fams-ink/);
+  assert.match(css, /\.cv-st-chip\.is-info \{[^}]*--fr-you-ink/);
+  assert.match(css, /\.cv-st-list li\.is-acked strong \{[^}]*--fr-ink-2/);
 });
