@@ -233,6 +233,15 @@ const server = http.createServer(async (req, res) => {
   state.requests.push({ method: req.method, path: url.pathname, role });
 
   if (url.pathname === "/__qa/state" && req.method === "GET") return send(res, 200, state);
+  // Seed fams in the throwaway Screen Time db so "more time" requests can be paid.
+  if (url.pathname === "/__qa/screen-time/credit" && req.method === "POST") {
+    const { kidId, amount } = await readJSON(req);
+    await screenTimeRoute({ method: "NONE", headers: {} }, { writeHead() {}, end() {} }, url, { data: { profile: { role: "parent" } } }, sessionFamily);
+    const fams = require("../../lib/fams");
+    fams.summary(sessionFamily.id, kidId);
+    require("../../lib/db").load().fams[sessionFamily.id][kidId].transactions.push({ id: `qa-${Date.now()}`, event: `qa:${Date.now()}`, units: amount * 100, category: "qa", title: "QA credit", date: "2026-01-01", weekStart: "2025-12-29", regular: false, createdAt: new Date().toISOString() });
+    return send(res, 200, { balance: fams.balance(sessionFamily.id, kidId) });
+  }
   if (url.pathname === "/__qa/reset" && req.method === "POST") {
     state.eventPosts.length = 0; state.chatPosts.length = 0; state.notePosts.length = 0;
     state.daily5Posts.length = 0; state.notes.length = 0; state.requests.length = 0;
@@ -481,7 +490,7 @@ async function screenTimeRoute(req, res, url, user, fam) {
     const re = new RegExp("^" + route.pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return "([^/]+)"; }) + "$");
     const m = route.method === req.method && re.exec(url.pathname);
     if (!m) continue;
-    if (user.data.profile.role === "kid" && !/\/(mine|device\/)/.test(route.pattern)) return send(res, 403, { error: "Parents only." });
+    if (user.data.profile.role === "kid" && !/\/(mine|device\/|requests$)/.test(route.pattern)) return send(res, 403, { error: "Parents only." });
     const body = ["POST", "PUT"].includes(req.method) ? await readJSON(req) : {};
     const params = Object.fromEntries(keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
     const out = { status: 200 };

@@ -115,6 +115,7 @@ struct ScreenTimeKidCard: View {
     @Environment(AppStore.self) private var store
     @State private var setup: SetupKind?
     @State private var showDeal = false
+    @State private var showMoreTime = false
     private var service: ScreenTimeService { .shared }
 
     private struct SetupKind: Identifiable {
@@ -130,7 +131,8 @@ struct ScreenTimeKidCard: View {
             content(policy)
                 .sheet(item: $setup) { ScreenTimeKidSetupSheet(makeDeal: $0.makeDeal) }
                 .sheet(isPresented: $showDeal) { ScreenTimeKidRulesSheet() }
-                .onChange(of: store.me?.id) { _, _ in setup = nil; showDeal = false }
+                .sheet(isPresented: $showMoreTime) { ScreenTimeMoreTimeSheet() }
+                .onChange(of: store.me?.id) { _, _ in setup = nil; showDeal = false; showMoreTime = false }
         }
     }
 
@@ -227,6 +229,10 @@ struct ScreenTimeKidCard: View {
                     Label(daily, systemImage: "hourglass")
                         .font(Typography.body).foregroundStyle(Palette.text).monospacedDigit()
                 }
+                if let extra = service.bonusToday {
+                    Label("+\(ScreenTimeFormat.minutes(extra)) extra today 🎉", systemImage: "plus.circle.fill")
+                        .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.frD3Ink).monospacedDigit()
+                }
                 if let kid = deal.kidPromises.first {
                     promiseLine(DealWords.kidName(store), kid)
                 }
@@ -238,6 +244,7 @@ struct ScreenTimeKidCard: View {
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecond)
                 }
+                AskMoreTimeButton(isPresented: $showMoreTime)
                 Button {
                     Haptics.selection()
                     showDeal = true
@@ -1308,12 +1315,14 @@ struct ScreenTimeKidRulesSheet: View {
     @State private var showPicker = false
     @State private var saving = false
     @State private var error: String?
+    @State private var showMoreTime = false
     private var service: ScreenTimeService { .shared }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.lg) {
+                    AskMoreTimeButton(isPresented: $showMoreTime)
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(Typography.label)
@@ -1361,6 +1370,7 @@ struct ScreenTimeKidRulesSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+            .sheet(isPresented: $showMoreTime) { ScreenTimeMoreTimeSheet() }
             .onChange(of: showPicker) { _, open in
                 guard !open, let limit = pickingLimit else { return }
                 pickingLimit = nil
@@ -1410,6 +1420,320 @@ struct ScreenTimeKidRulesSheet: View {
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
             }
+        }
+    }
+}
+
+// MARK: - More time for fams (kid)
+
+/// "Ask for more time ⏱️" — only when there's a daily screen time limit to extend.
+private struct AskMoreTimeButton: View {
+    @Binding var isPresented: Bool
+    private var service: ScreenTimeService { .shared }
+
+    var body: some View {
+        if service.policy?.limits.contains(where: \.isTotal) == true {
+            let waiting = service.pendingRequest != nil
+            Button {
+                Haptics.selection()
+                isPresented = true
+            } label: {
+                HStack(spacing: Space.sm) {
+                    Text(waiting ? "Asked for more time · waiting ⏳" : "Ask for more time ⏱️")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: Space.xs)
+                    Image(systemName: "chevron.right").accessibilityHidden(true)
+                }
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.frYouInk)
+                .padding(.horizontal, Space.lg)
+                .padding(.vertical, Space.sm)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(Palette.frYouSoft, in: Capsule())
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(waiting ? "Asked for more time, waiting for a grown-up" : "Ask for more time")
+            .accessibilityHint("Swap fams for extra screen time today")
+        }
+    }
+}
+
+/// A small gold fams coin + amount, matching the Fams coin.
+private struct FamsBadge: View {
+    let amount: Int
+    @ScaledMetric(relativeTo: .caption) private var coin: CGFloat = 18
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ZStack {
+                Circle().fill(Color(hex: 0xFFD66B))
+                Circle().stroke(Color(hex: 0xE7A62B), lineWidth: 1.5)
+                Text("F").font(.system(size: coin * 0.58, weight: .black, design: .rounded))
+                    .foregroundStyle(Color(hex: 0x704212))
+            }
+            .frame(width: coin, height: coin)
+            .accessibilityHidden(true)
+            Text("\(amount) fams")
+                .font(Typography.label.weight(.bold))
+                .foregroundStyle(Palette.frFamsInk)
+                .monospacedDigit()
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, Space.sm)
+        .padding(.vertical, 4)
+        .background(Palette.frFamsSoft, in: Capsule())
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Pick 15/30/45/60 minutes, paid in fams (1 fam per 3 min) only if a grown-up
+/// says yes. One request waits at a time; the answer arrives by push + sync.
+struct ScreenTimeMoreTimeSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var minutes: Int?
+    @State private var note = ""
+    @State private var sending = false
+    @State private var error: String?
+    private var service: ScreenTimeService { .shared }
+
+    private var balance: Double? { service.famsBalance }
+    private var latest: ScreenTimeRequest? { service.requests.first }
+    /// Today's latest answer (approved / declined), shown above the choices.
+    private var todaysAnswer: ScreenTimeRequest? {
+        guard let latest, !latest.isPending, latest.date == ScreenTimeSchedule.dayString(Date()),
+              ["approved", "declined"].contains(latest.status) else { return nil }
+        return latest
+    }
+
+    /// Fams still to earn for `minutes` (0 = affordable; unknown balance lets the server decide).
+    private func shortfall(_ minutes: Int) -> Int {
+        guard let balance else { return 0 }
+        return max(0, Int((Double(ScreenTimeRequest.cost(minutes: minutes)) - balance).rounded(.up)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    if let pending = service.pendingRequest { waiting(pending) } else { chooser }
+                }
+                .padding(Space.xl)
+                .frame(maxWidth: 560, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom) {
+                footer
+                    .padding(.horizontal, Space.xl)
+                    .padding(.vertical, Space.md)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .background(Palette.bg.opacity(0.94))
+            }
+            .background(ScreenBackground())
+            .navigationTitle("More time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(sending) }
+            }
+            .interactiveDismissDisabled(sending)
+            .task { await service.loadFamsBalance(kidId: store.me?.kidId) }
+            // While waiting, check in now and then in case the push is slow.
+            .task(id: service.pendingRequest?.id) {
+                guard service.pendingRequest != nil else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(20))
+                    if Task.isCancelled { break }
+                    await service.sync(source: "app")
+                }
+            }
+            .onChange(of: latest?.status) { old, new in
+                guard old == "pending", let new else { return }
+                Haptics.notify(new == "approved" ? .success : .warning)
+                Task { await service.loadFamsBalance(kidId: store.me?.kidId) }
+            }
+        }
+    }
+
+    // MARK: Pick
+
+    @ViewBuilder private var chooser: some View {
+        if let answer = todaysAnswer { answerCard(answer) }
+        Text("⏱️").font(.system(size: 56)).accessibilityHidden(true)
+        Text("Need a bit more time?")
+            .font(Typography.largeTitle)
+            .foregroundStyle(Palette.text)
+            .fixedSize(horizontal: false, vertical: true)
+        Text("Swap fams for extra screen time today. A grown-up says yes or no — fams are only spent if they say yes.")
+            .font(Typography.body)
+            .foregroundStyle(Palette.textSecond)
+            .fixedSize(horizontal: false, vertical: true)
+        if let balance {
+            HStack(spacing: Space.sm) {
+                Text("You have").font(Typography.body).foregroundStyle(Palette.textSecond)
+                FamsBadge(amount: Int(balance.rounded(.down)))
+            }
+            .accessibilityElement(children: .combine)
+        }
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: Space.md)], spacing: Space.md) {
+            ForEach(ScreenTimeRequest.choices, id: \.self) { choice($0) }
+        }
+        VStack(alignment: .leading, spacing: Space.xs) {
+            TextField("Add a note (optional)", text: $note, axis: .vertical)
+                .font(Typography.body)
+                .lineLimit(1...3)
+                .padding(Space.md)
+                .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).stroke(Palette.frRule, lineWidth: 1))
+                .onChange(of: note) { _, v in if v.count > 80 { note = String(v.prefix(80)) } }
+                .submitLabel(.done)
+            Text("Like “Just finishing my level” · \(note.count)/80")
+                .font(Typography.caption)
+                .foregroundStyle(Palette.textSecond)
+                .monospacedDigit()
+        }
+        if let error {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(Typography.label)
+                .foregroundStyle(Palette.frDanger)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func choice(_ m: Int) -> some View {
+        let cost = ScreenTimeRequest.cost(minutes: m)
+        let short = shortfall(m)
+        let selected = minutes == m
+        return Button {
+            Haptics.selection()
+            minutes = m
+        } label: {
+            VStack(spacing: Space.xs) {
+                Text("+\(m)")
+                    .font(Typography.display(40, .heavy))
+                    .foregroundStyle(selected ? Palette.frYouInk : Palette.text)
+                    .monospacedDigit()
+                Text("minutes")
+                    .font(Typography.label.weight(.semibold))
+                    .foregroundStyle(Palette.textSecond)
+                if short > 0 {
+                    Text("Earn \(short) more fams")
+                        .font(Typography.caption.weight(.semibold))
+                        .foregroundStyle(Palette.frInk2)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, Space.xs)
+                } else {
+                    FamsBadge(amount: cost).padding(.top, Space.xs)
+                }
+            }
+            .padding(Space.md)
+            .frame(maxWidth: .infinity, minHeight: 150)
+            .background(selected ? Palette.frYouSoft : Palette.frCard,
+                        in: RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
+                .stroke(selected ? Palette.frYou : Palette.frRule, lineWidth: selected ? 2.5 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(short > 0 || sending)
+        .opacity(short > 0 ? 0.55 : 1)
+        .accessibilityLabel("\(m) more minutes, \(cost) fams")
+        .accessibilityValue(short > 0 ? "Earn \(short) more fams first" : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func answerCard(_ r: ScreenTimeRequest) -> some View {
+        let yes = r.status == "approved"
+        return VStack(alignment: .leading, spacing: Space.xs) {
+            Text(yes ? "🎉 +\(r.minutes) minutes today" : "Not today — that's OK 💜")
+                .font(Typography.title)
+                .foregroundStyle(Palette.text)
+                .monospacedDigit()
+            Text(yes ? "A grown-up said yes. \(r.fams) fams spent — enjoy!"
+                     : "Your fams are safe. You can ask again another time.")
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Space.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(yes ? Palette.frD3Soft : Palette.frYouSoft,
+                    in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: Waiting
+
+    private func waiting(_ r: ScreenTimeRequest) -> some View {
+        VStack(alignment: .center, spacing: Space.lg) {
+            Text("⏳").font(.system(size: 72)).accessibilityHidden(true)
+                .padding(.top, Space.xl)
+            Text("Asked! Waiting for a grown-up…")
+                .font(Typography.largeTitle)
+                .foregroundStyle(Palette.text)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: Space.sm) {
+                Text("+\(r.minutes) more minutes")
+                    .font(Typography.title)
+                    .foregroundStyle(Palette.frYouInk)
+                    .monospacedDigit()
+                FamsBadge(amount: r.fams)
+                if let note = r.note, !note.isEmpty {
+                    Text("“\(note)”")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(Space.lg)
+            .frame(maxWidth: .infinity)
+            .background(Palette.frYouSoft, in: RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous))
+            .accessibilityElement(children: .combine)
+            Text("We'll tell you as soon as they answer. Fams are only spent if they say yes.")
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Footer
+
+    @ViewBuilder private var footer: some View {
+        if service.pendingRequest != nil {
+            BigButton(title: "OK") { dismiss() }
+        } else if sending {
+            HStack(spacing: Space.sm) { ProgressView(); Text("Asking…") }
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+                .frame(maxWidth: .infinity, minHeight: 54)
+        } else {
+            let ok = minutes.map { shortfall($0) == 0 } ?? false
+            BigButton(title: minutes.map { ok ? "Ask for \($0) more minutes" : "Pick another amount" } ?? "Pick how much time",
+                      systemImage: ok ? "paperplane.fill" : nil, enabled: ok) { send() }
+        }
+    }
+
+    private func send() {
+        guard let minutes, shortfall(minutes) == 0 else { return }
+        sending = true
+        error = nil
+        Task {
+            do {
+                try await service.requestMoreTime(minutes: minutes, note: note)
+                Haptics.notify(.success)
+                note = ""
+                self.minutes = nil
+            } catch {
+                self.error = error.localizedDescription
+            }
+            sending = false
         }
     }
 }

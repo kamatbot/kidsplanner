@@ -29,6 +29,17 @@ enum ScreenTimeServiceError: LocalizedError {
     /// Signed on this device but not saved yet (offline / server error). Retried on every sync.
     var pendingAgreement: ScreenTimeAgreement?
 
+    /// The kid's last "more time" requests, newest first.
+    var requests: [ScreenTimeRequest] = []
+    /// The kid's fams balance (nil until loaded / if it failed — the server still checks).
+    var famsBalance: Double?
+
+    /// Only one request can wait at a time.
+    var pendingRequest: ScreenTimeRequest? { requests.first(where: \.isPending) }
+
+    /// Extra minutes a grown-up approved for today (nil when none).
+    var bonusToday: Int? { ScreenTimeSchedule.activeBonus(policy?.bonus, today: Date()) }
+
     /// What the kid sees as "our deal": the saved one, or the one waiting to save.
     var currentDeal: ScreenTimeAgreement? { pendingAgreement ?? agreement }
 
@@ -52,6 +63,11 @@ enum ScreenTimeServiceError: LocalizedError {
     var unackedAlerts: [ScreenTimeAlert] {
         overview?.kids.flatMap { $0.alerts.filter { $0.ackedAt == nil } } ?? []
     }
+    /// Kids' "more time" requests waiting for a parent, oldest first.
+    var pendingRequests: [ScreenTimeRequest] {
+        (overview?.kids.flatMap { ($0.requests ?? []).filter(\.isPending) } ?? [])
+            .sorted { ($0.createdAt ?? "") < ($1.createdAt ?? "") }
+    }
 
     @ObservationIgnored private let enforcer = ScreenTimeEnforcer.shared
     @ObservationIgnored private let api = APIClient.shared
@@ -66,6 +82,7 @@ enum ScreenTimeServiceError: LocalizedError {
         policy = enforcer.storedPolicy
         agreement = enforcer.storedAgreement
         pendingAgreement = enforcer.pendingAgreement
+        requests = Self.newestFirst(enforcer.storedRequests)
     }
 
     // MARK: Kid — authorization + enrollment
@@ -149,6 +166,7 @@ enum ScreenTimeServiceError: LocalizedError {
             if let mine = try? await api.myScreenTime() {
                 policy = mine.policy
                 agreement = mine.agreement
+                if let r = mine.requests { requests = Self.newestFirst(r) }
             } else {
                 policy = nil
             }
@@ -161,6 +179,7 @@ enum ScreenTimeServiceError: LocalizedError {
             if authState == .approved { enforcer.apply(p) }
             policy = p
             agreement = enforcer.storedAgreement
+            requests = Self.newestFirst(enforcer.storedRequests)
             lastSyncAt = Date()
             lastError = nil
             if let pending = pendingAgreement { try? await saveAgreement(pending) }
@@ -227,6 +246,27 @@ enum ScreenTimeServiceError: LocalizedError {
         }
     }
 
+    // MARK: Kid — more time for fams
+
+    func loadFamsBalance(kidId: String?) async {
+        guard let kidId else { return }
+        if let wallet = try? await api.famsWallet(kidId: kidId) { famsBalance = wallet.balance }
+    }
+
+    /// Asks the grown-ups for `minutes` more today (dated with this device's local day).
+    func requestMoreTime(minutes: Int, note: String?) async throws {
+        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let r = try await api.requestScreenTime(minutes: minutes,
+                                                date: ScreenTimeSchedule.dayString(Date()),
+                                                note: trimmed?.isEmpty == false ? String(trimmed!.prefix(80)) : nil)
+        requests = [r] + requests.filter { $0.id != r.id }
+        await sync(source: "app")
+    }
+
+    private static func newestFirst(_ list: [ScreenTimeRequest]?) -> [ScreenTimeRequest] {
+        (list ?? []).sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+    }
+
     // MARK: Background refresh
 
     /// Must run before launch completes (AppDelegate.didFinishLaunching).
@@ -270,6 +310,14 @@ enum ScreenTimeServiceError: LocalizedError {
 
     func pause(kidId: String, minutes: Int) async throws {
         merge(try await api.pauseScreenTime(kidId: kidId, minutes: minutes))
+    }
+
+    func approveRequest(kidId: String, requestId: String) async throws {
+        merge(try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: true))
+    }
+
+    func declineRequest(kidId: String, requestId: String) async throws {
+        merge(try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: false))
     }
 
     func ackAlerts(kidId: String) async {

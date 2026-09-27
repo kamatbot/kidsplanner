@@ -86,4 +86,51 @@ final class ScreenTimeScheduleTests: XCTestCase {
         XCTAssertNil(p.limits[0].weekendMinutes)
         XCTAssertNotNil(p.pauseUntilDate)
     }
+
+    // MARK: More time for fams — bonus
+
+    func testBonusTodayAddsToTotalOnTodaysWeekdayOnly() {
+        let total = ScreenTimeLimit(id: "total", kind: "total", name: "Screen time", minutesPerDay: 120, weekendMinutes: 180)
+        let today = date(day: 27, hour: 15) // Sunday
+        let bonus = ScreenTimeBonus(date: "2026-09-27", minutes: 15)
+        XCTAssertEqual(ScreenTimeSchedule.dayString(today, calendar: calendar), "2026-09-27")
+        XCTAssertEqual(ScreenTimeSchedule.minutes(for: total, weekday: 1, bonus: bonus, today: today, calendar: calendar), 195)
+        // Other weekdays keep their normal threshold.
+        XCTAssertEqual(ScreenTimeSchedule.minutes(for: total, weekday: 2, bonus: bonus, today: today, calendar: calendar), 120)
+        XCTAssertEqual(ScreenTimeSchedule.activeBonus(bonus, today: today, calendar: calendar), 15)
+    }
+
+    func testBonusFromYesterdayIsIgnored() {
+        let total = ScreenTimeLimit(id: "total", kind: "total", name: "Screen time", minutesPerDay: 120, weekendMinutes: 180)
+        let today = date(day: 28, hour: 9) // Monday
+        let yesterday = ScreenTimeBonus(date: "2026-09-27", minutes: 60)
+        XCTAssertEqual(ScreenTimeSchedule.minutes(for: total, weekday: 2, bonus: yesterday, today: today, calendar: calendar), 120)
+        XCTAssertEqual(ScreenTimeSchedule.minutes(for: total, weekday: 1, bonus: yesterday, today: today, calendar: calendar), 180)
+        XCTAssertNil(ScreenTimeSchedule.activeBonus(yesterday, today: today, calendar: calendar))
+        XCTAssertEqual(ScreenTimeSchedule.minutes(for: total, weekday: 2, bonus: nil, today: today, calendar: calendar), 120)
+    }
+
+    func testBonusNeverChangesAppLimits() {
+        let games = ScreenTimeLimit(id: "games", kind: "apps", name: "Games", minutesPerDay: 60)
+        let today = date(day: 27, hour: 15)
+        let bonus = ScreenTimeBonus(date: "2026-09-27", minutes: 30)
+        XCTAssertEqual(ScreenTimeSchedule.minutes(for: games, weekday: 1, bonus: bonus, today: today, calendar: calendar), 60)
+    }
+
+    func testRequestCostAndDecoding() throws {
+        XCTAssertEqual(ScreenTimeRequest.choices.map(ScreenTimeRequest.cost(minutes:)), [5, 10, 15, 20])
+        let json = #"""
+        {"policy":{"version":4,"enabled":true,"limits":[],"downtime":[],"bonus":{"date":"2026-09-27","minutes":15}},
+         "agreement":null,
+         "requests":[{"id":"r1","kidId":"k1","minutes":15,"fams":5,"date":"2026-09-27","note":null,"status":"approved",
+                      "createdAt":"2026-09-27T10:00:00.000Z","decidedAt":"2026-09-27T10:05:00.000Z","decidedBy":"p1"}]}
+        """#
+        let r = try JSONDecoder().decode(ScreenTimePolicyResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(r.policy.bonus, ScreenTimeBonus(date: "2026-09-27", minutes: 15))
+        XCTAssertEqual(r.requests?.first?.status, "approved")
+        // Older payloads without bonus/requests still decode.
+        let old = try JSONDecoder().decode(ScreenTimePolicyResponse.self, from: Data(#"{"policy":{"version":1,"enabled":false,"limits":[],"downtime":[]}}"#.utf8))
+        XCTAssertNil(old.policy.bonus)
+        XCTAssertNil(old.requests)
+    }
 }

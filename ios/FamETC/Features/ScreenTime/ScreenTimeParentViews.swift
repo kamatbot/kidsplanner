@@ -265,8 +265,62 @@ struct ScreenTimeAlertBanner: View {
         service.unackedAlerts.max { (ScreenTimeFormat.date($0.at) ?? .distantPast) < (ScreenTimeFormat.date($1.at) ?? .distantPast) }
     }
 
+    /// The oldest waiting "more time" request (first come, first answered).
+    private var request: ScreenTimeRequest? { service.pendingRequests.first }
+
     var body: some View {
-        if store.isParent, !store.needsAuth, let alert = newest {
+        if store.isParent, !store.needsAuth {
+            VStack(spacing: 0) {
+                if let request { requestBanner(request) }
+                if let alert = newest { alertBanner(alert) }
+            }
+            .animation(Motion.snappy, value: service.pendingRequests.map(\.id))
+        }
+    }
+
+    private func requestBanner(_ r: ScreenTimeRequest) -> some View {
+        let name = DealWords.firstName(store.kids.first { $0.id == r.kidId }?.name) ?? "Your child"
+        let more = service.pendingRequests.count - 1
+        return HStack(spacing: Space.md) {
+            Text("⏱️").font(.system(size: 24)).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(name) asks for \(r.minutes) more minutes · \(r.fams) fams")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(more > 0 ? "Screen Time · \(more) more" : "Screen Time · \(ScreenTimeFormat.relative(ScreenTimeFormat.date(r.createdAt)))")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            Spacer(minLength: Space.sm)
+            Button("Review") {
+                Haptics.selection()
+                NotificationCenter.default.post(name: .famDeepLinkToScreenTime, object: nil,
+                                                userInfo: ["kidId": r.kidId])
+            }
+            .font(Typography.caption.weight(.bold))
+            .foregroundStyle(Palette.frOnYou)
+            .padding(.horizontal, Space.md)
+            .frame(minHeight: 44)
+            .background(Palette.frYou, in: Capsule())
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens Screen Time for \(name) to approve or decline")
+        }
+        .padding(Space.md)
+        .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                .strokeBorder(Palette.frYou, lineWidth: 2)
+        )
+        .cardShadow()
+        .padding(.horizontal, Space.md)
+        .padding(.top, Space.sm)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func alertBanner(_ alert: ScreenTimeAlert) -> some View {
+        Group {
             let warning = ["revoked", "removed", "stale"].contains(alert.type)
             let tone = warning ? Palette.frDanger : Palette.accent
             let more = service.unackedAlerts.count - 1
@@ -355,6 +409,8 @@ struct ScreenTimeParentSheet: View {
     @State private var editingDowntime: ScreenTimeDowntime?
     @State private var forgetting: ScreenTimeDevice?
     @State private var showDeal = false
+    @State private var deciding: String?
+    @State private var requestError: String?
     private var service: ScreenTimeService { .shared }
 
     init(initialKidId: String) {
@@ -371,6 +427,9 @@ struct ScreenTimeParentSheet: View {
     private var unacked: [ScreenTimeAlert] {
         (state?.alerts ?? []).filter { $0.ackedAt == nil }
             .sorted { (ScreenTimeFormat.date($0.at) ?? .distantPast) > (ScreenTimeFormat.date($1.at) ?? .distantPast) }
+    }
+    private var requests: [ScreenTimeRequest] {
+        (state?.requests ?? []).sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
     }
     private var hasRules: Bool { !(policy?.limits.isEmpty ?? true) || !(policy?.downtime.isEmpty ?? true) }
 
@@ -397,6 +456,7 @@ struct ScreenTimeParentSheet: View {
                         }
                     }
                 } else {
+                    requestSection
                     statusSection
                     if let error { errorSection(error) }
                     bedtimeSection
@@ -410,6 +470,7 @@ struct ScreenTimeParentSheet: View {
                         downtimeSection
                         devicesSection
                         alertHistorySection
+                        requestHistorySection
                         howSection
                     }
                 }
@@ -424,7 +485,7 @@ struct ScreenTimeParentSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
-            .onChange(of: kidId) { _, _ in error = nil; justSaved = false }
+            .onChange(of: kidId) { _, _ in error = nil; justSaved = false; requestError = nil }
             .sheet(isPresented: $showDeal) {
                 if let deal = state?.agreement { ScreenTimeDealSheet(deal: deal, kidName: kidName) }
             }
@@ -529,6 +590,115 @@ struct ScreenTimeParentSheet: View {
                 .frame(minHeight: 44)
                 .accessibilityHint("Marks these Screen Time alerts as seen")
             }
+        }
+    }
+
+    // MARK: Basic — more time requests
+
+    /// Waiting requests (Approve / Not today), then today's granted extra time with delivery.
+    @ViewBuilder private var requestSection: some View {
+        let pending = requests.filter(\.isPending)
+        let bonus = ScreenTimeSchedule.activeBonus(policy?.bonus, today: Date())
+        if !pending.isEmpty || bonus != nil || requestError != nil {
+            Section {
+                ForEach(pending) { requestCard($0) }
+                if let requestError {
+                    Label(requestError, systemImage: "exclamationmark.triangle.fill")
+                        .font(Typography.label)
+                        .foregroundStyle(Palette.frDanger)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let bonus, let policy {
+                    Label("+\(ScreenTimeFormat.minutes(bonus)) extra today", systemImage: "plus.circle.fill")
+                        .font(Typography.body.weight(.semibold))
+                        .foregroundStyle(Palette.frD3Ink)
+                        .monospacedDigit()
+                    if !devices.isEmpty { deliveryLine(policy) }
+                }
+            } header: {
+                Text("More time")
+            } footer: {
+                if !pending.isEmpty { Text("Approving spends the fams and adds the minutes to today only. Bedtime never moves.") }
+            }
+        }
+    }
+
+    private func requestCard(_ r: ScreenTimeRequest) -> some View {
+        let name = DealWords.firstName(kid?.name) ?? "Your child"
+        return VStack(alignment: .leading, spacing: Space.sm) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("⏱️ \(name) asks for \(r.minutes) more minutes · \(r.fams) fams")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.text)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                if let note = r.note, !note.isEmpty {
+                    Text("“\(note)”")
+                        .font(Typography.label)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(ScreenTimeFormat.relative(ScreenTimeFormat.date(r.createdAt)))
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            .accessibilityElement(children: .combine)
+            if deciding == r.id {
+                HStack(spacing: Space.sm) { ProgressView(); Text("Sending…") }
+                    .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    .frame(minHeight: 44)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.sm) { decideButtons(r) }
+                    VStack(alignment: .leading, spacing: Space.sm) { decideButtons(r) }
+                }
+                .disabled(deciding != nil)
+            }
+        }
+        .padding(.vertical, Space.xs)
+    }
+
+    @ViewBuilder private func decideButtons(_ r: ScreenTimeRequest) -> some View {
+        Button { decide(r, approve: true) } label: {
+            Text("Approve")
+                .font(Typography.label.weight(.semibold))
+                .foregroundStyle(Palette.frOnYou)
+                .padding(.horizontal, Space.lg)
+                .frame(minHeight: 44)
+                .background(Palette.frYou, in: Capsule())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Approve \(r.minutes) more minutes for \(r.fams) fams")
+        Button { decide(r, approve: false) } label: {
+            Text("Not today")
+                .font(Typography.label.weight(.semibold))
+                .foregroundStyle(Palette.frYouInk)
+                .padding(.horizontal, Space.lg)
+                .frame(minHeight: 44)
+                .background(Capsule().strokeBorder(Palette.frYou, lineWidth: 1))
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel("Decline, not today")
+    }
+
+    private func decide(_ r: ScreenTimeRequest, approve: Bool) {
+        Haptics.impact(.light)
+        deciding = r.id
+        requestError = nil
+        justSaved = false
+        Task {
+            do {
+                if approve {
+                    try await service.approveRequest(kidId: kidId, requestId: r.id)
+                    Haptics.notify(.success)
+                } else {
+                    try await service.declineRequest(kidId: kidId, requestId: r.id)
+                }
+            } catch {
+                requestError = error.localizedDescription
+                await service.loadOverview()
+            }
+            deciding = nil
         }
     }
 
@@ -996,6 +1166,47 @@ struct ScreenTimeParentSheet: View {
             }
         } header: {
             Text("Alert history")
+        }
+    }
+
+    private var requestHistorySection: some View {
+        Section {
+            if requests.isEmpty {
+                Text("No requests yet. \(kidName) can ask for more time on their phone and pay with fams.")
+                    .font(Typography.label)
+                    .foregroundStyle(Palette.textSecond)
+            }
+            ForEach(requests.prefix(10)) { r in
+                let chip = Self.requestChip(r.status)
+                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(r.minutes) min · \(r.fams) fams")
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Palette.text)
+                            .monospacedDigit()
+                        if let note = r.note, !note.isEmpty {
+                            Text("“\(note)”").font(Typography.label).foregroundStyle(Palette.textSecond)
+                        }
+                        Text(ScreenTimeFormat.relative(ScreenTimeFormat.date(r.createdAt)))
+                            .font(Typography.caption)
+                            .foregroundStyle(Palette.textSecond)
+                    }
+                    Spacer(minLength: Space.sm)
+                    ScreenTimeChip(text: chip.text, ink: chip.ink, soft: chip.soft)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        } header: {
+            Text("Time requests")
+        }
+    }
+
+    static func requestChip(_ status: String) -> (text: String, ink: Color, soft: Color) {
+        switch status {
+        case "pending": return ("Waiting", Palette.frYouInk, Palette.frYouSoft)
+        case "approved": return ("Approved", Palette.frD3Ink, Palette.frD3Soft)
+        case "declined": return ("Not today", Palette.frInk2, Palette.frCard2)
+        default: return ("Expired", Palette.frInk2, Palette.frCard2)
         }
     }
 

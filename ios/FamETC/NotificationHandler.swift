@@ -59,6 +59,12 @@ extension Notification.Name {
 ///   { aps: { alert: { title, body }, sound: "default",
 ///            "thread-id": "screen-time-<familyId>" },
 ///     famType: "screen_time_alert", familyId, kidId }
+///
+///   // screen_time_request (parents: a kid asked for more time) — same route as an alert
+///   { aps: { alert: { title, body } }, famType: "screen_time_request", familyId, kidId }
+///
+///   // screen_time_request_result (the kid: approved / declined)
+///   { aps: { alert: { title, body } }, famType: "screen_time_request_result", kidId }
 final class NotificationHandler {
     static let shared = NotificationHandler()
 
@@ -148,7 +154,13 @@ final class NotificationHandler {
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .famDeepLinkToToday, object: nil, userInfo: [:])
             }
-        case "screen_time_alert":
+        case "screen_time_request_result":
+            // Sync now so an approved bonus is enforced without waiting for the silent ping.
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .famDeepLinkToToday, object: nil, userInfo: [:])
+                Task { @MainActor in await ScreenTimeService.shared.sync(source: "push") }
+            }
+        case "screen_time_alert", "screen_time_request":
             guard let kidId = userInfo["kidId"] as? String else { return }
             pendingRouteLock.lock()
             pendingScreenTimeKidId = kidId

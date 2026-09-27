@@ -46,6 +46,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let policy = "fam_st_policy"
         static let agreement = "fam_st_agreement"
         static let agreementDraft = "fam_st_agreementDraft"
+        static let requests = "fam_st_requests"
         static let deviceId = "fam_st_deviceId"
         // ponytail: App Group defaults (file-protected container); move to a shared
         // keychain access group if the secret ever needs hardware-backed storage.
@@ -80,6 +81,12 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     var storedAgreement: ScreenTimeAgreement? {
         get { decode(Key.agreement) }
         set { encode(newValue, Key.agreement) }
+    }
+
+    /// The kid's last "more time" requests, as last reported by the server.
+    var storedRequests: [ScreenTimeRequest]? {
+        get { decode(Key.requests) }
+        set { encode(newValue, Key.requests) }
     }
 
     /// A deal signed on this device that the server hasn't confirmed yet.
@@ -241,11 +248,17 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         }
 
         let registered = Set(center.activities)
-        let signature = Self.scheduleSignature(policy)
+        // Today's bonus is part of the signature, so a new/raised bonus re-registers
+        // today's day.N with the higher threshold and the limit stores (incl.
+        // `limit.total`) are cleared right away; the next day it drops back out.
+        // ponytail: if the app never applies again that day, day.N keeps the bonus
+        // threshold for the same weekday next week (late, never early, shield);
+        // apply from the monitor's day.N start if that ever matters.
+        let signature = Self.scheduleSignature(policy, now: now)
         if signature != defaults.string(forKey: Key.scheduleSignature) || !registered.contains(.day(1)) {
             center.stopMonitoring(Array(registered.filter { $0 != .pause }))
             clearLimitStores(extraIds: previousLimitIds)
-            register(policy, center: center)
+            register(policy, center: center, now: now)
             defaults.set(signature, forKey: Key.scheduleSignature)
         }
 
@@ -286,10 +299,11 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         clearCredentials()
         storedPolicy = nil
         storedAgreement = nil
+        storedRequests = nil
         [Key.scheduleSignature, Key.pauseSignature, Key.appliedVersion, Key.mode].forEach(defaults.removeObject(forKey:))
     }
 
-    private func register(_ policy: ScreenTimePolicy, center: DeviceActivityCenter) {
+    private func register(_ policy: ScreenTimePolicy, center: DeviceActivityCenter, now: Date) {
         func start(_ name: DeviceActivityName, _ schedule: DeviceActivitySchedule,
                    events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]) {
             do { try center.startMonitoring(name, during: schedule, events: events) }
@@ -305,7 +319,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         for weekday in 1...7 {
             var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
             for (limit, sel) in selections {
-                let minutes = max(1, ScreenTimeSchedule.minutes(for: limit, weekday: weekday))
+                let minutes = max(1, ScreenTimeSchedule.minutes(for: limit, weekday: weekday, bonus: policy.bonus, today: now))
                 events[DeviceActivityEvent.Name("limit.\(limit.id)")] = DeviceActivityEvent(
                     applications: sel.applicationTokens,
                     categories: sel.categoryTokens,
@@ -330,8 +344,11 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     /// Stable hash of everything that shapes the DeviceActivity registration.
-    private static func scheduleSignature(_ p: ScreenTimePolicy) -> String {
+    private static func scheduleSignature(_ p: ScreenTimePolicy, now: Date) -> String {
         var text = ""
+        if let extra = ScreenTimeSchedule.activeBonus(p.bonus, today: now) {
+            text += "B|\(ScreenTimeSchedule.dayString(now))|\(extra)\n"
+        }
         for l in p.limits { text += "L|\(l.id)|\(l.kind ?? "")|\(l.minutesPerDay)|\(l.weekendMinutes ?? -1)|\(l.selection ?? "")\n" }
         for d in p.downtime { text += "D|\(d.id)|\(d.start)|\(d.end)|\(d.days.map(String.init).joined(separator: ","))\n" }
         return SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -392,6 +409,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             completion(result.map { r in
                 self?.storedPolicy = r.policy
                 self?.storedAgreement = r.agreement
+                if let requests = r.requests { self?.storedRequests = requests }
                 return r.policy
             })
         }

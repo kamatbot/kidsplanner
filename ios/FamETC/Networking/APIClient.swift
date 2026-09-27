@@ -803,6 +803,21 @@ extension APIClient {
         try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))", method: "DELETE")
     }
 
+    /// Kid session: ask for extra `total` minutes today, paid in fams on approval.
+    /// 409 when one is already pending or the balance is too low.
+    func requestScreenTime(minutes: Int, date: String, note: String?) async throws -> ScreenTimeRequest {
+        var body: [String: Any] = ["minutes": minutes, "date": date]
+        if let note { body["note"] = note }
+        let r: ScreenTimeRequestResponse = try await request("/api/screen-time/requests", method: "POST", body: body)
+        return r.request
+    }
+
+    /// Parent: `approve` spends the fams and adds the bonus (409 if the balance is now too low).
+    func decideScreenTimeRequest(kidId: String, requestId: String, approve: Bool) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/requests/\(pathComponent(requestId))/\(approve ? "approve" : "decline")",
+                          method: "POST", body: [:])
+    }
+
     /// Kid session: the family's policy + signed deal for this kid (no device projection).
     func myScreenTime() async throws -> ScreenTimePolicyResponse {
         try await request("/api/screen-time/mine")

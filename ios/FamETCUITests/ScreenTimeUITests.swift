@@ -88,6 +88,44 @@ final class ScreenTimeUITests: XCTestCase {
         app.terminate()
     }
 
+    func testParentApprovesMoreTimeRequest() throws {
+        let kid = "qa-visual-kid-1"
+        post("/__qa/screen-time/credit", ["kidId": kid, "amount": 12], role: .parent)
+        post("/api/screen-time/kids/\(kid)/policy", ["enabled": true,
+            "limits": [["id": "total", "kind": "total", "name": "Screen time", "minutesPerDay": 120, "weekendMinutes": 180]],
+            "downtime": [["id": "bedtime", "name": "Bedtime", "start": "21:00", "end": "07:00", "days": [1, 2, 3, 4, 5, 6, 7]]]],
+            role: .parent, method: "PUT")
+        let day = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
+        post("/api/screen-time/requests", ["minutes": 15, "date": day, "note": "Finishing a level"], role: .kid)
+
+        let app = launch(.parent)
+        let review = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Review'")).firstMatch
+        XCTAssertTrue(review.waitForExistence(timeout: 12), "Pending request banner should show")
+        attach("parent-request-banner")
+        review.tap()
+        let approve = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Approve 15 more minutes'")).firstMatch
+        XCTAssertTrue(approve.waitForExistence(timeout: 8))
+        attach("parent-request-card")
+        approve.tap()
+        XCTAssertTrue(approve.waitForNonExistence(timeout: 8), "Card should leave the pending state")
+        attach("parent-request-approved")
+    }
+
+    @discardableResult
+    private func post(_ path: String, _ body: [String: Any], role: Role, method: String = "POST") -> Int {
+        var request = URLRequest(url: fixtureURL.appendingPathComponent(path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("fam_sess=\(role.rawValue); fam_qa_scenario=family-rings", forHTTPHeaderField: "Cookie")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let done = expectation(description: path); var status = 0
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0; done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        return status
+    }
+
     private enum Role: String { case parent, kid }
     private func launch(_ role: Role) -> XCUIApplication {
         let app = XCUIApplication()

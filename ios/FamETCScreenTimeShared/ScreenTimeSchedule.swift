@@ -37,6 +37,28 @@ enum ScreenTimeSchedule {
         weekday == 1 || weekday == 7 ? (limit.weekendMinutes ?? limit.minutesPerDay) : limit.minutesPerDay
     }
 
+    /// Device-local "YYYY-MM-DD" for `date` (the request/bonus day key).
+    static func dayString(_ date: Date, calendar: Calendar = .current) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// Bonus minutes that count today, nil when there's no bonus for `today`.
+    static func activeBonus(_ bonus: ScreenTimeBonus?, today: Date, calendar: Calendar = .current) -> Int? {
+        guard let bonus, bonus.minutes > 0, bonus.date == dayString(today, calendar: calendar) else { return nil }
+        return bonus.minutes
+    }
+
+    /// Like `minutes(for:weekday:)`, plus today's approved bonus on the `total` limit
+    /// for today's weekday only. App limits and other days never change.
+    static func minutes(for limit: ScreenTimeLimit, weekday: Int, bonus: ScreenTimeBonus?,
+                        today: Date, calendar: Calendar = .current) -> Int {
+        let base = minutes(for: limit, weekday: weekday)
+        guard limit.isTotal, calendar.component(.weekday, from: today) == weekday,
+              let extra = activeBonus(bonus, today: today, calendar: calendar) else { return base }
+        return base + extra
+    }
+
     /// Is `now` inside the downtime window `start`–`end` that began on a listed day?
     static func isInsideWindow(start: String, end: String, days: [Int], now: Date, calendar: Calendar = .current) -> Bool {
         guard let s = parseTime(start), let e = parseTime(end), durationMinutes(start: s, end: e) > 0 else { return false }

@@ -59,6 +59,8 @@ struct ScreenTimePolicy: Codable, Hashable, Sendable {
     var pauseUntil: String?
     var limits: [ScreenTimeLimit]
     var downtime: [ScreenTimeDowntime]
+    /// Extra `total` minutes a parent approved for one day ("More time for fams").
+    var bonus: ScreenTimeBonus?
 
     static let disabled = ScreenTimePolicy(version: 0, enabled: false, updatedAt: nil, pauseUntil: nil, limits: [], downtime: [])
 
@@ -96,6 +98,8 @@ struct ScreenTimeKidState: Codable, Identifiable, Hashable, Sendable {
     var alerts: [ScreenTimeAlert]
     /// The kid's current signed deal (nil = none yet / older server).
     var agreement: ScreenTimeAgreement?
+    /// The kid's last 10 "more time" requests (nil on older servers).
+    var requests: [ScreenTimeRequest]?
 
     var id: String { kidId }
 }
@@ -108,6 +112,8 @@ struct ScreenTimeOverview: Codable, Hashable, Sendable {
 struct ScreenTimePolicyResponse: Codable, Sendable {
     var policy: ScreenTimePolicy
     var agreement: ScreenTimeAgreement?
+    /// Heartbeat + `/mine` only: the kid's last 10 requests.
+    var requests: [ScreenTimeRequest]?
 }
 
 /// `POST /api/screen-time/device/enroll` response.
@@ -159,4 +165,38 @@ struct ScreenTimeAgreement: Codable, Hashable, Sendable {
 /// `PUT /api/screen-time/device/agreement` response.
 struct ScreenTimeAgreementResponse: Codable, Sendable {
     var agreement: ScreenTimeAgreement
+}
+
+// MARK: More time for fams (docs/SCREEN-TIME-PLAN.md "More time for fams")
+
+/// Extra minutes on the `total` limit for one kid-device-local day ("YYYY-MM-DD").
+struct ScreenTimeBonus: Codable, Hashable, Sendable {
+    var date: String
+    var minutes: Int
+}
+
+struct ScreenTimeRequest: Codable, Identifiable, Hashable, Sendable {
+    var id: String
+    var kidId: String
+    var minutes: Int
+    var fams: Int
+    /// Kid device's local "YYYY-MM-DD"; the request expires at the end of it.
+    var date: String
+    var note: String?
+    /// pending | approved | declined | expired
+    var status: String
+    var createdAt: String?
+    var decidedAt: String?
+    var decidedBy: String?
+
+    var isPending: Bool { status == "pending" }
+
+    static let choices = [15, 30, 45, 60]
+    /// 1 fam per 3 minutes (15 min = 5 fams).
+    static func cost(minutes: Int) -> Int { minutes / 3 }
+}
+
+/// `POST /api/screen-time/requests` response.
+struct ScreenTimeRequestResponse: Codable, Sendable {
+    var request: ScreenTimeRequest
 }
