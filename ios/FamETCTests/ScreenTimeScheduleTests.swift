@@ -330,6 +330,8 @@ final class ScreenTimeScheduleTests: XCTestCase {
         let bed = policy(downtime: [sundayBedtime])
         XCTAssertEqual(clear(bed, at: date(day: 28, hour: 6, minute: 30)), ["pause"])
         XCTAssertEqual(clear(bed, at: date(day: 28, hour: 22)), ["downtime", "pause"])
+        // An early start's shield (Sunday 20:59:30, same 60 s leeway) is kept.
+        XCTAssertEqual(clear(bed, at: date(day: 27, hour: 20, minute: 59).addingTimeInterval(30)), ["pause"])
 
         // A limit the policy no longer has.
         XCTAssertEqual(clear(policy(), shielded: ["removed"]), ["downtime", "pause", "limit.removed"])

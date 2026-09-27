@@ -429,7 +429,8 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             defaults.set(signature, forKey: Key.scheduleSignature)
         }
 
-        if policy.downtime.contains(where: { ScreenTimeSchedule.isInsideWindow(start: $0.start, end: $0.end, days: $0.days, now: now) }) {
+        // Same leeway as the monitor's downtime start, so an early shield isn't cleared here.
+        if policy.downtime.contains(where: { ScreenTimeSchedule.downtimeShouldShield($0, now: now) }) {
             shieldAll(.downtime, reason: "Downtime")
         } else {
             clear(.downtime)

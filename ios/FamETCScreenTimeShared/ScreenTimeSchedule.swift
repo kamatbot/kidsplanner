@@ -224,7 +224,12 @@ enum ScreenTimeSchedule {
         }
         var clear = Set<String>()
         if pauseInterval(now: now, until: policy.pauseUntilDate) == nil { clear.insert(pauseStore) }
-        if activeDowntimeIds(policy, now: now, calendar: calendar).isEmpty { clear.insert(downtimeStore) }
+        // Same leeway as `downtimeShouldShield`, so an early `downtime.<id>` start's shield
+        // isn't removed by another reconcile in the seconds before the window opens.
+        if activeDowntimeIds(policy, now: now, calendar: calendar).isEmpty,
+           activeDowntimeIds(policy, now: now.addingTimeInterval(callbackLeeway), calendar: calendar).isEmpty {
+            clear.insert(downtimeStore)
+        }
         let weekday = calendar.component(.weekday, from: now)
         for id in shieldedLimitIds {
             guard let limit = policy.limits.first(where: { $0.id == id }) else {
