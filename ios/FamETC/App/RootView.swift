@@ -122,7 +122,7 @@ struct RootView: View {
             ParentAttentionSheet(childID: route.id)
         }
         .sheet(item: $screenTimeKid) { route in
-            ScreenTimeParentSheet(initialKidId: route.id)
+            ScreenTimeParentSheet(initialKidId: route.id).tint(Palette.frYou)
         }
         .onChange(of: store.isRefreshing) { _, refreshing in
             guard !refreshing else { return }
