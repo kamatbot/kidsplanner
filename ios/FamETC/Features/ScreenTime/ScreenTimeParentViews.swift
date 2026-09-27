@@ -411,6 +411,8 @@ struct ScreenTimeParentSheet: View {
     @State private var showDeal = false
     @State private var deciding: String?
     @State private var requestError: String?
+    /// Today's coarse total from the kid's devices (nil until loaded / none reported).
+    @State private var usageToday: ScreenTimeUsageDay?
     private var service: ScreenTimeService { .shared }
 
     init(initialKidId: String) {
@@ -471,6 +473,7 @@ struct ScreenTimeParentSheet: View {
                         devicesSection
                         alertHistorySection
                         requestHistorySection
+                        detailedUsageSection
                         howSection
                     }
                 }
@@ -478,13 +481,17 @@ struct ScreenTimeParentSheet: View {
             .font(Typography.body)
             .scrollContentBackground(.hidden)
             .background(ScreenBackground())
-            .refreshable { await service.loadOverview() }
+            .refreshable {
+                await service.loadOverview()
+                await loadUsage()
+            }
             .navigationTitle(kid.map { "Screen Time for \($0.name)" } ?? "Screen Time")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
+            .task(id: kidId) { await loadUsage() }
             .onChange(of: kidId) { _, _ in error = nil; justSaved = false; requestError = nil }
             .sheet(isPresented: $showDeal) {
                 if let deal = state?.agreement { ScreenTimeDealSheet(deal: deal, kidName: kidName) }
@@ -565,6 +572,12 @@ struct ScreenTimeParentSheet: View {
                 Image(systemName: line.icon).foregroundStyle(line.tone)
             }
             .accessibilityElement(children: .combine)
+            if let line = usageLine {
+                Label(line, systemImage: "chart.bar.fill")
+                    .font(Typography.label)
+                    .foregroundStyle(Palette.textSecond)
+                    .monospacedDigit()
+            }
             if hasRules { dealRow }
             if let state, ScreenTimeFormat.needsFinishSetup(state) {
                 Text("On \(kidName)'s phone, open Fam ETC, tap “Finish setup” on Today, then tap All Apps & Categories and Done.")
@@ -591,6 +604,22 @@ struct ScreenTimeParentSheet: View {
                 .accessibilityHint("Marks these Screen Time alerts as seen")
             }
         }
+    }
+
+    /// "Today: about 1 h 45 min of 2 h" — counted in 15-minute steps on the kid's devices.
+    private var usageLine: String? {
+        guard let usage = usageToday, usage.date == ScreenTimeSchedule.dayString(Date()),
+              let minutes = usage.minutes else { return nil }
+        let used = minutes == 0 ? "under 15 min" : "about \(ScreenTimeFormat.minutes(minutes))"
+        guard let limit = usage.limitMinutes else { return "Today: \(used)" }
+        return "Today: \(used) of \(ScreenTimeFormat.minutes(limit))"
+    }
+
+    private func loadUsage() async {
+        let id = kidId
+        usageToday = nil
+        let today = try? await service.usage(kidId: id, days: 1).days.first
+        if id == kidId { usageToday = today }
     }
 
     // MARK: Basic — more time requests
@@ -1207,6 +1236,27 @@ struct ScreenTimeParentSheet: View {
         case "approved": return ("Approved", Palette.frD3Ink, Palette.frD3Soft)
         case "declined": return ("Not today", Palette.frInk2, Palette.frCard2)
         default: return ("Expired", Palette.frInk2, Palette.frCard2)
+        }
+    }
+
+    /// Apple's app-by-app report only reaches parents for Family Sharing children.
+    private var detailedUsageSection: some View {
+        let familySharing = service.overview?.kids.contains { $0.devices.contains(where: \.isFamily) } ?? false
+        return Section {
+            if familySharing {
+                ScreenTimeFamilyUsageReport()
+                    .listRowInsets(EdgeInsets(top: Space.sm, leading: Space.md, bottom: Space.sm, trailing: Space.md))
+            } else {
+                Text("App-by-app details need Family Sharing. You'll still see daily totals on fametc.com and here.")
+                    .font(Typography.label)
+                    .foregroundStyle(Palette.textSecond)
+            }
+        } header: {
+            Text("Detailed usage")
+        } footer: {
+            if familySharing {
+                Text("From Apple Screen Time, for the children in your Family Sharing group. Fam ETC doesn’t receive these details.")
+            }
         }
     }
 

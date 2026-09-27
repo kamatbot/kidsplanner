@@ -58,6 +58,16 @@ enum ScreenTimeServiceError: LocalizedError {
         return policy.limits.contains { $0.isTotal && $0.selection == nil }
     }
 
+    /// A device-local "All Apps & Categories" pick exists (for usage milestones).
+    var hasUsageSelection: Bool
+
+    /// This device can't count its screen time yet: no "everything" selection (neither
+    /// its `total` selection nor a local usage pick). Setup ends with that pick.
+    var needsUsageSelection: Bool {
+        guard isEnrolled, authState == .approved, let policy, policy.enabled, !hasUsageSelection else { return false }
+        return !policy.limits.contains { $0.isTotal && $0.selection != nil }
+    }
+
     // MARK: Parent state
     var overview: ScreenTimeOverview?
     var unackedAlerts: [ScreenTimeAlert] {
@@ -83,6 +93,7 @@ enum ScreenTimeServiceError: LocalizedError {
         agreement = enforcer.storedAgreement
         pendingAgreement = enforcer.pendingAgreement
         requests = Self.newestFirst(enforcer.storedRequests)
+        hasUsageSelection = enforcer.usageSelection != nil
     }
 
     // MARK: Kid — authorization + enrollment
@@ -229,6 +240,21 @@ enum ScreenTimeServiceError: LocalizedError {
         policy = p
     }
 
+    /// The setup's "All Apps & Categories" pick: kept on this device for usage
+    /// milestones, and uploaded as this device's `total` selection when there's a daily limit.
+    func saveAllAppsSelection(_ selection: FamilyActivitySelection) async throws {
+        guard let blob = Self.encode(selection) else {
+            throw ScreenTimeServiceError.message("Couldn't save those apps. Try again.")
+        }
+        enforcer.usageSelection = blob
+        hasUsageSelection = true
+        if policy?.limits.contains(where: \.isTotal) == true {
+            try await saveDeviceSelection(limitId: "total", selection: selection)   // applies
+        } else if authState == .approved, let p = enforcer.storedPolicy {
+            enforcer.apply(p)
+        }
+    }
+
     // MARK: Kid — our Screen Time deal
 
     /// Saves the signed deal (FamDevice PUT). The draft is kept on this device first,
@@ -327,6 +353,11 @@ enum ScreenTimeServiceError: LocalizedError {
 
     func forgetDevice(kidId: String, deviceId: String) async throws {
         merge(try await api.forgetScreenTimeDevice(kidId: kidId, deviceId: deviceId))
+    }
+
+    /// Coarse daily totals the kid's devices reported (newest date first).
+    func usage(kidId: String, days: Int) async throws -> ScreenTimeUsage {
+        try await api.screenTimeUsage(kidId: kidId, days: days)
     }
 
     private func merge(_ state: ScreenTimeKidState) {

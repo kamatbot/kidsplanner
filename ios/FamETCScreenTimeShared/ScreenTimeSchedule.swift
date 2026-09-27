@@ -59,6 +59,38 @@ enum ScreenTimeSchedule {
         return base + extra
     }
 
+    // MARK: Usage milestones (docs/SCREEN-TIME-PLAN.md "Usage details")
+
+    /// `usage.<m>` threshold events every 15 minutes, 15…960 (16 h), on each `day.N`.
+    static let usageMilestones: [Int] = Array(stride(from: 15, through: 960, by: 15))
+
+    static func usageEventName(_ minutes: Int) -> String { "usage.\(minutes)" }
+
+    /// "usage.45" → 45; nil for any other event or a value that isn't a 15-minute step.
+    static func usageMinutes(fromEvent name: String) -> Int? {
+        guard name.hasPrefix("usage."), let m = Int(name.dropFirst("usage.".count)),
+              m > 0, m <= 1440, m % 15 == 0 else { return nil }
+        return m
+    }
+
+    /// Folds a milestone and/or "limit reached" into today's record. A new day starts
+    /// from zero; minutes only go up; the first `limitReachedAt` of the day wins.
+    static func mergeUsage(_ record: ScreenTimeUsageRecord?, today: String,
+                           minutes: Int? = nil, limitReachedAt: String? = nil) -> ScreenTimeUsageRecord {
+        var r = record?.date == today ? record! : ScreenTimeUsageRecord(date: today, minutes: 0, limitReachedAt: nil)
+        if let minutes { r.minutes = max(r.minutes, min(minutes, 1440)) }
+        if r.limitReachedAt == nil { r.limitReachedAt = limitReachedAt }
+        return r
+    }
+
+    /// Today's `total` allowance in minutes (weekday/weekend + today's bonus); nil when
+    /// Screen Time is off or there's no daily limit.
+    static func todayAllowance(_ policy: ScreenTimePolicy?, now: Date, calendar: Calendar = .current) -> Int? {
+        guard let policy, policy.enabled, let total = policy.limits.first(where: \.isTotal) else { return nil }
+        return minutes(for: total, weekday: calendar.component(.weekday, from: now), bonus: policy.bonus,
+                       today: now, calendar: calendar)
+    }
+
     /// Is `now` inside the downtime window `start`–`end` that began on a listed day?
     static func isInsideWindow(start: String, end: String, days: [Int], now: Date, calendar: Calendar = .current) -> Bool {
         guard let s = parseTime(start), let e = parseTime(end), durationMinutes(start: s, end: e) > 0 else { return false }

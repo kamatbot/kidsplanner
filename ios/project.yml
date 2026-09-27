@@ -60,6 +60,8 @@ targets:
         embed: true
       - target: FamETCShieldConfig
         embed: true
+      - target: FamETCUsageReport
+        embed: true
       - sdk: FamilyControls.framework
       - sdk: ManagedSettings.framework
       - sdk: DeviceActivity.framework
@@ -126,6 +128,28 @@ targets:
         INFOPLIST_FILE: FamETCShieldConfig/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: FamETCShieldConfig/FamETCShieldConfig.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  # Screen Time "Usage details": renders Apple's usage in the app (ExtensionKit, so it
+  # embeds under Extensions/). Reads the App Group policy for today's allowance.
+  FamETCUsageReport:
+    type: extensionkit-extension
+    platform: iOS
+    sources:
+      - path: FamETCUsageReport
+      - path: FamETCScreenTimeShared/ScreenTimeModels.swift
+      - path: FamETCScreenTimeShared/ScreenTimeSchedule.swift
+    dependencies:
+      - sdk: DeviceActivity.framework
+      - sdk: FamilyControls.framework
+      - sdk: ManagedSettings.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.usage-report
+        PRODUCT_NAME: FamETCUsageReport
+        INFOPLIST_FILE: FamETCUsageReport/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: FamETCUsageReport/FamETCUsageReport.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
 
   FamETCTests:

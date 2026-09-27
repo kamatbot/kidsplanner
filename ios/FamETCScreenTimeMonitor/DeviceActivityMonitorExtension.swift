@@ -38,7 +38,16 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         enforcer.recordMonitorFire()
         let name = event.rawValue
         if name.hasPrefix("limit.") {
-            enforcer.shieldLimit(id: String(name.dropFirst("limit.".count)))
+            let id = String(name.dropFirst("limit.".count))
+            enforcer.shieldLimit(id: id)
+            if id == "total" {
+                enforcer.recordUsage(limitReached: true)
+                heartbeat()
+            }
+        } else if let minutes = ScreenTimeSchedule.usageMinutes(fromEvent: name) {
+            // Coarse total only (the highest 15-minute step today) — never which apps.
+            enforcer.recordUsage(minutes: minutes)
+            if enforcer.claimUsageHeartbeat() { heartbeat() }
         }
     }
 

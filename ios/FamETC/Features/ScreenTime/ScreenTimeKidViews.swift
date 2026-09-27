@@ -158,9 +158,10 @@ struct ScreenTimeKidCard: View {
             prompt(title: "Your rules changed — renew your deal together",
                    pitch: "Your grown-ups updated bedtime or daily time. Sit down together and sign the new version.",
                    button: "Renew our deal", icon: "arrow.triangle.2.circlepath", bright: true) { setup = SetupKind(makeDeal: true) }
-        } else if service.needsTotalSelection {
+        } else if service.needsTotalSelection || service.needsUsageSelection {
             prompt(title: "Finish setup with your grown-up",
-                   pitch: "One more tap so your daily time counts every app.",
+                   pitch: service.needsTotalSelection ? "One more tap so your daily time counts every app."
+                                                      : "One more tap so you can see your screen time each day.",
                    button: "Finish setup", icon: "checkmark.circle", bright: false) { setup = SetupKind(makeDeal: false) }
         } else if let deal {
             signedCard(deal, policy: policy)
@@ -329,7 +330,7 @@ struct ScreenTimeKidSetupSheet: View {
     init(makeDeal: Bool = true) {
         let s = ScreenTimeService.shared
         let alreadyOn = s.isEnrolled && s.authState == .approved
-        let start: TurnOn = alreadyOn ? (s.needsTotalSelection ? .pickAll : .on) : .ready
+        let start: TurnOn = alreadyOn ? (s.needsTotalSelection || s.needsUsageSelection ? .pickAll : .on) : .ready
         var pages: [Page] = makeDeal ? [.hello, .plan, .kidPromises, .handOff, .parentPromises] : []
         if !makeDeal || start != .on { pages.append(.turnOn) }
         if makeDeal { pages.append(.sign) }
@@ -770,7 +771,9 @@ struct ScreenTimeKidSetupSheet: View {
                     if service.authState == .approved { await finish() } else { turnOn = .ready }
                 }
             case .pickAll:
-                Text("Last step, so daily time counts every app.")
+                Text(service.policy?.limits.contains(where: \.isTotal) == true
+                     ? "Last step, so daily time counts every app."
+                     : "Last step, so you can see your screen time each day.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
                 VStack(alignment: .leading, spacing: Space.md) {
@@ -851,7 +854,7 @@ struct ScreenTimeKidSetupSheet: View {
             // Turning access back on keeps the existing device; only a new device enrolls.
             if !service.isEnrolled { try await service.enroll() }
             await service.sync(source: "app")
-            if service.needsTotalSelection {
+            if service.needsTotalSelection || service.needsUsageSelection {
                 turnOn = .pickAll
             } else {
                 Haptics.notify(.success)
@@ -872,7 +875,7 @@ struct ScreenTimeKidSetupSheet: View {
         working = true
         pickNote = nil
         do {
-            try await service.saveDeviceSelection(limitId: ScreenTimeFormat.totalID, selection: chosen)
+            try await service.saveAllAppsSelection(chosen)
             Haptics.notify(.success)
             turnOn = .on
         } catch {

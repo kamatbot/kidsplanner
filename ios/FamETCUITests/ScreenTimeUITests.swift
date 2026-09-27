@@ -68,6 +68,25 @@ final class ScreenTimeUITests: XCTestCase {
         attach("kid-deal-turn-on")
     }
 
+    /// No Family Sharing device in the fixture: Advanced shows the honest empty state
+    /// instead of Apple's report, and Basic shows no usage line without reported minutes.
+    func testParentDetailedUsageEmptyStateWithoutFamilySharing() {
+        let app = launch(.parent)
+        let row = app.descendants(matching: .any)["Leo Visual, Screen Time"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 12))
+        reveal(row, app)
+        row.tap()
+        let bedtime = app.switches.matching(NSPredicate(format: "label BEGINSWITH 'Bedtime'")).firstMatch
+        XCTAssertTrue(bedtime.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Today: '")).firstMatch.exists)
+        let advanced = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Advanced'")).firstMatch
+        reveal(advanced, app)
+        advanced.tap()
+        let empty = app.staticTexts["App-by-app details need Family Sharing. You'll still see daily totals on fametc.com and here."]
+        reveal(empty, app)
+        attach("parent-detailed-usage-empty")
+    }
+
     /// Makes sure the fixture kid has an enabled policy (idempotent across runs).
     private func parentTurnsOnBedtime(for kidName: String) {
         let app = launch(.parent)

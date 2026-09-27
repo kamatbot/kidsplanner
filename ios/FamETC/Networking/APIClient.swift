@@ -818,6 +818,11 @@ extension APIClient {
                           method: "POST", body: [:])
     }
 
+    /// Parent: coarse daily totals (15-minute steps) for the last `days` (1–30) dates.
+    func screenTimeUsage(kidId: String, days: Int) async throws -> ScreenTimeUsage {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/usage?days=\(min(max(days, 1), 30))")
+    }
+
     /// Kid session: the family's policy + signed deal for this kid (no device projection).
     func myScreenTime() async throws -> ScreenTimePolicyResponse {
         try await request("/api/screen-time/mine")

@@ -43,7 +43,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     static let appGroup = "group.com.fametc.app.family-assistance"
 
     private enum Key {
-        static let policy = "fam_st_policy"
+        static let policy = ScreenTimePolicy.storageKey
         static let agreement = "fam_st_agreement"
         static let agreementDraft = "fam_st_agreementDraft"
         static let requests = "fam_st_requests"
@@ -59,6 +59,9 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let shieldReasons = "fam_st_shieldReasons"
         static let scheduleSignature = "fam_st_scheduleSignature"
         static let pauseSignature = "fam_st_pauseSignature"
+        static let usageSelection = "fam_st_usageSelection"
+        static let usageRecord = "fam_st_usageRecord"
+        static let usageHeartbeatAt = "fam_st_usageHeartbeatAt"
     }
 
     let defaults: UserDefaults
@@ -136,6 +139,45 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     var appliedVersion: Int { defaults.integer(forKey: Key.appliedVersion) }
+
+    // MARK: Usage (docs/SCREEN-TIME-PLAN.md "Usage details")
+
+    /// Device-local "All Apps & Categories" pick (base64 selection), captured in setup so
+    /// usage milestones work without a daily limit. Never uploaded.
+    var usageSelection: String? {
+        get { defaults.string(forKey: Key.usageSelection) }
+        set { defaults.set(newValue, forKey: Key.usageSelection) }
+    }
+
+    /// The "everything" selection milestones count: this device's `total` selection,
+    /// else the local usage selection.
+    func everythingSelection(_ policy: ScreenTimePolicy?) -> FamilyActivitySelection? {
+        if let total = policy?.limits.first(where: \.isTotal),
+           let sel = Self.decodeSelection(total.selection), !Self.isEmpty(sel) { return sel }
+        guard let sel = Self.decodeSelection(usageSelection), !Self.isEmpty(sel) else { return nil }
+        return sel
+    }
+
+    /// Today's usage record (nil when nothing was counted today).
+    func todayUsage(now: Date = Date()) -> ScreenTimeUsageRecord? {
+        guard let r: ScreenTimeUsageRecord = decode(Key.usageRecord), r.date == ScreenTimeSchedule.dayString(now) else { return nil }
+        return r
+    }
+
+    func recordUsage(minutes: Int? = nil, limitReached: Bool = false, now: Date = Date()) {
+        let at = limitReached ? ISO8601DateFormatter().string(from: now) : nil
+        encode(ScreenTimeSchedule.mergeUsage(decode(Key.usageRecord), today: ScreenTimeSchedule.dayString(now),
+                                             minutes: minutes, limitReachedAt: at), Key.usageRecord)
+    }
+
+    /// Milestones can fire in a burst (re-registration with `includesPastActivity`):
+    /// allow one usage heartbeat a minute.
+    // ponytail: a burst reports its first milestone; the next milestone, quarter-day or app heartbeat catches up.
+    func claimUsageHeartbeat(now: Date = Date()) -> Bool {
+        if let last = defaults.object(forKey: Key.usageHeartbeatAt) as? Date, now.timeIntervalSince(last) < 60 { return false }
+        defaults.set(now, forKey: Key.usageHeartbeatAt)
+        return true
+    }
 
     var lastMonitorAt: Date? { defaults.object(forKey: Key.lastMonitorAt) as? Date }
     func recordMonitorFire(_ now: Date = Date()) { defaults.set(now, forKey: Key.lastMonitorAt) }
@@ -254,7 +296,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         // ponytail: if the app never applies again that day, day.N keeps the bonus
         // threshold for the same weekday next week (late, never early, shield);
         // apply from the monitor's day.N start if that ever matters.
-        let signature = Self.scheduleSignature(policy, now: now)
+        let signature = Self.scheduleSignature(policy, usage: usageSelection, now: now)
         if signature != defaults.string(forKey: Key.scheduleSignature) || !registered.contains(.day(1)) {
             center.stopMonitoring(Array(registered.filter { $0 != .pause }))
             clearLimitStores(extraIds: previousLimitIds)
@@ -310,8 +352,10 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             catch { print("[screentime] \(name.rawValue) schedule failed: \(error.localizedDescription)") }
         }
 
-        // DeviceActivity allows ~20 monitored activities per app. Budget:
+        // DeviceActivity allows ~20 monitored activities per app (usage milestones are
+        // events, not activities). Budget:
         // day.1…7 (7) + heartbeat.0…3 (4) + downtime (≤ 4, capped below) + pause (1) = 16.
+        let everything = everythingSelection(policy)
         let selections = policy.limits.compactMap { l -> (ScreenTimeLimit, FamilyActivitySelection)? in
             guard let sel = Self.decodeSelection(l.selection), !Self.isEmpty(sel) else { return nil }
             return (l, sel)
@@ -326,6 +370,18 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                     webDomains: sel.webDomainTokens,
                     threshold: DateComponents(hour: minutes / 60, minute: minutes % 60),
                     includesPastActivity: true)
+            }
+            // Coarse usage: one event per 15 minutes over "everything" (only events are
+            // added, so the activity count is unchanged).
+            if let everything {
+                for m in ScreenTimeSchedule.usageMilestones {
+                    events[DeviceActivityEvent.Name(ScreenTimeSchedule.usageEventName(m))] = DeviceActivityEvent(
+                        applications: everything.applicationTokens,
+                        categories: everything.categoryTokens,
+                        webDomains: everything.webDomainTokens,
+                        threshold: DateComponents(hour: m / 60, minute: m % 60),
+                        includesPastActivity: true)
+                }
             }
             start(.day(weekday), DeviceActivitySchedule(intervalStart: DateComponents(hour: 0, minute: 0, weekday: weekday),
                                                         intervalEnd: DateComponents(hour: 23, minute: 59, weekday: weekday),
@@ -344,8 +400,9 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     /// Stable hash of everything that shapes the DeviceActivity registration.
-    private static func scheduleSignature(_ p: ScreenTimePolicy, now: Date) -> String {
+    private static func scheduleSignature(_ p: ScreenTimePolicy, usage: String?, now: Date) -> String {
         var text = ""
+        if let usage { text += "U|\(usage)\n" }
         if let extra = ScreenTimeSchedule.activeBonus(p.bonus, today: now) {
             text += "B|\(ScreenTimeSchedule.dayString(now))|\(extra)\n"
         }
@@ -365,6 +422,9 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             "source": source,
         ]
         if let pushToken { body["pushToken"] = pushToken }
+        if let u = todayUsage() {
+            body["usage"] = ["date": u.date, "minutes": u.minutes, "limitReachedAt": u.limitReachedAt ?? NSNull()] as [String: Any]
+        }
         policyRequest("/api/screen-time/device/heartbeat", method: "POST", body: body, completion: completion)
     }
 

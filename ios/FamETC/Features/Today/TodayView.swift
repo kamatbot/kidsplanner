@@ -488,6 +488,7 @@ private struct KidTodayStack: View {
                     studyPal
                     KidHomeworkCard(onOpenHomework: onOpenHomework)
                     ScreenTimeKidCard()
+                    ScreenTimeUsageCard()
                 }
             }
         }
@@ -526,6 +527,7 @@ private struct KidTodayStack: View {
                     KidHomeworkCard(onOpenHomework: onOpenHomework)
                     studyPal
                     ScreenTimeKidCard()
+                    ScreenTimeUsageCard()
                 }
             }
         }

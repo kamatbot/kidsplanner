@@ -62,6 +62,9 @@ struct ScreenTimePolicy: Codable, Hashable, Sendable {
     /// Extra `total` minutes a parent approved for one day ("More time for fams").
     var bonus: ScreenTimeBonus?
 
+    /// App Group key the enforcer stores the device's policy under (read by the report extension).
+    static let storageKey = "fam_st_policy"
+
     static let disabled = ScreenTimePolicy(version: 0, enabled: false, updatedAt: nil, pauseUntil: nil, limits: [], downtime: [])
 
     var pauseUntilDate: Date? { ScreenTimeSchedule.date(fromISO: pauseUntil) }
@@ -199,4 +202,43 @@ struct ScreenTimeRequest: Codable, Identifiable, Hashable, Sendable {
 /// `POST /api/screen-time/requests` response.
 struct ScreenTimeRequestResponse: Codable, Sendable {
     var request: ScreenTimeRequest
+}
+
+// MARK: Usage details (docs/SCREEN-TIME-PLAN.md "Usage details")
+
+/// This device's coarse usage for one device-local day, from `usage.<m>` milestones.
+/// Sent in the heartbeat as `usage`. Never records which apps.
+struct ScreenTimeUsageRecord: Codable, Hashable, Sendable {
+    /// Device-local "YYYY-MM-DD".
+    var date: String
+    /// 0–1440, a multiple of 15.
+    var minutes: Int
+    /// ISO time the whole-device daily limit was reached, nil if not (yet).
+    var limitReachedAt: String?
+}
+
+/// One device's day in `GET /api/screen-time/kids/:kidId/usage`.
+struct ScreenTimeUsageDevice: Codable, Hashable, Sendable {
+    var deviceId: String
+    var label: String?
+    var minutes: Int?
+    var limitReachedAt: String?
+}
+
+/// One date in the parent usage response (newest first).
+struct ScreenTimeUsageDay: Codable, Hashable, Sendable {
+    var date: String
+    /// Sum over devices; nil when no device reported that day.
+    var minutes: Int?
+    var devices: [ScreenTimeUsageDevice]?
+    /// That day's allowance incl. bonus; nil without a daily limit.
+    var limitMinutes: Int?
+    var extraMinutes: Int?
+}
+
+/// `GET /api/screen-time/kids/:kidId/usage?days=N` (parent only).
+struct ScreenTimeUsage: Codable, Hashable, Sendable {
+    var kidId: String
+    var days: [ScreenTimeUsageDay]
+    var requests: [ScreenTimeRequest]?
 }

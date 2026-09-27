@@ -133,4 +133,57 @@ final class ScreenTimeScheduleTests: XCTestCase {
         XCTAssertNil(old.policy.bonus)
         XCTAssertNil(old.requests)
     }
+
+    // MARK: Usage milestones
+
+    func testUsageMilestonesEvery15MinutesUpTo16Hours() {
+        let m = ScreenTimeSchedule.usageMilestones
+        XCTAssertEqual(m.first, 15)
+        XCTAssertEqual(m.last, 960)
+        XCTAssertEqual(m.count, 64)
+        XCTAssertTrue(m.allSatisfy { $0 % 15 == 0 })
+        XCTAssertEqual(ScreenTimeSchedule.usageEventName(45), "usage.45")
+    }
+
+    func testParseUsageEvent() {
+        XCTAssertEqual(ScreenTimeSchedule.usageMinutes(fromEvent: "usage.15"), 15)
+        XCTAssertEqual(ScreenTimeSchedule.usageMinutes(fromEvent: "usage.960"), 960)
+        XCTAssertNil(ScreenTimeSchedule.usageMinutes(fromEvent: "usage.20"))
+        XCTAssertNil(ScreenTimeSchedule.usageMinutes(fromEvent: "usage.0"))
+        XCTAssertNil(ScreenTimeSchedule.usageMinutes(fromEvent: "usage.x"))
+        XCTAssertNil(ScreenTimeSchedule.usageMinutes(fromEvent: "limit.total"))
+    }
+
+    func testMergeUsageKeepsMaxAndFirstLimitAndResetsOnNewDay() {
+        var r = ScreenTimeSchedule.mergeUsage(nil, today: "2026-09-27", minutes: 30)
+        XCTAssertEqual(r, ScreenTimeUsageRecord(date: "2026-09-27", minutes: 30, limitReachedAt: nil))
+        r = ScreenTimeSchedule.mergeUsage(r, today: "2026-09-27", minutes: 15)   // burst out of order
+        XCTAssertEqual(r.minutes, 30)
+        r = ScreenTimeSchedule.mergeUsage(r, today: "2026-09-27", limitReachedAt: "A")
+        r = ScreenTimeSchedule.mergeUsage(r, today: "2026-09-27", minutes: 120, limitReachedAt: "B")
+        XCTAssertEqual(r.minutes, 120)
+        XCTAssertEqual(r.limitReachedAt, "A")
+        r = ScreenTimeSchedule.mergeUsage(r, today: "2026-09-28", minutes: 15)
+        XCTAssertEqual(r, ScreenTimeUsageRecord(date: "2026-09-28", minutes: 15, limitReachedAt: nil))
+    }
+
+    func testTodayAllowanceUsesWeekendAndBonus() {
+        let total = ScreenTimeLimit(id: "total", kind: "total", name: "Screen time", minutesPerDay: 120, weekendMinutes: 180)
+        var p = ScreenTimePolicy(version: 1, enabled: true, updatedAt: nil, pauseUntil: nil, limits: [total], downtime: [])
+        let sunday = date(day: 27, hour: 10), monday = date(day: 28, hour: 10)
+        XCTAssertEqual(ScreenTimeSchedule.todayAllowance(p, now: sunday, calendar: calendar), 180)
+        XCTAssertEqual(ScreenTimeSchedule.todayAllowance(p, now: monday, calendar: calendar), 120)
+        p.bonus = ScreenTimeBonus(date: "2026-09-28", minutes: 30)
+        XCTAssertEqual(ScreenTimeSchedule.todayAllowance(p, now: monday, calendar: calendar), 150)
+        p.enabled = false
+        XCTAssertNil(ScreenTimeSchedule.todayAllowance(p, now: monday, calendar: calendar))
+        XCTAssertNil(ScreenTimeSchedule.todayAllowance(.disabled, now: monday, calendar: calendar))
+    }
+
+    func testUsageResponseDecodesNullMinutes() throws {
+        let json = #"{"kidId":"k1","days":[{"date":"2026-09-27","minutes":null,"devices":[],"limitMinutes":null,"extraMinutes":0}],"requests":[]}"#
+        let u = try JSONDecoder().decode(ScreenTimeUsage.self, from: Data(json.utf8))
+        XCTAssertNil(u.days.first?.minutes)
+        XCTAssertNil(u.days.first?.limitMinutes)
+    }
 }
