@@ -167,6 +167,45 @@ status say "Finish setup on Mia's phone".
 - App-wide parent banner `ScreenTimeAlertBanner` for unacknowledged alerts (next to `KidApprovalBanner`); `screen_time_alert` push deep-links to the sheet for that kid.
 - Kid Today: `ScreenTimeKidCard` → `ScreenTimeKidSetupSheet` (explain → Family Sharing first → fallback to without Family Sharing → enroll) and, once enrolled, the rules list, per-limit "Choose apps with a parent", and the transparency line "Turning this off tells your parents."
 
+## Our Screen Time Deal (kid setup = a social contract)
+
+Owner direction 2026-09-27: kid setup must be fun and a **social contract the
+kid and parent make together**, not a permissions chore. Intended flow, on the
+kid's device with a parent beside them: kid Today card "Make our Screen Time
+deal 🤝" → **The plan** (bedtime + daily time as big friendly cards) →
+**Kid's promises** (pick 1–3 from fun chips, or write one) → **Parent's
+promises** (hand the phone over; pick 1–3) → **Turn it on** (Apple approval,
+Family Sharing first, then without; "All Apps & Categories") → **Sign it**
+(kid picks an emoji stamp and holds the thumb button; parent types their name
+and taps "I'm in") → confetti "Deal! 🎉". The fairness line is part of the
+deal, not a warning: "If Screen Time gets switched off, the app tells
+<parent names>. No sneaky switch-offs — that's the deal."
+
+After signing, the kid card shows the signed deal (rules, both sides'
+promises, stamps, date). If the parent later changes bedtime or daily time,
+the card says "Your rules changed — renew your deal together" (compare the
+deal's `rules` snapshot with the current policy; pause never triggers this).
+
+### Agreement JSON
+```json
+{ "kidPromises": ["Phone charges outside my room at night"],
+  "parentPromises": ["We'll give a 10-minute heads-up before bedtime"],
+  "kidStamp": "🦊", "parentSigner": "Kate",
+  "rules": { "bedStart": "21:00", "bedEnd": "07:00", "school": 120, "weekend": 180 },
+  "signedAt": "ISO", "deviceId": "std_x" }
+```
+`rules` fields are null when that rule is off. Promises: 0–5 each, ≤ 80
+chars; stamp ≤ 8 chars (an emoji); signer 1–40 chars.
+
+### Endpoints
+- `PUT /api/screen-time/device/agreement` (FamDevice) body = agreement minus
+  `signedAt`/`deviceId` → `{ agreement }`. Server stamps `signedAt`, `deviceId`;
+  stores ONE current agreement per kid (replaces the previous).
+- Heartbeat, enroll and `/mine` responses add `agreement` (or null) next to
+  `policy`. Parent kid state adds `agreement`.
+- On a new signature, parents get a positive push (not an alert-list entry):
+  "🤝 Mia signed your Screen Time deal".
+
 ## Distribution gate (owner action)
 Development builds work with the `family-controls` entitlement today. App
 Store/TestFlight distribution needs Apple's **Family Controls (Distribution)**
