@@ -134,7 +134,8 @@ struct ScreenTimeKidCard: View {
                 // The deal is made together on the kid's device — mostly an iPad — so
                 // it takes the whole screen on every size (§3). "Not now" always closes it.
                 .fullScreenCover(item: $setup) { ScreenTimeKidSetupSheet(makeDeal: $0.makeDeal) }
-                .sheet(isPresented: $showDeal) { ScreenTimeKidRulesSheet() }
+                // The signed deal is read together on the kid's iPad: full screen, Done closes it.
+                .fullScreenCover(isPresented: $showDeal) { ScreenTimeKidRulesSheet() }
                 .sheet(isPresented: $showMoreTime) { ScreenTimeMoreTimeSheet() }
                 .onChange(of: store.me?.id) { _, _ in setup = nil; showDeal = false; showMoreTime = false }
         }
@@ -226,7 +227,9 @@ struct ScreenTimeKidCard: View {
         }
         // Device-local: the monitor records the moment the whole-device limit shielded.
         // A grown-up's "more time" today lifts it until the new allowance is reached.
-        if let usage = ScreenTimeEnforcer.shared.todayUsage(now: now), usage.limitReachedAt != nil,
+        // Only while the daily-time shield is really on (a raised allowance clears it).
+        if ScreenTimeEnforcer.shared.shieldReasons[ScreenTimeSchedule.limitStore("total")] != nil,
+           let usage = ScreenTimeEnforcer.shared.todayUsage(now: now), usage.limitReachedAt != nil,
            let allowance = ScreenTimeSchedule.todayAllowance(policy, now: now),
            service.bonusToday == nil || usage.minutes >= allowance {
             return .usedUp
