@@ -1,57 +1,32 @@
-# Launch video — `public/video/fametc-demo.mp4`
+# Launch video — `public/video/fametc-film-60s.mp4`
 
-20 s, 1600×1000 (8:5), H.264 yuv420p, faststart, **no audio**. Embedded at
-`#watch` on `public/landing.html`; poster is `public/video/fametc-demo-poster.jpg`
-(the solved-crossword frame at 17.45 s).
+60 s, 1920×1080, H.264 at about 1 Mbps with AAC music and sound effects (starts muted on the page), faststart.
+It is embedded at `#watch` on `public/landing.html`. The poster is `public/video/fametc-film-60s-poster.jpg`,
+the title card at 10.6 s. It replaced the 20 s Horizon demo (`fametc-demo.mp4`) on 2026-09-27.
 
 ## Concept
 
-Silent ad, not a walkthrough: a Sunday in one family's week, told in three
-real product moments — a chat message that becomes a shopping item, a homework
-assignment ticked off, the weekend crossword solved. Every frame is the real
-app (or real widget markup + real CSS) driven deterministically; captions
-carry the words.
+A storybook minute in watercolour and coloured pencil, captions only (STA-LAUNCH-PLAN §3.3), about the
+fictional Walker family: Kate, Tom, Mia and Leo. It shows the plan's two selling moments.
+- **Chat → action:** Kate's "pasta, tomatoes, basil" goes through the real *Add to Shopping* dialog, and Tom
+  ticks it off at the shop.
+- **Homework:** assignments come in from school, are sorted by due date, and Mia ticks one off.
 
-## Shot list (30 fps, 600 frames)
+The app screens are Family Rings redrawn from reference shots of the real web app, so nothing appears that
+the app can't do. The wording follows §2: "Built by an STA parent, for STA families", "Checks the school every
+eight hours" and "Free for STA families while we're testing". Hermes is left out.
 
-| t (s)        | Shot                        | What moves                                                                                                       |
-| ------------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| 0.0 – 1.6    | Title card                  | Four brand marks assemble; "One week. Two kids. One place." word by word.                                       |
-| 1.6 – 8.8    | Today + chat (parent)       | Page arrives; slow push-in; a new chat message lands (1.3 s); push to chat; 🛒 tap; real "Add to Shopping" dialog (prefilled); "Add item"; real toast. Captions: *Everyone opens the same day* / *A message that's really a job* / *It's on the shopping list. No retyping.* |
-| 8.8 – 12.8   | Homework (kid session)      | Tap ring on the check; green fill + tick stroke draws; title strikes through; row fades and collapses; counters roll 3→2, 0/3→1/3; focus panel moves to the next assignment. Caption: *Tick it off. Everyone sees it.* |
-| 12.8 – 17.6  | Weekend crossword (scene)   | Today's real crossword; letters pop in entry by entry with the active cell/clue highlighted; "Check puzzle"; green wave; "You did it — every answer is correct!". Captions: *A crossword every weekend* → *Sunday's puzzle, solved.* |
-| 17.6 – 20.0  | End card                    | Marks, "Fam ETC", the one coral→violet momentum bar, "The family week, in one app.", fametc.com.                |
+## Source and re-render
 
-## How to re-render
-
-Everything lives in the session scratchpad
-`…/scratchpad/demo2/` (copy that directory somewhere permanent if you want to
-keep it; nothing in it is app code):
-
-| File                  | Role                                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `setup.sh`            | Boots an isolated app on :3200 (`FAM_DATA_DIR` = the demo2 dir, never real data), seeds it, launches headless Chrome on :9222. |
-| `kid-login.cjs`       | Mints a signed **kid** session cookie for Alex (mirrors `scripts/dev-login.js`); needed because only a kid session can tick homework. |
-| `seed.mjs`            | Seeds events, homework and chat through the real HTTP API with the parent cookie.                     |
-| `cdp.mjs`             | Tiny DevTools-protocol client (Node 24 WebSocket, no deps).                                              |
-| `director.js`         | In-page helpers: easing, captions on a "lens" that counter-transforms the camera, tap rings, number rolls, keyframes. |
-| `shot-today.js`, `shot-homework.js` | `__setup()` / `__seek(t)` for the two shots driven inside the real app pages.                |
-| `scene/cards.html`, `scene/crossword.html` | Title/end cards and the crossword scene (real widget markup, real `styles.css`, fonts copied from `public/fonts`). |
-| `render.mjs`          | For every shot: navigate, settle, inject director + shot script, then step `t` frame by frame and capture with a CDP `clip` (the camera — Chrome re-rasterises the zoom, so it stays crisp). `node render.mjs [fps] [shot]`. |
-| `assemble.sh`         | `frames/%05d.png` → mp4 (`CRF=23 ./assemble.sh 30`).                                                     |
-
-Steps:
+The film is its own project at `~/Documents/Claude/fametc-promo-video/` (git repo; the README and
+CONCEPT.md hold the beat sheet), built with the `promo-video` skill kit. Masters (16:9, 9:16 and 720p
+share copies) are in `~/Documents/Claude/Builds/marketing/`, build `20260926-220119`.
 
 ```sh
-cd <demo2>
-./setup.sh                    # app :3200 + Chrome :9222 with seeded data
-node render.mjs 30            # ~2 min; writes frames/00000..00599.png
-CRF=23 ./assemble.sh 30       # fametc-demo.mp4 (≈3.8 MB)
-cp fametc-demo.mp4 <repo>/public/video/fametc-demo.mp4
-ffmpeg -y -ss 17.45 -i fametc-demo.mp4 -frames:v 1 -q:v 3 <repo>/public/video/fametc-demo-poster.jpg
+cd ~/Documents/Claude/fametc-promo-video
+node tools/build.mjs                       # renders both cuts to dist/ with a timestamped build ID
+M=dist/$(cat dist/LATEST).mp4
+ffmpeg -i $M -c:v libx264 -preset slow -crf 24 -tune animation -pix_fmt yuv420p \
+  -c:a aac -b:a 128k -movflags +faststart <repo>/public/video/fametc-film-60s.mp4
+ffmpeg -ss 10.6 -i $M -frames:v 1 -q:v 4 <repo>/public/video/fametc-film-60s-poster.jpg
 ```
-
-Notes:
-- `.env` sets `NODE_ENV=production` and a `SESSION_SECRET`; `setup.sh` overrides both (empty secret + development) so `dev-login.js` will run.
-- The crossword is whatever `GET /api/enrichment/puzzle/today?date=<today>` returns — render on a weekend to get a crossword (Wednesdays serve sudoku, which the scene does not handle).
-- Design constraints honoured: Horizon tokens only, Space Grotesk / JetBrains Mono, per-kid teal/amber, green only as the semantic "done" colour, one gradient element (end card). No feature is shown that the app cannot do.
