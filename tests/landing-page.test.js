@@ -56,7 +56,7 @@ test("landing hero shows one legible Today card with floating context", () => {
   assert.match(hero, /class="hero-stage"/);
   assert.match(hero, /Everyone knows what today looks like\./);
   assert.match(hero, /class="today-card"/);
-  assert.match(hero, /Good morning, Priya/);
+  assert.match(hero, /Good morning, Kate/);
   // exactly three floating elements, each with its own accessible label
   assert.equal((hero.match(/class="float float-/g) || []).length, 3);
   assert.match(hero, /class="float float-chat" aria-label="Family chat message"/);
