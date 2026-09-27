@@ -34,12 +34,58 @@ final class ScreenTimeUITests: XCTestCase {
         attach("parent-basic-saved")
     }
 
-    func testKidSeesSetUpCardWhenParentsTurnedItOn() {
+    func testKidSeesDealCardAndWalksTheDealUpToTurnOn() {
+        parentTurnsOnBedtime(for: "Maya Visual")
         let app = launch(.kid)
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 12))
-        let card = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'Screen Time'")).firstMatch
+        let card = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Make our Screen Time deal'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 12))
         reveal(card, app)
-        attach("kid-today-card")
+        attach("kid-deal-card")
+        app.buttons["Let's make it"].firstMatch.tap()
+
+        // Fixture-free pages only: device routes 401 in the fixture, so stop at "Turn it on".
+        XCTAssertTrue(app.staticTexts["Let's make a deal"].waitForExistence(timeout: 6))
+        attach("kid-deal-hello")
+        app.buttons["Let's go"].tap()
+        XCTAssertTrue(app.staticTexts["The plan"].waitForExistence(timeout: 4))
+        attach("kid-deal-plan")
+        app.buttons["Sounds fair"].tap()
+        XCTAssertTrue(app.staticTexts["Your promises"].waitForExistence(timeout: 4))
+        let next = app.buttons["Next"].firstMatch
+        XCTAssertFalse(next.isEnabled)
+        app.buttons["Homework before games"].tap()
+        XCTAssertTrue(next.isEnabled)
+        attach("kid-deal-kid-promises")
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Pass the phone to your grown-up"].waitForExistence(timeout: 4))
+        app.buttons["I'm the grown-up"].tap()
+        XCTAssertTrue(app.staticTexts["Grown-up promises"].waitForExistence(timeout: 4))
+        app.buttons["We'll review this together in a month"].tap()
+        attach("kid-deal-parent-promises")
+        app.buttons["Next"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Turn it on"].waitForExistence(timeout: 4))
+        attach("kid-deal-turn-on")
+    }
+
+    /// Makes sure the fixture kid has an enabled policy (idempotent across runs).
+    private func parentTurnsOnBedtime(for kidName: String) {
+        let app = launch(.parent)
+        let row = app.descendants(matching: .any)["\(kidName), Screen Time"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 12))
+        reveal(row, app)
+        row.tap()
+        let bedtime = app.switches.matching(NSPredicate(format: "label BEGINSWITH 'Bedtime'")).firstMatch
+        XCTAssertTrue(bedtime.waitForExistence(timeout: 8))
+        if bedtime.value as? String == "0" {
+            bedtime.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+            let save = app.buttons["Save"].firstMatch
+            reveal(save, app)
+            save.tap()
+            let saved = expectation(for: NSPredicate(format: "isEnabled == false"), evaluatedWith: save)
+            wait(for: [saved], timeout: 8)
+        }
+        app.terminate()
     }
 
     private enum Role: String { case parent, kid }

@@ -44,6 +44,8 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     private enum Key {
         static let policy = "fam_st_policy"
+        static let agreement = "fam_st_agreement"
+        static let agreementDraft = "fam_st_agreementDraft"
         static let deviceId = "fam_st_deviceId"
         // ponytail: App Group defaults (file-protected container); move to a shared
         // keychain access group if the secret ever needs hardware-backed storage.
@@ -72,6 +74,27 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             if let newValue, let data = try? JSONEncoder().encode(newValue) { defaults.set(data, forKey: Key.policy) }
             else { defaults.removeObject(forKey: Key.policy) }
         }
+    }
+
+    /// The kid's current signed deal, as last reported by the server.
+    var storedAgreement: ScreenTimeAgreement? {
+        get { decode(Key.agreement) }
+        set { encode(newValue, Key.agreement) }
+    }
+
+    /// A deal signed on this device that the server hasn't confirmed yet.
+    var pendingAgreement: ScreenTimeAgreement? {
+        get { decode(Key.agreementDraft) }
+        set { encode(newValue, Key.agreementDraft) }
+    }
+
+    private func decode<T: Decodable>(_ key: String) -> T? {
+        defaults.data(forKey: key).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
+    }
+
+    private func encode<T: Encodable>(_ value: T?, _ key: String) {
+        if let value, let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }
+        else { defaults.removeObject(forKey: key) }
     }
 
     var deviceId: String? { defaults.string(forKey: Key.deviceId) }
@@ -262,6 +285,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         clearAllStores()
         clearCredentials()
         storedPolicy = nil
+        storedAgreement = nil
         [Key.scheduleSignature, Key.pauseSignature, Key.appliedVersion, Key.mode].forEach(defaults.removeObject(forKey:))
     }
 
@@ -324,7 +348,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             "source": source,
         ]
         if let pushToken { body["pushToken"] = pushToken }
-        deviceRequest("/api/screen-time/device/heartbeat", method: "POST", body: body, completion: completion)
+        policyRequest("/api/screen-time/device/heartbeat", method: "POST", body: body, completion: completion)
     }
 
     func heartbeat(source: String) async throws -> ScreenTimePolicy {
@@ -339,12 +363,42 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             "summary": ["apps": summary.apps, "categories": summary.categories, "webDomains": summary.webDomains],
         ]
         return try await withCheckedThrowingContinuation { c in
-            deviceRequest("/api/screen-time/device/limits/\(id)/selection", method: "PUT", body: body) { c.resume(with: $0) }
+            policyRequest("/api/screen-time/device/limits/\(id)/selection", method: "PUT", body: body) { c.resume(with: $0) }
         }
     }
 
-    private func deviceRequest(_ path: String, method: String, body: [String: Any],
+    /// PUT /api/screen-time/device/agreement. The server stamps `signedAt` + `deviceId`.
+    func uploadAgreement(_ a: ScreenTimeAgreement) async throws -> ScreenTimeAgreement {
+        let r = a.rules
+        let body: [String: Any] = [
+            "kidPromises": a.kidPromises,
+            "parentPromises": a.parentPromises,
+            "kidStamp": a.kidStamp,
+            "parentSigner": a.parentSigner,
+            "rules": ["bedStart": r.bedStart ?? NSNull(), "bedEnd": r.bedEnd ?? NSNull(),
+                      "school": r.school ?? NSNull(), "weekend": r.weekend ?? NSNull()] as [String: Any],
+        ]
+        let saved: ScreenTimeAgreementResponse = try await withCheckedThrowingContinuation { c in
+            deviceRequest("/api/screen-time/device/agreement", method: "PUT", body: body) { c.resume(with: $0) }
+        }
+        storedAgreement = saved.agreement
+        return saved.agreement
+    }
+
+    /// Device request whose response is `{ policy, agreement }`: stores both (does not apply).
+    private func policyRequest(_ path: String, method: String, body: [String: Any],
                                completion: @escaping (Result<ScreenTimePolicy, Error>) -> Void) {
+        deviceRequest(path, method: method, body: body) { [weak self] (result: Result<ScreenTimePolicyResponse, Error>) in
+            completion(result.map { r in
+                self?.storedPolicy = r.policy
+                self?.storedAgreement = r.agreement
+                return r.policy
+            })
+        }
+    }
+
+    private func deviceRequest<T: Decodable>(_ path: String, method: String, body: [String: Any],
+                                             completion: @escaping (Result<T, Error>) -> Void) {
         guard let secret = deviceSecret, let base = baseURL, let url = URL(string: base + path) else {
             completion(.failure(ScreenTimeDeviceError.notEnrolled)); return
         }
@@ -378,11 +432,10 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                 let msg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
                 completion(.failure(ScreenTimeDeviceError.http(http.statusCode, msg))); return
             }
-            guard let policy = try? JSONDecoder().decode(ScreenTimePolicyResponse.self, from: data).policy else {
+            guard let decoded = try? JSONDecoder().decode(T.self, from: data) else {
                 completion(.failure(ScreenTimeDeviceError.badResponse)); return
             }
-            self?.storedPolicy = policy
-            completion(.success(policy))
+            completion(.success(decoded))
         }.resume()
     }
 }

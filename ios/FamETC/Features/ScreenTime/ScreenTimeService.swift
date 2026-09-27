@@ -24,6 +24,20 @@ enum ScreenTimeServiceError: LocalizedError {
     var policy: ScreenTimePolicy?
     var lastSyncAt: Date?
     var lastError: String?
+    /// The kid's signed Screen Time deal (server copy). Before enrollment `/mine` supplies it.
+    var agreement: ScreenTimeAgreement?
+    /// Signed on this device but not saved yet (offline / server error). Retried on every sync.
+    var pendingAgreement: ScreenTimeAgreement?
+
+    /// What the kid sees as "our deal": the saved one, or the one waiting to save.
+    var currentDeal: ScreenTimeAgreement? { pendingAgreement ?? agreement }
+
+    /// The deal's rules snapshot no longer matches the current bedtime / daily time
+    /// (pause never counts): time to renew it together.
+    var agreementIsStale: Bool {
+        guard let deal = currentDeal, let policy else { return false }
+        return deal.isStale(for: policy)
+    }
 
     /// The policy has a `total` limit but this device hasn't picked "All Apps &
     /// Categories" for it yet (device projection `selection` is nil). Save via
@@ -50,6 +64,8 @@ enum ScreenTimeServiceError: LocalizedError {
         mode = enforcer.mode
         isEnrolled = enforcer.isEnrolled
         policy = enforcer.storedPolicy
+        agreement = enforcer.storedAgreement
+        pendingAgreement = enforcer.pendingAgreement
     }
 
     // MARK: Kid — authorization + enrollment
@@ -83,8 +99,10 @@ enum ScreenTimeServiceError: LocalizedError {
             enforcer.baseURL = Config.baseURL.absoluteString
             enforcer.saveCredentials(deviceId: r.deviceId, deviceSecret: r.deviceSecret)
             enforcer.apply(r.policy)
+            enforcer.storedAgreement = r.agreement
             isEnrolled = true
             policy = r.policy
+            agreement = r.agreement
             lastSyncAt = Date()
             lastError = nil
             Self.scheduleRefresh()
@@ -128,7 +146,12 @@ enum ScreenTimeServiceError: LocalizedError {
             }
             // Not set up yet: show the kid the parents' rules so the Today card can
             // offer "Set it up". Display only — nothing is enforced until enroll().
-            policy = try? await api.myScreenTimePolicy()
+            if let mine = try? await api.myScreenTime() {
+                policy = mine.policy
+                agreement = mine.agreement
+            } else {
+                policy = nil
+            }
             return
         }
         isEnrolled = true
@@ -137,12 +160,15 @@ enum ScreenTimeServiceError: LocalizedError {
             let p = try await enforcer.heartbeat(source: source)
             if authState == .approved { enforcer.apply(p) }
             policy = p
+            agreement = enforcer.storedAgreement
             lastSyncAt = Date()
             lastError = nil
+            if let pending = pendingAgreement { try? await saveAgreement(pending) }
         } catch ScreenTimeDeviceError.unenrolled {
             enforcer.reset()
             isEnrolled = false
             policy = nil
+            agreement = nil
             lastError = ScreenTimeDeviceError.unenrolled.localizedDescription
         } catch {
             // Offline: still enforce what we have (e.g. a policy the extension stored, pause expiry).
@@ -182,6 +208,23 @@ enum ScreenTimeServiceError: LocalizedError {
         let p = try await enforcer.uploadSelection(limitId: limitId, selection: blob, summary: Self.summary(of: selection))
         if authState == .approved { enforcer.apply(p) }
         policy = p
+    }
+
+    // MARK: Kid — our Screen Time deal
+
+    /// Saves the signed deal (FamDevice PUT). The draft is kept on this device first,
+    /// so a failed save never loses what the family signed; `sync` retries it.
+    func saveAgreement(_ deal: ScreenTimeAgreement) async throws {
+        pendingAgreement = deal
+        enforcer.pendingAgreement = deal
+        do {
+            agreement = try await enforcer.uploadAgreement(deal)
+            pendingAgreement = nil
+            enforcer.pendingAgreement = nil
+        } catch {
+            lastError = error.localizedDescription
+            throw error
+        }
     }
 
     // MARK: Background refresh

@@ -354,6 +354,7 @@ struct ScreenTimeParentSheet: View {
     @State private var editingLimit: ScreenTimeLimit?
     @State private var editingDowntime: ScreenTimeDowntime?
     @State private var forgetting: ScreenTimeDevice?
+    @State private var showDeal = false
     private var service: ScreenTimeService { .shared }
 
     init(initialKidId: String) {
@@ -424,6 +425,9 @@ struct ScreenTimeParentSheet: View {
             }
             .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
             .onChange(of: kidId) { _, _ in error = nil; justSaved = false }
+            .sheet(isPresented: $showDeal) {
+                if let deal = state?.agreement { ScreenTimeDealSheet(deal: deal, kidName: kidName) }
+            }
             .sheet(item: $editingLimit) { limit in
                 ScreenTimeLimitEditor(kidName: kidName, limit: limit,
                                       isNew: !appLimits.contains { $0.id == limit.id && !limit.id.isEmpty },
@@ -500,6 +504,7 @@ struct ScreenTimeParentSheet: View {
                 Image(systemName: line.icon).foregroundStyle(line.tone)
             }
             .accessibilityElement(children: .combine)
+            if hasRules { dealRow }
             if let state, ScreenTimeFormat.needsFinishSetup(state) {
                 Text("On \(kidName)'s phone, open Fam ETC, tap “Finish setup” on Today, then tap All Apps & Categories and Done.")
                     .font(Typography.label)
@@ -524,6 +529,40 @@ struct ScreenTimeParentSheet: View {
                 .frame(minHeight: 44)
                 .accessibilityHint("Marks these Screen Time alerts as seen")
             }
+        }
+    }
+
+    /// One small row: the signed family deal (tap → read-only), or a nudge to make one.
+    @ViewBuilder private var dealRow: some View {
+        if let state, let deal = state.agreement {
+            Button {
+                Haptics.selection()
+                showDeal = true
+            } label: {
+                HStack {
+                    Text("🤝 Deal signed with \(kidName)\(DealWords.signedDate(deal).map { " · \($0)" } ?? "")")
+                        .font(Typography.label.weight(.semibold))
+                        .foregroundStyle(Palette.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.frInk3)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows the deal you made together")
+            if deal.isStale(for: state.policy) {
+                Text("Rules changed since — renew it together on \(kidName)'s phone.")
+                    .font(Typography.caption)
+                    .foregroundStyle(Palette.textSecond)
+            }
+        } else {
+            Text("No deal yet — make it together on \(kidName)'s phone")
+                .font(Typography.label)
+                .foregroundStyle(Palette.textSecond)
         }
     }
 

@@ -94,6 +94,8 @@ struct ScreenTimeKidState: Codable, Identifiable, Hashable, Sendable {
     var policy: ScreenTimePolicy
     var devices: [ScreenTimeDevice]
     var alerts: [ScreenTimeAlert]
+    /// The kid's current signed deal (nil = none yet / older server).
+    var agreement: ScreenTimeAgreement?
 
     var id: String { kidId }
 }
@@ -102,9 +104,10 @@ struct ScreenTimeOverview: Codable, Hashable, Sendable {
     var kids: [ScreenTimeKidState]
 }
 
-/// `{ policy }` — heartbeat, selection upload and `/mine` responses.
+/// `{ policy, agreement }` — heartbeat, selection upload and `/mine` responses.
 struct ScreenTimePolicyResponse: Codable, Sendable {
     var policy: ScreenTimePolicy
+    var agreement: ScreenTimeAgreement?
 }
 
 /// `POST /api/screen-time/device/enroll` response.
@@ -112,4 +115,48 @@ struct ScreenTimeEnrollResponse: Codable, Sendable {
     var deviceId: String
     var deviceSecret: String
     var policy: ScreenTimePolicy
+    var agreement: ScreenTimeAgreement?
+}
+
+// MARK: Our Screen Time Deal (docs/SCREEN-TIME-PLAN.md "Agreement JSON")
+
+/// The Basic rules the deal was signed against. A field is nil when that rule is off.
+struct ScreenTimeAgreementRules: Codable, Hashable, Sendable {
+    var bedStart: String?
+    var bedEnd: String?
+    /// Minutes on school days (Mon–Fri).
+    var school: Int?
+    /// Minutes on Saturday + Sunday.
+    var weekend: Int?
+
+    /// Snapshot of the Basic rules (downtime `bedtime` + limit `total`); pause never counts.
+    init(policy: ScreenTimePolicy) {
+        let bed = policy.downtime.first { $0.id == "bedtime" }
+        let total = policy.limits.first(where: \.isTotal)
+        bedStart = bed?.start
+        bedEnd = bed?.end
+        school = total?.minutesPerDay
+        weekend = total.map { $0.weekendMinutes ?? $0.minutesPerDay }
+    }
+}
+
+struct ScreenTimeAgreement: Codable, Hashable, Sendable {
+    var kidPromises: [String]
+    var parentPromises: [String]
+    var kidStamp: String
+    var parentSigner: String
+    var rules: ScreenTimeAgreementRules
+    /// Server-stamped; nil on a draft not saved yet.
+    var signedAt: String?
+    var deviceId: String?
+
+    /// The parent changed bedtime or daily time since this deal was signed.
+    func isStale(for policy: ScreenTimePolicy) -> Bool {
+        rules != ScreenTimeAgreementRules(policy: policy)
+    }
+}
+
+/// `PUT /api/screen-time/device/agreement` response.
+struct ScreenTimeAgreementResponse: Codable, Sendable {
+    var agreement: ScreenTimeAgreement
 }

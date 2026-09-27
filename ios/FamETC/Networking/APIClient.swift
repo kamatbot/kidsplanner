@@ -803,10 +803,9 @@ extension APIClient {
         try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))", method: "DELETE")
     }
 
-    /// Kid session: the family's policy for this kid (no device projection).
-    func myScreenTimePolicy() async throws -> ScreenTimePolicy {
-        let r: ScreenTimePolicyResponse = try await request("/api/screen-time/mine")
-        return r.policy
+    /// Kid session: the family's policy + signed deal for this kid (no device projection).
+    func myScreenTime() async throws -> ScreenTimePolicyResponse {
+        try await request("/api/screen-time/mine")
     }
 
     /// Kid session (cookie). Returns the device credentials + device-projected policy.
