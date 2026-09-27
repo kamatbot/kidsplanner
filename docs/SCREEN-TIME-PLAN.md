@@ -255,6 +255,49 @@ iOS enforcement: today's threshold for `total` = weekday/weekend minutes +
 re-registers today's `day.N` activity (events use `includesPastActivity`) and
 clears the `limit.total` shield immediately.
 
+## Usage details (owner direction 2026-09-27)
+
+Apple keeps detailed Screen Time usage on the device that produced it (the
+`DeviceActivityReport` extension can render but not transmit; the EU-only
+`FamilyActivityData` path is not used). So there are three surfaces:
+
+1. **Kid, on their own iPhone/iPad Today** — `ScreenTimeUsageCard` hosts a
+   `DeviceActivityReport` (report extension `FamETCUsageReport`, bundle
+   `com.fametc.app.usage-report`, extension point
+   `com.apple.deviceactivityui.report-extension`, family-controls + App Group
+   entitlements). Scene `kidToday`: today's total, top apps (Apple labels),
+   time by category, vs today's allowance when a daily limit exists. Shown to
+   enrolled kid devices only. Not a Home Screen widget (Apple only renders the
+   report inside the app).
+2. **Parent, native, Family Sharing only** — the parent sheet shows Apple's
+   report for children (`users: .children`) in a "Detailed usage" section,
+   visible when any of the family's devices is in `family` mode, with an empty
+   state explaining it needs Family Sharing.
+3. **Parent, web child page (and data for native)** — coarse totals we own:
+   - The kid device registers usage milestone events `usage.<m>` every 15
+     minutes (15…960) on each `day.N` activity, over an "everything" selection:
+     the device's `total` selection when present, else a device-local "usage
+     selection" captured in setup (the deal flow now always ends with "Tap
+     All Apps & Categories"). The monitor extension records the highest
+     milestone for today and heartbeats it. It never records which apps.
+   - Heartbeat body adds optional `usage: { date: "YYYY-MM-DD" (device-local),
+     minutes: 0–1440 multiple of 15, limitReachedAt: ISO | null }`.
+   - Server stores `entry.usage[date][deviceId] = { minutes, limitReachedAt,
+     updatedAt }` — minutes only ever increase within a date, the first
+     limitReachedAt wins, dates older than 35 days are pruned.
+   - `GET /api/screen-time/kids/:kidId/usage?days=7` (parent only, 1–30 days)
+     → `{ kidId, days: [{ date, minutes (sum over devices, null when no
+     device reported), devices: [{ deviceId, label, minutes, limitReachedAt }],
+     limitMinutes (today's allowance from the current policy for that
+     weekday incl. that date's bonus; null without a daily limit),
+     extraMinutes (approved requests for that date) }], requests (last 30
+     days) }`, newest date first, every date in the range present.
+   - Web child page gets a "Screen time" section: today's "about 1 h 45 min of
+     2 h", a 7-day bar chart against the allowance, when the limit was hit,
+     extra time bought with fams, and the latest alerts; honest note "Counted
+     in 15-minute steps. App-by-app details stay on Mia's device."
+   - App Review note: coarse totals are shown only to the child's parents.
+
 ## Distribution gate (owner action)
 Development builds work with the `family-controls` entitlement today. App
 Store/TestFlight distribution needs Apple's **Family Controls (Distribution)**
