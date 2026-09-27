@@ -50,14 +50,14 @@ routesModule({ get: register("GET"), post: register("POST"), put: register("PUT"
   kidIdForUser: (req) => req.user && req.user.data && req.user.data.kid && req.user.data.kid.kidId,
 });
 
-function call(route, { user, body, params, auth } = {}) {
+function call(route, { user, body, params, query, auth } = {}) {
   const res = {
     statusCode: 200, body: null, headers: {},
     set(k, v) { this.headers[k] = v; return this; },
     status(c) { this.statusCode = c; return this; },
     json(b) { this.body = b; this.done = true; return this; },
   };
-  const req = { user, body: body || {}, params: params || {}, get: (h) => (h.toLowerCase() === "authorization" ? auth : undefined) };
+  const req = { user, body: body || {}, params: params || {}, query: query || {}, get: (h) => (h.toLowerCase() === "authorization" ? auth : undefined) };
   for (const handler of routes[route]) {
     let next = false;
     handler(req, res, () => { next = true; });
@@ -548,4 +548,124 @@ test("more time: kid can't approve; another family's parent gets 404", () => {
   assert.equal(decide(ctx, "str_nope", "approve").statusCode, 404);
   assert.equal(balance(ctx), 10);
   assert.equal(overview(ctx).requests[0].status, "pending");
+});
+
+// ---------- usage details ----------
+
+const addDays = (dateStr, n) => new Date(Date.parse(`${dateStr}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const isWeekendStr = (dateStr) => [0, 6].includes(new Date(`${dateStr}T00:00:00Z`).getUTCDay());
+function usageQuery(ctx, days, user = ctx.parent) {
+  return call("GET /api/screen-time/kids/:kidId/usage", {
+    user, params: { kidId: ctx.mia.id }, query: days === undefined ? {} : { days: String(days) },
+  });
+}
+
+test("usage: invalid usage is dropped but the check-in (tamper detection) still lands", () => {
+  const ctx = setup();
+  const { deviceSecret } = enroll(ctx).body;
+  const bad = [
+    { date: TODAY, minutes: 20 }, // not a multiple of 15
+    { date: TODAY, minutes: 1500 }, // over 1440
+    { date: TODAY, minutes: -15 },
+    { date: "not-a-date", minutes: 30 },
+    { date: "2026-02-30", minutes: 30 },
+    { date: addDays(TODAY, -5), minutes: 30 }, // 5 days off
+    { date: TODAY, minutes: 30, limitReachedAt: "x".repeat(41) },
+    { date: TODAY, minutes: 30, limitReachedAt: "not-a-timestamp" },
+  ];
+  for (const usage of bad) {
+    assert.equal(heartbeat(deviceSecret, "approved", { appliedVersion: 7, usage }).statusCode, 200, JSON.stringify(usage));
+  }
+  assert.equal(overview(ctx).devices[0].appliedVersion, 7, "the check-in itself was recorded");
+  assert.ok(usageQuery(ctx, 7).body.days.every((d) => d.minutes === null), "no invalid usage was stored");
+  assert.equal(heartbeat(deviceSecret, "denied", { usage: bad[0] }).statusCode, 200);
+  assert.equal(overview(ctx).devices[0].state, "revoked", "bad usage never hides a switch-off");
+});
+
+test("usage: minutes only increase, first limitReachedAt wins, and it rolls up via GET usage", () => {
+  const ctx = setup();
+  const { deviceSecret } = enroll(ctx).body;
+  assert.equal(heartbeat(deviceSecret, "approved", { usage: { date: TODAY, minutes: 30, limitReachedAt: null } }).statusCode, 200);
+  let day = usageQuery(ctx, 1).body.days[0];
+  assert.equal(day.minutes, 30);
+  assert.equal(day.devices[0].minutes, 30);
+  assert.equal(day.devices[0].limitReachedAt, null);
+
+  heartbeat(deviceSecret, "approved", { usage: { date: TODAY, minutes: 15 } }); // lower value never wins
+  assert.equal(usageQuery(ctx, 1).body.days[0].minutes, 30);
+
+  const first = "2026-09-27T10:00:00.000Z";
+  heartbeat(deviceSecret, "approved", { usage: { date: TODAY, minutes: 45, limitReachedAt: first } });
+  day = usageQuery(ctx, 1).body.days[0];
+  assert.equal(day.minutes, 45);
+  assert.equal(day.devices[0].limitReachedAt, first);
+
+  heartbeat(deviceSecret, "approved", { usage: { date: TODAY, minutes: 60, limitReachedAt: "2026-09-27T11:00:00.000Z" } });
+  day = usageQuery(ctx, 1).body.days[0];
+  assert.equal(day.minutes, 60, "still climbs");
+  assert.equal(day.devices[0].limitReachedAt, first, "the first non-null limitReachedAt wins");
+});
+
+test("usage: entries older than 35 days are pruned on the next write", () => {
+  const ctx = setup();
+  const { deviceSecret } = enroll(ctx).body;
+  const saved = clock;
+  try {
+    heartbeat(deviceSecret, "approved", { usage: { date: TODAY, minutes: 30 } });
+    assert.ok(db.load().screenTime[ctx.fam.id].kids[ctx.mia.id].usage[TODAY]);
+    clock = new Date(saved.getTime() + 36 * 86400000);
+    const newToday = addDays(TODAY, 36);
+    assert.equal(heartbeat(deviceSecret, "approved", { usage: { date: newToday, minutes: 15 } }).statusCode, 200);
+    const usage = db.load().screenTime[ctx.fam.id].kids[ctx.mia.id].usage;
+    assert.ok(!usage[TODAY], "pruned");
+    assert.ok(usage[newToday]);
+  } finally {
+    clock = saved;
+  }
+});
+
+test("GET usage: 7-date shape, sums across devices, weekday/weekend + bonus limitMinutes, extraMinutes, clamps, guards", () => {
+  const ctx = setup();
+  putPolicy(ctx, { enabled: true, limits: [{ kind: "total", name: "Screen time", minutesPerDay: 90, weekendMinutes: 150 }], downtime: [] });
+  const a = enroll(ctx, { label: "iPhone" }).body;
+  const b = enroll(ctx, { label: "iPad" }).body;
+  heartbeat(a.deviceSecret, "approved", { usage: { date: TODAY, minutes: 30 } });
+  heartbeat(b.deviceSecret, "approved", { usage: { date: TODAY, minutes: 45 } });
+
+  const res = usageQuery(ctx, 7);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers["Cache-Control"], "no-store");
+  assert.equal(res.body.kidId, ctx.mia.id);
+  assert.deepEqual(res.body.days.map((d) => d.date), Array.from({ length: 7 }, (_, i) => addDays(TODAY, -i)), "newest first, every date present");
+
+  const today = res.body.days[0];
+  assert.equal(today.minutes, 75, "sum across two devices");
+  assert.deepEqual(today.devices.map((d) => d.label).sort(), ["iPad", "iPhone"]);
+  const expectedToday = isWeekendStr(TODAY) ? 150 : 90;
+  assert.equal(today.limitMinutes, expectedToday);
+  assert.equal(today.extraMinutes, 0);
+
+  const noReport = res.body.days[1];
+  assert.equal(noReport.minutes, null, "no device reported that day");
+  assert.deepEqual(noReport.devices, []);
+  assert.equal(noReport.limitMinutes, isWeekendStr(noReport.date) ? 150 : 90);
+
+  giveFams(ctx, 20);
+  const req = ask(ctx, { minutes: 45, date: TODAY }).body.request;
+  decide(ctx, req.id, "approve");
+  const bonused = usageQuery(ctx, 7).body.days[0];
+  assert.equal(bonused.limitMinutes, expectedToday + 45);
+  assert.equal(bonused.extraMinutes, 45);
+
+  call("DELETE /api/screen-time/kids/:kidId/devices/:deviceId", { user: ctx.parent, params: { kidId: ctx.mia.id, deviceId: b.deviceId } });
+  const afterForget = usageQuery(ctx, 7).body.days[0];
+  assert.equal(afterForget.devices.find((d) => d.deviceId === b.deviceId).label, "Removed device");
+
+  assert.equal(usageQuery(ctx, 0).body.days.length, 1, "clamped up to 1");
+  assert.equal(usageQuery(ctx, 999).body.days.length, 30, "clamped down to 30");
+  assert.equal(usageQuery(ctx).body.days.length, 7, "default 7");
+  assert.equal(usageQuery(ctx, "abc").statusCode, 400, "non-integer days");
+
+  assert.equal(usageQuery(ctx, 7, ctx.kidUser).statusCode, 403, "kid session");
+  assert.equal(usageQuery(ctx, 7, setup().parent).statusCode, 404, "other family");
 });
