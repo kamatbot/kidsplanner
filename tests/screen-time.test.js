@@ -19,14 +19,19 @@ const db = require("../lib/db");
 const store = require("../lib/store");
 const family = require("../lib/family");
 const screenTime = require("../lib/screen-time");
+const fams = require("../lib/fams");
 const routesModule = require("../lib/routes/screen-time");
 
 let clock = new Date("2026-09-27T08:00:00Z");
 const notified = [];
 const pinged = [];
+const requested = [];
+const results = [];
 screenTime.configure({
   now: () => clock,
   notify: (args) => { notified.push(args); return Promise.resolve(); },
+  notifyRequest: (args) => { requested.push(args); return Promise.resolve(); },
+  notifyResult: (args) => { results.push(args); return Promise.resolve(); },
   sendPing: (token, famType) => { pinged.push({ token, famType }); return Promise.resolve({ ok: true }); },
 });
 
@@ -103,7 +108,7 @@ test("parent GET lists every kid with the default policy, no-store", () => {
   assert.equal(res.headers["Cache-Control"], "no-store");
   assert.deepEqual(res.body.kids.map((k) => k.kidId), [ctx.mia.id, ctx.leo.id]);
   for (const k of res.body.kids) {
-    assert.deepEqual({ ...k.policy, updatedAt: undefined }, { version: 0, enabled: false, updatedAt: undefined, limits: [], downtime: [], pauseUntil: null });
+    assert.deepEqual({ ...k.policy, updatedAt: undefined }, { version: 0, enabled: false, updatedAt: undefined, limits: [], downtime: [], pauseUntil: null, bonus: null });
     assert.deepEqual(k.devices, []);
     assert.deepEqual(k.alerts, []);
   }
@@ -392,4 +397,155 @@ test("alerts are capped at 50 per kid", () => {
   const alerts = overview(ctx).alerts;
   assert.equal(alerts.length, screenTime.MAX_ALERTS);
   assert.equal(alerts[0].type, "restored", "newest first");
+});
+
+// ---------- more time for fams ----------
+
+const TODAY = "2026-09-27"; // clock 08:00Z = 15:00 in Asia/Bangkok
+function giveFams(ctx, amount) {
+  const chore = fams.createChore(ctx.fam.id, ctx.mia.id, { title: "Dishes", amount }).chore;
+  fams.submitChore(ctx.fam.id, ctx.mia.id, chore.id);
+  fams.approveChore(ctx.fam.id, ctx.mia.id, chore.id);
+}
+function totalPolicy(ctx) {
+  return putPolicy(ctx, { enabled: true, limits: [{ kind: "total", name: "Screen time", minutesPerDay: 120 }], downtime: [] });
+}
+function ask(ctx, body) {
+  return call("POST /api/screen-time/requests", { user: ctx.kidUser, body: { minutes: 15, date: TODAY, ...body } });
+}
+function decide(ctx, id, verb, user = ctx.parent) {
+  return call(`POST /api/screen-time/kids/:kidId/requests/:id/${verb}`, { user, params: { kidId: ctx.mia.id, id } });
+}
+const balance = (ctx) => fams.balance(ctx.fam.id, ctx.mia.id);
+
+test("more time: request validation", () => {
+  const ctx = setup();
+  giveFams(ctx, 100);
+  assert.equal(ask(ctx).statusCode, 409, "no total limit yet");
+  assert.equal(ask(ctx).body.error, "No daily screen time to extend");
+  totalPolicy(ctx);
+  for (const body of [{ minutes: 20 }, { minutes: "15" }, { date: "2026-09-29" }, { date: "2026-02-30" }, { date: "27/09/2026" }, { note: "x".repeat(81) }, { note: 5 }]) {
+    assert.equal(ask(ctx, body).statusCode, 400, JSON.stringify(body));
+  }
+  assert.equal(call("POST /api/screen-time/requests", { user: ctx.parent, body: { minutes: 15, date: TODAY } }).statusCode, 403, "parents don't ask");
+  requested.length = 0;
+  const ok = ask(ctx, { minutes: 30, note: "  finish my level  " });
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual({ ...ok.body.request, id: undefined, createdAt: undefined }, {
+    id: undefined, kidId: ctx.mia.id, minutes: 30, fams: 10, date: TODAY, note: "finish my level", status: "pending",
+    createdAt: undefined, decidedAt: null, decidedBy: null,
+  });
+  assert.equal(requested.length, 1);
+  assert.equal(requested[0].body, "Mia asks for 30 more minutes (10 fams): “finish my level”");
+  assert.deepEqual(requested[0].familyParentIds, [ctx.parent.id]);
+  assert.equal(ask(ctx).statusCode, 409, "one pending request at a time");
+  assert.equal(balance(ctx), 100, "asking spends nothing");
+  assert.equal(call("GET /api/screen-time/mine", { user: ctx.kidUser }).body.requests[0].id, ok.body.request.id);
+  assert.equal(overview(ctx).requests[0].status, "pending");
+});
+
+test("more time: low balance is refused at request time", () => {
+  const ctx = setup();
+  totalPolicy(ctx);
+  giveFams(ctx, 4);
+  assert.equal(ask(ctx).statusCode, 409);
+  assert.equal(ask(ctx).body.error, "Not enough fams.");
+});
+
+test("more time: approve deducts minutes/3 once, adds bonus, bumps version, pings, notifies kid", async () => {
+  const ctx = setup();
+  totalPolicy(ctx);
+  enroll(ctx, { pushToken: "ef".repeat(32) });
+  giveFams(ctx, 20);
+  const { id } = ask(ctx, { minutes: 45 }).body.request;
+  const v0 = overview(ctx).policy.version;
+  results.length = 0; pinged.length = 0;
+  const first = decide(ctx, id, "approve");
+  assert.equal(first.statusCode, 200);
+  assert.deepEqual(first.body.policy.bonus, { date: TODAY, minutes: 45 });
+  assert.equal(first.body.policy.version, v0 + 1);
+  assert.equal(first.body.requests[0].status, "approved");
+  assert.equal(first.body.requests[0].decidedBy, ctx.parent.id);
+  const again = decide(ctx, id, "approve");
+  assert.equal(again.statusCode, 200);
+  assert.equal(again.body.policy.version, v0 + 1, "second approve is a no-op");
+  assert.equal(balance(ctx), 5, "20 − 15, exactly once");
+  assert.equal(decide(ctx, id, "decline").body.requests[0].status, "approved", "decided stays decided");
+  await new Promise(setImmediate);
+  assert.equal(results.length, 1, "kid notified once");
+  assert.equal(results[0].body, "🎉 +45 minutes! Enjoy.");
+  assert.deepEqual(results[0].kidUserIds, [ctx.kidUser.id]);
+  assert.deepEqual(pinged.map((p) => p.famType), ["screen_time_sync"]);
+  const { deviceSecret } = enroll(ctx).body;
+  assert.deepEqual(heartbeat(deviceSecret).body.policy.bonus, { date: TODAY, minutes: 45 }, "device projection carries bonus");
+  assert.equal(heartbeat(deviceSecret).body.requests[0].status, "approved");
+
+  // A second approved request the same day adds up.
+  giveFams(ctx, 10);
+  const second = ask(ctx, { minutes: 15 }).body.request;
+  assert.deepEqual(decide(ctx, second.id, "approve").body.policy.bonus, { date: TODAY, minutes: 60 });
+});
+
+test("more time: approve after the balance drained → 409, no bonus, still pending", () => {
+  const ctx = setup();
+  totalPolicy(ctx);
+  giveFams(ctx, 5);
+  const { id } = ask(ctx).body.request;
+  fams.spend(ctx.fam.id, ctx.mia.id, { event: "test:drain", amount: 3, title: "Elsewhere" });
+  const v0 = overview(ctx).policy.version;
+  const res = decide(ctx, id, "approve");
+  assert.equal(res.statusCode, 409);
+  const kid = overview(ctx);
+  assert.equal(kid.policy.bonus, null);
+  assert.equal(kid.policy.version, v0);
+  assert.equal(kid.requests[0].status, "pending");
+  assert.equal(balance(ctx), 2);
+});
+
+test("more time: decline notifies the kid and spends nothing", () => {
+  const ctx = setup();
+  totalPolicy(ctx);
+  giveFams(ctx, 10);
+  const { id } = ask(ctx).body.request;
+  results.length = 0;
+  const res = decide(ctx, id, "decline");
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.requests[0].status, "declined");
+  assert.equal(res.body.policy.bonus, null);
+  assert.equal(balance(ctx), 10);
+  decide(ctx, id, "decline");
+  assert.equal(results.length, 1);
+  assert.equal(results[0].body, "Not this time — maybe later.");
+});
+
+test("more time: requests expire after their date; bonus resets on a new date", () => {
+  const ctx = setup();
+  totalPolicy(ctx);
+  giveFams(ctx, 50);
+  const saved = clock;
+  try {
+    decide(ctx, ask(ctx).body.request.id, "approve");
+    const stale = ask(ctx, { minutes: 30 }).body.request;
+    clock = new Date("2026-09-28T08:00:00Z");
+    assert.equal(overview(ctx).requests[0].status, "expired");
+    assert.equal(decide(ctx, stale.id, "approve").statusCode, 409, "expired can't be approved");
+    assert.equal(balance(ctx), 45);
+    const next = ask(ctx, { minutes: 30, date: "2026-09-28" });
+    assert.equal(next.statusCode, 200, "an expired request doesn't block a new one");
+    assert.deepEqual(decide(ctx, next.body.request.id, "approve").body.policy.bonus, { date: "2026-09-28", minutes: 30 });
+  } finally {
+    clock = saved;
+  }
+});
+
+test("more time: kid can't approve; another family's parent gets 404", () => {
+  const ctx = setup();
+  totalPolicy(ctx);
+  giveFams(ctx, 10);
+  const { id } = ask(ctx).body.request;
+  assert.equal(decide(ctx, id, "approve", ctx.kidUser).statusCode, 403);
+  assert.equal(decide(ctx, id, "approve", setup().parent).statusCode, 404);
+  assert.equal(decide(ctx, "str_nope", "approve").statusCode, 404);
+  assert.equal(balance(ctx), 10);
+  assert.equal(overview(ctx).requests[0].status, "pending");
 });
