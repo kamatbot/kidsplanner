@@ -176,10 +176,69 @@ test("route guard: a kid CAN check in on their own habit", () => {
   assert.equal(result.goal.checks.length, 1);
 });
 
-test("route guard: only a parent creates/deletes goals (kidId derived server-side is not exercised here — that's the route's job; this proves the primitive a route relies on)", () => {
+test("route guard: removeGoal is the primitive the DELETE route relies on (ownership is enforced by the route via canDelete, not exercised here)", () => {
   const { fam, kid } = makeFamilyWithKid("P");
   const { goal } = goals.addGoal(fam.id, { kidId: kid.id, title: "X", type: "habit", target: 7 });
   const removed = goals.removeGoal(fam.id, goal.id);
   assert.ok(!removed.error);
   assert.equal(goals.getById(fam.id, goal.id), null);
+});
+
+// ---------- kid self-serve goals (createdBy, the per-kid cap, canDelete) ----------
+test("addGoal: stores createdByRole/createdByUserId when createdBy is given; a call without createdBy adds neither field", () => {
+  const { fam, kid } = makeFamilyWithKid("Q");
+  const kidCreated = goals.addGoal(fam.id, { kidId: kid.id, title: "Kid's own", type: "habit", target: 7, createdBy: { role: "kid", userId: "u_kid1" } });
+  assert.ok(!kidCreated.error, kidCreated.error);
+  assert.equal(kidCreated.goal.createdByRole, "kid");
+  assert.equal(kidCreated.goal.createdByUserId, "u_kid1");
+
+  const parentCreated = goals.addGoal(fam.id, { kidId: kid.id, title: "Parent's pick", type: "habit", target: 7, createdBy: { role: "parent", userId: fam.parentIds[0] } });
+  assert.equal(parentCreated.goal.createdByRole, "parent");
+  assert.equal(parentCreated.goal.createdByUserId, fam.parentIds[0]);
+
+  const legacy = goals.addGoal(fam.id, { kidId: kid.id, title: "No createdBy (legacy/other caller)", type: "habit", target: 7 });
+  assert.ok(!legacy.error, legacy.error);
+  assert.equal("createdByRole" in legacy.goal, false);
+  assert.equal("createdByUserId" in legacy.goal, false);
+});
+
+test("addGoal: caps a kid's self-created goals at 25 — parent-created goals for the same kid don't count toward it, and parents are never capped", () => {
+  const { fam, kid } = makeFamilyWithKid("R");
+  for (let i = 0; i < 25; i++) {
+    const r = goals.addGoal(fam.id, { kidId: kid.id, title: `Kid goal ${i}`, type: "habit", target: 7, createdBy: { role: "kid", userId: "u_kid" } });
+    assert.ok(!r.error, r.error);
+  }
+  const over = goals.addGoal(fam.id, { kidId: kid.id, title: "One too many", type: "habit", target: 7, createdBy: { role: "kid", userId: "u_kid" } });
+  assert.equal(over.error, "You have 25 goals already — delete one to add another.");
+
+  // A parent adding more goals for the same kid doesn't count toward — or
+  // relieve — the kid's own cap.
+  const parentAdded = goals.addGoal(fam.id, { kidId: kid.id, title: "Parent's extra", type: "habit", target: 7, createdBy: { role: "parent", userId: fam.parentIds[0] } });
+  assert.ok(!parentAdded.error, parentAdded.error);
+  const stillOver = goals.addGoal(fam.id, { kidId: kid.id, title: "Still too many", type: "habit", target: 7, createdBy: { role: "kid", userId: "u_kid" } });
+  assert.ok(stillOver.error);
+
+  // Parents are never capped, no matter how many goals already exist for the kid.
+  for (let i = 0; i < 5; i++) {
+    const r = goals.addGoal(fam.id, { kidId: kid.id, title: `Parent goal ${i}`, type: "habit", target: 7, createdBy: { role: "parent", userId: fam.parentIds[0] } });
+    assert.ok(!r.error, r.error);
+  }
+});
+
+test("canDelete: a parent may delete any goal in their family; a kid may delete only their own kid-created goal", () => {
+  const { fam, kid } = makeFamilyWithKid("S");
+  const { kid: sibling } = family.addKid(fam.id, fam.parentIds[0], { name: "Sibling3" });
+  const kidCreated = goals.addGoal(fam.id, { kidId: kid.id, title: "Kid's own", type: "habit", target: 7, createdBy: { role: "kid", userId: "u_kid" } }).goal;
+  const parentSet = goals.addGoal(fam.id, { kidId: kid.id, title: "Parent set", type: "habit", target: 7, createdBy: { role: "parent", userId: fam.parentIds[0] } }).goal;
+  const siblingGoal = goals.addGoal(fam.id, { kidId: sibling.id, title: "Sibling's", type: "habit", target: 7, createdBy: { role: "kid", userId: "u_sib" } }).goal;
+
+  const parentUser = { id: fam.parentIds[0] };
+  assert.equal(goals.canDelete(parentUser, "parent", fam.id, kidCreated), true);
+  assert.equal(goals.canDelete(parentUser, "parent", fam.id, parentSet), true);
+  assert.equal(goals.canDelete(parentUser, "parent", fam.id, siblingGoal), true);
+
+  const kidUser = { data: { kid: { familyId: fam.id, kidId: kid.id } } };
+  assert.equal(goals.canDelete(kidUser, "kid", fam.id, kidCreated), true, "own kid-created goal");
+  assert.equal(goals.canDelete(kidUser, "kid", fam.id, parentSet), false, "own goal, but parent-set");
+  assert.equal(goals.canDelete(kidUser, "kid", fam.id, siblingGoal), false, "sibling's goal");
 });

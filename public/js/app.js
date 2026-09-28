@@ -6480,9 +6480,17 @@ function goalRingSvg(goal) {
 
 function renderGoalCard(goal) {
   const kidName = kidNameFor(goal.kidId);
-  const canManage = !isKidSession();
-  const deleteBtn = canManage
+  // A parent may delete any goal, as today. A kid may delete only a goal
+  // THEY created for themselves — a parent-set goal of theirs stays
+  // parent-removable only (they can still check it in / progress it).
+  const canDeleteGoal = isKidSession()
+    ? (goal.createdByRole === 'kid' && goal.kidId === sessionUser.kidId)
+    : true;
+  const deleteBtn = canDeleteGoal
     ? `<button type="button" class="btn-link-danger goal-card-delete" onclick="deleteGoalItem('${goal.id}')" title="Delete goal" aria-label="Delete goal">${todayIcon('trash', 16)}</button>` : '';
+  // Parents get a "set by <Kid>" hint on goals a kid set for themselves, so
+  // they can tell those apart from goals they set — kid view is unchanged.
+  const kidSetLabel = (!isKidSession() && goal.createdByRole === 'kid') ? ` · set by ${esc(kidName)}` : '';
 
   if (goal.type === 'habit') {
     const streak = goalCurrentStreak(goal);
@@ -6493,7 +6501,7 @@ function renderGoalCard(goal) {
       ${goalRingSvg(goal)}
       <div class="goal-card-body">
         <div class="goal-card-title">${esc(goal.title)}</div>
-        <div class="goal-card-sub">${esc(kidName)} · habit</div>
+        <div class="goal-card-sub">${esc(kidName)} · habit${kidSetLabel}</div>
         ${streakHtml}
       </div>
       ${deleteBtn}
@@ -6507,7 +6515,7 @@ function renderGoalCard(goal) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
       <div>
         <div class="goal-card-title">${esc(goal.title)}</div>
-        <div class="goal-card-sub">${esc(kidName)} · milestone</div>
+        <div class="goal-card-sub">${esc(kidName)} · milestone${kidSetLabel}</div>
       </div>
       ${deleteBtn}
     </div>
@@ -6544,8 +6552,11 @@ function renderGoalsHub() {
   if (isKidSession()) items = items.filter((g) => g.kidId === sessionUser.kidId);
 
   if (!items.length) {
-    const cta = isKidSession() ? '' : ` <a href="#" onclick="openAddGoalModal();return false">+ New goal</a>`;
-    listEl.innerHTML = `<p class="goals-empty">Set a first goal — reading, practice, anything worth a streak.${cta}</p>`;
+    const cta = ` <a href="#" onclick="openAddGoalModal();return false">+ New goal</a>`;
+    const copy = isKidSession()
+      ? 'Set your first goal — reading, practice, anything worth a streak.'
+      : 'Set a first goal — reading, practice, anything worth a streak.';
+    listEl.innerHTML = `<p class="goals-empty">${copy}${cta}</p>`;
   } else {
     listEl.innerHTML = items.map(renderGoalCard).join('');
   }
@@ -6560,10 +6571,16 @@ function openAddGoalModal() {
   updateGoalTargetLabel();
 
   const kids = (currentFamily && currentFamily.kids) || [];
+  const kidGroup = document.getElementById('goal-kid-group');
   const kidSelect = document.getElementById('goal-kid');
   kidSelect.innerHTML = kids.map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('') || '<option value="">Add a kid first</option>';
-  if (isKidSession()) kidSelect.value = sessionUser.kidId;
-  else if (activeKidId) kidSelect.value = activeKidId;
+  if (isKidSession()) {
+    kidGroup.style.display = 'none';
+    kidSelect.value = sessionUser.kidId;
+  } else {
+    kidGroup.style.display = '';
+    if (activeKidId) kidSelect.value = activeKidId;
+  }
   openModal('add-goal-modal');
 }
 

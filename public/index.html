@@ -1329,7 +1329,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 </div>
 
 <!-- Add Goal Modal (Phase W3) — habit (checked-in per week) or milestone
-     (total count) goal, parent-only creation (see openAddGoalModal). -->
+     (total count) goal. A parent picks which kid it's for; a kid session
+     creates a goal for themselves only, so the Kid picker is hidden (see
+     openAddGoalModal). -->
 <div id="add-goal-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-goal-modal')">
   <div class="modal-card">
     <div class="modal-header">
@@ -1337,7 +1339,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <button class="modal-close" onclick="closeModal('add-goal-modal')">×</button>
     </div>
     <form onsubmit="saveGoalForm(event)">
-      <div class="form-group">
+      <div class="form-group" id="goal-kid-group">
         <label>Kid</label>
         <select id="goal-kid"></select>
       </div>
