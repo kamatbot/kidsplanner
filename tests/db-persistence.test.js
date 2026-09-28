@@ -11,6 +11,16 @@ process.env.DB_WRITE_RETRY_MS = "20";
 const db = require("../lib/db");
 const datacrypto = require("../lib/datacrypto");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Wait (bounded) for the background writer to go idle instead of a fixed delay:
+// a slow CI runner can take longer than 100 ms for a write plus its retry.
+async function writerIdle(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { dirty, flushing } = db.persistenceStatus();
+    if (!dirty && !flushing) return;
+    await sleep(10);
+  }
+}
 
 test("db writer coalesces bursts and retries a failed write without losing data", async () => {
   const root = db.load();
@@ -26,7 +36,7 @@ test("db writer coalesces bursts and retries a failed write without losing data"
     db.persist();
     db.persist();
     db.persist();
-    await sleep(100);
+    await writerIdle();
     assert.equal(writes, 1, "one writer should service same-tick persistence bursts");
     assert.equal(db.persistenceStatus().dirty, false);
   } finally {
@@ -47,7 +57,7 @@ test("db writer coalesces bursts and retries a failed write without losing data"
   try {
     root.retryMarker = "survived";
     db.persist();
-    await sleep(150);
+    await writerIdle();
     assert.ok(attempts >= 2, "a failed write should be retried");
     const status = db.persistenceStatus();
     assert.equal(status.dirty, false);
@@ -69,7 +79,7 @@ test("db writer coalesces bursts and retries a failed write without losing data"
   try {
     root.preparationRetryMarker = "survived";
     db.persist();
-    await sleep(100);
+    await writerIdle();
     assert.ok(preparationAttempts >= 2, "a synchronous snapshot failure should be retried");
     assert.equal(db.persistenceStatus().flushing, false, "the writer must not remain wedged");
     assert.equal(db.persistenceStatus().dirty, false);
