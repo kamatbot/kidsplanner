@@ -229,8 +229,17 @@
     const requests = (st.usage?.requests || kid.requests || []).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 3);
     const alerts = (kid.alerts || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 3);
     const extraToday = count(today?.extraMinutes);
+    // Extra time approved and still within the extended allowance: the earlier "limit reached"
+    // moment is history, not today's problem — keep the chip neutral instead of alarming.
+    const minutesToday = count(today?.minutes);
+    const limitToday = count(today?.limitMinutes);
+    const extraTimeGiven = !!extraToday && minutesToday != null && limitToday != null && minutesToday < limitToday;
+    const hitTime = hit ? e(new Date(hit).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })) : '';
+    const limitChip = !hit ? '' : extraTimeGiven
+      ? `<span class="cv-st-chip is-info">Limit reached at ${hitTime} · extra time given</span>`
+      : `<span class="cv-st-chip">Daily limit reached at ${hitTime}</span>`;
     return `${header}${off}
-      <div class="cv-st-today"><strong>${e(todayLine(today))}</strong>${extraToday ? `<p>Includes ${e(duration(extraToday))} extra time with fams.</p>` : ''}${hit ? `<span class="cv-st-chip">Daily limit reached at ${e(new Date(hit).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</span>` : ''}</div>
+      <div class="cv-st-today"><strong>${e(todayLine(today))}</strong>${extraToday ? `<p>Includes ${e(duration(extraToday))} extra time with fams.</p>` : ''}${limitChip}</div>
       <div class="cv-st-chart" role="img" aria-label="${e(summary)}">${bars.map(d => `<div class="cv-st-day${d.date === date ? ' is-today' : ''}${d.minutes == null ? ' is-unknown' : ''}" aria-hidden="true"><div class="cv-st-track"><i class="cv-st-used" style="height:${d.base}%"></i><i class="cv-st-extra" style="height:${d.extraPct}%"></i><i class="cv-st-used" style="height:${d.over}%"></i>${d.limitPct == null ? '' : `<span class="cv-st-limit" style="bottom:${d.limitPct}%"></span>`}</div><b>${e(dateLabel(d.date, { weekday: 'narrow' }))}</b><small>${d.minutes == null ? '—' : e(duration(d.minutes))}</small></div>`).join('')}</div>
       <p class="cv-st-legend" aria-hidden="true"><span class="is-used">Used</span>${bars.some(d => d.extra) ? '<span class="is-extra">Extra time with fams</span>' : ''}${bars.some(d => d.limit) ? '<span class="is-limit">Allowance</span>' : ''}</p>
       <table class="cv-sr"><caption>Screen time per day</caption><thead><tr><th scope="col">Day</th><th scope="col">Minutes</th><th scope="col">Allowance</th></tr></thead><tbody>${bars.map(d => `<tr><th scope="row">${e(dateLabel(d.date, { weekday: 'long', month: 'short', day: 'numeric' }))}</th><td>${d.minutes == null ? 'Not reported' : e(d.minutes)}</td><td>${d.limit == null ? 'No daily limit' : `${e(d.limit)}${d.extra ? ` (includes ${e(d.extra)} extra)` : ''}`}</td></tr>`).join('')}</tbody></table>

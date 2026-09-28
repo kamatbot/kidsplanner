@@ -87,6 +87,39 @@ test('renders today, limit chip, chart, requests, alerts and honest footnote for
   assert.match(nodes['tab-child'].innerHTML, /id="cv-fams"/); // nothing else hidden
 });
 
+test('extra time granted and in use shows a neutral "extra time given" chip, not the red one', async () => {
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids: [kidState('mia')] }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia', { [TODAY]: { minutes: 100, limitMinutes: 135, extraMinutes: 15, devices: [{ deviceId: 'd1', label: 'iPhone', minutes: 100, limitReachedAt: '2026-09-08T17:42:00' }] } }),
+  } });
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  assert.match(html, /<span class="cv-st-chip is-info">Limit reached at 5:42\sPM · extra time given<\/span>/);
+  assert.doesNotMatch(html, /Daily limit reached/);
+});
+
+test('no extra time: the red "Daily limit reached" chip is unchanged', async () => {
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids: [kidState('mia')] }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia', { [TODAY]: { minutes: 130, limitMinutes: 120, extraMinutes: 0, devices: [{ deviceId: 'd1', label: 'iPhone', minutes: 130, limitReachedAt: '2026-09-08T17:42:00' }] } }),
+  } });
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  assert.match(html, /<span class="cv-st-chip">Daily limit reached at 5:42\sPM<\/span>/);
+  assert.doesNotMatch(html, /is-info|extra time given/);
+});
+
+test('extra time granted but usage still at/over the extended allowance keeps the red chip', async () => {
+  const { nodes, view } = setup({ routes: {
+    '/api/screen-time': async () => ({ kids: [kidState('mia')] }),
+    '/api/screen-time/kids/mia/usage': async () => usage('mia', { [TODAY]: { minutes: 150, limitMinutes: 135, extraMinutes: 15, devices: [{ deviceId: 'd1', label: 'iPhone', minutes: 150, limitReachedAt: '2026-09-08T17:42:00' }] } }),
+  } });
+  await view.render('mia');
+  const html = section(nodes['tab-child'].innerHTML);
+  assert.match(html, /<span class="cv-st-chip">Daily limit reached at 5:42\sPM<\/span>/);
+  assert.doesNotMatch(html, /is-info|extra time given/);
+});
+
 test('not set up, error with retry, and loading skeleton', async () => {
   let fail = true;
   const { nodes, view } = setup({ routes: {
