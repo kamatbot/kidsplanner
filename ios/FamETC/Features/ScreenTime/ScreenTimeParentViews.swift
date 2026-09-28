@@ -28,6 +28,24 @@ enum ScreenTimeFormat {
         date.formatted(date: .omitted, time: .shortened)
     }
 
+    /// A time that can be from another day, so a stale alert never reads as brand new:
+    /// same day → clock ("4:12 PM"); yesterday/tomorrow → "Yesterday 4:12 PM" /
+    /// "Tomorrow 4:12 PM"; within 6 days either side → "Tue 4:12 PM"; else →
+    /// "12 Sep, 4:12 PM" (locale-aware).
+    static func moment(_ date: Date, now: Date = Date()) -> String {
+        let cal = Calendar.current
+        let clockPart = clock(date)
+        let dayDiff = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: date)).day ?? 0
+        switch dayDiff {
+        case 0: return clockPart
+        case -1: return "Yesterday \(clockPart)"
+        case 1: return "Tomorrow \(clockPart)"
+        default:
+            if abs(dayDiff) <= 6 { return "\(date.formatted(.dateTime.weekday(.abbreviated))) \(clockPart)" }
+            return "\(date.formatted(.dateTime.day().month(.abbreviated))), \(clockPart)"
+        }
+    }
+
     /// "Sat 9:12 PM" — when a device last checked in.
     static func checkIn(_ date: Date?) -> String {
         guard let date else { return "a while ago" }
@@ -113,6 +131,20 @@ enum ScreenTimeFormat {
         return state.devices.contains { total.deviceSelections?[$0.id]?.isEmpty ?? true }
     }
 
+    /// Devices worth deriving the kid's status from: when at least one device is `ok` and
+    /// was seen in the last 7 days, an older/never-seen device (a reinstalled or replaced
+    /// phone's ghost) is ignored so it can't keep the kid red forever. Otherwise every
+    /// device still counts, so losing the kid's only device still surfaces.
+    static func statusDevices(_ devices: [ScreenTimeDevice], now: Date = Date()) -> [ScreenTimeDevice] {
+        let cutoff = now.addingTimeInterval(-7 * 24 * 3600)
+        func isRecent(_ device: ScreenTimeDevice) -> Bool {
+            guard let seen = date(device.lastSeenAt) else { return false }
+            return seen >= cutoff
+        }
+        guard devices.contains(where: { $0.state == "ok" && isRecent($0) }) else { return devices }
+        return devices.filter(isRecent)
+    }
+
     static func deviceNames(_ devices: [ScreenTimeDevice], kidName: String) -> String {
         let labels = devices.map(\.label)
         guard let first = labels.first else { return "\(kidName)'s phone" }
@@ -134,14 +166,15 @@ enum ScreenTimeKidStatus: Equatable {
         // Off = the parent turned it off after a device was set up; rules and deal are kept.
         guard state.policy.enabled else { self = devices.isEmpty ? .notSetUp : .off; return }
         if devices.isEmpty { self = .waiting; return }
-        if devices.contains(where: { $0.state == "revoked" }) {
+        let recent = ScreenTimeFormat.statusDevices(devices)
+        if recent.contains(where: { $0.state == "revoked" }) {
             let at = state.alerts.filter { $0.type == "revoked" }
                 .compactMap { ScreenTimeFormat.date($0.at) }.max()
             self = .turnedOff(at)
             return
         }
-        if devices.contains(where: { $0.state == "removed" }) { self = .mayBeRemoved; return }
-        if devices.contains(where: { $0.state == "stale" }) { self = .notCheckingIn; return }
+        if recent.contains(where: { $0.state == "removed" }) { self = .mayBeRemoved; return }
+        if recent.contains(where: { $0.state == "stale" }) { self = .notCheckingIn; return }
         if ScreenTimeFormat.needsFinishSetup(state) { self = .finishSetup; return }
         if let until = ScreenTimeFormat.pauseUntil(state.policy) { self = .paused(until); return }
         self = devices.contains(where: \.isFamily) ? .family : .cooperative
@@ -155,10 +188,10 @@ enum ScreenTimeKidStatus: Equatable {
         case .finishSetup: return "Finish setup on their phone"
         case .family: return "Protected · Family Sharing"
         case .cooperative: return "On · without Family Sharing"
-        case .turnedOff(let at): return at.map { "Turned off · \(ScreenTimeFormat.clock($0))" } ?? "Turned off"
+        case .turnedOff(let at): return at.map { "Turned off · \(ScreenTimeFormat.moment($0))" } ?? "Turned off"
         case .mayBeRemoved: return "May be removed"
         case .notCheckingIn: return "Not checking in"
-        case .paused(let until): return "Paused until \(ScreenTimeFormat.clock(until))"
+        case .paused(let until): return "Paused until \(ScreenTimeFormat.moment(until))"
         }
     }
 
@@ -481,6 +514,7 @@ struct ScreenTimeParentSheet: View {
     @State private var editingLimit: ScreenTimeLimit?
     @State private var editingDowntime: ScreenTimeDowntime?
     @State private var forgetting: ScreenTimeDevice?
+    @State private var moving: MoveTarget?
     @State private var showDeal = false
     @State private var deciding: String?
     @State private var requestError: String?
@@ -499,6 +533,8 @@ struct ScreenTimeParentSheet: View {
     private var state: ScreenTimeKidState? { service.state(for: kidId) }
     private var policy: ScreenTimePolicy? { state?.policy }
     private var devices: [ScreenTimeDevice] { state?.devices ?? [] }
+    /// This kid's siblings, to offer "Move to <name>" on a device row (only when 2+ kids).
+    private var otherKids: [Kid] { store.kids.filter { $0.id != kidId } }
     private var appLimits: [ScreenTimeLimit] { policy?.limits.filter { !$0.isTotal } ?? [] }
     private var extraDowntime: [ScreenTimeDowntime] { policy?.downtime.filter { $0.id != ScreenTimeFormat.bedtimeID } ?? [] }
     /// Open alerts, newest first, minus the ones just dismissed with ✕ (ack in flight).
@@ -667,6 +703,16 @@ struct ScreenTimeParentSheet: View {
         } message: { _ in
             Text("Fam ETC stops tracking this device. Set it up again on the device to reconnect.")
         }
+        .confirmationDialog("Move \(moving?.device.label ?? "device") to \(moving?.toKid.name ?? "")?", isPresented: Binding(
+            get: { moving != nil }, set: { if !$0 { moving = nil } }
+        ), titleVisibility: .visible, presenting: moving) { target in
+            Button("Move") {
+                run { try await service.moveDevice(kidId: kidId, deviceId: target.device.id, toKidId: target.toKid.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { target in
+            Text("It will follow \(target.toKid.name)'s Screen Time rules from its next check-in.")
+        }
         .accessibilityIdentifier("screentime.controls")
     }
 
@@ -690,21 +736,22 @@ struct ScreenTimeParentSheet: View {
         if devices.isEmpty {
             return ("Saved. Now set it up on \(kidName)'s phone.", "iphone", Palette.frFamsInk)
         }
-        if devices.contains(where: { $0.state == "revoked" }) {
+        let recent = ScreenTimeFormat.statusDevices(devices)
+        if recent.contains(where: { $0.state == "revoked" }) {
             let at = state.alerts.filter { $0.type == "revoked" }.compactMap { ScreenTimeFormat.date($0.at) }.max()
-            return ("\(kidName) turned it off\(at.map { " — \(ScreenTimeFormat.clock($0))" } ?? "")", "exclamationmark.shield.fill", Palette.frDanger)
+            return ("\(kidName) turned it off\(at.map { " — \(ScreenTimeFormat.moment($0))" } ?? "")", "exclamationmark.shield.fill", Palette.frDanger)
         }
-        if let d = devices.first(where: { $0.state == "removed" }) {
+        if let d = recent.first(where: { $0.state == "removed" }) {
             return ("Fam ETC may have been removed from \(kidName)'s \(d.label)", "exclamationmark.shield.fill", Palette.frDanger)
         }
-        if let d = devices.first(where: { $0.state == "stale" }) {
+        if let d = recent.first(where: { $0.state == "stale" }) {
             return ("\(kidName)'s \(d.label) hasn't checked in since \(ScreenTimeFormat.checkIn(ScreenTimeFormat.date(d.lastSeenAt))). It may be off or offline.", "clock.badge.exclamationmark", Palette.frFamsInk)
         }
         if ScreenTimeFormat.needsFinishSetup(state) {
             return ("Finish setup on \(kidName)'s phone", "iphone", Palette.frFamsInk)
         }
         if let until = ScreenTimeFormat.pauseUntil(state.policy) {
-            return ("Paused until \(ScreenTimeFormat.clock(until))", "pause.circle.fill", Palette.frYouInk)
+            return ("Paused until \(ScreenTimeFormat.moment(until))", "pause.circle.fill", Palette.frYouInk)
         }
         return ("On for \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))", "checkmark.shield.fill", Palette.green)
     }
@@ -739,7 +786,12 @@ struct ScreenTimeParentSheet: View {
             lines.append(window.id == ScreenTimeFormat.bedtimeID ? "Bedtime now" : "\(window.name) now")
         }
         if let reached = limitReachedToday {
-            lines.append("Daily time used up at \(ScreenTimeFormat.clock(reached))")
+            if let usage = usageToday, let extra = usage.extraMinutes, extra > 0,
+               let minutes = usage.minutes, let limit = usage.limitMinutes, minutes < limit {
+                lines.append("Limit reached at \(ScreenTimeFormat.clock(reached)) · extra time given")
+            } else {
+                lines.append("Daily time used up at \(ScreenTimeFormat.clock(reached))")
+            }
         }
         return lines
     }
@@ -764,7 +816,7 @@ struct ScreenTimeParentSheet: View {
             .accessibilityElement(children: .combine)
             if isOff, let policy, !devices.isEmpty { offDeliveryLine(policy) }
             ForEach(liveSubLines, id: \.self) { sub in
-                Label(sub, systemImage: sub.hasPrefix("Daily") ? "hourglass.bottomhalf.filled" : "moon.fill")
+                Label(sub, systemImage: sub.hasPrefix("Daily") || sub.hasPrefix("Limit") ? "hourglass.bottomhalf.filled" : "moon.fill")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
                     .monospacedDigit()
@@ -1398,6 +1450,13 @@ struct ScreenTimeParentSheet: View {
         }
     }
 
+    /// A device row's "Move to <name>" target: which device, to which sibling.
+    private struct MoveTarget: Identifiable {
+        let device: ScreenTimeDevice
+        let toKid: Kid
+        var id: String { "\(device.id)->\(toKid.id)" }
+    }
+
     private func deviceRow(_ device: ScreenTimeDevice) -> some View {
         let applied = policy.map(device.applied) ?? false
         return VStack(alignment: .leading, spacing: Space.sm) {
@@ -1428,6 +1487,14 @@ struct ScreenTimeParentSheet: View {
                 .font(Typography.caption.weight(.semibold))
                 .buttonStyle(.borderless)
                 .frame(minHeight: 44)
+            if otherKids.count > 0 {
+                ForEach(otherKids) { other in
+                    Button("Move to \(other.name)") { moving = MoveTarget(device: device, toKid: other) }
+                        .font(Typography.caption.weight(.semibold))
+                        .buttonStyle(.borderless)
+                        .frame(minHeight: 44)
+                }
+            }
         }
         .padding(.vertical, Space.xs)
         .accessibilityElement(children: .contain)

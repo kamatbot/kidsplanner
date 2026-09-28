@@ -393,6 +393,13 @@ enum ScreenTimeServiceError: LocalizedError {
         merge(try await api.forgetScreenTimeDevice(kidId: kidId, deviceId: deviceId))
     }
 
+    /// Moves a device to another kid; it follows that kid's Screen Time rules from its
+    /// next check-in. The server returns the source kid's (`kidId`) updated state.
+    func moveDevice(kidId: String, deviceId: String, toKidId: String) async throws {
+        merge(try await api.moveScreenTimeDevice(kidId: kidId, deviceId: deviceId, toKidId: toKidId))
+        await loadOverview()   // the other kid now lists the device too
+    }
+
     /// Coarse daily totals the kid's devices reported (newest date first).
     func usage(kidId: String, days: Int) async throws -> ScreenTimeUsage {
         try await api.screenTimeUsage(kidId: kidId, days: days)

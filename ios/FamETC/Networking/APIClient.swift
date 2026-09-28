@@ -809,6 +809,12 @@ extension APIClient {
         try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))", method: "DELETE")
     }
 
+    /// Parent: moves a device to another kid. 400 for a bad `toKidId`, 404 unknown kid/device.
+    func moveScreenTimeDevice(kidId: String, deviceId: String, toKidId: String) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))/move",
+                          method: "POST", body: ["toKidId": toKidId])
+    }
+
     /// Kid session: ask for extra `total` minutes today, paid in fams on approval.
     /// 409 when one is already pending or the balance is too low.
     func requestScreenTime(minutes: Int, date: String, note: String?) async throws -> ScreenTimeRequest {
