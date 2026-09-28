@@ -36,3 +36,8 @@ that test's clock so the full Node 24 gate is green again before deployment.
 Confirmed 2026-09-28 at deploy time for `38a5bc9`: the effective rules endpoint
 returns `[]`, `main` is `protected=false`, and the push-to-`main` CI run for
 `38a5bc9` passed the full Node 24 gate before the Hostinger build went live.
+
+Refreshed 2026-09-28 for the Screen Time false-positive fixes release
+(`0f5a876`): `main` remains `protected=false` and the effective rules endpoint
+returns `[]`. The push-to-`main` CI run for `0f5a876` passed the full
+Node 24 gate before the Hostinger build went live.
