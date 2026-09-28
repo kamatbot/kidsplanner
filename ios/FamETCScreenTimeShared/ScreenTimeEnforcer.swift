@@ -56,7 +56,13 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let pushToken = "fam_st_pushToken"
         static let appliedVersion = "fam_st_appliedVersion"
         static let lastMonitorAt = "fam_st_lastMonitorAt"
+        /// The kid this DEVICE currently belongs to (server-confirmed via enroll/heartbeat).
+        static let kidId = "fam_st_kidId"
+        static let kidName = "fam_st_kidName"
+        /// Legacy combined shield-reasons dict (migrated to per-store keys below, then removed).
         static let shieldReasons = "fam_st_shieldReasons"
+        static let shieldReasonPrefix = "fam_st_shieldReason."
+        static func shieldReason(_ store: String) -> String { shieldReasonPrefix + store }
         static let scheduleSignature = "fam_st_scheduleSignature"
         static let pauseSignature = "fam_st_pauseSignature"
         static let usageSelection = "fam_st_usageSelection"
@@ -143,6 +149,17 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     var appliedVersion: Int { defaults.integer(forKey: Key.appliedVersion) }
 
+    /// The kid this DEVICE currently belongs to (server-confirmed): read for the kid-side
+    /// "shared device" notice and to accept a moved device's policy unconditionally.
+    var storedKidId: String? {
+        get { defaults.string(forKey: Key.kidId) }
+        set { defaults.set(newValue, forKey: Key.kidId) }
+    }
+    var storedKidName: String? {
+        get { defaults.string(forKey: Key.kidName) }
+        set { defaults.set(newValue, forKey: Key.kidName) }
+    }
+
     // MARK: Usage (docs/SCREEN-TIME-PLAN.md "Usage details")
 
     /// Device-local "All Apps & Categories" pick (base64 selection), captured in setup so
@@ -203,8 +220,19 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         ids.forEach { defaults.removeObject(forKey: Key.limitEventAt($0)) }
     }
 
-    /// Store name → human reason, read by the shield configuration extension.
-    var shieldReasons: [String: String] { defaults.dictionary(forKey: Key.shieldReasons) as? [String: String] ?? [:] }
+    /// Store name → human reason, read by the shield configuration extension. One key per
+    /// store (`fam_st_shieldReason.<store>`) so a near-simultaneous write from the app and
+    /// the monitor extension on different stores can't drop each other's update (unlike a
+    /// single shared dict's read-modify-write) — docs/SCREEN-TIME-UX.md §5.
+    var shieldReasons: [String: String] {
+        migrateLegacyShieldReasonsIfNeeded()
+        var result: [String: String] = [:]
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(Key.shieldReasonPrefix) {
+            guard let reason = value as? String else { continue }
+            result[String(key.dropFirst(Key.shieldReasonPrefix.count))] = reason
+        }
+        return result
+    }
 
     /// Limit ids whose `limit.<id>` store has a shield reason recorded.
     private var shieldedLimitIds: Set<String> {
@@ -212,9 +240,16 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         return Set(shieldReasons.keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) })
     }
     private func setReason(_ reason: String?, for store: String) {
-        var r = shieldReasons
-        r[store] = reason
-        defaults.set(r, forKey: Key.shieldReasons)
+        let key = Key.shieldReason(store)
+        if let reason { defaults.set(reason, forKey: key) } else { defaults.removeObject(forKey: key) }
+    }
+
+    /// One-time: copies the old single shared dict into the new per-store keys, then
+    /// removes it. Cheap no-op on every call after the first (the legacy key is gone).
+    private func migrateLegacyShieldReasonsIfNeeded() {
+        guard let legacy = defaults.dictionary(forKey: Key.shieldReasons) as? [String: String] else { return }
+        for (store, reason) in legacy { defaults.set(reason, forKey: Key.shieldReason(store)) }
+        defaults.removeObject(forKey: Key.shieldReasons)
     }
 
     static var currentAuthState: ScreenTimeAuthState {
@@ -289,6 +324,19 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     // MARK: Guards (docs/SCREEN-TIME-UX.md §5 — shield only when the stored policy says so now)
+
+    /// Guards against a slower, older device response landing after a newer one and
+    /// overwriting `storedPolicy` with stale data (the app and the monitor extension both
+    /// heartbeat independently). True when there's nothing stored yet, `kidId` says the
+    /// device was just moved to a different kid (their policy versions are unrelated, so
+    /// always take the new kid's), or `incoming` is at least as new as what's stored —
+    /// every parent change bumps the version, so an equal version (e.g. a selection
+    /// upload's echo) is still accepted.
+    func shouldAccept(_ incoming: ScreenTimePolicy, kidId: String?) -> Bool {
+        guard let storedPolicy else { return true }
+        if let kidId, kidId != storedKidId { return true }
+        return incoming.version >= storedPolicy.version
+    }
 
     /// Removes every shield the stored policy doesn't justify right now; never adds one.
     /// Safe from the monitor extension. Runs after every device response, at every
@@ -391,7 +439,10 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// Idempotently enforce `policy`: re-registers DeviceActivity schedules only when
     /// the limits/downtime changed, then reconciles the downtime and pause shields.
-    func apply(_ policy: ScreenTimePolicy, now: Date = Date()) {
+    /// `kidId`, when known at the call site, lets `shouldAccept` recognize a device moved
+    /// to another kid; omitting it just falls back to the version check.
+    func apply(_ policy: ScreenTimePolicy, kidId: String? = nil, now: Date = Date()) {
+        guard shouldAccept(policy, kidId: kidId) else { return }
         let previousLimitIds = storedPolicy?.limits.map(\.id) ?? []
         storedPolicy = policy
         defer { defaults.set(policy.version, forKey: Key.appliedVersion) }
@@ -438,7 +489,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
         if let interval = ScreenTimeSchedule.pauseInterval(now: now, until: policy.pauseUntilDate) {
             shieldAll(.pause, reason: "Paused by a parent")
-            let pauseSig = policy.pauseUntil ?? ""
+            let pauseSig = Self.pauseSignature(pauseUntil: policy.pauseUntil)
             if pauseSig != defaults.string(forKey: Key.pauseSignature) || !registered.contains(.pause) {
                 center.stopMonitoring([.pause])
                 let cal = Calendar.current
@@ -470,7 +521,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         storedAgreement = nil
         storedRequests = nil
         [Key.scheduleSignature, Key.pauseSignature, Key.appliedVersion, Key.mode,
-         Key.registeredAt, Key.registeredTotalMinutes].forEach(defaults.removeObject(forKey:))
+         Key.registeredAt, Key.registeredTotalMinutes, Key.kidId, Key.kidName].forEach(defaults.removeObject(forKey:))
     }
 
     /// Registers the quarter-day heartbeat activities that aren't in `registered`.
@@ -542,6 +593,14 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         registerHeartbeats(center: center)
     }
 
+    /// The value stored in `pauseSignature`. Includes the time zone identifier so a time
+    /// zone change (travel, a DST database update) re-registers the one-shot pause
+    /// schedule even though `pauseUntil` itself — built from local `DateComponents` —
+    /// didn't change. Pure and internal so it's unit-testable without DeviceActivity.
+    static func pauseSignature(pauseUntil: String?, timeZone: TimeZone = .current) -> String {
+        "\(pauseUntil ?? "")|\(timeZone.identifier)"
+    }
+
     /// Stable hash of everything that shapes the DeviceActivity registration.
     private static func scheduleSignature(_ p: ScreenTimePolicy, usage: String?, now: Date) -> String {
         var text = ""
@@ -607,14 +666,18 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// Device request whose response is `{ policy, agreement }`: stores both (does not apply)
     /// and removes any shield the new policy no longer justifies — so a parent's "turn off"
-    /// clears the shields even from the extension or while authorization is revoked.
+    /// clears the shields even from the extension or while authorization is revoked. Skips
+    /// the store (and the reconcile) when `shouldAccept` says this reply is older than what's
+    /// already stored — a slower heartbeat racing a newer one must never win.
     private func policyRequest(_ path: String, method: String, body: [String: Any],
                                completion: @escaping (Result<ScreenTimePolicy, Error>) -> Void) {
         deviceRequest(path, method: method, body: body) { [weak self] (result: Result<ScreenTimePolicyResponse, Error>) in
-            if case .success(let r) = result, let self {
+            if case .success(let r) = result, let self, self.shouldAccept(r.policy, kidId: r.kidId) {
                 self.storedPolicy = r.policy
                 self.storedAgreement = r.agreement
                 if let requests = r.requests { self.storedRequests = requests }
+                if let kidId = r.kidId { self.storedKidId = kidId }
+                if let kidName = r.kidName { self.storedKidName = kidName }
                 self.reconcileShields()
             }
             completion(result.map(\.policy))

@@ -143,10 +143,43 @@ struct ScreenTimeKidCard: View {
 
     @ViewBuilder
     private func card(_ policy: ScreenTimePolicy) -> some View {
-        if policy.enabled {
+        if isSharedDeviceMismatch {
+            sharedDeviceNotice
+        } else if policy.enabled {
             content(policy)
         } else {
             offCard
+        }
+    }
+
+    /// This device is enrolled for a different kid than who's signed in — a shared iPad,
+    /// or moved without re-enrolling.
+    private var isSharedDeviceMismatch: Bool {
+        guard service.isEnrolled, let enrolledKidId = service.enrolledKidId else { return false }
+        return enrolledKidId != store.me?.kidId
+    }
+
+    /// A calm notice instead of the usual card, no button — only a parent can move the device.
+    private var sharedDeviceNotice: some View {
+        let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+        let whoPossessive = service.enrolledKidName.map { "\($0)'s" } ?? "another kid's"
+        return Card(padding: Space.lg) {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                HStack(alignment: .top) {
+                    MicroLabel(text: "Screen Time")
+                    Spacer()
+                    Image(systemName: "person.2")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Palette.frInk2)
+                        .accessibilityHidden(true)
+                }
+                Text("This \(device) follows \(whoPossessive) Screen Time rules. Ask a parent to move it to you.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("screen-time-kid-shared-device")
         }
     }
 

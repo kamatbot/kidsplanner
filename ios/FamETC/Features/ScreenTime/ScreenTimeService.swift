@@ -24,6 +24,10 @@ enum ScreenTimeServiceError: LocalizedError {
     var policy: ScreenTimePolicy?
     var lastSyncAt: Date?
     var lastError: String?
+    /// The kid this DEVICE is currently assigned to, server-confirmed (nil until a sync
+    /// has completed at least once). Used for the kid-side "shared device" notice.
+    var enrolledKidId: String?
+    var enrolledKidName: String?
     /// The kid's signed Screen Time deal (server copy). Before enrollment `/mine` supplies it.
     var agreement: ScreenTimeAgreement?
     /// Signed on this device but not saved yet (offline / server error). Retried on every sync.
@@ -120,6 +124,24 @@ enum ScreenTimeServiceError: LocalizedError {
         pendingAgreement = enforcer.pendingAgreement
         requests = Self.newestFirst(enforcer.storedRequests)
         hasUsageSelection = enforcer.usageSelection != nil
+        enrolledKidId = enforcer.storedKidId
+        enrolledKidName = enforcer.storedKidName
+    }
+
+    /// Apple's AuthorizationCenter loads `authorizationStatus` asynchronously: right after
+    /// launch or a background wake it can briefly read `.notDetermined` before the real
+    /// status arrives, which the server used to read as "turned off Screen Time". Waits
+    /// out that moment instead of reporting it.
+    static func settledAuthState(timeout: Duration = .seconds(3)) async -> ScreenTimeAuthState {
+        let first = ScreenTimeEnforcer.currentAuthState
+        guard first == .notDetermined else { return first }
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(200))
+            let state = ScreenTimeEnforcer.currentAuthState
+            if state != .notDetermined { return state }
+        }
+        return ScreenTimeEnforcer.currentAuthState
     }
 
     // MARK: Kid — authorization + enrollment
@@ -143,20 +165,25 @@ enum ScreenTimeServiceError: LocalizedError {
 
     /// Registers this device with the server using the kid's cookie session.
     func enroll() async throws {
-        authState = ScreenTimeEnforcer.currentAuthState
+        authState = await Self.settledAuthState()
         guard authState == .approved, let mode else {
             throw ScreenTimeServiceError.message("Turn on Screen Time access first.")
         }
         let label = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
         do {
-            let r = try await api.enrollScreenTimeDevice(label: label, mode: mode, authStatus: authState, pushToken: enforcer.pushToken)
+            let r = try await api.enrollScreenTimeDevice(label: label, mode: mode, authStatus: authState,
+                                                          pushToken: enforcer.pushToken, installKey: ScreenTimeInstallKey.value())
             enforcer.baseURL = Config.baseURL.absoluteString
             enforcer.saveCredentials(deviceId: r.deviceId, deviceSecret: r.deviceSecret)
-            enforcer.apply(r.policy)
+            enforcer.storedKidId = r.kidId
+            enforcer.storedKidName = r.kidName
+            enforcer.apply(r.policy, kidId: r.kidId)
             enforcer.storedAgreement = r.agreement
             isEnrolled = true
             policy = r.policy
             agreement = r.agreement
+            enrolledKidId = r.kidId
+            enrolledKidName = r.kidName
             lastSyncAt = Date()
             lastError = nil
             Self.scheduleRefresh()
@@ -190,10 +217,14 @@ enum ScreenTimeServiceError: LocalizedError {
     }
 
     private func performSync(source: String) async {
-        authState = ScreenTimeEnforcer.currentAuthState
+        // Only worth waiting out the momentary `.notDetermined` when there's a device
+        // enrolled to report it — don't slow down the common not-set-up-yet path.
+        authState = enforcer.isEnrolled ? await Self.settledAuthState() : ScreenTimeEnforcer.currentAuthState
         mode = enforcer.mode
         guard enforcer.isEnrolled else {
             isEnrolled = false
+            enrolledKidId = nil
+            enrolledKidName = nil
             // The extension saw a 401 (device forgotten): stop leftover schedules.
             if !DeviceActivityCenter().activities.isEmpty || enforcer.storedPolicy != nil {
                 enforcer.reset()
@@ -214,9 +245,14 @@ enum ScreenTimeServiceError: LocalizedError {
         do {
             let p = try await enforcer.heartbeat(source: source)
             if authState == .approved { enforcer.apply(p) }
-            policy = p
+            // What's actually enforced: `storedPolicy` only changes when the enforcer's own
+            // `shouldAccept` guard took this reply, so a stale/losing race never flashes
+            // through here even though it's what the network just returned.
+            policy = enforcer.storedPolicy ?? p
             agreement = enforcer.storedAgreement
             requests = Self.newestFirst(enforcer.storedRequests)
+            enrolledKidId = enforcer.storedKidId
+            enrolledKidName = enforcer.storedKidName
             lastSyncAt = Date()
             lastError = nil
             if let pending = pendingAgreement { try? await saveAgreement(pending) }
@@ -225,6 +261,8 @@ enum ScreenTimeServiceError: LocalizedError {
             isEnrolled = false
             policy = nil
             agreement = nil
+            enrolledKidId = nil
+            enrolledKidName = nil
             lastError = ScreenTimeDeviceError.unenrolled.localizedDescription
         } catch {
             // Offline: still enforce what we have (e.g. a policy the extension stored, pause expiry).
@@ -246,6 +284,12 @@ enum ScreenTimeServiceError: LocalizedError {
             .sink { [weak self] _ in Task { await self?.sync(source: "observer") } }
             .store(in: &observers)
         NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
+            .sink { [weak self] _ in Task { await self?.sync(source: "foreground") } }
+            .store(in: &observers)
+        // A pause is registered from local DateComponents (docs/SCREEN-TIME-UX.md §5); a
+        // time zone change alone (travel, a DST database update) needs a re-sync so it
+        // re-registers even though `policy.pauseUntil` itself didn't change.
+        NotificationCenter.default.publisher(for: Notification.Name.NSSystemTimeZoneDidChange)
             .sink { [weak self] _ in Task { await self?.sync(source: "foreground") } }
             .store(in: &observers)
         Self.scheduleRefresh()

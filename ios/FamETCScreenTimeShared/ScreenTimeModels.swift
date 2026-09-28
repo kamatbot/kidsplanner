@@ -117,6 +117,9 @@ struct ScreenTimePolicyResponse: Codable, Sendable {
     var agreement: ScreenTimeAgreement?
     /// Heartbeat + `/mine` only: the kid's last 10 requests.
     var requests: [ScreenTimeRequest]?
+    /// The kid this DEVICE belongs to (nil on older servers).
+    var kidId: String?
+    var kidName: String?
 }
 
 /// `POST /api/screen-time/device/enroll` response.
@@ -125,6 +128,9 @@ struct ScreenTimeEnrollResponse: Codable, Sendable {
     var deviceSecret: String
     var policy: ScreenTimePolicy
     var agreement: ScreenTimeAgreement?
+    /// The kid this DEVICE belongs to (nil on older servers).
+    var kidId: String?
+    var kidName: String?
 }
 
 // MARK: Our Screen Time Deal (docs/SCREEN-TIME-PLAN.md "Agreement JSON")

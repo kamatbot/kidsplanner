@@ -34,8 +34,16 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     /// Pause beats downtime beats limits; for limits, find the store that shields this token.
     private func subtitle(app: ApplicationToken? = nil, web: WebDomainToken? = nil, category: ActivityCategoryToken? = nil) -> String {
-        let reasons = UserDefaults(suiteName: "group.com.fametc.app.family-assistance")?
-            .dictionary(forKey: "fam_st_shieldReasons") as? [String: String] ?? [:]
+        // One key per store (`fam_st_shieldReason.<store>`, see ScreenTimeEnforcer.setReason)
+        // instead of one shared dict, so a near-simultaneous write from the app and the
+        // monitor extension on different stores can't drop each other's update. No shared
+        // model import here (kept dependency-free) — same prefix scan, done locally.
+        let prefix = "fam_st_shieldReason."
+        var reasons: [String: String] = [:]
+        for (key, value) in UserDefaults(suiteName: "group.com.fametc.app.family-assistance")?.dictionaryRepresentation() ?? [:]
+            where key.hasPrefix(prefix) {
+            if let reason = value as? String { reasons[String(key.dropFirst(prefix.count))] = reason }
+        }
         if reasons["pause"] != nil { return "Paused by a parent" }
         if reasons["downtime"] != nil { return "Downtime" }
         if let total = reasons["limit.total"] { return total }

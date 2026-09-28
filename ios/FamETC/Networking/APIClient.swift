@@ -841,9 +841,13 @@ extension APIClient {
     }
 
     /// Kid session (cookie). Returns the device credentials + device-projected policy.
-    func enrollScreenTimeDevice(label: String, mode: ScreenTimeMode, authStatus: ScreenTimeAuthState, pushToken: String?) async throws -> ScreenTimeEnrollResponse {
+    /// `installKey` (from `ScreenTimeInstallKey`) lets a reinstall on the same device
+    /// reuse its old device record instead of the server creating a ghost.
+    func enrollScreenTimeDevice(label: String, mode: ScreenTimeMode, authStatus: ScreenTimeAuthState, pushToken: String?,
+                                installKey: String? = nil) async throws -> ScreenTimeEnrollResponse {
         var body: [String: Any] = ["label": label, "mode": mode.rawValue, "authStatus": authStatus.rawValue]
         if let pushToken { body["pushToken"] = pushToken }
+        if let installKey { body["installKey"] = installKey }
         return try await request("/api/screen-time/device/enroll", method: "POST", body: body)
     }
 }
