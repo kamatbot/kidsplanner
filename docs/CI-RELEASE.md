@@ -32,3 +32,7 @@ enforcement guards, iPad full-screen UX): the branch listing reports `main`
 session (GitHub connector only). The push-to-`main` runs from `5ddee04` through
 `09a6396` failed on the date-dependent Hermes nav-badge test; this release pins
 that test's clock so the full Node 24 gate is green again before deployment.
+
+Confirmed 2026-09-28 at deploy time for `38a5bc9`: the effective rules endpoint
+returns `[]`, `main` is `protected=false`, and the push-to-`main` CI run for
+`38a5bc9` passed the full Node 24 gate before the Hostinger build went live.
