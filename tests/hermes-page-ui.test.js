@@ -137,6 +137,9 @@ test('the nav badge counts actionable open cards within 18h with no cap, and hid
   const c = {
     hermesMessages: [],
     document: { getElementById: (id) => store[id] || null },
+    // updateHermesBadge reads Date.now(); pin it to the fixtures' clock so the
+    // 18h window doesn't expire the cards once the real date moves on.
+    Date: class extends Date { static now() { return NOW; } },
   };
   vm.createContext(c);
   vm.runInContext(fn('hermesPendingItems') + fn('updateHermesBadge'), c);
