@@ -286,6 +286,13 @@ const server = http.createServer(async (req, res) => {
       appliedVersion: entry.policy.version, source: "app",
     });
     if (beat.error) return send(res, beat.status || 400, { error: beat.error });
+    // finishSetup: the kid also picked "All Apps & Categories" for the daily limit, as real
+    // setup does last — without it the parent correctly sees "Finish setup on their phone".
+    if (body.finishSetup && entry.policy.limits.some((l) => l.id === "total")) {
+      const picked = screenTime.uploadSelection({ fam: sessionFamily, kid: qaKid, entry, device }, "total",
+        { selection: "qa-all-apps", summary: { categories: 1 } });
+      if (picked.error) return send(res, picked.status || 400, { error: picked.error });
+    }
     const after = screenTime.kidState(sessionFamily, qaKid.id);
     const alert = denied ? after.alerts.find((a) => a.deviceId === device.id && a.type === "revoked") : null;
     if (denied && !alert) return send(res, 409, { error: "No alert was raised." });

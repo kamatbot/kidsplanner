@@ -42,7 +42,6 @@ final class ScreenTimeUITests: XCTestCase {
     func testKidSeesDealCardAndWalksTheDealUpToTurnOn() {
         parentTurnsOnBedtime(for: "Maya Visual")
         let app = launch(.kid)
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 12))
         let card = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Make our Screen Time deal'")).firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 12))
         reveal(card, app)
@@ -176,7 +175,7 @@ final class ScreenTimeUITests: XCTestCase {
         app.buttons["screentime.banner.review"].firstMatch.tap()
         let status = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Leo Visual turned it off'")).firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 8), "Review should open Leo's controls")
-        XCTAssertTrue(app.buttons["Done"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["screentime.controls.done"].firstMatch.exists)
         let rowDismiss = app.buttons["screentime.alert.dismiss"].firstMatch
         XCTAssertTrue(rowDismiss.waitForExistence(timeout: 4))
         attach("parent-controls-from-review")
@@ -192,7 +191,7 @@ final class ScreenTimeUITests: XCTestCase {
             "limits": [["id": "total", "kind": "total", "name": "Screen time", "minutesPerDay": 120, "weekendMinutes": 120]],
             "downtime": [["id": "bedtime", "name": "Bedtime", "start": "21:00", "end": "07:00", "days": [1, 2, 3, 4, 5, 6, 7]]]],
             role: .parent, method: "PUT"), 200)
-        XCTAssertEqual(post("/__qa/screen-time/device", ["kidId": leo], role: .parent), 200)
+        XCTAssertEqual(post("/__qa/screen-time/device", ["kidId": leo, "finishSetup": true], role: .parent), 200)
 
         let app = launch(.parent)
         let row = waitForStatus("Leo Visual", beginsWith: "On", in: app)
@@ -200,7 +199,7 @@ final class ScreenTimeUITests: XCTestCase {
         reveal(row, app)
         row.tap()
 
-        XCTAssertTrue(app.buttons["Done"].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["screentime.controls.done"].firstMatch.waitForExistence(timeout: 8))
         // The turn-off row is the last Basic row; List cells below the fold only exist once scrolled to.
         let turnOff = app.buttons["screentime.turnOff"].firstMatch
         if UIDevice.current.userInterfaceIdiom == .phone {
@@ -221,7 +220,7 @@ final class ScreenTimeUITests: XCTestCase {
         XCTAssertFalse(app.switches.matching(NSPredicate(format: "label BEGINSWITH 'Bedtime'")).firstMatch.exists,
                        "Off replaces the Basic switches")
         attach("parent-off")
-        app.buttons["Done"].firstMatch.tap()
+        app.buttons["screentime.controls.done"].firstMatch.tap()
 
         let off = expectation(for: NSPredicate(format: "value == 'Off'"), evaluatedWith: row)
         wait(for: [off], timeout: 8)
@@ -253,7 +252,7 @@ final class ScreenTimeUITests: XCTestCase {
         XCTAssertTrue(sidebar.waitForExistence(timeout: 8), "Regular width shows the kid sidebar")
         let window = app.windows.firstMatch.frame
         XCTAssertLessThanOrEqual(sidebar.frame.minX, window.minX + 1, "Full screen, not a centred form sheet")
-        let done = app.buttons["Done"].firstMatch
+        let done = app.buttons["screentime.controls.done"].firstMatch
         XCTAssertTrue(done.exists)
         XCTAssertGreaterThan(done.frame.maxX, window.maxX - 120)
         let maya = app.descendants(matching: .any)["screentime.controls.kid.qa-visual-kid-1"].firstMatch

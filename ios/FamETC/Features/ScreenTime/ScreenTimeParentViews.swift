@@ -604,7 +604,9 @@ struct ScreenTimeParentSheet: View {
             .navigationTitle(kid.map { "Screen Time for \($0.name)" } ?? "Screen Time")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.accessibilityIdentifier("screentime.controls.done")
+                }
             }
     }
 
