@@ -134,14 +134,15 @@ Parent (`requireAuth, requireParent, requireFamily`; kid must belong to family):
 - `POST /api/screen-time/kids/:kidId/alerts/ack` → kid state (acks all).
 - `POST /api/screen-time/kids/:kidId/alerts/:alertId/ack` → kid state (acks that one alert; idempotent). 404 when the id is not one of this kid's alerts.
 - `DELETE /api/screen-time/kids/:kidId/devices/:deviceId` → kid state (acks that device's alerts).
+- `POST /api/screen-time/kids/:kidId/devices/:deviceId/move` body `{ toKidId }` → kid state (the source kid's, like forget). Moves an enrolled device to another kid of the same family — its secret keeps working, it just starts pulling/reporting that kid's policy (fresh `appliedVersion: 0`). Pings the destination kid's devices.
 
 Kid session (`requireAuth, requireFamily`, role kid):
 - `GET  /api/screen-time/mine` → `{ policy }` (parent selection projection, no device).
-- `POST /api/screen-time/device/enroll` body `{ label, mode, authStatus, pushToken? }` → `{ deviceId, deviceSecret, policy }` (device projection). Only `mode` ∈ family|cooperative, only when `authStatus == approved`.
+- `POST /api/screen-time/device/enroll` body `{ label, mode, authStatus, pushToken?, installKey? }` → `{ deviceId, deviceSecret, policy, kidId, kidName }` (device projection plus the device's current kid). Only `mode` ∈ family|cooperative, only when `authStatus == approved`. `installKey` (optional, 16–128 chars `[A-Za-z0-9_-]`, kept in the Keychain so it survives a reinstall): enrolling again with the same key re-enrolls that device record in place (same id, fresh secret, re-picks apps) instead of leaving a "not checking in" ghost; if the key now belongs to a different kid of the family, the old record moves to the current kid.
 
 Device (header `Authorization: FamDevice <deviceSecret>`, no session — works from the monitor extension and in the background after cookies expire):
-- `POST /api/screen-time/device/heartbeat` body `{ authStatus, mode, appliedVersion, pushToken?, source }` (`source` ∈ app|foreground|observer|background|push|monitor) → `{ policy }` (device projection). Drives the revoked/restored/stale-recovery transitions above.
-- `PUT  /api/screen-time/device/limits/:limitId/selection` body `{ selection, summary }` → `{ policy }`. Stores a per-device selection and raises `selection_changed` when the summary changed.
+- `POST /api/screen-time/device/heartbeat` body `{ authStatus, mode, appliedVersion, pushToken?, source }` (`source` ∈ app|foreground|observer|background|push|monitor) → `{ policy, kidId, kidName }` (device projection plus the device's current kid). Drives the revoked/restored/stale-recovery transitions above. A `notDetermined` authStatus is never treated as tamper by itself: from `source == monitor` it never counts at all; from any other source it only revokes once it has persisted for 10 minutes (`AUTH_UNKNOWN_CONFIRM_MS`) — iOS can report it for a moment right after launch or a background wake before the real status loads.
+- `PUT  /api/screen-time/device/limits/:limitId/selection` body `{ selection, summary }` → `{ policy, kidId, kidName }`. Stores a per-device selection and raises `selection_changed` when the summary changed.
 Unknown/forgotten secret → 401.
 
 ### Pushes (`lib/fam-notifications.js`)

@@ -61,7 +61,7 @@ Alerts are parent-only. `raise()` on the server is the single choke point.
 
 | Type | Raised when | Never raised when | Auto-resolved | In banner? | Push |
 |---|---|---|---|---|---|
-| `revoked` | heartbeat `authStatus != approved` and device `state != revoked` | `!policy.enabled` (state still updated, silently) | next `approved` heartbeat acks it | yes, danger | yes |
+| `revoked` | heartbeat `authStatus == denied`; or `notDetermined` from a non-`monitor` source that has persisted ≥ 10 minutes; device `state != revoked` either way | `!policy.enabled` (state still updated, silently); `notDetermined` from `source == monitor`, or one that hasn't persisted 10 minutes yet, never counts | next `approved` heartbeat acks it | yes, danger | yes |
 | `removed` | sweep/sync ping returns "token gone" | `!policy.enabled`; no push token | next heartbeat acks it | yes, danger | yes |
 | `stale` | sweep: `state == ok` and `lastSeenAt` older than `SCREEN_TIME_STALE_HOURS` | `!policy.enabled` | next heartbeat acks it | yes, warning (fams) | yes |
 | `selection_changed` | device replaces its own earlier selection with different counts | `!policy.enabled`; first pick on a device | none | yes, info (violet) | yes |
