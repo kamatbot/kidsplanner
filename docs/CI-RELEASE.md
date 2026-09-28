@@ -41,3 +41,10 @@ Refreshed 2026-09-28 for the Screen Time false-positive fixes release
 (`0f5a876`): `main` remains `protected=false` and the effective rules endpoint
 returns `[]`. The push-to-`main` CI run for `0f5a876` passed the full
 Node 24 gate before the Hostinger build went live.
+
+Refreshed 2026-09-28 for the kid-set goals release (`878b200`): `main`
+remains `protected=false` and the effective rules endpoint returns `[]`.
+The push-to-`main` runs for `080f165` and `aa4d1e4` failed on a timing-
+dependent datastore-writer test; `878b200` makes that test wait for the
+writer instead of sleeping, and its full Node 24 gate passed before the
+Hostinger build went live.
