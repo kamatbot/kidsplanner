@@ -25,3 +25,10 @@ Refreshed 2026-09-27 for the own-name and first-launch recovery release
 (`27620bf`): `main` remains `protected=false` and the effective rules endpoint
 returns `[]`. The push-to-`main` CI run for `27620bf` passed the full Node 24
 gate before the Hostinger build went live.
+
+Refreshed 2026-09-28 for the Screen Time fixes release (off-state alerts,
+enforcement guards, iPad full-screen UX): the branch listing reports `main`
+`protected=false`; the effective-rules endpoint could not be read from this
+session (GitHub connector only). The push-to-`main` runs from `5ddee04` through
+`09a6396` failed on the date-dependent Hermes nav-badge test; this release pins
+that test's clock so the full Node 24 gate is green again before deployment.
