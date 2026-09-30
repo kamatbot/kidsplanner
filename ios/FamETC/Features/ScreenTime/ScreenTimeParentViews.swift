@@ -5,7 +5,7 @@ import FamilyControls
 // part of the sheet is two switches (Bedtime, Daily screen time), Pause and new
 // alerts, in plain words. Everything technical lives under Advanced.
 // Remote actions are best-effort, so delivery is always shown as Pending vs
-// Applied from each device's `appliedVersion`, never assumed from the server.
+// Confirmed from each device's registration health, never assumed from the server.
 // States, alerts, presentation and Off: docs/SCREEN-TIME-UX.md §1–§4, §6.
 
 // MARK: - Shared formatting
@@ -158,7 +158,7 @@ enum ScreenTimeFormat {
 /// docs/SCREEN-TIME-UX.md §1 (first match wins). Downtime, limit reached and pending
 /// delivery keep the "On" chip; the sheet shows them as sub-lines.
 enum ScreenTimeKidStatus: Equatable {
-    case notSetUp, off, waiting, finishSetup, family, cooperative, turnedOff(Date?), mayBeRemoved, notCheckingIn, paused(Date)
+    case notSetUp, off, waiting, finishSetup, family, cooperative, unverified, turnedOff(Date?), mayBeRemoved, notCheckingIn, paused(Date), pauseRequested(Date)
 
     init(state: ScreenTimeKidState?) {
         guard let state else { self = .notSetUp; return }
@@ -167,7 +167,7 @@ enum ScreenTimeKidStatus: Equatable {
         guard state.policy.enabled else { self = devices.isEmpty ? .notSetUp : .off; return }
         if devices.isEmpty { self = .waiting; return }
         let recent = ScreenTimeFormat.statusDevices(devices)
-        if recent.contains(where: { $0.state == "revoked" }) {
+        if recent.contains(where: { $0.state == "revoked" || $0.authStatus == "denied" }) {
             let at = state.alerts.filter { $0.type == "revoked" }
                 .compactMap { ScreenTimeFormat.date($0.at) }.max()
             self = .turnedOff(at)
@@ -176,7 +176,9 @@ enum ScreenTimeKidStatus: Equatable {
         if recent.contains(where: { $0.state == "removed" }) { self = .mayBeRemoved; return }
         if recent.contains(where: { $0.state == "stale" }) { self = .notCheckingIn; return }
         if ScreenTimeFormat.needsFinishSetup(state) { self = .finishSetup; return }
-        if let until = ScreenTimeFormat.pauseUntil(state.policy) { self = .paused(until); return }
+        let confirmed = !recent.isEmpty && recent.allSatisfy { ScreenTimeEssentialsPresentation.confirmed($0, policy: state.policy) }
+        if let until = ScreenTimeFormat.pauseUntil(state.policy) { self = confirmed ? .paused(until) : .pauseRequested(until); return }
+        if !confirmed { self = .unverified; return }
         self = devices.contains(where: \.isFamily) ? .family : .cooperative
     }
 
@@ -186,12 +188,12 @@ enum ScreenTimeKidStatus: Equatable {
         case .off: return "Off"
         case .waiting: return "Set up on their phone"
         case .finishSetup: return "Finish setup on their phone"
-        case .family: return "Protected · Family Sharing"
-        case .cooperative: return "On · without Family Sharing"
-        case .turnedOff(let at): return at.map { "Turned off · \(ScreenTimeFormat.moment($0))" } ?? "Turned off"
-        case .mayBeRemoved: return "May be removed"
-        case .notCheckingIn: return "Not checking in"
+        case .family, .cooperative: return "Rules confirmed"
+        case .unverified: return "Waiting to check device"
+        case .turnedOff: return "Access needs reconnecting"
+        case .mayBeRemoved, .notCheckingIn: return "Can't reach device"
         case .paused(let until): return "Paused until \(ScreenTimeFormat.moment(until))"
+        case .pauseRequested(let until): return "Pause requested until \(ScreenTimeFormat.moment(until))"
         }
     }
 
@@ -201,11 +203,10 @@ enum ScreenTimeKidStatus: Equatable {
     var colors: (ink: Color, soft: Color) {
         switch self {
         case .notSetUp, .off: return (Palette.frInk2, Palette.frCard2)
-        case .waiting, .finishSetup: return (Palette.frFamsInk, Palette.frFamsSoft)
+        case .waiting, .finishSetup, .unverified, .pauseRequested: return (Palette.frFamsInk, Palette.frFamsSoft)
         case .family: return (Palette.frD3Ink, Palette.frD3Soft)
         case .cooperative, .paused: return (Palette.frYouInk, Palette.frYouSoft)
-        case .turnedOff, .mayBeRemoved: return (Palette.frDanger, Palette.frDangerSoft)
-        case .notCheckingIn: return (Palette.frFamsInk, Palette.frFamsSoft)
+        case .turnedOff, .mayBeRemoved, .notCheckingIn: return (Palette.frFamsInk, Palette.frFamsSoft)
         }
     }
 }
@@ -227,7 +228,7 @@ struct ScreenTimeChip: View {
 }
 
 extension ScreenTimeDevice {
-    func applied(_ policy: ScreenTimePolicy) -> Bool { (appliedVersion ?? -1) >= policy.version }
+    func applied(_ policy: ScreenTimePolicy) -> Bool { ScreenTimeEssentialsPresentation.confirmed(self, policy: policy) }
 
     var isFamily: Bool { mode == ScreenTimeMode.family.rawValue }
 
@@ -236,7 +237,7 @@ extension ScreenTimeDevice {
     var modeMeaning: String {
         isFamily
             ? "Strong: your child can't remove Fam ETC or turn Screen Time access off."
-            : "Real limits, but your child could turn access off. If they do, you'll be alerted."
+            : "Access can be changed in this device's Settings. Fam ETC can notify you when a device reports a change."
     }
 }
 
@@ -250,6 +251,7 @@ struct ScreenTimeSummaryCard: View {
     private struct SheetKid: Identifiable { let id: String }
 
     var body: some View {
+        Group {
         if store.isParent, !store.kids.isEmpty {
             Card(padding: Space.lg) {
                 VStack(alignment: .leading, spacing: Space.sm) {
@@ -270,6 +272,8 @@ struct ScreenTimeSummaryCard: View {
             .onChange(of: store.me?.id) { _, _ in sheetKid = nil }
             .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { sheetKid = nil } }
         }
+        }
+        .modifier(ScreenTimeEssentialAppsDraftGuard())
     }
 
     private func row(_ kid: Kid) -> some View {
@@ -310,6 +314,7 @@ struct ScreenTimeSummaryCard: View {
 /// without declining it. "Review" always opens the parent controls for that kid.
 struct ScreenTimeAlertBanner: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Request ids whose banner the parent hid on this device (comma-separated, newest last).
     @AppStorage("fam_st_hiddenRequestBanner") private var hiddenRequestBanner = ""
     private var service: ScreenTimeService { .shared }
@@ -333,7 +338,7 @@ struct ScreenTimeAlertBanner: View {
                 if let request = requests.first { requestBanner(request, more: requests.count - 1) }
                 if let alert = alerts.first { alertBanner(alert, more: alerts.count - 1) }
             }
-            .animation(Motion.snappy, value: requests.map(\.id))
+            .animation(reduceMotion ? nil : Motion.snappy, value: requests.map(\.id))
         }
     }
 
@@ -413,7 +418,7 @@ struct ScreenTimeAlertBanner: View {
         .cardShadow()
         .padding(.horizontal, Space.md)
         .padding(.top, Space.sm)
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("screentime.banner.request")
     }
@@ -422,9 +427,7 @@ struct ScreenTimeAlertBanner: View {
         let tone: Color
         let icon: String
         switch alert.type {
-        case "revoked", "removed":
-            tone = Palette.frDanger; icon = "exclamationmark.shield.fill"
-        case "stale":
+        case "revoked", "removed", "stale", "check_needed":
             tone = Palette.frFamsInk; icon = "clock.badge.exclamationmark"
         default:
             tone = Palette.accent; icon = "hourglass"
@@ -437,7 +440,7 @@ struct ScreenTimeAlertBanner: View {
                 Task { await service.ackAlert(kidId: alert.kidId, alertId: alert.id) }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(alert.message)
+                Text(ScreenTimeEssentialsPresentation.neutralAlert(type: alert.type, kidName: name))
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
@@ -466,7 +469,7 @@ struct ScreenTimeAlertBanner: View {
         .cardShadow()
         .padding(.horizontal, Space.md)
         .padding(.top, Space.sm)
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("screentime.banner.alert")
     }
@@ -501,6 +504,7 @@ struct ScreenTimeParentSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var kidId: String
     @State private var draft = BasicDraft()
     @State private var baseline = BasicDraft()
@@ -511,6 +515,8 @@ struct ScreenTimeParentSheet: View {
     @State private var justSaved = false
     @State private var showAdvanced = false
     @State private var showHow = false
+    @State private var showProtectionDetails = false
+    @State private var showEssentialApps = false
     @State private var editingLimit: ScreenTimeLimit?
     @State private var editingDowntime: ScreenTimeDowntime?
     @State private var forgetting: ScreenTimeDevice?
@@ -520,7 +526,14 @@ struct ScreenTimeParentSheet: View {
     @State private var requestError: String?
     @State private var confirmTurnOff = false
     @State private var columns: NavigationSplitViewVisibility = .all
-    /// Today's coarse total from the kid's devices (nil until loaded / none reported).
+    @State private var checkingProtection = false
+    @State private var checkRequestedAt: Date?
+    @State private var deviceRefreshTask: Task<Void, Never>?
+    @State private var essentialAction: EssentialAction?
+    @State private var essentialBusy = false
+    @State private var essentialError: String?
+    @State private var usageError: String?
+    /// Today's device reports (nil until loaded / none reported).
     @State private var usageToday: ScreenTimeUsageDay?
     private var service: ScreenTimeService { .shared }
 
@@ -575,10 +588,18 @@ struct ScreenTimeParentSheet: View {
             }
         }
         // Swipe-down closes the compact sheet, except mid-save (covers ignore this).
-        .interactiveDismissDisabled(working || pausing)
+        .interactiveDismissDisabled(working || pausing || essentialBusy)
         .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
         .task(id: kidId) { await loadUsage() }
-        .onChange(of: kidId) { _, _ in error = nil; justSaved = false; requestError = nil }
+        .onChange(of: kidId) { _, _ in
+            deviceRefreshTask?.cancel(); deviceRefreshTask = nil
+            error = nil; justSaved = false; requestError = nil
+            checkRequestedAt = nil; essentialError = nil; essentialAction = nil
+            showProtectionDetails = false; showEssentialApps = false
+        }
+        .onChange(of: store.me?.id) { _, _ in deviceRefreshTask?.cancel(); dismiss() }
+        .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { deviceRefreshTask?.cancel(); dismiss() } }
+        .onDisappear { deviceRefreshTask?.cancel() }
         .sheet(isPresented: $showDeal) {
             if let deal = state?.agreement { ScreenTimeDealSheet(deal: deal, kidName: kidName) }
         }
@@ -665,8 +686,6 @@ struct ScreenTimeParentSheet: View {
                     }
                 }
             } else {
-                requestSection
-                statusSection
                 if let error { errorSection(error) }
                 if isOff {
                     offSection
@@ -676,6 +695,21 @@ struct ScreenTimeParentSheet: View {
                     saveSection
                     if devices.isEmpty { setupStepsSection }
                 }
+                statusSection
+                if !devices.isEmpty {
+                    protectionSection
+                    perDeviceUsageSection
+                    Section {
+                        Button(showEssentialApps ? "Hide essential apps" : "Manage essential apps") {
+                            showEssentialApps.toggle()
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    if ScreenTimeEssentialsPresentation.showEssentialApps(devices: devices, expanded: showEssentialApps) {
+                        essentialAppsSection
+                    }
+                }
+                requestSection
                 if isOn && !devices.isEmpty && hasRules { pauseSection }
                 if isOn { turnOffSection }
                 advancedToggle
@@ -715,6 +749,18 @@ struct ScreenTimeParentSheet: View {
         } message: { target in
             Text("It will follow \(target.toKid.name)'s Screen Time rules from its next check-in.")
         }
+        .confirmationDialog(essentialAction?.title ?? "Essential apps", isPresented: Binding(
+            get: { essentialAction != nil }, set: { if !$0 { essentialAction = nil } }
+        ), titleVisibility: .visible, presenting: essentialAction) { action in
+            Button(action.button, role: action.kind == .approve ? nil : .destructive) { performEssentialAction(action) }
+            Button("Cancel", role: .cancel) {}
+        } message: { action in
+            Text(action.kind == .approve
+                 ? "On \(kidName)'s \(action.device.label), open Essential apps and tap Review selected apps together before approving here. Counts don't identify the apps. These apps remain subject to daily limits and parent pauses."
+                 : action.kind == .decline
+                    ? "Decline this proposal? Any apps already approved are kept."
+                    : "Remove approved essential apps and any waiting proposal from this device? Bedtime and quiet time will include these apps once the device confirms the change.")
+        }
         .accessibilityIdentifier("screentime.controls")
     }
 
@@ -739,23 +785,26 @@ struct ScreenTimeParentSheet: View {
             return ("Saved. Now set it up on \(kidName)'s phone.", "iphone", Palette.frFamsInk)
         }
         let recent = ScreenTimeFormat.statusDevices(devices)
-        if recent.contains(where: { $0.state == "revoked" }) {
-            let at = state.alerts.filter { $0.type == "revoked" }.compactMap { ScreenTimeFormat.date($0.at) }.max()
-            return ("\(kidName) turned it off\(at.map { " — \(ScreenTimeFormat.moment($0))" } ?? "")", "exclamationmark.shield.fill", Palette.frDanger)
+        if recent.contains(where: { $0.state == "revoked" || $0.authStatus == "denied" }) {
+            return ("Access needs reconnecting on \(kidName)'s device", "arrow.clockwise", Palette.frFamsInk)
         }
         if let d = recent.first(where: { $0.state == "removed" }) {
-            return ("Fam ETC may have been removed from \(kidName)'s \(d.label)", "exclamationmark.shield.fill", Palette.frDanger)
+            return ("Can't reach \(kidName)'s \(d.label). It may be off or offline.", "clock", Palette.frFamsInk)
         }
         if let d = recent.first(where: { $0.state == "stale" }) {
-            return ("\(kidName)'s \(d.label) hasn't checked in since \(ScreenTimeFormat.checkIn(ScreenTimeFormat.date(d.lastSeenAt))). It may be off or offline.", "clock.badge.exclamationmark", Palette.frFamsInk)
+            return ("Can't reach \(kidName)'s \(d.label). It may be off or offline.", "clock", Palette.frFamsInk)
         }
         if ScreenTimeFormat.needsFinishSetup(state) {
             return ("Finish setup on \(kidName)'s phone", "iphone", Palette.frFamsInk)
         }
         if let until = ScreenTimeFormat.pauseUntil(state.policy) {
-            return ("Paused until \(ScreenTimeFormat.moment(until))", "pause.circle.fill", Palette.frYouInk)
+            let confirmed = devices.allSatisfy { $0.applied(state.policy) }
+            return ("\(confirmed ? "Pause confirmed" : "Pause requested") until \(ScreenTimeFormat.moment(until))", "pause.circle.fill", Palette.frYouInk)
         }
-        return ("On for \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))", "checkmark.shield.fill", Palette.green)
+        if devices.contains(where: { !$0.applied(state.policy) }) {
+            return ("Rules saved · waiting to check device", "clock.arrow.circlepath", Palette.frFamsInk)
+        }
+        return ("Rules confirmed on \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))", "checkmark.shield.fill", Palette.frD3Ink)
     }
 
     /// "Off. Bedtime 9:00 PM–7:00 AM and 2 h a day are saved."
@@ -787,21 +836,8 @@ struct ScreenTimeParentSheet: View {
         }) {
             lines.append(window.id == ScreenTimeFormat.bedtimeID ? "Bedtime now" : "\(window.name) now")
         }
-        if let reached = limitReachedToday {
-            if let usage = usageToday, let extra = usage.extraMinutes, extra > 0,
-               let minutes = usage.minutes, let limit = usage.limitMinutes, minutes < limit {
-                lines.append("Limit reached at \(ScreenTimeFormat.clock(reached)) · extra time given")
-            } else {
-                lines.append("Daily time used up at \(ScreenTimeFormat.clock(reached))")
-            }
-        }
+        // Usage and limit-reached evidence belong to each device, shown below.
         return lines
-    }
-
-    /// The earliest time a device reported today's daily limit as reached.
-    private var limitReachedToday: Date? {
-        guard let usage = usageToday, usage.date == ScreenTimeSchedule.dayString(Date()) else { return nil }
-        return (usage.devices ?? []).compactMap { ScreenTimeFormat.date($0.limitReachedAt) }.min()
     }
 
     private var statusSection: some View {
@@ -823,22 +859,16 @@ struct ScreenTimeParentSheet: View {
                     .foregroundStyle(Palette.textSecond)
                     .monospacedDigit()
             }
-            if let line = usageLine {
-                Label(line, systemImage: "chart.bar.fill")
-                    .font(Typography.label)
-                    .foregroundStyle(Palette.textSecond)
-                    .monospacedDigit()
-            }
             if hasRules { dealRow }
             if let state, ScreenTimeFormat.needsFinishSetup(state) {
-                Text("On \(kidName)'s phone, open Fam ETC, tap “Finish setup” on Today, then tap All Apps & Categories and Done.")
+                Text("On \(kidName)'s device, open Fam ETC, tap “Finish setup” on Today, and follow the steps together.")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
             }
             ForEach(unacked) { alert in
                 HStack(alignment: .center, spacing: Space.sm) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(alert.message)
+                        Text(ScreenTimeEssentialsPresentation.neutralAlert(type: alert.type, kidName: kidName))
                             .font(Typography.body)
                             .foregroundStyle(Palette.text)
                             .fixedSize(horizontal: false, vertical: true)
@@ -874,20 +904,260 @@ struct ScreenTimeParentSheet: View {
         }
     }
 
-    /// "Today: about 1 h 45 min of 2 h" — counted in 15-minute steps on the kid's devices.
-    private var usageLine: String? {
-        guard let usage = usageToday, usage.date == ScreenTimeSchedule.dayString(Date()),
-              let minutes = usage.minutes else { return nil }
-        let used = minutes == 0 ? "under 15 min" : "about \(ScreenTimeFormat.minutes(minutes))"
-        guard let limit = usage.limitMinutes else { return "Today: \(used)" }
-        return "Today: \(used) of \(ScreenTimeFormat.minutes(limit))"
-    }
-
     private func loadUsage() async {
         let id = kidId
+        let account = store.me?.id
         usageToday = nil
-        let today = try? await service.usage(kidId: id, days: 1).days.first
-        if id == kidId { usageToday = today }
+        usageError = nil
+        do {
+            let today = try await service.usage(kidId: id, days: 1).days.first
+            if id == kidId && account == store.me?.id { usageToday = today }
+        } catch {
+            if id == kidId && account == store.me?.id { usageError = "Usage couldn't load. Try again when you're online." }
+        }
+    }
+
+    private var protectionSection: some View {
+        Section {
+            ForEach(devices) { device in
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    Text(device.label).font(Typography.body.weight(.semibold))
+                    Text(ScreenTimeEssentialsPresentation.protection(device, policy: policy ?? .disabled, after: checkRequestedAt))
+                        .font(Typography.label.weight(.semibold))
+                        .foregroundStyle(ScreenTimeEssentialsPresentation.confirmed(device, policy: policy ?? .disabled, after: checkRequestedAt) ? Palette.frD3Ink : Palette.frFamsInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let action = ScreenTimeEssentialsPresentation.nextAction(device, policy: policy ?? .disabled, after: checkRequestedAt) {
+                        Text(action)
+                            .font(Typography.label).foregroundStyle(Palette.textSecond)
+                    }
+                }
+                .padding(.vertical, Space.xs)
+                .accessibilityElement(children: .combine)
+            }
+            Button {
+                requestProtectionCheck()
+            } label: {
+                HStack(spacing: Space.sm) {
+                    if checkingProtection { ProgressView() }
+                    Label(checkingProtection ? "Requesting check…" : "Check devices", systemImage: "arrow.clockwise")
+                }
+                .frame(minHeight: 44)
+            }
+            .disabled(checkingProtection)
+            .accessibilityIdentifier("screentime.protection.check")
+            if let requested = checkRequestedAt, let policy,
+               devices.contains(where: { !ScreenTimeEssentialsPresentation.confirmed($0, policy: policy, after: requested) }) {
+                Text("Check requested. Waiting for each device to respond. You can check again later.")
+                    .font(Typography.label).foregroundStyle(Palette.frFamsInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            DisclosureGroup("Details", isExpanded: $showProtectionDetails) {
+                ForEach(devices) { device in
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        Text(device.label).font(Typography.body.weight(.semibold))
+                        checklistLine("Screen Time access", verified: device.authStatus == "approved")
+                        checklistLine("Current rules registered", verified: device.applied(policy ?? .disabled))
+                        checklistLine("Usage selection ready", verified: device.health?.hasUsageSelection == true)
+                        if let health = device.health {
+                            Text("Activities: \(health.registeredActivities) of \(health.expectedActivities) registered")
+                                .font(Typography.caption).foregroundStyle(Palette.textSecond).monospacedDigit()
+                            Text("Device check \(ScreenTimeFormat.relative(ScreenTimeFormat.date(health.checkedAt)))")
+                                .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        }
+                    }
+                }
+                Text("Saving a rule does not confirm it is ready. Each device must report that the current rules registered successfully.")
+                    .font(Typography.caption).foregroundStyle(Palette.textSecond)
+            }
+            .accessibilityIdentifier("screentime.protection.details")
+        } header: { Text("Your child's devices") }
+    }
+
+    private func checklistLine(_ title: String, verified: Bool) -> some View {
+        Label("\(title) · \(verified ? "confirmed" : "needs check")", systemImage: verified ? "checkmark.circle" : "circle.dashed")
+            .font(Typography.label)
+            .foregroundStyle(verified ? Palette.frD3Ink : Palette.textSecond)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func requestProtectionCheck() {
+        guard !checkingProtection else { return }
+        let id = kidId
+        let account = store.me?.id
+        let requested = Date()
+        checkingProtection = true
+        error = nil
+        checkRequestedAt = requested
+        Task {
+            do {
+                try await service.checkProtection(kidId: id)
+                if id == kidId && account == store.me?.id {
+                    await loadUsage()
+                    refreshAwaitingDevices(after: requested)
+                }
+            } catch {
+                if id == kidId && account == store.me?.id {
+                    self.error = "Couldn't request a device check. \(error.localizedDescription)"
+                    checkRequestedAt = nil
+                }
+            }
+            checkingProtection = false
+        }
+    }
+
+    /// A short refresh window belongs only to an explicit save/check; waiting is persistent afterward.
+    private func refreshAwaitingDevices(after requested: Date) {
+        deviceRefreshTask?.cancel()
+        guard !devices.isEmpty else { return }
+        let id = kidId
+        let account = store.me?.id
+        deviceRefreshTask = Task { @MainActor in
+            for delay in [3, 6, 10] {
+                do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                guard !Task.isCancelled, id == kidId, account == store.me?.id, !store.needsAuth else { return }
+                await service.loadOverview()
+                guard !Task.isCancelled, id == kidId, account == store.me?.id else { return }
+                if let policy, !devices.isEmpty,
+                   devices.allSatisfy({ ScreenTimeEssentialsPresentation.confirmed($0, policy: policy, after: requested) }) {
+                    return
+                }
+            }
+        }
+    }
+
+    private var perDeviceUsageSection: some View {
+        Section {
+            ForEach(devices) { device in
+                let usage = usageToday?.date == ScreenTimeSchedule.dayString(Date())
+                    ? usageToday?.devices?.first(where: { $0.deviceId == device.id }) : nil
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(device.label).font(Typography.body.weight(.semibold))
+                    Text(ScreenTimeEssentialsPresentation.remaining(usage))
+                        .font(Typography.label).monospacedDigit()
+                    if let usage, let updated = ScreenTimeFormat.date(usage.updatedAt) {
+                        Text("Last report \(ScreenTimeFormat.moment(updated))")
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                    if let allowance = usage?.limitMinutes {
+                        Text("Reported daily allowance: \(ScreenTimeFormat.minutes(allowance)) on this device")
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                    if let reached = ScreenTimeFormat.date(usage?.limitReachedAt) {
+                        Text("Limit reached on this device at \(ScreenTimeFormat.moment(reached))")
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+            }
+            if let usageError {
+                Text(usageError).foregroundStyle(Palette.frDanger)
+                Button("Retry usage") { Task { await loadUsage() } }.frame(minHeight: 44)
+            }
+            if let policy, policy.enabled {
+                TimelineView(.everyMinute) { context in
+                    ScreenTimeNextAccessView(policy: policy, now: context.date)
+                }
+            }
+        } header: { Text("Time today, by device") }
+        footer: { Text("Approximate usage is reported in 15-minute steps. Each device has its own daily allowance. Essential app exceptions do not bypass daily limits.") }
+    }
+
+    private enum EssentialActionKind { case approve, decline, remove }
+    private struct EssentialAction: Identifiable {
+        let kind: EssentialActionKind
+        let device: ScreenTimeDevice
+        let requestId: String?
+        var id: String { device.id + (requestId ?? "remove") }
+        var title: String {
+            switch kind {
+            case .approve: return "Approve essential apps on \(device.label)?"
+            case .decline: return "Decline essential apps on \(device.label)?"
+            case .remove: return "Remove essential apps on \(device.label)?"
+            }
+        }
+        var button: String {
+            switch kind { case .approve: return "Approve apps we reviewed"; case .decline: return "Decline"; case .remove: return "Remove" }
+        }
+    }
+
+    private var essentialAppsSection: some View {
+        Section {
+            ForEach(devices) { device in
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    Text(device.label).font(Typography.body.weight(.semibold))
+                    Text("Approved: \(device.essentialApps?.summary.map { ScreenTimeFormat.summary($0) } ?? "No essential apps")")
+                        .font(Typography.label)
+                    if let pending = device.essentialApps?.pending {
+                        Text("Waiting for you: \(ScreenTimeFormat.summary(pending.summary))")
+                            .font(Typography.label.weight(.semibold)).foregroundStyle(Palette.frYouInk)
+                        Text("Requested \(ScreenTimeFormat.relative(ScreenTimeFormat.date(pending.requestedAt)))")
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        if let note = pending.note, !note.isEmpty {
+                            Text("“\(note)”").font(Typography.label).foregroundStyle(Palette.textSecond)
+                        }
+                        Text("On \(kidName)'s \(device.label), open Essential apps and tap Review selected apps together. Then approve here. Counts don't identify the apps.")
+                            .font(Typography.label).foregroundStyle(Palette.textSecond)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: Space.md) { essentialDecisionButtons(device, requestId: pending.id) }
+                            VStack(alignment: .leading, spacing: Space.sm) { essentialDecisionButtons(device, requestId: pending.id) }
+                        }
+                    }
+                    if device.essentialApps?.summary?.isEmpty == false || device.essentialApps?.pending != nil {
+                        Button("Remove essential apps", role: .destructive) {
+                            essentialAction = EssentialAction(kind: .remove, device: device, requestId: nil)
+                        }
+                        .frame(minHeight: 44).buttonStyle(.borderless)
+                        .disabled(essentialBusy)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, Space.xs)
+            }
+            if essentialBusy { HStack { ProgressView(); Text("Sending decision…") }.frame(minHeight: 44) }
+            if let essentialError {
+                Text(essentialError).foregroundStyle(Palette.frDanger)
+                Button("Refresh proposals") { Task { await service.loadOverview() } }.frame(minHeight: 44)
+            }
+            Text("Choose or replace a proposal in Fam ETC on your child's device: Today → See our deal → Essential apps.")
+                .font(Typography.label).foregroundStyle(Palette.textSecond)
+        } header: { Text("Essential apps") }
+        footer: { Text("Approved apps stay available during bedtime and quiet time only. Daily limits and a parent pause still apply. Approval is for this device's selection.") }
+    }
+
+    @ViewBuilder private func essentialDecisionButtons(_ device: ScreenTimeDevice, requestId: String) -> some View {
+        Button("Approve apps we reviewed") { essentialAction = EssentialAction(kind: .approve, device: device, requestId: requestId) }
+            .frame(minHeight: 44).buttonStyle(.borderless).disabled(essentialBusy)
+        Button("Decline", role: .destructive) { essentialAction = EssentialAction(kind: .decline, device: device, requestId: requestId) }
+            .frame(minHeight: 44).buttonStyle(.borderless).disabled(essentialBusy)
+    }
+
+    private func performEssentialAction(_ action: EssentialAction) {
+        guard !essentialBusy else { return }
+        if let requestId = action.requestId,
+           devices.first(where: { $0.id == action.device.id })?.essentialApps?.pending?.id != requestId {
+            essentialError = "This proposal changed. Review the current apps on your child's device before deciding."
+            return
+        }
+        let id = kidId
+        let account = store.me?.id
+        essentialBusy = true
+        essentialError = nil
+        Task {
+            do {
+                switch action.kind {
+                case .approve:
+                    if let requestId = action.requestId { try await service.approveEssentialApps(kidId: id, deviceId: action.device.id, requestId: requestId) }
+                case .decline:
+                    if let requestId = action.requestId { try await service.declineEssentialApps(kidId: id, deviceId: action.device.id, requestId: requestId) }
+                case .remove: try await service.removeEssentialApps(kidId: id, deviceId: action.device.id)
+                }
+            } catch {
+                if id == kidId && account == store.me?.id { essentialError = error.localizedDescription }
+                await service.loadOverview()
+            }
+            essentialBusy = false
+        }
     }
 
     // MARK: Basic — more time requests
@@ -1055,7 +1325,7 @@ struct ScreenTimeParentSheet: View {
             Toggle(isOn: $draft.bedtimeOn) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Bedtime").font(Typography.body.weight(.semibold))
-                    Text("No phone from \(ScreenTimeFormat.time(draft.bedStart)) to \(ScreenTimeFormat.time(draft.bedEnd))")
+                    Text("Apps pause from \(ScreenTimeFormat.time(draft.bedStart)) to \(ScreenTimeFormat.time(draft.bedEnd))")
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecond)
                         .monospacedDigit()
@@ -1144,6 +1414,7 @@ struct ScreenTimeParentSheet: View {
             try await save(limits: limits, downtime: downtime)
             Haptics.notify(.success)
             justSaved = true
+            refreshAwaitingDevices(after: Date())
         }
     }
 
@@ -1208,9 +1479,10 @@ struct ScreenTimeParentSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Space.xs)
             if !pending.isEmpty {
-                Button("Check") { Task { await service.loadOverview() } }
+                Button("Check") { requestProtectionCheck() }
                     .buttonStyle(.borderless)
                     .frame(minHeight: 44)
+                    .disabled(checkingProtection)
                     .accessibilityHint("Checks whether the change reached the device")
             }
         }
@@ -1322,14 +1594,15 @@ struct ScreenTimeParentSheet: View {
                 .foregroundStyle(pending.isEmpty ? Palette.green : Palette.frFamsInk)
                 .accessibilityHidden(true)
             Text(pending.isEmpty
-                 ? "Applied on \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))"
+                 ? "Confirmed on \(ScreenTimeFormat.deviceNames(devices, kidName: kidName))"
                  : "Pending on \(ScreenTimeFormat.deviceNames(pending, kidName: kidName))")
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: Space.xs)
             if !pending.isEmpty {
-                Button("Check") { Task { await service.loadOverview() } }
+                Button("Check") { requestProtectionCheck() }
                     .buttonStyle(.borderless)
                     .frame(minHeight: 44)
+                    .disabled(checkingProtection)
                     .accessibilityHint("Checks whether the change reached the device")
             }
         }
@@ -1344,7 +1617,7 @@ struct ScreenTimeParentSheet: View {
         Section {
             Button {
                 Haptics.selection()
-                withAnimation(Motion.snappy) { showAdvanced.toggle() }
+                withAnimation(reduceMotion ? nil : Motion.snappy) { showAdvanced.toggle() }
             } label: {
                 HStack {
                     Text("Advanced").font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
@@ -1437,7 +1710,7 @@ struct ScreenTimeParentSheet: View {
         } header: {
             Text("More quiet times")
         } footer: {
-            Text("Like Bedtime: all apps except phone calls pause. Set the days each one starts.")
+            Text("Like Bedtime: apps pause except phone calls and approved essential apps. Set the days each one starts. Daily limits and a parent pause still apply.")
         }
     }
 
@@ -1502,18 +1775,11 @@ struct ScreenTimeParentSheet: View {
         .accessibilityElement(children: .contain)
     }
 
-    @ViewBuilder
     private func deviceStateChip(_ device: ScreenTimeDevice) -> some View {
-        switch device.state {
-        case "revoked":
-            ScreenTimeChip(text: "Turned off", ink: Palette.frDanger, soft: Palette.frDangerSoft)
-        case "removed":
-            ScreenTimeChip(text: "May be removed", ink: Palette.frDanger, soft: Palette.frDangerSoft)
-        case "stale":
-            ScreenTimeChip(text: "Not checking in", ink: Palette.frFamsInk, soft: Palette.frFamsSoft)
-        default:
-            ScreenTimeChip(text: "On", ink: Palette.frD3Ink, soft: Palette.frD3Soft)
-        }
+        let confirmed = policy.map(device.applied) ?? false
+        return ScreenTimeChip(text: ScreenTimeEssentialsPresentation.protection(device, policy: policy ?? .disabled),
+                              ink: confirmed ? Palette.frD3Ink : Palette.frFamsInk,
+                              soft: confirmed ? Palette.frD3Soft : Palette.frFamsSoft)
     }
 
     private var alertHistorySection: some View {
@@ -1522,7 +1788,7 @@ struct ScreenTimeParentSheet: View {
         }
         return Section {
             if alerts.isEmpty {
-                Text("No alerts yet. You'll be told if Screen Time is turned off, a device stops checking in, or apps are changed on the device.")
+                Text("No reminders yet. Device-reported access and app changes appear here. After a day without a device check, we'll remind you to check it.")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
             }
@@ -1534,7 +1800,7 @@ struct ScreenTimeParentSheet: View {
                         .padding(.top, 6)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(alert.message)
+                        Text(ScreenTimeEssentialsPresentation.neutralAlert(type: alert.type, kidName: kidName))
                             .font(Typography.body.weight(alert.ackedAt == nil ? .semibold : .regular))
                             .foregroundStyle(Palette.text)
                         Text(ScreenTimeFormat.relative(ScreenTimeFormat.date(alert.at)))
@@ -1620,10 +1886,10 @@ struct ScreenTimeParentSheet: View {
                            "\(kidName)'s Apple Account is a child in your Family Sharing group, and a parent approves on their device. \(kidName) can't delete Fam ETC or turn Screen Time access off, and you can choose apps from this phone.")
                     howRow("Without Family Sharing",
                            "For devices set up without a child Apple Account. Limits and bedtime are real, but \(kidName) approves with their own Face ID and could turn access off in Settings or delete Fam ETC. Apps are chosen on \(kidName)'s device.")
-                    howRow("You'll be alerted when",
-                           "Screen Time is turned off, a device stops checking in for a day, Fam ETC may have been removed, apps in a limit are changed on the device, or protection comes back on.")
+                    howRow("Device reminders",
+                           "We'll tell you when the device reports an access or app-selection change. After a day without a device check, we'll remind you to check it. An offline device doesn't tell us what happened.")
                     howRow("Changes and pauses",
-                           "Changes are saved right away and reach each device when it next checks in. “Pending” means that device hasn't picked them up yet.")
+                           "Changes reach each device when it next checks in. Waiting means we don't yet have confirmation from that device.")
                 }
                 .padding(.vertical, Space.xs)
             }

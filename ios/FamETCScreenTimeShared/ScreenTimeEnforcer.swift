@@ -3,6 +3,7 @@ import CryptoKit
 import FamilyControls
 import ManagedSettings
 import DeviceActivity
+import Darwin
 
 extension ManagedSettingsStore.Name {
     static let downtime = Self(ScreenTimeSchedule.downtimeStore)
@@ -41,6 +42,35 @@ enum ScreenTimeDeviceError: LocalizedError {
 final class ScreenTimeEnforcer: @unchecked Sendable {
     static let shared = ScreenTimeEnforcer()
     static let appGroup = "group.com.fametc.app.family-assistance"
+    private final class StateLock: @unchecked Sendable {
+        let process = NSRecursiveLock()
+        var depth = 0
+    }
+    private static let stateLock = StateLock()
+
+    /// The app and monitor can receive device responses at the same time. Check
+    /// and persist the generation under one App Group lock, so a losing response
+    /// cannot pass its guard just before the newer assignment is stored.
+    private func withStateLock<T>(_ work: () -> T) -> T {
+        let lock = Self.stateLock
+        lock.process.lock()
+        var descriptor: Int32 = -1
+        if lock.depth == 0 {
+            if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) {
+                descriptor = Darwin.open(container.appendingPathComponent("fam_st_state.lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+                if descriptor >= 0 { _ = flock(descriptor, LOCK_EX) }
+            }
+            defaults.synchronize()
+        }
+        lock.depth += 1
+        defer {
+            defaults.synchronize()
+            lock.depth -= 1
+            if descriptor >= 0 { _ = flock(descriptor, LOCK_UN); Darwin.close(descriptor) }
+            lock.process.unlock()
+        }
+        return work()
+    }
 
     private enum Key {
         static let policy = ScreenTimePolicy.storageKey
@@ -55,6 +85,10 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let baseURL = "fam_st_baseURL"
         static let pushToken = "fam_st_pushToken"
         static let appliedVersion = "fam_st_appliedVersion"
+        static let health = "fam_st_health"
+        static let assignmentGeneration = "fam_st_assignmentGeneration"
+        static let assignmentResetAt = "fam_st_assignmentResetAt"
+        static let usageRegistrationBase = "fam_st_usageRegistrationBase"
         static let lastMonitorAt = "fam_st_lastMonitorAt"
         /// The kid this DEVICE currently belongs to (server-confirmed via enroll/heartbeat).
         static let kidId = "fam_st_kidId"
@@ -148,6 +182,64 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     var appliedVersion: Int { defaults.integer(forKey: Key.appliedVersion) }
+    var deviceHealth: ScreenTimeDeviceHealth? {
+        get { decode(Key.health) }
+        set { encode(newValue, Key.health) }
+    }
+    var assignmentGeneration: Int { max(1, defaults.integer(forKey: Key.assignmentGeneration)) }
+
+    /// Assignment-scoped evidence must never be credited to the next child.
+    /// Credentials and enforced rules are device-owned and survive account sign-out.
+    func resetAssignmentEvidence() {
+        defaults.set(Date(), forKey: Key.assignmentResetAt)
+        forgetLimitEvents()
+        pendingAgreement = nil
+        storedAgreement = nil
+        storedRequests = nil
+        usageSelection = nil
+        [Key.usageRecord, Key.usageHeartbeatAt, Key.scheduleSignature, Key.pauseSignature,
+         Key.registeredAt, Key.registeredTotalMinutes, Key.health, Key.appliedVersion].forEach(defaults.removeObject(forKey:))
+        defaults.removeObject(forKey: Key.usageRegistrationBase)
+    }
+
+    @discardableResult
+    func acceptAssignment(kidId: String?, kidName: String?, generation: Int?) -> Bool {
+        withStateLock { acceptAssignmentUnlocked(kidId: kidId, kidName: kidName, generation: generation) }
+    }
+
+    private func acceptAssignmentUnlocked(kidId: String?, kidName: String?, generation: Int?) -> Bool {
+        guard ScreenTimeSchedule.acceptsAssignment(incoming: generation, current: assignmentGeneration) else { return false }
+        let next = generation ?? 1
+        if next > assignmentGeneration || (storedKidId != nil && kidId != nil && kidId != storedKidId) {
+            resetAssignmentEvidence()
+            storedPolicy = nil
+        }
+        defaults.set(next, forKey: Key.assignmentGeneration)
+        if let kidId { storedKidId = kidId }
+        if let kidName { storedKidName = kidName }
+        return true
+    }
+
+    @discardableResult
+    func installEnrollment(_ response: ScreenTimeEnrollResponse) -> Bool {
+        withStateLock {
+            guard ScreenTimeSchedule.acceptsEnrollment(incomingGeneration: response.assignmentGeneration,
+                                                        currentGeneration: assignmentGeneration,
+                                                        incomingDeviceId: response.deviceId, currentDeviceId: deviceId) else { return false }
+            if deviceId != response.deviceId {
+                resetAssignmentEvidence()
+                storedPolicy = nil
+                storedKidId = nil
+                storedKidName = nil
+                defaults.removeObject(forKey: Key.assignmentGeneration)
+            }
+            guard acceptAssignment(kidId: response.kidId, kidName: response.kidName, generation: response.assignmentGeneration) else { return false }
+            saveCredentials(deviceId: response.deviceId, deviceSecret: response.deviceSecret)
+            storedAgreement = response.agreement
+            apply(response.policy, kidId: response.kidId)
+            return true
+        }
+    }
 
     /// The kid this DEVICE currently belongs to (server-confirmed): read for the kid-side
     /// "shared device" notice and to accept a moved device's policy unconditionally.
@@ -185,9 +277,28 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     }
 
     func recordUsage(minutes: Int? = nil, limitReached: Bool = false, now: Date = Date()) {
+        withStateLock { recordUsageUnlocked(minutes: minutes, limitReached: limitReached, now: now) }
+    }
+
+    private func recordUsageUnlocked(minutes: Int?, limitReached: Bool, now: Date) {
+        if minutes != nil, !canAcceptAssignmentEvent(now: now) { return }
+        let context = ScreenTimeSchedule.registrationUsage(
+            assignmentResetAt: defaults.object(forKey: Key.assignmentResetAt) as? Date, now: now,
+            retained: decode(Key.usageRegistrationBase))
+        let counted = minutes.map { ScreenTimeSchedule.countedMilestone(minutes: $0, baseMinutes: context.baseMinutes) }
+        if let counted, !ScreenTimeSchedule.isPlausibleAssignmentUsage(
+            minutes: counted, assignmentResetAt: defaults.object(forKey: Key.assignmentResetAt) as? Date, now: now) { return }
         let at = limitReached ? ISO8601DateFormatter().string(from: now) : nil
         encode(ScreenTimeSchedule.mergeUsage(decode(Key.usageRecord), today: ScreenTimeSchedule.dayString(now),
-                                             minutes: minutes, limitReachedAt: at), Key.usageRecord)
+                                             minutes: counted, limitReachedAt: at), Key.usageRecord)
+    }
+
+    /// A move invalidates callbacks from registrations belonging to the previous
+    /// child. Count only after the app has registered the new assignment.
+    func canAcceptAssignmentEvent(now: Date = Date()) -> Bool {
+        guard let reset = defaults.object(forKey: Key.assignmentResetAt) as? Date else { return true }
+        guard let registeredAt, registeredAt >= reset else { return false }
+        return !ScreenTimeSchedule.isRegistrationEcho(now: now, registeredAt: registeredAt)
     }
 
     /// Milestones can fire in a burst (re-registration with `includesPastActivity`):
@@ -276,7 +387,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         SelectionSummary(apps: s.applicationTokens.count, categories: s.categoryTokens.count, webDomains: s.webDomainTokens.count)
     }
 
-    private static func isEmpty(_ s: FamilyActivitySelection) -> Bool {
+    static func isEmpty(_ s: FamilyActivitySelection) -> Bool {
         s.applicationTokens.isEmpty && s.categoryTokens.isEmpty && s.webDomainTokens.isEmpty
     }
 
@@ -284,9 +395,24 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     func shieldAll(_ name: ManagedSettingsStore.Name, reason: String) {
         let store = ManagedSettingsStore(named: name)
-        store.shield.applicationCategories = .all()
+        // ManagedSettings combines stores restrictively: this exception affects
+        // downtime only; daily limits and explicit pause still shield these apps.
+        let exceptions = name == .downtime ? approvedEssentialApplications() : []
+        store.shield.applications = nil
+        store.shield.applicationCategories = .all(except: exceptions)
         store.shield.webDomainCategories = .all()
         setReason(reason, for: name.rawValue)
+    }
+
+    func approvedEssentialApplications() -> Set<ApplicationToken> {
+        guard let selection = Self.decodeSelection(storedPolicy?.essentialApps?.selection),
+              Self.isValidEssentialSelection(selection) else { return [] }
+        return selection.applicationTokens
+    }
+
+    static func isValidEssentialSelection(_ selection: FamilyActivitySelection) -> Bool {
+        (1...50).contains(selection.applicationTokens.count)
+            && selection.categoryTokens.isEmpty && selection.webDomainTokens.isEmpty
     }
 
     func shieldLimit(id: String) {
@@ -332,9 +458,11 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// always take the new kid's), or `incoming` is at least as new as what's stored —
     /// every parent change bumps the version, so an equal version (e.g. a selection
     /// upload's echo) is still accepted.
-    func shouldAccept(_ incoming: ScreenTimePolicy, kidId: String?) -> Bool {
+    func shouldAccept(_ incoming: ScreenTimePolicy, kidId: String?, generation: Int? = nil) -> Bool {
+        guard ScreenTimeSchedule.acceptsAssignment(incoming: generation, current: assignmentGeneration) else { return false }
+        if let generation, generation > assignmentGeneration { return true }
         guard let storedPolicy else { return true }
-        if let kidId, kidId != storedKidId { return true }
+        if let kidId, kidId != storedKidId { return generation == nil && assignmentGeneration == 1 }
         return incoming.version >= storedPolicy.version
     }
 
@@ -385,6 +513,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// limit shields unless it's the registration burst. Returns true when the daily screen
     /// time was first reached today (the caller heartbeats).
     func limitEventDidFire(id: String, now: Date = Date()) -> Bool {
+        guard canAcceptAssignmentEvent(now: now) else { return false }
         guard isEnrolled, let policy = storedPolicy, policy.enabled,
               let limit = policy.limits.first(where: { $0.id == id }) else { return false }
         let threshold = ScreenTimeSchedule.minutes(for: limit, weekday: Calendar.current.component(.weekday, from: now),
@@ -442,12 +571,44 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// `kidId`, when known at the call site, lets `shouldAccept` recognize a device moved
     /// to another kid; omitting it just falls back to the version check.
     func apply(_ policy: ScreenTimePolicy, kidId: String? = nil, now: Date = Date()) {
-        guard shouldAccept(policy, kidId: kidId) else { return }
+        withStateLock { applyUnlocked(policy, kidId: kidId, now: now) }
+    }
+
+    private func applyUnlocked(_ policy: ScreenTimePolicy, kidId: String?, now: Date) {
+        guard shouldAccept(policy, kidId: kidId, generation: assignmentGeneration) else { return }
         let previousLimitIds = storedPolicy?.limits.map(\.id) ?? []
         storedPolicy = policy
-        defer { defaults.set(policy.version, forKey: Key.appliedVersion) }
-        reconcileShields(now: now)
         let center = DeviceActivityCenter()
+        var failures: [String] = []
+        if Self.currentAuthState != .approved { failures.append("authorization_unavailable") }
+        if let essential = policy.essentialApps?.selection,
+           Self.decodeSelection(essential).map(Self.isValidEssentialSelection) != true { failures.append("invalid_essential_selection") }
+        var expected = Set(ScreenTimeSchedule.heartbeatWindows().indices.map(DeviceActivityName.heartbeat))
+        defer {
+            let actual = Set(center.activities)
+            if !expected.isSubset(of: actual) { failures.append("missing_activities") }
+            if expected.contains(where: { center.schedule(for: $0) == nil }) { failures.append("missing_schedule") }
+            if policy.enabled {
+                let plan = registrationPlan(policy, now: now)
+                failures += plan.failures
+                if !plan.activities.allSatisfy({ center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events }) {
+                    failures.append("registration_mismatch")
+                    defaults.removeObject(forKey: Key.scheduleSignature)
+                }
+            }
+            let missingSelection = policy.enabled && (everythingSelection(policy) == nil || policy.limits.contains {
+                Self.decodeSelection($0.selection).map(Self.isEmpty) ?? true
+            })
+            let state = ScreenTimeSchedule.healthState(enabled: policy.enabled, failures: failures,
+                                                       missingSelection: missingSelection, registered: actual.intersection(expected).count)
+            deviceHealth = ScreenTimeDeviceHealth(policyVersion: policy.version, state: state,
+                                                  registeredActivities: actual.intersection(expected).count,
+                                                  expectedActivities: expected.count,
+                                                  hasUsageSelection: everythingSelection(policy) != nil,
+                                                  failures: Array(Set(failures)).sorted())
+            if state == "applied" || state == "off" { defaults.set(policy.version, forKey: Key.appliedVersion) }
+        }
+        reconcileShields(now: now)
         let registered = Set(center.activities)
 
         guard policy.enabled else {
@@ -455,7 +616,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             // Never pass [] — stopMonitoring([]) stops every activity.
             let stop = registered.filter { !$0.rawValue.hasPrefix("heartbeat.") }
             if !stop.isEmpty { center.stopMonitoring(Array(stop)) }
-            registerHeartbeats(center: center, skipping: registered)
+            failures += registerHeartbeats(center: center, skipping: registered)
             forgetLimitEvents(extraIds: previousLimitIds)
             clearAllStores(extraLimitIds: previousLimitIds)
             defaults.removeObject(forKey: Key.scheduleSignature)
@@ -470,14 +631,23 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         // the same weekday next week, but `decideTotalShield` still shields on time from
         // the milestones against the stored policy's allowance.
         let signature = Self.scheduleSignature(policy, usage: usageSelection, now: now)
-        if signature != defaults.string(forKey: Key.scheduleSignature) || !registered.contains(.day(1)) {
+        expected.formUnion((1...7).map(DeviceActivityName.day))
+        expected.formUnion(policy.downtime.prefix(4).map { .downtime($0.id) })
+        if policy.downtime.count > 4 { failures.append("too_many_downtime_windows") }
+        let desired = registrationPlan(policy, now: now)
+        let schedulesPresent = desired.failures.isEmpty && desired.activities.allSatisfy {
+            center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events
+        }
+        if signature != defaults.string(forKey: Key.scheduleSignature) || !schedulesPresent {
             let stop = registered.filter { $0 != .pause }
             if !stop.isEmpty { center.stopMonitoring(Array(stop)) }
             // Events recorded against the old thresholds no longer vouch for the new ones.
             forgetLimitEvents(extraIds: previousLimitIds)
             clearLimitStores(extraIds: previousLimitIds)
-            register(policy, center: center, now: now)
-            defaults.set(signature, forKey: Key.scheduleSignature)
+            failures += register(policy, center: center, now: now)
+            if failures.isEmpty && expected.isSubset(of: Set(center.activities)) {
+                defaults.set(signature, forKey: Key.scheduleSignature)
+            } else { defaults.removeObject(forKey: Key.scheduleSignature) }
         }
 
         // Same leeway as the monitor's downtime start, so an early shield isn't cleared here.
@@ -488,20 +658,22 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         }
 
         if let interval = ScreenTimeSchedule.pauseInterval(now: now, until: policy.pauseUntilDate) {
+            expected.insert(.pause)
             shieldAll(.pause, reason: "Paused by a parent")
             let pauseSig = Self.pauseSignature(pauseUntil: policy.pauseUntil)
-            if pauseSig != defaults.string(forKey: Key.pauseSignature) || !registered.contains(.pause) {
+            let cal = Calendar.current
+            let parts: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+            let schedule = DeviceActivitySchedule(intervalStart: cal.dateComponents(parts, from: interval.start),
+                                                  intervalEnd: cal.dateComponents(parts, from: interval.end), repeats: false)
+            if pauseSig != defaults.string(forKey: Key.pauseSignature)
+                || center.schedule(for: .pause)?.intervalEnd != schedule.intervalEnd {
                 center.stopMonitoring([.pause])
-                let cal = Calendar.current
-                let parts: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
-                let schedule = DeviceActivitySchedule(intervalStart: cal.dateComponents(parts, from: interval.start),
-                                                      intervalEnd: cal.dateComponents(parts, from: interval.end),
-                                                      repeats: false)
                 do {
                     try center.startMonitoring(.pause, during: schedule)
                     defaults.set(pauseSig, forKey: Key.pauseSignature)
                 } catch {
-                    print("[screentime] pause schedule failed: \(error.localizedDescription)")
+                    failures.append("pause_registration_failed")
+                    defaults.removeObject(forKey: Key.pauseSignature)
                 }
             }
         } else {
@@ -509,6 +681,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             if registered.contains(.pause) { center.stopMonitoring([.pause]) }
             defaults.removeObject(forKey: Key.pauseSignature)
         }
+        decideTotalShield(now: now)
     }
 
     /// Stops every schedule and removes all shields, credentials and the stored policy.
@@ -517,54 +690,67 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         forgetLimitEvents()
         clearAllStores()
         clearCredentials()
+        resetAssignmentEvidence()
         storedPolicy = nil
         storedAgreement = nil
         storedRequests = nil
         [Key.scheduleSignature, Key.pauseSignature, Key.appliedVersion, Key.mode,
-         Key.registeredAt, Key.registeredTotalMinutes, Key.kidId, Key.kidName].forEach(defaults.removeObject(forKey:))
+         Key.registeredAt, Key.registeredTotalMinutes, Key.kidId, Key.kidName, Key.assignmentGeneration,
+         Key.assignmentResetAt].forEach(defaults.removeObject(forKey:))
     }
 
     /// Registers the quarter-day heartbeat activities that aren't in `registered`.
-    private func registerHeartbeats(center: DeviceActivityCenter, skipping registered: Set<DeviceActivityName> = []) {
-        for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() where !registered.contains(.heartbeat(n)) {
+    private func registerHeartbeats(center: DeviceActivityCenter, skipping registered: Set<DeviceActivityName> = []) -> [String] {
+        var failures: [String] = []
+        for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() {
+            let schedule = DeviceActivitySchedule(intervalStart: w.start, intervalEnd: w.end, repeats: true)
+            if registered.contains(.heartbeat(n)), center.schedule(for: .heartbeat(n)) == schedule { continue }
             do {
-                try center.startMonitoring(.heartbeat(n), during: DeviceActivitySchedule(intervalStart: w.start,
-                                                                                         intervalEnd: w.end, repeats: true))
+                try center.startMonitoring(.heartbeat(n), during: schedule)
             } catch {
-                print("[screentime] heartbeat.\(n) schedule failed: \(error.localizedDescription)")
+                failures.append("heartbeat_registration_failed")
             }
         }
+        return failures
     }
 
-    private func register(_ policy: ScreenTimePolicy, center: DeviceActivityCenter, now: Date) {
+    private typealias Registration = (name: DeviceActivityName, schedule: DeviceActivitySchedule,
+                                     events: [DeviceActivityEvent.Name: DeviceActivityEvent])
+
+    private func registrationPlan(_ policy: ScreenTimePolicy, now: Date) -> (activities: [Registration], failures: [String]) {
+        var activities: [Registration] = []
+        var failures: [String] = []
         func start(_ name: DeviceActivityName, _ schedule: DeviceActivitySchedule,
                    events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]) {
-            do { try center.startMonitoring(name, during: schedule, events: events) }
-            catch { print("[screentime] \(name.rawValue) schedule failed: \(error.localizedDescription)") }
+            activities.append((name, schedule, events))
         }
 
         // DeviceActivity allows ~20 monitored activities per app (usage milestones are
         // events, not activities). Budget:
         // day.1…7 (7) + heartbeat.0…3 (4) + downtime (≤ 4, capped below) + pause (1) = 16.
         // Stamped before registering: the includesPastActivity burst follows immediately.
-        defaults.set(now, forKey: Key.registeredAt)
         let everything = everythingSelection(policy)
+        // Do not attribute the previous child's activity earlier in this device's
+        // current interval to a newly assigned child.
+        let usageContext = ScreenTimeSchedule.registrationUsage(
+            assignmentResetAt: defaults.object(forKey: Key.assignmentResetAt) as? Date, now: now,
+            retained: decode(Key.usageRegistrationBase))
         let selections = policy.limits.compactMap { l -> (ScreenTimeLimit, FamilyActivitySelection)? in
             guard let sel = Self.decodeSelection(l.selection), !Self.isEmpty(sel) else { return nil }
             return (l, sel)
         }
-        var totalMinutes: [String: Int] = [:]
         for weekday in 1...7 {
+            let assignmentDay = weekday == Calendar.current.component(.weekday, from: now) && !usageContext.includesPastActivity
+            let includePast = !assignmentDay
             var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
             for (limit, sel) in selections {
                 let minutes = max(1, ScreenTimeSchedule.minutes(for: limit, weekday: weekday, bonus: policy.bonus, today: now))
-                if limit.isTotal { totalMinutes[String(weekday)] = minutes }
                 events[DeviceActivityEvent.Name("limit.\(limit.id)")] = DeviceActivityEvent(
                     applications: sel.applicationTokens,
                     categories: sel.categoryTokens,
                     webDomains: sel.webDomainTokens,
                     threshold: DateComponents(hour: minutes / 60, minute: minutes % 60),
-                    includesPastActivity: true)
+                    includesPastActivity: includePast)
             }
             // Coarse usage: one event per 15 minutes over "everything" (only events are
             // added, so the activity count is unchanged).
@@ -575,22 +761,47 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                         categories: everything.categoryTokens,
                         webDomains: everything.webDomainTokens,
                         threshold: DateComponents(hour: m / 60, minute: m % 60),
-                        includesPastActivity: true)
+                        includesPastActivity: includePast)
                 }
             }
             start(.day(weekday), DeviceActivitySchedule(intervalStart: DateComponents(hour: 0, minute: 0, weekday: weekday),
                                                         intervalEnd: DateComponents(hour: 23, minute: 59, weekday: weekday),
                                                         repeats: true), events: events)
         }
-        defaults.set(totalMinutes, forKey: Key.registeredTotalMinutes)
 
         for dt in policy.downtime.prefix(4) {
             guard let s = ScreenTimeSchedule.parseTime(dt.start), let e = ScreenTimeSchedule.parseTime(dt.end),
-                  ScreenTimeSchedule.durationMinutes(start: s, end: e) >= 15, !dt.days.isEmpty else { continue }
+                  ScreenTimeSchedule.durationMinutes(start: s, end: e) >= 15, !dt.days.isEmpty,
+                  dt.days.allSatisfy({ (1...7).contains($0) }) else {
+                failures.append("invalid_downtime_schedule"); continue
+            }
             start(.downtime(dt.id), DeviceActivitySchedule(intervalStart: s, intervalEnd: e, repeats: true))
         }
 
-        registerHeartbeats(center: center)
+        for (n, window) in ScreenTimeSchedule.heartbeatWindows().enumerated() {
+            start(.heartbeat(n), DeviceActivitySchedule(intervalStart: window.start, intervalEnd: window.end, repeats: true))
+        }
+        return (activities, failures)
+    }
+
+    private func register(_ policy: ScreenTimePolicy, center: DeviceActivityCenter, now: Date) -> [String] {
+        let context = ScreenTimeSchedule.registrationUsage(
+            assignmentResetAt: defaults.object(forKey: Key.assignmentResetAt) as? Date, now: now, retained: todayUsage(now: now))
+        encode(ScreenTimeUsageRecord(date: ScreenTimeSchedule.dayString(now), minutes: context.baseMinutes), Key.usageRegistrationBase)
+        let plan = registrationPlan(policy, now: now)
+        var failures = plan.failures
+        defaults.set(now, forKey: Key.registeredAt)
+        var totalMinutes: [String: Int] = [:]
+        for activity in plan.activities {
+            do { try center.startMonitoring(activity.name, during: activity.schedule, events: activity.events) }
+            catch { failures.append("activity_registration_failed") }
+            if let event = activity.events[DeviceActivityEvent.Name("limit.total")],
+               let weekday = activity.schedule.intervalStart.weekday {
+                totalMinutes[String(weekday)] = (event.threshold.hour ?? 0) * 60 + (event.threshold.minute ?? 0)
+            }
+        }
+        defaults.set(totalMinutes, forKey: Key.registeredTotalMinutes)
+        return failures
     }
 
     /// The value stored in `pauseSignature`. Includes the time zone identifier so a time
@@ -603,7 +814,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// Stable hash of everything that shapes the DeviceActivity registration.
     private static func scheduleSignature(_ p: ScreenTimePolicy, usage: String?, now: Date) -> String {
-        var text = ""
+        var text = "TZ|\(TimeZone.current.identifier)\n"
         if let usage { text += "U|\(usage)\n" }
         if let extra = ScreenTimeSchedule.activeBonus(p.bonus, today: now) {
             text += "B|\(ScreenTimeSchedule.dayString(now))|\(extra)\n"
@@ -615,19 +826,57 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     // MARK: Device HTTP (works from the extension; no cookies)
 
+    /// Read-only verification for app and extension heartbeats. Never stamp a
+    /// cached successful apply as fresh if the OS no longer has its schedules.
+    /// An extension cannot verify a newer unapplied policy, so it omits health.
+    private func validatedHeartbeatHealth(now: Date = Date()) -> ScreenTimeDeviceHealth? {
+        guard let policy = storedPolicy, var health = deviceHealth, health.policyVersion == policy.version else { return nil }
+        let center = DeviceActivityCenter()
+        let plan = registrationPlan(policy, now: now)
+        let activities = policy.enabled ? plan.activities : plan.activities.filter { $0.name.rawValue.hasPrefix("heartbeat.") }
+        var expected = Set(activities.map(\.name))
+        var failures = health.failures
+        if policy.enabled { failures += plan.failures }
+        if !activities.allSatisfy({ center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events }) {
+            failures.append("registration_mismatch")
+        }
+        if policy.enabled, let interval = ScreenTimeSchedule.pauseInterval(now: now, until: policy.pauseUntilDate) {
+            expected.insert(.pause)
+            let parts: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+            if center.schedule(for: .pause)?.intervalEnd != Calendar.current.dateComponents(parts, from: interval.end) {
+                failures.append("pause_registration_mismatch")
+            }
+        }
+        if Self.currentAuthState != .approved { failures.append("authorization_unavailable") }
+        let registered = Set(center.activities).intersection(expected).count
+        health.registeredActivities = registered
+        health.expectedActivities = expected.count
+        health.failures = Array(Set(failures)).sorted()
+        if !health.failures.isEmpty {
+            health.state = ScreenTimeSchedule.healthState(enabled: policy.enabled, failures: health.failures,
+                                                         missingSelection: health.state == "needsSelection", registered: registered)
+        }
+        return health
+    }
+
     /// POST /api/screen-time/device/heartbeat. Stores (does not apply) the returned policy.
     func heartbeat(source: String, completion: @escaping (Result<ScreenTimePolicy, Error>) -> Void) {
+        withStateLock {
         var body: [String: Any] = [
             "authStatus": Self.currentAuthState.rawValue,
             "mode": mode?.rawValue ?? ScreenTimeMode.cooperative.rawValue,
             "appliedVersion": appliedVersion,
             "source": source,
+            "assignmentGeneration": assignmentGeneration,
         ]
+        if let health = validatedHeartbeatHealth(), let data = try? JSONEncoder().encode(health),
+           let json = try? JSONSerialization.jsonObject(with: data) { body["health"] = json }
         if let pushToken { body["pushToken"] = pushToken }
         if let u = todayUsage() {
             body["usage"] = ["date": u.date, "minutes": u.minutes, "limitReachedAt": u.limitReachedAt ?? NSNull()] as [String: Any]
         }
         policyRequest("/api/screen-time/device/heartbeat", method: "POST", body: body, completion: completion)
+        }
     }
 
     func heartbeat(source: String) async throws -> ScreenTimePolicy {
@@ -640,27 +889,46 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         let body: [String: Any] = [
             "selection": selection,
             "summary": ["apps": summary.apps, "categories": summary.categories, "webDomains": summary.webDomains],
+            "assignmentGeneration": assignmentGeneration,
         ]
         return try await withCheckedThrowingContinuation { c in
             policyRequest("/api/screen-time/device/limits/\(id)/selection", method: "PUT", body: body) { c.resume(with: $0) }
         }
     }
 
+    func uploadEssentialApps(selection: String, summary: SelectionSummary, note: String?) async throws -> ScreenTimePolicy {
+        var body: [String: Any] = ["selection": selection,
+                                  "summary": ["apps": summary.apps, "categories": summary.categories, "webDomains": summary.webDomains],
+                                  "assignmentGeneration": assignmentGeneration]
+        if let note { body["note"] = note }
+        return try await withCheckedThrowingContinuation { continuation in
+            policyRequest("/api/screen-time/device/essential-apps", method: "PUT", body: body) { continuation.resume(with: $0) }
+        }
+    }
+
     /// PUT /api/screen-time/device/agreement. The server stamps `signedAt` + `deviceId`.
     func uploadAgreement(_ a: ScreenTimeAgreement) async throws -> ScreenTimeAgreement {
+        let generation = assignmentGeneration
+        let identity = deviceId
         let r = a.rules
         let body: [String: Any] = [
             "kidPromises": a.kidPromises,
             "parentPromises": a.parentPromises,
             "kidStamp": a.kidStamp,
             "parentSigner": a.parentSigner,
+            "assignmentGeneration": generation,
             "rules": ["bedStart": r.bedStart ?? NSNull(), "bedEnd": r.bedEnd ?? NSNull(),
                       "school": r.school ?? NSNull(), "weekend": r.weekend ?? NSNull()] as [String: Any],
         ]
         let saved: ScreenTimeAgreementResponse = try await withCheckedThrowingContinuation { c in
             deviceRequest("/api/screen-time/device/agreement", method: "PUT", body: body) { c.resume(with: $0) }
         }
-        storedAgreement = saved.agreement
+        let accepted = withStateLock {
+            guard generation == assignmentGeneration, identity == deviceId else { return false }
+            storedAgreement = saved.agreement
+            return true
+        }
+        guard accepted else { throw CancellationError() }
         return saved.agreement
     }
 
@@ -671,16 +939,27 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// already stored — a slower heartbeat racing a newer one must never win.
     private func policyRequest(_ path: String, method: String, body: [String: Any],
                                completion: @escaping (Result<ScreenTimePolicy, Error>) -> Void) {
+        let requestSecret = deviceSecret
         deviceRequest(path, method: method, body: body) { [weak self] (result: Result<ScreenTimePolicyResponse, Error>) in
-            if case .success(let r) = result, let self, self.shouldAccept(r.policy, kidId: r.kidId) {
+            guard let self else { completion(.failure(CancellationError())); return }
+            self.withStateLock {
+            guard self.deviceSecret == requestSecret else { completion(.failure(CancellationError())); return }
+            if case .success(let r) = result, self.shouldAccept(r.policy, kidId: r.kidId, generation: r.assignmentGeneration) {
+                self.acceptAssignment(kidId: r.kidId, kidName: r.kidName, generation: r.assignmentGeneration)
                 self.storedPolicy = r.policy
-                self.storedAgreement = r.agreement
+                if let agreement = r.agreement { self.storedAgreement = agreement }
                 if let requests = r.requests { self.storedRequests = requests }
                 if let kidId = r.kidId { self.storedKidId = kidId }
                 if let kidName = r.kidName { self.storedKidName = kidName }
                 self.reconcileShields()
+                if self.shieldReasons[ScreenTimeSchedule.downtimeStore] != nil {
+                    self.shieldAll(.downtime, reason: "Downtime")
+                }
             }
-            completion(result.map(\.policy))
+            // Callers must apply only the accepted response; returning a losing
+            // assignment's policy would bypass the guard in a second apply call.
+            completion(result.map { [weak self] response in self?.storedPolicy ?? response.policy })
+            }
         }
     }
 
@@ -705,14 +984,17 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         let session = URLSession(configuration: .ephemeral)
         defer { session.finishTasksAndInvalidate() }
         session.dataTask(with: req) { [weak self] data, resp, error in
+            guard let self else { completion(.failure(CancellationError())); return }
+            self.withStateLock {
+            guard self.deviceSecret == secret else { completion(.failure(CancellationError())); return }
             if let error { completion(.failure(error)); return }
             guard let http = resp as? HTTPURLResponse, let data else { completion(.failure(ScreenTimeDeviceError.badResponse)); return }
             if http.statusCode == 401 {
                 // Forgotten device: drop shields + credentials. The app stops the
                 // DeviceActivity schedules on its next sync.
-                self?.clearAllStores()
-                self?.clearCredentials()
-                self?.storedPolicy = nil
+                self.clearAllStores()
+                self.clearCredentials()
+                self.storedPolicy = nil
                 completion(.failure(ScreenTimeDeviceError.unenrolled)); return
             }
             guard (200..<300).contains(http.statusCode) else {
@@ -723,6 +1005,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                 completion(.failure(ScreenTimeDeviceError.badResponse)); return
             }
             completion(.success(decoded))
+            }
         }.resume()
     }
 }

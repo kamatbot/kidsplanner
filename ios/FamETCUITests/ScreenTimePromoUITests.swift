@@ -41,13 +41,10 @@ final class ScreenTimePromoUITests: XCTestCase {
         open.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["screentime.welcome"].waitForExistence(timeout: 6))
-        let titles = ["Two simple rules", "A deal, not a lock", "Family Sharing or not", "Three easy steps"]
-        for (i, title) in titles.enumerated() {
-            waitHittable(app.staticTexts[title])
-            XCTAssertTrue(app.otherElements["Page \(i + 1) of 4"].exists || app.descendants(matching: .any)["Page \(i + 1) of 4"].exists)
-            attach("welcome-\(i + 1)")
-            if i < titles.count - 1 { app.buttons["Next"].tap() }
-        }
+        waitHittable(app.staticTexts["Set up Screen Time together"])
+        XCTAssertTrue(app.staticTexts["Rules are ready only when the child's device confirms them."].exists)
+        XCTAssertFalse(app.buttons["Next"].exists, "Setup starts directly from the single welcome screen")
+        attach("welcome-setup-entry")
         XCTAssertFalse(app.staticTexts.containing(NSPredicate(format:
             "label CONTAINS[c] 'token' OR label CONTAINS[c] 'authoriz' OR label CONTAINS[c] 'enroll' OR label CONTAINS[c] 'policy' OR label CONTAINS[c] 'cooperative' OR label CONTAINS[c] 'categor'"
         )).firstMatch.exists)

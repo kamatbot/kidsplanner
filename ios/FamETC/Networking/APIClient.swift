@@ -772,6 +772,19 @@ extension APIClient {
         try await request("/api/screen-time")
     }
 
+    func checkScreenTimeProtection(kidId: String) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/check", method: "POST", body: [:])
+    }
+
+    func decideScreenTimeEssentialApps(kidId: String, deviceId: String, requestId: String, approve: Bool) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))/essential-apps/\(approve ? "approve" : "decline")",
+                          method: "POST", body: ["requestId": requestId])
+    }
+
+    func removeScreenTimeEssentialApps(kidId: String, deviceId: String) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))/essential-apps", method: "DELETE")
+    }
+
     /// Parent. Limits without an id get one server-side; `selection: null` clears it.
     func saveScreenTimePolicy(kidId: String, enabled: Bool, limits: [ScreenTimeLimit], downtime: [ScreenTimeDowntime]) async throws -> ScreenTimeKidState {
         let limitBodies: [[String: Any]] = limits.map { l in

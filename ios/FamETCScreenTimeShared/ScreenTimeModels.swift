@@ -22,6 +22,32 @@ struct SelectionSummary: Codable, Hashable, Sendable {
     var isEmpty: Bool { apps + categories + webDomains == 0 }
 }
 
+/// Registration evidence, not proof that every app on the device was selected.
+struct ScreenTimeDeviceHealth: Codable, Hashable, Sendable {
+    var policyVersion: Int
+    var state: String
+    var registeredActivities: Int
+    var expectedActivities: Int
+    var hasUsageSelection: Bool
+    var failures: [String]
+    var checkedAt: String? = nil
+}
+
+struct ScreenTimeEssentialAppsPending: Codable, Hashable, Sendable {
+    var id: String
+    var summary: SelectionSummary
+    var note: String? = nil
+    var requestedAt: String? = nil
+}
+
+/// Only the approved selection can enter the downtime store. Pending proposals
+/// expose counts for review; they never expose or enable the proposed tokens.
+struct ScreenTimeEssentialApps: Codable, Hashable, Sendable {
+    var selection: String? = nil
+    var summary: SelectionSummary? = nil
+    var pending: ScreenTimeEssentialAppsPending? = nil
+}
+
 struct ScreenTimeLimit: Codable, Identifiable, Hashable, Sendable {
     /// Empty for a limit the parent is creating; the server assigns one.
     var id: String
@@ -61,6 +87,7 @@ struct ScreenTimePolicy: Codable, Hashable, Sendable {
     var downtime: [ScreenTimeDowntime]
     /// Extra `total` minutes a parent approved for one day ("More time for fams").
     var bonus: ScreenTimeBonus?
+    var essentialApps: ScreenTimeEssentialApps? = nil
 
     /// App Group key the enforcer stores the device's policy under (read by the report extension).
     static let storageKey = "fam_st_policy"
@@ -81,6 +108,9 @@ struct ScreenTimeDevice: Codable, Identifiable, Hashable, Sendable {
     var enrolledAt: String?
     /// ok | revoked | stale | removed
     var state: String
+    var health: ScreenTimeDeviceHealth? = nil
+    var assignmentGeneration: Int? = nil
+    var essentialApps: ScreenTimeEssentialApps? = nil
 }
 
 struct ScreenTimeAlert: Codable, Identifiable, Hashable, Sendable {
@@ -120,6 +150,7 @@ struct ScreenTimePolicyResponse: Codable, Sendable {
     /// The kid this DEVICE belongs to (nil on older servers).
     var kidId: String?
     var kidName: String?
+    var assignmentGeneration: Int? = nil
 }
 
 /// `POST /api/screen-time/device/enroll` response.
@@ -131,6 +162,7 @@ struct ScreenTimeEnrollResponse: Codable, Sendable {
     /// The kid this DEVICE belongs to (nil on older servers).
     var kidId: String?
     var kidName: String?
+    var assignmentGeneration: Int? = nil
 }
 
 // MARK: Our Screen Time Deal (docs/SCREEN-TIME-PLAN.md "Agreement JSON")
@@ -229,6 +261,9 @@ struct ScreenTimeUsageDevice: Codable, Hashable, Sendable {
     var label: String?
     var minutes: Int?
     var limitReachedAt: String?
+    var updatedAt: String? = nil
+    var limitMinutes: Int? = nil
+    var remainingMinutes: Int? = nil
 }
 
 /// One date in the parent usage response (newest first).

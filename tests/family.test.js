@@ -81,6 +81,26 @@ test("removeMember: cannot remove the last parent", () => {
   assert.ok(result.error);
 });
 
+test("removing a child purges only their Screen Time records after parent authorization", () => {
+  const parent = store.createUser("st-delete-parent@example.com", "Parent");
+  const outsider = store.createUser("st-delete-outsider@example.com", "Outsider");
+  const fam = family.createFamily(parent.id, "Screen Time deletion");
+  const kid = family.addKid(fam.id, parent.id, { name: "Remove" }).kid;
+  const sibling = family.addKid(fam.id, parent.id, { name: "Keep" }).kid;
+  const db = require("../lib/db");
+  const root = db.load();
+  root.screenTime ||= {};
+  root.screenTime[fam.id] = { kids: {
+    [kid.id]: { devices: [{ secretHash: "fixture-hash", essentialApps: { selection: "opaque" } }], usage: { today: {} }, agreement: { kidPromises: ["Read"] } },
+    [sibling.id]: { devices: [], usage: {} },
+  } };
+  assert.ok(family.removeKid(fam.id, outsider.id, kid.id).error);
+  assert.ok(root.screenTime[fam.id].kids[kid.id]);
+  assert.ok(!family.removeKid(fam.id, parent.id, kid.id).error);
+  assert.equal(root.screenTime[fam.id].kids[kid.id], undefined);
+  assert.ok(root.screenTime[fam.id].kids[sibling.id]);
+});
+
 test("removeMember: a parent can remove the other parent (block-equivalent control)", () => {
   const p1 = store.createUser("p10@example.com", "P10");
   const p2 = store.createUser("p11@example.com", "P11");

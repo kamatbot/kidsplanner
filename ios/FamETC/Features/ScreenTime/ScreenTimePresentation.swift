@@ -49,3 +49,38 @@ struct ScreenTimeControlsCover<Item: Identifiable, Controls: View>: ViewModifier
         )
     }
 }
+
+/// Both Today surfaces invalidate local review tokens on an account/assignment
+/// change, even while the proposal sheet is closed. Enforcement is untouched.
+struct ScreenTimeEssentialAppsDraftGuard: ViewModifier {
+    @Environment(AppStore.self) private var store
+    private var service: ScreenTimeService { .shared }
+
+    private var identity: ScreenTimeEssentialAppsReviewDraft.Identity? {
+        guard !store.needsAuth, !store.isParent, let accountId = store.me?.id,
+              let kidId = store.me?.kidId, kidId == service.enrolledKidId,
+              let deviceId = ScreenTimeEnforcer.shared.deviceId else { return nil }
+        return .init(deviceId: deviceId, assignmentGeneration: ScreenTimeEnforcer.shared.assignmentGeneration,
+                     kidId: kidId, accountId: accountId)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: identity, initial: true) { previous, current in
+                guard previous != nil || store.me != nil || store.needsAuth else { return }
+                ScreenTimeEssentialAppsReviewDraft.reconcileScope(identity: current, defaults: ScreenTimeEnforcer.shared.defaults)
+            }
+            .onChange(of: store.needsAuth) { _, needsAuth in
+                if needsAuth { ScreenTimeEssentialAppsReviewDraft.clear(defaults: ScreenTimeEnforcer.shared.defaults) }
+            }
+            .onChange(of: service.policy?.essentialApps?.pending?.id) { _, pendingId in
+                guard service.policy != nil else { return }
+                _ = ScreenTimeEssentialAppsReviewDraft.restore(identity: identity, pendingId: pendingId,
+                                                               defaults: ScreenTimeEnforcer.shared.defaults)
+            }
+            .onDisappear {
+                guard store.me != nil || store.needsAuth else { return }
+                ScreenTimeEssentialAppsReviewDraft.reconcileScope(identity: identity, defaults: ScreenTimeEnforcer.shared.defaults)
+            }
+    }
+}

@@ -1,5 +1,13 @@
 # CI and release gates
 
+Refreshed 2026-09-30 for the Screen Time essentials and truthful-status release:
+`main` remains `protected=false`; the effective-rules endpoint returns `[]`.
+The only active workflow remains the lightweight ready-PR lane and full Node 24
+push-to-`main` gate. Use the single push run for the frozen release commit;
+native build/distribution is owner-managed and excluded from the web archive.
+The exact release SHA, run and deployment receipts are recorded in the local
+task checkpoint after the gate completes.
+
 The workflow has two intentional lanes. A ready pull request runs only
 whitespace validation and `node --check` for changed JavaScript files; draft
 pull requests are skipped. It does not install dependencies or run `npm test`.

@@ -44,6 +44,7 @@ final class AppStore {
     var messagesByRoom: [String: [ChatMessage]] = [:]
     var me: User? {
         didSet {
+            ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
             if oldValue?.id != me?.id {
                 clearGoals()
                 notes = []
@@ -54,6 +55,7 @@ final class AppStore {
     }
     var family: Family? {
         didSet {
+            ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
             if oldValue?.id != family?.id {
                 clearGoals()
                 notes = []
@@ -111,7 +113,9 @@ final class AppStore {
     /// clears this the same way it consumes `pendingChatRoomId`.
     var pendingHermesOpen: HermesNudgeOpenTarget?
     var isRefreshing = false
-    var needsAuth = false
+    var needsAuth = false {
+        didSet { ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id) }
+    }
     var syncError: String?
     private var refreshRetries = 0
 

@@ -1,5 +1,64 @@
 # Screen Time — UX spec (states, alerts, presentation, enforcement)
 
+## Parent simplicity / truthful alerts — 2026-09-30 owner decisions
+
+This section supersedes earlier conflicting wording and first-run flow details.
+
+- The family agreement stays **required**. Simplify the screens around it;
+  retain at least one child promise, one parent promise and both confirmations.
+  Recovery may reuse an existing agreement, but may not bypass a missing one.
+- Replace the introductory tour with a single setup entry. Parent controls
+  prioritize bedtime, daily allowance and saving. Child-device handoff should
+  be explicit and resumable, without unsupported setup-time promises or claims
+  that the app automatically determines Apple-account setup.
+- Show one evidence-based status and next action per device. Technical
+  registration counts and troubleshooting belong under Details. Essential-app
+  proposals appear when relevant; advanced controls remain available.
+- Unknown authorization is never evidence of revoked access. A failed push
+  token is never evidence that an app was deleted. Permission loss does not
+  establish who caused it. All copy must remain neutral, including old alerts.
+- Restored authorization is not restored protection. Do not send a protection
+  success notification, or render a green On badge, while current registration
+  health is missing, partial, failed or awaiting the latest rules.
+- Send one neutral reminder after 24 hours of continuous uncertainty/offline
+  status, not repeated reminders on every sweep or after dismissal. Confirmed
+  recovery or the parent turning the feature off ends that episode. Delivery
+  is best-effort; no "right away" promise. Keep uncertainty visible in-app.
+- Approval says **Approve apps we reviewed**, with the exact child-device
+  review instruction. Counts are not app identities; pending proposals never
+  grant access.
+
+Owner requested source/build-only verification. No simulator/device execution
+or visual validation is authorized for this revision. Readiness must therefore
+distinguish passing code/build checks from still-unverified physical enforcement.
+
+## Essentials UX addendum — 2026-09-30
+
+These refinements take precedence over the original state table below:
+
+- Parent controls expose a per-device setup/health row and **Check protection**.
+  A sent check says awaiting device, not protected. Legacy, stale, partial,
+  failed and missing-selection states explain the next action. A confirmation
+  must match the current policy and have fresh device-reported health. A manual
+  pause is shown as requested until each device confirms the current rules.
+- Show approximate remaining minutes **on this device**, with last-report
+  time and the 15-minute reporting granularity. Missing/stale reports are not
+  zero usage. Multi-device totals are usage totals only, not a shared budget.
+  Next bedtime/end-time information uses the device's local calendar/timezone;
+  overlapping downtime windows must not promise access between restrictions.
+- Children can propose essential apps from their own device. The picker accepts
+  individual apps, not categories/websites. Waiting for approval survives a
+  refresh; a proposal never grants access. Parents review counts and the child's
+  optional note, verify actual apps together on the child's device, then approve
+  or decline that exact proposal. Existing approval can be removed. Explain
+  beside these controls: exceptions apply during bedtime/quiet time only;
+  daily limits and a parent pause still apply.
+- Keep these additions within existing native Screen Time controls/rules/usage
+  surfaces, using Family Rings tokens, system controls, accessible labels and
+  wrapping text. No new top-level navigation or web control surface is added.
+- Sign-out/account changes clear account-specific presentation and pending
+  asynchronous results without removing the device's enforced restrictions.
+
 Status: decided 2026-09-27 after the owner's real-device test ("turned off
 Screen Time — seems to be firing wrongly", "permanent modal on top … no way to
 dismiss it", kid and parent flows in "a small modal" on iPad). This spec is

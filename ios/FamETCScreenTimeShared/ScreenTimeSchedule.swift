@@ -1,5 +1,53 @@
 import Foundation
 
+// Pure guards shared with native tests. A legacy server cannot move a device
+// back after a generation-aware assignment has been observed.
+extension ScreenTimeSchedule {
+    static func acceptsAssignment(incoming: Int?, current: Int) -> Bool {
+        guard let incoming else { return current <= 1 }
+        return incoming >= max(1, current)
+    }
+
+    static func acceptsEnrollment(incomingGeneration: Int?, currentGeneration: Int,
+                                  incomingDeviceId: String, currentDeviceId: String?) -> Bool {
+        guard incomingDeviceId == currentDeviceId else { return (incomingGeneration ?? 1) >= 1 }
+        return acceptsAssignment(incoming: incomingGeneration, current: currentGeneration)
+    }
+
+    static func healthState(enabled: Bool, failures: [String], missingSelection: Bool, registered: Int) -> String {
+        if !failures.isEmpty { return registered == 0 ? "failed" : "partial" }
+        if !enabled { return "off" }
+        return missingSelection ? "needsSelection" : "applied"
+    }
+
+    /// Re-registering during the assignment day must exclude Apple's activity
+    /// from before the move. Only already-recorded post-assignment 15-minute
+    /// milestones can be carried forward; elapsed time is an upper bound.
+    static func registrationUsage(assignmentResetAt: Date?, now: Date, retained: ScreenTimeUsageRecord?,
+                                  calendar: Calendar = .current) -> (includesPastActivity: Bool, baseMinutes: Int) {
+        guard let reset = assignmentResetAt, calendar.isDate(reset, inSameDayAs: now) else { return (true, 0) }
+        guard let retained, retained.date == dayString(now, calendar: calendar),
+              retained.minutes >= 0, retained.minutes % 15 == 0,
+              isPlausibleAssignmentUsage(minutes: retained.minutes, assignmentResetAt: reset, now: now, calendar: calendar) else { return (false, 0) }
+        return (false, retained.minutes)
+    }
+
+    static func countedMilestone(minutes: Int, baseMinutes: Int) -> Int {
+        min(1440, max(0, minutes) + max(0, baseMinutes))
+    }
+
+    static func isPlausibleAssignmentUsage(minutes: Int, assignmentResetAt: Date?, now: Date,
+                                           calendar: Calendar = .current) -> Bool {
+        guard let reset = assignmentResetAt, calendar.isDate(reset, inSameDayAs: now) else { return true }
+        return minutes <= Int(max(0, now.timeIntervalSince(reset)) / 60)
+    }
+
+    static func needsHealthAcknowledgement(previous: ScreenTimeDeviceHealth?, current: ScreenTimeDeviceHealth?,
+                                            previousVersion: Int, currentVersion: Int) -> Bool {
+        previous != current || previousVersion != currentVersion
+    }
+}
+
 /// Pure schedule helpers for Screen Time enforcement. Foundation only (no
 /// FamilyControls/DeviceActivity) so they are unit-testable.
 enum ScreenTimeSchedule {

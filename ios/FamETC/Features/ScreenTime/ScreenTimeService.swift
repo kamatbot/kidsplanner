@@ -64,6 +64,9 @@ enum ScreenTimeServiceError: LocalizedError {
 
     /// A device-local "All Apps & Categories" pick exists (for usage milestones).
     var hasUsageSelection: Bool
+    var deviceHealth: ScreenTimeDeviceHealth?
+    /// Apple's opaque selection does not provide proof of whole-device coverage.
+    var usageCoverage: String { hasUsageSelection ? "selected" : "unavailable" }
 
     /// This device can't count its screen time yet: no "everything" selection (neither
     /// its `total` selection nor a local usage pick). Setup ends with that pick.
@@ -84,7 +87,7 @@ enum ScreenTimeServiceError: LocalizedError {
     }
 
     /// Alert types the app-wide banner may show (docs/SCREEN-TIME-UX.md §2).
-    nonisolated static let bannerAlertTypes: Set<String> = ["revoked", "removed", "stale", "selection_changed"]
+    nonisolated static let bannerAlertTypes: Set<String> = ["revoked", "removed", "stale", "check_needed", "selection_changed"]
     /// Alerts older than this never reach the banner (the server also expires them).
     nonisolated static let alertMaxAge: TimeInterval = 7 * 24 * 3600
 
@@ -114,18 +117,64 @@ enum ScreenTimeServiceError: LocalizedError {
     @ObservationIgnored private var observers: [AnyCancellable] = []
     /// Per-alert acks still in flight (their alerts stay hidden across an overview reload).
     @ObservationIgnored private var ackingAlertIds: Set<String> = []
+    @ObservationIgnored private var accountKey: String?
+    @ObservationIgnored private var accountKidId: String?
+    @ObservationIgnored private var accountGeneration = 0
 
     private init() {
         authState = ScreenTimeEnforcer.currentAuthState
         mode = enforcer.mode
         isEnrolled = enforcer.isEnrolled
+        policy = nil
+        agreement = nil
+        pendingAgreement = nil
+        hasUsageSelection = enforcer.usageSelection != nil
+        enrolledKidId = enforcer.storedKidId
+        enrolledKidName = enforcer.storedKidName
+        deviceHealth = nil
+    }
+
+    /// Clears account presentation and invalidates late responses. Local device
+    /// enforcement is deliberately retained across sign-out and account switches.
+    func accountChanged(user: User?, familyId: String?) {
+        let key = user.map { "\($0.id)|\($0.role ?? "parent")|\($0.kidId ?? "")|\(familyId ?? "")" }
+        guard key != accountKey else { return }
+        accountKey = key
+        accountKidId = user?.role == "kid" ? user?.kidId : nil
+        accountGeneration &+= 1
+        overview = nil
+        hiddenAlertIds = []
+        ackingAlertIds = []
+        policy = nil
+        agreement = nil
+        pendingAgreement = nil
+        requests = []
+        famsBalance = nil
+        lastError = nil
+        lastSyncAt = nil
+        deviceHealth = nil
+        publishDeviceState()
+    }
+
+    private func publishDeviceState() {
+        isEnrolled = enforcer.isEnrolled
+        enrolledKidId = enforcer.storedKidId
+        enrolledKidName = enforcer.storedKidName
+        hasUsageSelection = enforcer.everythingSelection(enforcer.storedPolicy) != nil
+        guard accountKidId != nil, accountKidId == enforcer.storedKidId else {
+            policy = nil
+            agreement = nil
+            pendingAgreement = nil
+            requests = []
+            famsBalance = nil
+            deviceHealth = nil
+            return
+        }
         policy = enforcer.storedPolicy
         agreement = enforcer.storedAgreement
         pendingAgreement = enforcer.pendingAgreement
         requests = Self.newestFirst(enforcer.storedRequests)
-        hasUsageSelection = enforcer.usageSelection != nil
-        enrolledKidId = enforcer.storedKidId
-        enrolledKidName = enforcer.storedKidName
+        deviceHealth = enforcer.deviceHealth
     }
 
     /// Apple's AuthorizationCenter loads `authorizationStatus` asynchronously: right after
@@ -149,13 +198,16 @@ enum ScreenTimeServiceError: LocalizedError {
     /// `.family` → Apple's `.child` authorization (a parent approves on this device);
     /// `.cooperative` → `.individual` (the device owner approves).
     func requestAuthorization(_ mode: ScreenTimeMode) async throws {
+        let generation = accountGeneration
         do {
             try await AuthorizationCenter.shared.requestAuthorization(for: mode == .family ? .child : .individual)
+            guard generation == accountGeneration else { throw CancellationError() }
             self.mode = mode
             enforcer.mode = mode
             authState = ScreenTimeEnforcer.currentAuthState
             lastError = nil
         } catch {
+            guard generation == accountGeneration else { throw CancellationError() }
             authState = ScreenTimeEnforcer.currentAuthState
             let message = Self.message(for: error, mode: mode)
             lastError = message
@@ -165,7 +217,9 @@ enum ScreenTimeServiceError: LocalizedError {
 
     /// Registers this device with the server using the kid's cookie session.
     func enroll() async throws {
+        let generation = accountGeneration
         authState = await Self.settledAuthState()
+        guard generation == accountGeneration else { throw CancellationError() }
         guard authState == .approved, let mode else {
             throw ScreenTimeServiceError.message("Turn on Screen Time access first.")
         }
@@ -173,12 +227,9 @@ enum ScreenTimeServiceError: LocalizedError {
         do {
             let r = try await api.enrollScreenTimeDevice(label: label, mode: mode, authStatus: authState,
                                                           pushToken: enforcer.pushToken, installKey: ScreenTimeInstallKey.value())
+            guard generation == accountGeneration else { throw CancellationError() }
             enforcer.baseURL = Config.baseURL.absoluteString
-            enforcer.saveCredentials(deviceId: r.deviceId, deviceSecret: r.deviceSecret)
-            enforcer.storedKidId = r.kidId
-            enforcer.storedKidName = r.kidName
-            enforcer.apply(r.policy, kidId: r.kidId)
-            enforcer.storedAgreement = r.agreement
+            guard enforcer.installEnrollment(r) else { throw CancellationError() }
             isEnrolled = true
             policy = r.policy
             agreement = r.agreement
@@ -186,8 +237,10 @@ enum ScreenTimeServiceError: LocalizedError {
             enrolledKidName = r.kidName
             lastSyncAt = Date()
             lastError = nil
+            publishDeviceState()
             Self.scheduleRefresh()
         } catch {
+            guard generation == accountGeneration else { throw CancellationError() }
             lastError = error.localizedDescription
             throw error
         }
@@ -217,6 +270,7 @@ enum ScreenTimeServiceError: LocalizedError {
     }
 
     private func performSync(source: String) async {
+        let generation = accountGeneration
         // Only worth waiting out the momentary `.notDetermined` when there's a device
         // enrolled to report it — don't slow down the common not-set-up-yet path.
         authState = enforcer.isEnrolled ? await Self.settledAuthState() : ScreenTimeEnforcer.currentAuthState
@@ -231,7 +285,9 @@ enum ScreenTimeServiceError: LocalizedError {
             }
             // Not set up yet: show the kid the parents' rules so the Today card can
             // offer "Set it up". Display only — nothing is enforced until enroll().
-            if let mine = try? await api.myScreenTime() {
+            let mine = accountKidId != nil ? try? await api.myScreenTime() : nil
+            guard generation == accountGeneration else { return }
+            if let mine {
                 policy = mine.policy
                 agreement = mine.agreement
                 if let r = mine.requests { requests = Self.newestFirst(r) }
@@ -243,21 +299,38 @@ enum ScreenTimeServiceError: LocalizedError {
         isEnrolled = true
         enforcer.baseURL = Config.baseURL.absoluteString
         do {
+            // A parent check must report this attempt's evidence, not revive a
+            // previously successful apply that would fail now.
+            if authState == .approved, let stored = enforcer.storedPolicy { enforcer.apply(stored) }
+            let sentHealth = enforcer.deviceHealth
+            let sentVersion = enforcer.appliedVersion
             let p = try await enforcer.heartbeat(source: source)
             if authState == .approved { enforcer.apply(p) }
+            if ScreenTimeSchedule.needsHealthAcknowledgement(previous: sentHealth, current: enforcer.deviceHealth,
+                                                              previousVersion: sentVersion, currentVersion: enforcer.appliedVersion) {
+                // One bounded acknowledgement. If this reply itself contains a
+                // newer policy, apply it and report on the next normal sync.
+                let latest = try await enforcer.heartbeat(source: source)
+                if authState == .approved { enforcer.apply(latest) }
+            }
+            guard generation == accountGeneration else { return }
             // What's actually enforced: `storedPolicy` only changes when the enforcer's own
             // `shouldAccept` guard took this reply, so a stale/losing race never flashes
             // through here even though it's what the network just returned.
-            policy = enforcer.storedPolicy ?? p
-            agreement = enforcer.storedAgreement
-            requests = Self.newestFirst(enforcer.storedRequests)
-            enrolledKidId = enforcer.storedKidId
-            enrolledKidName = enforcer.storedKidName
+            policy = nil
+            agreement = nil
+            pendingAgreement = nil
+            requests = []
+            publishDeviceState()
             lastSyncAt = Date()
             lastError = nil
             if let pending = pendingAgreement { try? await saveAgreement(pending) }
         } catch ScreenTimeDeviceError.unenrolled {
-            enforcer.reset()
+            // A fresh enrollment may have completed while this failed request
+            // resumed. An old 401 must never erase its new device credentials.
+            if !enforcer.isEnrolled { enforcer.reset() }
+            guard generation == accountGeneration else { return }
+            if enforcer.isEnrolled { publishDeviceState(); return }
             isEnrolled = false
             policy = nil
             agreement = nil
@@ -268,8 +341,9 @@ enum ScreenTimeServiceError: LocalizedError {
             // Offline: still enforce what we have (e.g. a policy the extension stored, pause expiry).
             if authState == .approved, let stored = enforcer.storedPolicy {
                 enforcer.apply(stored)
-                policy = stored
             }
+            guard generation == accountGeneration else { return }
+            publishDeviceState()
             lastError = error.localizedDescription
         }
     }
@@ -302,17 +376,24 @@ enum ScreenTimeServiceError: LocalizedError {
     }
 
     func saveDeviceSelection(limitId: String, selection: FamilyActivitySelection) async throws {
+        let generation = accountGeneration
+        guard accountKidId == enforcer.storedKidId, accountKidId != nil else { throw CancellationError() }
         guard let blob = Self.encode(selection) else {
             throw ScreenTimeServiceError.message("Couldn't save those apps. Try again.")
         }
         let p = try await enforcer.uploadSelection(limitId: limitId, selection: blob, summary: Self.summary(of: selection))
         if authState == .approved { enforcer.apply(p) }
-        policy = p
+        guard generation == accountGeneration else { throw CancellationError() }
+        publishDeviceState()
     }
 
     /// The setup's "All Apps & Categories" pick: kept on this device for usage
     /// milestones, and uploaded as this device's `total` selection when there's a daily limit.
     func saveAllAppsSelection(_ selection: FamilyActivitySelection) async throws {
+        guard accountKidId == enforcer.storedKidId, accountKidId != nil,
+              !ScreenTimeEnforcer.isEmpty(selection) else {
+            throw ScreenTimeServiceError.message("Choose the apps or categories to measure on this device.")
+        }
         guard let blob = Self.encode(selection) else {
             throw ScreenTimeServiceError.message("Couldn't save those apps. Try again.")
         }
@@ -323,6 +404,24 @@ enum ScreenTimeServiceError: LocalizedError {
         } else if authState == .approved, let p = enforcer.storedPolicy {
             enforcer.apply(p)
         }
+        publishDeviceState()
+    }
+
+    func proposeEssentialApps(selection: FamilyActivitySelection, note: String?) async throws {
+        let generation = accountGeneration
+        guard accountKidId == enforcer.storedKidId, accountKidId != nil else { throw CancellationError() }
+        guard ScreenTimeEnforcer.isValidEssentialSelection(selection), let blob = Self.encode(selection) else {
+            throw ScreenTimeServiceError.message("Choose 1–50 individual apps, without categories or websites.")
+        }
+        let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try await enforcer.uploadEssentialApps(selection: blob, summary: Self.summary(of: selection),
+                                                   note: trimmed?.isEmpty == false ? String(trimmed!.prefix(80)) : nil)
+        guard generation == accountGeneration else { throw CancellationError() }
+        publishDeviceState()
+    }
+
+    func checkThisDevice() async {
+        await sync(source: "app")
     }
 
     // MARK: Kid — our Screen Time deal
@@ -330,13 +429,19 @@ enum ScreenTimeServiceError: LocalizedError {
     /// Saves the signed deal (FamDevice PUT). The draft is kept on this device first,
     /// so a failed save never loses what the family signed; `sync` retries it.
     func saveAgreement(_ deal: ScreenTimeAgreement) async throws {
+        let generation = accountGeneration
+        let assignment = enforcer.assignmentGeneration
+        guard accountKidId == enforcer.storedKidId, accountKidId != nil else { throw CancellationError() }
         pendingAgreement = deal
         enforcer.pendingAgreement = deal
         do {
-            agreement = try await enforcer.uploadAgreement(deal)
+            let saved = try await enforcer.uploadAgreement(deal)
+            guard generation == accountGeneration, assignment == enforcer.assignmentGeneration else { throw CancellationError() }
+            agreement = saved
             pendingAgreement = nil
             enforcer.pendingAgreement = nil
         } catch {
+            guard generation == accountGeneration, assignment == enforcer.assignmentGeneration else { throw CancellationError() }
             lastError = error.localizedDescription
             throw error
         }
@@ -345,16 +450,19 @@ enum ScreenTimeServiceError: LocalizedError {
     // MARK: Kid — more time for fams
 
     func loadFamsBalance(kidId: String?) async {
+        let generation = accountGeneration
         guard let kidId else { return }
-        if let wallet = try? await api.famsWallet(kidId: kidId) { famsBalance = wallet.balance }
+        if let wallet = try? await api.famsWallet(kidId: kidId), generation == accountGeneration { famsBalance = wallet.balance }
     }
 
     /// Asks the grown-ups for `minutes` more today (dated with this device's local day).
     func requestMoreTime(minutes: Int, note: String?) async throws {
+        let generation = accountGeneration
         let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
         let r = try await api.requestScreenTime(minutes: minutes,
                                                 date: ScreenTimeSchedule.dayString(Date()),
                                                 note: trimmed?.isEmpty == false ? String(trimmed!.prefix(80)) : nil)
+        guard generation == accountGeneration else { throw CancellationError() }
         requests = [r] + requests.filter { $0.id != r.id }
         await sync(source: "app")
     }
@@ -388,12 +496,16 @@ enum ScreenTimeServiceError: LocalizedError {
     // MARK: Parent
 
     func loadOverview() async {
+        let generation = accountGeneration
         do {
-            overview = try await api.screenTimeOverview()
+            let fresh = try await api.screenTimeOverview()
+            guard generation == accountGeneration else { return }
+            overview = fresh
             // Dismissed alerts whose ack failed reappear now; in-flight ones stay hidden.
             hiddenAlertIds.formIntersection(ackingAlertIds)
             lastError = nil
         } catch {
+            guard generation == accountGeneration else { return }
             lastError = error.localizedDescription
         }
     }
@@ -402,51 +514,79 @@ enum ScreenTimeServiceError: LocalizedError {
         overview?.kids.first { $0.kidId == kidId }
     }
 
+    private func parentMutation(_ work: () async throws -> ScreenTimeKidState) async throws {
+        let generation = accountGeneration
+        let result = try await work()
+        guard generation == accountGeneration else { throw CancellationError() }
+        merge(result)
+    }
+
+    func checkProtection(kidId: String) async throws {
+        try await parentMutation { try await api.checkScreenTimeProtection(kidId: kidId) }
+    }
+
+    func approveEssentialApps(kidId: String, deviceId: String, requestId: String) async throws {
+        try await parentMutation { try await api.decideScreenTimeEssentialApps(kidId: kidId, deviceId: deviceId, requestId: requestId, approve: true) }
+    }
+
+    func declineEssentialApps(kidId: String, deviceId: String, requestId: String) async throws {
+        try await parentMutation { try await api.decideScreenTimeEssentialApps(kidId: kidId, deviceId: deviceId, requestId: requestId, approve: false) }
+    }
+
+    func removeEssentialApps(kidId: String, deviceId: String) async throws {
+        try await parentMutation { try await api.removeScreenTimeEssentialApps(kidId: kidId, deviceId: deviceId) }
+    }
+
     func savePolicy(kidId: String, enabled: Bool, limits: [ScreenTimeLimit], downtime: [ScreenTimeDowntime]) async throws {
-        merge(try await api.saveScreenTimePolicy(kidId: kidId, enabled: enabled, limits: limits, downtime: downtime))
+        try await parentMutation { try await api.saveScreenTimePolicy(kidId: kidId, enabled: enabled, limits: limits, downtime: downtime) }
     }
 
     func pause(kidId: String, minutes: Int) async throws {
-        merge(try await api.pauseScreenTime(kidId: kidId, minutes: minutes))
+        try await parentMutation { try await api.pauseScreenTime(kidId: kidId, minutes: minutes) }
     }
 
     func approveRequest(kidId: String, requestId: String) async throws {
-        merge(try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: true))
+        try await parentMutation { try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: true) }
     }
 
     func declineRequest(kidId: String, requestId: String) async throws {
-        merge(try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: false))
+        try await parentMutation { try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: false) }
     }
 
     func ackAlerts(kidId: String) async {
-        do { merge(try await api.ackScreenTimeAlerts(kidId: kidId)) }
-        catch { lastError = error.localizedDescription }
+        let generation = accountGeneration
+        do { try await parentMutation { try await api.ackScreenTimeAlerts(kidId: kidId) } }
+        catch { if generation == accountGeneration { lastError = error.localizedDescription } }
     }
 
     /// Dismisses one alert: hidden immediately, then acked on the server
     /// (`POST /api/screen-time/kids/:kidId/alerts/:alertId/ack`).
     func ackAlert(kidId: String, alertId: String) async {
+        let generation = accountGeneration
         hiddenAlertIds.insert(alertId)
         ackingAlertIds.insert(alertId)
         defer { ackingAlertIds.remove(alertId) }
-        do { merge(try await api.ackScreenTimeAlert(kidId: kidId, alertId: alertId)) }
-        catch { lastError = error.localizedDescription }
+        do { try await parentMutation { try await api.ackScreenTimeAlert(kidId: kidId, alertId: alertId) } }
+        catch { if generation == accountGeneration { lastError = error.localizedDescription } }
     }
 
     func forgetDevice(kidId: String, deviceId: String) async throws {
-        merge(try await api.forgetScreenTimeDevice(kidId: kidId, deviceId: deviceId))
+        try await parentMutation { try await api.forgetScreenTimeDevice(kidId: kidId, deviceId: deviceId) }
     }
 
     /// Moves a device to another kid; it follows that kid's Screen Time rules from its
     /// next check-in. The server returns the source kid's (`kidId`) updated state.
     func moveDevice(kidId: String, deviceId: String, toKidId: String) async throws {
-        merge(try await api.moveScreenTimeDevice(kidId: kidId, deviceId: deviceId, toKidId: toKidId))
+        try await parentMutation { try await api.moveScreenTimeDevice(kidId: kidId, deviceId: deviceId, toKidId: toKidId) }
         await loadOverview()   // the other kid now lists the device too
     }
 
     /// Coarse daily totals the kid's devices reported (newest date first).
     func usage(kidId: String, days: Int) async throws -> ScreenTimeUsage {
-        try await api.screenTimeUsage(kidId: kidId, days: days)
+        let generation = accountGeneration
+        let result = try await api.screenTimeUsage(kidId: kidId, days: days)
+        guard generation == accountGeneration else { throw CancellationError() }
+        return result
     }
 
     private func merge(_ state: ScreenTimeKidState) {
@@ -478,6 +618,8 @@ enum ScreenTimeServiceError: LocalizedError {
                 : "Screen Time can't be turned on for this Apple Account."
         case .authorizationCanceled:
             return "Setup was cancelled. Try again when you're ready."
+        case .unauthorized:
+            return "Screen Time access wasn't granted. Try the permission step again together."
         case .restricted:
             return "Screen Time is restricted on this device, for example by another management profile."
         case .unavailable:

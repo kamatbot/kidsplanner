@@ -6,8 +6,9 @@ import XCTest
 /// real lib/screen-time.js). Start the fixture before running.
 ///
 /// The fixture can't enroll a device (FamilyControls isn't grantable in the
-/// simulator), so the walk stops at "Turn it on"; the Deal! page and the quiet
-/// Off card are checked on a real device.
+/// simulator), so the walk stops at "Set up this device". Signatures and actual
+/// registration verification require authorized device testing. These updated
+/// scenarios were source/build checked only; simulator execution was declined.
 final class ScreenTimeDealUITests: XCTestCase {
     private let fixtureURL = URL(string: "http://127.0.0.1:18247")!
     private let kidId = "qa-visual-kid-1"   // "Maya Visual", the kid session in family-rings
@@ -15,51 +16,45 @@ final class ScreenTimeDealUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     /// iPhone and iPad: the deal is a full-screen cover (full window width, a swipe
-    /// down doesn't close it) and "Not now" is on every page before Deal!.
+    /// down doesn't close it), both promise groups are required, and Not now
+    /// remains available through review and permissions.
     func testKidDealOpensFullScreenWithNotNowOnEveryPage() {
         seedPolicy()
         let app = launchKid()
         let card = openDealCard(app)
         app.buttons["Let's make it"].firstMatch.tap()
 
-        let hello = app.staticTexts["Let's make a deal"]
-        XCTAssertTrue(hello.waitForExistence(timeout: 6))
+        let review = app.staticTexts["Review your agreement"]
+        XCTAssertTrue(review.waitForExistence(timeout: 6))
         let bar = app.navigationBars["Our Screen Time deal"].firstMatch
         XCTAssertTrue(bar.waitForExistence(timeout: 4))
         let window = app.windows.firstMatch.frame
         XCTAssertEqual(bar.frame.width, window.width, accuracy: 1, "Deal should span the whole window, not a form sheet")
-        attach("kid-deal-cover-hello")
+        attach("kid-deal-cover-review")
         // A sheet would close on a swipe down; a cover stays until "Not now".
         bar.swipeDown(velocity: .fast)
-        XCTAssertFalse(hello.waitForNonExistence(timeout: 2), "Swipe down must not close the deal")
-        assertNotNow(app, "hello")
+        XCTAssertFalse(review.waitForNonExistence(timeout: 2), "Swipe down must not close the deal")
+        assertNotNow(app, "review")
+        let proceed = app.buttons["Continue with this agreement"].firstMatch
+        XCTAssertFalse(proceed.isEnabled, "Both promise groups are required")
+        let childPromise = app.buttons["Homework before games"].firstMatch
+        reveal(childPromise, app); childPromise.tap()
+        XCTAssertFalse(proceed.isEnabled, "A child promise alone must not bypass the parent agreement")
+        let parentPromise = app.buttons["We'll review this together in a month"].firstMatch
+        reveal(parentPromise, app); parentPromise.tap()
+        XCTAssertTrue(proceed.isEnabled)
+        proceed.tap()
 
-        app.buttons["Let's go"].tap()
-        XCTAssertTrue(app.staticTexts["The plan"].waitForExistence(timeout: 4))
-        assertNotNow(app, "plan")
-        app.buttons["Sounds fair"].tap()
-
-        XCTAssertTrue(app.staticTexts["Your promises"].waitForExistence(timeout: 4))
-        assertNotNow(app, "kid promises")
-        app.buttons["Homework before games"].tap()
-        app.buttons["Next"].firstMatch.tap()
-
-        XCTAssertTrue(app.staticTexts["Pass the phone to your grown-up"].waitForExistence(timeout: 4))
-        assertNotNow(app, "hand-off")
-        app.buttons["I'm the grown-up"].tap()
-
-        XCTAssertTrue(app.staticTexts["Grown-up promises"].waitForExistence(timeout: 4))
-        assertNotNow(app, "grown-up promises")
-        app.buttons["We'll review this together in a month"].tap()
-        app.buttons["Next"].firstMatch.tap()
-
-        XCTAssertTrue(app.staticTexts["Turn it on"].waitForExistence(timeout: 4))
-        assertNotNow(app, "turn on")
+        XCTAssertTrue(app.staticTexts["Set up this device"].waitForExistence(timeout: 4))
+        assertNotNow(app, "permissions")
+        XCTAssertTrue(app.buttons["Turn on with Family Sharing"].exists)
+        XCTAssertTrue(app.buttons["Turn on without Family Sharing"].exists)
+        XCTAssertFalse(app.buttons["Continue to signatures"].isEnabled, "Permission and selection must precede signatures")
         attach("kid-deal-cover-turn-on")
 
         // "Not now" closes it straight back to Today.
         app.buttons["Not now"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Turn it on"].waitForNonExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Set up this device"].waitForNonExistence(timeout: 4))
         XCTAssertTrue(card.waitForExistence(timeout: 4))
     }
 
@@ -72,14 +67,11 @@ final class ScreenTimeDealUITests: XCTestCase {
         let app = launchKid()
         openDealCard(app)
         app.buttons["Let's make it"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Let's make a deal"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["Review your agreement"].waitForExistence(timeout: 6))
         let bar = app.navigationBars["Our Screen Time deal"].firstMatch
         XCTAssertTrue(bar.waitForExistence(timeout: 4))
         XCTAssertEqual(bar.frame.width, app.windows.firstMatch.frame.width, accuracy: 1)
-        attach("kid-deal-ipad-hello")
-
-        app.buttons["Let's go"].tap()
-        XCTAssertTrue(app.staticTexts["The plan"].waitForExistence(timeout: 4))
+        attach("kid-deal-ipad-review")
         let bedtime = app.descendants(matching: .any)["deal-plan-bedtime"].firstMatch
         let daily = app.descendants(matching: .any)["deal-plan-daily"].firstMatch
         XCTAssertTrue(bedtime.waitForExistence(timeout: 4))
@@ -88,11 +80,10 @@ final class ScreenTimeDealUITests: XCTestCase {
         XCTAssertLessThanOrEqual(bedtime.frame.maxX, daily.frame.minX, "Bedtime should sit left of Daily time")
         attach("kid-deal-ipad-plan")
 
-        app.buttons["Sounds fair"].tap()
-        XCTAssertTrue(app.staticTexts["Your promises"].waitForExistence(timeout: 4))
         let first = app.buttons["Phone charges outside my room at night"].firstMatch
         let second = app.buttons["I'll stop when the timer says so"].firstMatch
-        XCTAssertTrue(first.waitForExistence(timeout: 4))
+        reveal(first, app)
+        XCTAssertTrue(first.exists)
         XCTAssertTrue(second.exists)
         XCTAssertEqual(first.frame.midY, second.frame.midY, accuracy: 2, "At least two promise chips a row")
         XCTAssertLessThan(first.frame.maxX, second.frame.minX)

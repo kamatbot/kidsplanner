@@ -79,7 +79,7 @@ enum DealWords {
     }
 
     static func fairness(_ parents: [String]) -> String {
-        "If Screen Time gets switched off, the app tells \(joined(parents)). No sneaky switch-offs — that's the deal."
+        "If Screen Time access changes, \(joined(parents)) gets an update so you can check it together."
     }
 }
 
@@ -116,6 +116,7 @@ struct ScreenTimeKidCard: View {
     @State private var setup: SetupKind?
     @State private var showDeal = false
     @State private var showMoreTime = false
+    @State private var checkingDevice = false
     private var service: ScreenTimeService { .shared }
 
     private struct SetupKind: Identifiable {
@@ -129,6 +130,7 @@ struct ScreenTimeKidCard: View {
     var body: some View {
         // Not set up (off, never enrolled here) → nothing. Off with this device
         // enrolled → the quiet Off card (docs/SCREEN-TIME-UX.md §1).
+        Group {
         if !store.isParent, !store.needsAuth, let policy = service.policy, policy.enabled || service.isEnrolled {
             card(policy)
                 // The deal is made together on the kid's device — mostly an iPad — so
@@ -139,6 +141,8 @@ struct ScreenTimeKidCard: View {
                 .sheet(isPresented: $showMoreTime) { ScreenTimeMoreTimeSheet() }
                 .onChange(of: store.me?.id) { _, _ in setup = nil; showDeal = false; showMoreTime = false }
         }
+        }
+        .modifier(ScreenTimeEssentialAppsDraftGuard())
     }
 
     @ViewBuilder
@@ -213,13 +217,13 @@ struct ScreenTimeKidCard: View {
         let needsDeal = deal == nil || service.agreementIsStale
         if !isOn && service.isEnrolled {
             // Revoked on this device.
-            prompt(title: "Screen Time is off — let's turn it back on",
-                   pitch: "Your grown-ups got a heads-up. Turn it back on together to keep your deal going.",
+            prompt(title: "Screen Time needs a check",
+                   pitch: "Screen Time access changed on this device. Check it together with a grown-up.",
                    button: "Turn it back on", icon: "arrow.clockwise", bright: false) { setup = SetupKind(makeDeal: needsDeal) }
         } else if !isOn && !needsDeal {
             // Deal already signed (e.g. on another device): just turn it on here.
             prompt(title: "Turn on Screen Time on this \(deviceName)",
-                   pitch: "Your deal is already signed. This only takes a moment with your grown-up.",
+                   pitch: "Your deal is already signed. Check the device permissions with your grown-up.",
                    button: "Turn it on", icon: "hourglass", bright: false) { setup = SetupKind(makeDeal: false) }
         } else if deal == nil {
             prompt(title: "Make our Screen Time deal 🤝",
@@ -231,8 +235,8 @@ struct ScreenTimeKidCard: View {
                    button: "Renew our deal", icon: "arrow.triangle.2.circlepath", bright: true) { setup = SetupKind(makeDeal: true) }
         } else if service.needsTotalSelection || service.needsUsageSelection {
             prompt(title: "Finish setup with your grown-up",
-                   pitch: service.needsTotalSelection ? "One more tap so your daily time counts every app."
-                                                      : "One more tap so you can see your screen time each day.",
+                   pitch: service.needsTotalSelection ? "Choose the apps and categories that your daily time will measure."
+                                                      : "Choose apps and categories to measure screen time on this device.",
                    button: "Finish setup", icon: "checkmark.circle", bright: false) { setup = SetupKind(makeDeal: false) }
         } else if let deal {
             // Re-read every minute so "Bedtime now" / "used up" follow the clock.
@@ -246,12 +250,15 @@ struct ScreenTimeKidCard: View {
     /// paused → inside a downtime window → today's daily time used up.
     private enum DealStatus {
         case paused(Date)
+        case pauseRequested(Date)
         case downtime(name: String, backAt: String)
         case usedUp
     }
 
     private func dealStatus(_ policy: ScreenTimePolicy, now: Date) -> DealStatus? {
-        if let until = ScreenTimeFormat.pauseUntil(policy) { return .paused(until) }
+        if let until = ScreenTimeFormat.pauseUntil(policy) {
+            return ScreenTimeEnforcer.shared.shieldReasons[ScreenTimeSchedule.pauseStore] != nil ? .paused(until) : .pauseRequested(until)
+        }
         if let window = policy.downtime.first(where: {
             ScreenTimeSchedule.isInsideWindow(start: $0.start, end: $0.end, days: $0.days, now: now)
         }) {
@@ -278,8 +285,12 @@ struct ScreenTimeKidCard: View {
                 .font(Typography.body.weight(.semibold))
                 .foregroundStyle(Palette.frYouInk)
                 .monospacedDigit()
+        case .pauseRequested(let until):
+            Label("A grown-up requested a pause until \(ScreenTimeFormat.clock(until)) · checking this device", systemImage: "clock")
+                .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.frFamsInk)
+                .monospacedDigit().fixedSize(horizontal: false, vertical: true)
         case .downtime(let name, let backAt):
-            Label("\(name) now — back at \(backAt)", systemImage: "moon.zzz.fill")
+            Label("\(name) now — schedule ends at \(backAt)", systemImage: "moon.zzz.fill")
                 .font(Typography.body.weight(.semibold))
                 .foregroundStyle(Palette.frYouInk)
                 .monospacedDigit()
@@ -367,6 +378,8 @@ struct ScreenTimeKidCard: View {
                         .font(Typography.caption)
                         .foregroundStyle(Palette.textSecond)
                 }
+                ScreenTimeLocalRemainingView()
+                localProtectionLine
                 AskMoreTimeButton(isPresented: $showMoreTime)
                 Button {
                     Haptics.selection()
@@ -381,6 +394,38 @@ struct ScreenTimeKidCard: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private var localProtectionLine: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            if let health = service.deviceHealth {
+                Text(health.state == "applied" && health.policyVersion == service.policy?.version
+                     ? "Rules registered on this device"
+                     : "Protection needs a check on this device")
+                    .font(Typography.label.weight(.semibold))
+                    .foregroundStyle(health.state == "applied" ? Palette.frD3Ink : Palette.frFamsInk)
+            } else {
+                Text("Protection hasn't been checked on this device")
+                    .font(Typography.label).foregroundStyle(Palette.frFamsInk)
+            }
+            if let error = service.lastError {
+                Text(error).font(Typography.label).foregroundStyle(Palette.frDanger)
+            }
+            Button {
+                guard !checkingDevice else { return }
+                checkingDevice = true
+                Task { await service.checkThisDevice(); checkingDevice = false }
+            } label: {
+                HStack(spacing: Space.sm) {
+                    if checkingDevice { ProgressView() }
+                    Label(checkingDevice ? "Checking this device…" : "Check this device", systemImage: "arrow.clockwise")
+                }
+                .frame(minHeight: 44)
+            }
+            .buttonStyle(.borderless).disabled(checkingDevice)
+            .accessibilityIdentifier("screentime.kid.check")
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func stampPill(_ emoji: String, _ name: String) -> some View {
@@ -407,9 +452,8 @@ struct ScreenTimeKidCard: View {
 
 // MARK: - Deal flow (setup sheet)
 
-/// One idea per screen: hello → plan → kid promises → hand-off → grown-up promises →
-/// turn it on → sign → "Deal! 🎉". `makeDeal: false` only turns Screen Time on
-/// (the family's current deal already stands).
+/// Review rules/promises together → permissions/selection when needed → both
+/// signatures → honest verification. Recovery reuses only a current signed deal.
 struct ScreenTimeKidSetupSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -417,7 +461,7 @@ struct ScreenTimeKidSetupSheet: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    enum Page: Hashable { case hello, plan, kidPromises, handOff, parentPromises, turnOn, sign, celebrate }
+    private typealias Page = ScreenTimeSetupFlow.Stage
 
     enum TurnOn: Equatable {
         case ready
@@ -431,8 +475,8 @@ struct ScreenTimeKidSetupSheet: View {
 
     enum SaveState: Equatable { case idle, saving, saved, failed(String) }
 
-    private let makingDeal: Bool
-    private let pages: [Page]
+    @State private var makingDeal: Bool
+    @State private var pages: [Page]
     @State private var index = 0
     @State private var forward = true
     @State private var turnOn: TurnOn
@@ -449,18 +493,23 @@ struct ScreenTimeKidSetupSheet: View {
     @State private var signer = ""
     @State private var parentSigned = false
     @State private var saveState = SaveState.idle
+    @State private var reviewedRules: ScreenTimeAgreementRules?
+    @State private var writingParent = false
+    @State private var checkingFinish = false
+    @State private var flowError: String?
+    @State private var showFamilyHelp = false
+    @State private var flowGeneration = 0
+    @State private var verificationAttempted = false
     private var service: ScreenTimeService { .shared }
 
     init(makeDeal: Bool = true) {
         let s = ScreenTimeService.shared
         let alreadyOn = s.isEnrolled && s.authState == .approved
         let start: TurnOn = alreadyOn ? (s.needsTotalSelection || s.needsUsageSelection ? .pickAll : .on) : .ready
-        var pages: [Page] = makeDeal ? [.hello, .plan, .kidPromises, .handOff, .parentPromises] : []
-        if !makeDeal || start != .on { pages.append(.turnOn) }
-        if makeDeal { pages.append(.sign) }
-        pages.append(.celebrate)
-        self.pages = pages
-        makingDeal = makeDeal
+        let currentSigned = ScreenTimeSetupFlow.currentSignedAgreement(s.agreement, policy: s.policy, hasPendingDraft: s.pendingAgreement != nil)
+        let requiresAgreement = ScreenTimeSetupFlow.requiresAgreement(requested: makeDeal, hasCurrentSignedAgreement: currentSigned)
+        _pages = State(initialValue: ScreenTimeSetupFlow.stages(requiresAgreement: requiresAgreement, needsPermission: start != .on))
+        _makingDeal = State(initialValue: requiresAgreement)
         _turnOn = State(initialValue: start)
         // Renewing keeps last time's promises and stamp; they can change them.
         let old = s.currentDeal
@@ -482,12 +531,25 @@ struct ScreenTimeKidSetupSheet: View {
     private var wide: Bool { regular && !typeSize.isAccessibilitySize }
     private var column: CGFloat { regular ? 680 : 560 }
     private var titleFont: Font { Theme.font(regular ? 36 : 30, weight: .bold, relativeTo: .largeTitle) }
-    private var heroSize: CGFloat { regular ? 120 : 88 }
+    private var promisesValid: Bool { ScreenTimeSetupFlow.validPromises(kid: kidPromises, parent: parentPromises) }
+    private var currentSignedAgreement: Bool {
+        ScreenTimeSetupFlow.currentSignedAgreement(service.agreement, policy: service.policy, hasPendingDraft: service.pendingAgreement != nil)
+    }
+    private var deviceReady: Bool {
+        ScreenTimeSetupFlow.deviceReady(health: service.deviceHealth, policy: service.policy,
+                                       authorized: service.isEnrolled && service.authState == .approved
+                                       && service.enrolledKidId == store.me?.kidId)
+    }
+    private var setupComplete: Bool {
+        verificationAttempted && !checkingFinish
+            && ScreenTimeSetupFlow.complete(requiresAgreement: makingDeal, agreementSaved: saveState == .saved && currentSignedAgreement,
+                                            hasCurrentSignedAgreement: currentSignedAgreement, deviceReady: deviceReady)
+    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if page != .celebrate && stepCount > 1 { progress }
+                if page != .verification && stepCount > 1 { progress }
                 ScrollView {
                     pageContent
                         .id(page)
@@ -513,7 +575,7 @@ struct ScreenTimeKidSetupSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if page != .celebrate {
+                    if page != .verification {
                         Button { dismiss() } label: {
                             if regular {
                                 HStack(spacing: 6) {
@@ -524,21 +586,36 @@ struct ScreenTimeKidSetupSheet: View {
                                 Text("Not now")
                             }
                         }
-                        .disabled(working)
+                        .disabled(working || saveState == .saving)
                         .accessibilityLabel("Not now")
                     }
                 }
             }
-            .interactiveDismissDisabled(working || saveState == .saving || ((kidSigned || parentSigned) && saveState != .saved))
+            .interactiveDismissDisabled(working || saveState == .saving)
             .familyActivityPicker(isPresented: $showPicker, selection: $allSelection)
             .onChange(of: showPicker) { _, open in
                 if !open, turnOn == .pickAll { Task { await saveAll() } }
             }
             .onChange(of: kidSigned && parentSigned) { _, both in
-                guard both else { return }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(700))
-                    go(to: .celebrate)
+                guard both, page == .signatures else { return }
+                go(to: .verification)
+            }
+            .task(id: page) {
+                guard page == .verification else { return }
+                if makingDeal && saveState == .idle { await saveDeal() }
+                else { await verifyDevice() }
+            }
+            .onChange(of: store.me?.id) { _, _ in clearAndDismissSetup() }
+            .onChange(of: store.needsAuth) { _, value in if value { clearAndDismissSetup() } }
+            .onChange(of: service.enrolledKidId) { _, value in
+                if value != nil && value != store.me?.kidId { clearAndDismissSetup() }
+            }
+            .onChange(of: ScreenTimeEnforcer.shared.assignmentGeneration) { _, _ in clearAndDismissSetup() }
+            .onChange(of: service.policy?.version) { _, _ in
+                if let reviewedRules, reviewedRules != ScreenTimeAgreementRules(policy: service.policy ?? .disabled) {
+                    requireAgreementReview("The rules changed. Review them together before signing.")
+                } else if !makingDeal && service.agreementIsStale {
+                    requireAgreementReview("The agreement needs an update. Review the current rules together.")
                 }
             }
         }
@@ -568,20 +645,10 @@ struct ScreenTimeKidSetupSheet: View {
 
     @ViewBuilder private var pageContent: some View {
         switch page {
-        case .hello: hello
-        case .plan: plan
-        case .kidPromises:
-            promisesPage(title: "Your promises", subtitle: "Pick 1 to 3 you'll really keep.",
-                         options: DealWords.kidPromises, promises: $kidPromises,
-                         tint: Palette.frYou, soft: Palette.frYouSoft)
-        case .handOff: handOff
-        case .parentPromises:
-            promisesPage(title: "Grown-up promises", subtitle: "Pick 1 to 3 you'll keep for \(kidName).",
-                         options: DealWords.parentPromises, promises: $parentPromises,
-                         tint: Palette.frD3, soft: Palette.frD3Soft)
-        case .turnOn: turnOnPage
-        case .sign: sign
-        case .celebrate: celebrate
+        case .review: reviewAgreement
+        case .permission: turnOnPage
+        case .signatures: sign
+        case .verification: celebrate
         }
     }
 
@@ -589,12 +656,25 @@ struct ScreenTimeKidSetupSheet: View {
 
     private func go(to target: Page) {
         guard let i = pages.firstIndex(of: target) else { return }
+        if i > index {
+            if page == .review {
+                guard promisesValid else { return }
+                reviewedRules = ScreenTimeAgreementRules(policy: service.policy ?? .disabled)
+            }
+            if page == .permission { guard turnOn == .on && !working else { return } }
+            if target == .verification {
+                guard ScreenTimeSetupFlow.canEnterVerification(requiresAgreement: makingDeal,
+                                                               hasCurrentSignedAgreement: currentSignedAgreement,
+                                                               validPromises: promisesValid, reviewedRules: reviewedRules != nil,
+                                                               kidSigned: kidSigned, parentSigned: parentSigned) else { return }
+            }
+        } else if target == .review {
+            kidSigned = false; parentSigned = false; saveState = .idle
+        }
         forward = i > index
         writing = false
         customText = ""
         withAnimation(Motion.maybe(Motion.gentle, reduceMotion: reduceMotion)) { index = i }
-        if target == .celebrate && makingDeal { Task { await saveDeal() } }
-        if target == .celebrate && !makingDeal { Haptics.notify(.success) }
     }
 
     private func next() { if index + 1 < pages.count { go(to: pages[index + 1]) } }
@@ -602,22 +682,43 @@ struct ScreenTimeKidSetupSheet: View {
 
     @ViewBuilder private var footer: some View {
         switch page {
-        case .hello:
-            BigButton(title: "Let's go", systemImage: "arrow.right", action: next)
-        case .plan:
-            nav(title: "Sounds fair", enabled: true)
-        case .kidPromises:
-            nav(title: "Next", enabled: (1...DealWords.maxPromises).contains(kidPromises.count))
-        case .handOff:
-            nav(title: "I'm the grown-up", enabled: true)
-        case .parentPromises:
-            nav(title: "Next", enabled: (1...DealWords.maxPromises).contains(parentPromises.count))
-        case .turnOn:
-            nav(title: makingDeal ? "Next: sign it" : "Finish", enabled: turnOn == .on && !working)
-        case .sign:
+        case .review:
+            nav(title: "Continue with this agreement", enabled: promisesValid && service.policy != nil)
+        case .permission:
+            nav(title: makingDeal ? "Continue to signatures" : "Check setup", enabled: turnOn == .on && !working)
+        case .signatures:
             nav(title: "Waiting for both signatures", enabled: false, showsNext: false)
-        case .celebrate:
+        case .verification:
             celebrateFooter
+        }
+    }
+
+    private func clearAndDismissSetup() {
+        flowGeneration += 1; checkingFinish = false; verificationAttempted = false
+        kidPromises = []; parentPromises = []; stamp = nil; signer = ""
+        kidSigned = false; parentSigned = false; reviewedRules = nil
+        allSelection = FamilyActivitySelection(); flowError = nil
+        dismiss()
+    }
+
+    private func requireAgreementReview(_ message: String) {
+        flowGeneration += 1; checkingFinish = false; verificationAttempted = false
+        makingDeal = true
+        pages = ScreenTimeSetupFlow.stages(requiresAgreement: true, needsPermission: turnOn != .on)
+        reviewedRules = nil; kidSigned = false; parentSigned = false; saveState = .idle
+        flowError = message; index = 0
+    }
+
+    private var reviewAgreement: some View {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            plan
+            if let flowError { Text(flowError).font(Typography.label).foregroundStyle(Palette.frFamsInk) }
+            promisesPage(title: "Your promises", subtitle: "Choose at least one together, up to three.",
+                         options: DealWords.kidPromises, promises: $kidPromises,
+                         tint: Palette.frYou, soft: Palette.frYouSoft, parent: false)
+            promisesPage(title: "Grown-up promises", subtitle: "Grown-up, choose at least one promise to \(kidName), up to three.",
+                         options: DealWords.parentPromises, promises: $parentPromises,
+                         tint: Palette.frD3, soft: Palette.frD3Soft, parent: true)
         }
     }
 
@@ -647,57 +748,17 @@ struct ScreenTimeKidSetupSheet: View {
         }
     }
 
-    // MARK: 1 · Hello
-
-    private var hello: some View {
-        VStack(alignment: .leading, spacing: Space.lg) {
-            Text("🤝").font(.system(size: regular ? 88 : 64)).accessibilityHidden(true)
-            Text("Let's make a deal")
-                .font(titleFont)
-                .foregroundStyle(Palette.text)
-            Text("Do this together, \(kidName) and your grown-up. It takes about 30 seconds.")
-                .font(Typography.body)
-                .foregroundStyle(Palette.textSecond)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: Space.md) {
-                insideRow("moon.stars.fill", Palette.frYou, "The plan", "Bedtime and daily time")
-                insideRow("hand.raised.fill", Palette.frHw, "Your promises", "What you'll do")
-                insideRow("heart.fill", Palette.frD3, "Grown-up promises", "What they'll do for you")
-                insideRow("signature", Palette.frHab, "Sign it", "A stamp, a thumbprint — done")
-            }
-            .padding(Space.lg)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-        }
-    }
-
-    private func insideRow(_ icon: String, _ tint: Color, _ title: String, _ detail: String) -> some View {
-        HStack(spacing: Space.md) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 40, height: 40)
-                .background(tint.opacity(0.14), in: Circle())
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                Text(detail).font(Typography.label).foregroundStyle(Palette.textSecond)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: 2 · The plan
+    // MARK: Review rules and promises
 
     private var plan: some View {
         let policy = service.policy ?? .disabled
         let rules = ScreenTimeAgreementRules(policy: policy)
         let appLimits = policy.limits.filter { !$0.isTotal }
         return VStack(alignment: .leading, spacing: Space.lg) {
-            Text("The plan")
+            Text("Review your agreement")
                 .font(titleFont)
                 .foregroundStyle(Palette.text)
-            Text("Here's what your grown-ups set up. Talk it over — does it feel fair?")
+            Text("Check the rules together, then each choose a promise. You will both sign before the agreement is saved.")
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
                 .fixedSize(horizontal: false, vertical: true)
@@ -786,16 +847,16 @@ struct ScreenTimeKidSetupSheet: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: 3 + 5 · Promises
+    // MARK: Promises
 
     private func promisesPage(title: String, subtitle: String, options: [(emoji: String, text: String)],
-                              promises: Binding<[String]>, tint: Color, soft: Color) -> some View {
+                              promises: Binding<[String]>, tint: Color, soft: Color, parent: Bool) -> some View {
         let chosen = promises.wrappedValue
         let full = chosen.count >= DealWords.maxPromises
         let custom = chosen.filter { p in !options.contains { $0.text == p } }
         return VStack(alignment: .leading, spacing: Space.lg) {
             Text(title)
-                .font(titleFont)
+                .font(Typography.cardTitle)
                 .foregroundStyle(Palette.text)
             Text(subtitle)
                 .font(Typography.body)
@@ -812,7 +873,7 @@ struct ScreenTimeKidSetupSheet: View {
                                  promises: promises, tint: tint, soft: soft)
                 }
             }
-            if writing {
+            if writing && writingParent == parent {
                 VStack(alignment: .leading, spacing: Space.sm) {
                     TextField("Write a promise", text: $customText, axis: .vertical)
                         .font(Typography.body)
@@ -840,7 +901,7 @@ struct ScreenTimeKidSetupSheet: View {
             } else if !full {
                 Button {
                     Haptics.selection()
-                    writing = true
+                    writing = true; writingParent = parent; customText = ""
                 } label: {
                     Label("Write my own", systemImage: "pencil")
                         .font(Typography.body.weight(.semibold))
@@ -851,7 +912,7 @@ struct ScreenTimeKidSetupSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text(full ? "That's 3 — perfect." : "\(chosen.count) of up to 3 picked")
+            Text("\(chosen.count) of up to 3 picked · at least one required")
                 .font(Typography.label)
                 .foregroundStyle(Palette.textSecond)
         }
@@ -888,51 +949,35 @@ struct ScreenTimeKidSetupSheet: View {
         writing = false
     }
 
-    // MARK: 4 · Hand-off
-
-    private var handOff: some View {
-        VStack(alignment: .center, spacing: Space.lg) {
-            Text("👋").font(.system(size: heroSize)).accessibilityHidden(true)
-                .padding(.top, Space.xxl)
-            Text("Pass the phone to your grown-up")
-                .font(titleFont)
-                .foregroundStyle(Palette.text)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Now it's their turn to make some promises to \(kidName).")
-                .font(Typography.body)
-                .foregroundStyle(Palette.textSecond)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: 6 · Turn it on
+    // MARK: Permission and selection
 
     private var turnOnPage: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
-            Text(turnOn == .on ? "Screen Time is on" : "Turn it on")
+            Text(turnOn == .on ? "Permissions and selection ready" : "Set up this device")
                 .font(titleFont)
                 .foregroundStyle(Palette.text)
             switch turnOn {
             case .ready:
-                Text("Grown-up, Apple asks you to approve this on \(kidName)'s \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "phone"). Takes a few seconds.")
+                Text("Grown-up, choose the mode for this device. Apple will ask for Screen Time permission.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
-                optionCard(title: "With Family Sharing (best)",
+                optionCard(title: "With Family Sharing",
                            detail: "Approve with your Apple Account. Works if \(kidName) is a child in your Family Sharing group.",
                            button: "Turn on with Family Sharing") { await authorize(.family) }
                 // Both modes are first-class: families that never set up a child
                 // Apple Account shouldn't have to sit through a failed attempt.
-                Button("No Family Sharing? Turn on without it") { Task { await authorize(.cooperative) } }
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(Palette.frYouInk)
-                    .frame(minHeight: 44)
-                    .disabled(working)
+                optionCard(title: "Without Family Sharing",
+                           detail: "Use this when the device is not in a child Apple Account's Family Sharing group. The device owner approves; access can be changed in Settings.",
+                           button: "Turn on without Family Sharing") { await authorize(.cooperative) }
+                DisclosureGroup("Not sure which mode?", isExpanded: $showFamilyHelp) {
+                    Text("Check this device's Settings → Family with your grown-up. If the child Apple Account belongs to your Family Sharing group, choose With Family Sharing. Otherwise choose Without Family Sharing. Fam ETC cannot determine this for you; Apple's permission screen confirms whether a mode is available.")
+                        .font(Typography.label).foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(minHeight: 44)
             case .fallback(let reason):
-                Text("Family Sharing didn't work here — that's OK.")
+                Text("Family Sharing permission wasn't completed.")
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                 Text(reason)
@@ -940,7 +985,7 @@ struct ScreenTimeKidSetupSheet: View {
                     .foregroundStyle(Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
                 optionCard(title: "Without Family Sharing",
-                           detail: "Approve with Face ID or this device's passcode. It could be switched off in Settings — and then the app tells \(DealWords.joined(parents)).",
+                           detail: "The device owner approves access. If access changes in Settings, \(DealWords.joined(parents)) gets an update.",
                            button: "Turn on without Family Sharing") { await authorize(.cooperative) }
                 Button("Try Family Sharing again") { Task { await authorize(.family) } }
                     .font(Typography.body.weight(.semibold))
@@ -960,8 +1005,8 @@ struct ScreenTimeKidSetupSheet: View {
                 }
             case .pickAll:
                 Text(service.policy?.limits.contains(where: \.isTotal) == true
-                     ? "Last step, so daily time counts every app."
-                     : "Last step, so you can see your screen time each day.")
+                     ? "Choose the apps and categories to measure for daily time on this device."
+                     : "Choose the apps and categories to measure for screen time on this device.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
                 VStack(alignment: .leading, spacing: Space.md) {
@@ -982,16 +1027,16 @@ struct ScreenTimeKidSetupSheet: View {
                 .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             case .on:
                 HStack(spacing: Space.md) {
-                    Image(systemName: "checkmark.shield.fill")
+                    Image(systemName: "checkmark.circle")
                         .font(.system(size: 40, weight: .semibold))
                         .foregroundStyle(Palette.green)
                         .accessibilityHidden(true)
-                    Text(service.mode == .family ? "Protected with Family Sharing." : "On — without Family Sharing.")
+                    Text(service.mode == .family ? "Permission granted with Family Sharing." : "Permission granted without Family Sharing.")
                         .font(Typography.body.weight(.semibold))
                         .foregroundStyle(Palette.text)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(makingDeal ? "Nice. Now let's sign it." : "All set. Your deal still stands.")
+                Text(makingDeal ? "Both signatures are still required. We will check the device's rules after saving your agreement." : "Your saved agreement still stands. Continue to check this device's rules.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
             }
@@ -1042,10 +1087,13 @@ struct ScreenTimeKidSetupSheet: View {
             // Turning access back on keeps the existing device; only a new device enrolls.
             if !service.isEnrolled { try await service.enroll() }
             await service.sync(source: "app")
+            guard service.policy != nil else {
+                turnOn = .failed("The rules couldn't load. Check your connection and try again.")
+                working = false; return
+            }
             if service.needsTotalSelection || service.needsUsageSelection {
                 turnOn = .pickAll
             } else {
-                Haptics.notify(.success)
                 turnOn = .on
             }
         } catch {
@@ -1064,7 +1112,6 @@ struct ScreenTimeKidSetupSheet: View {
         pickNote = nil
         do {
             try await service.saveAllAppsSelection(chosen)
-            Haptics.notify(.success)
             turnOn = .on
         } catch {
             pickNote = service.lastError ?? error.localizedDescription
@@ -1072,7 +1119,7 @@ struct ScreenTimeKidSetupSheet: View {
         working = false
     }
 
-    // MARK: 7 · Sign it
+    // MARK: Required signatures
 
     private var sign: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
@@ -1134,6 +1181,7 @@ struct ScreenTimeKidSetupSheet: View {
                                                  lineWidth: stamp == emoji ? 2.5 : 1))
                 }
                 .buttonStyle(.plain)
+                .disabled(kidSigned)
                 .accessibilityLabel("Stamp \(emoji)")
                 .accessibilityAddTraits(stamp == emoji ? .isSelected : [])
             }
@@ -1188,17 +1236,15 @@ struct ScreenTimeKidSetupSheet: View {
 
     private var trimmedSigner: String { signer.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    // MARK: 8 · Deal!
+    // MARK: Verification
 
     private var celebrate: some View {
         VStack(alignment: .center, spacing: Space.lg) {
-            ZStack {
-                if !reduceMotion { DealConfetti() }
-                Text(makingDeal ? "🎉" : "👍").font(.system(size: heroSize)).accessibilityHidden(true)
-            }
-            .frame(height: regular ? 200 : 160)
+            Image(systemName: setupComplete ? "checkmark.circle" : "clock.arrow.circlepath")
+                .font(.largeTitle).foregroundStyle(setupComplete ? Palette.frD3Ink : Palette.frFamsInk)
+                .accessibilityHidden(true)
             .padding(.top, Space.xl)
-            Text(makingDeal ? "Deal!" : "You're back on")
+            Text(verificationTitle)
                 .font(Typography.display(40, .heavy))
                 .foregroundStyle(Palette.text)
             if makingDeal {
@@ -1216,7 +1262,8 @@ struct ScreenTimeKidSetupSheet: View {
                         .font(Typography.body)
                         .foregroundStyle(Palette.textSecond)
                 case .saved:
-                    Text("It's on your Today screen. Nice one, you two.")
+                    Text(setupComplete ? "Your agreement is saved and the current rules registered successfully on this device."
+                         : "Your agreement is saved. We still need this device to confirm that its current rules registered successfully.")
                         .font(Typography.body)
                         .foregroundStyle(Palette.textSecond)
                         .multilineTextAlignment(.center)
@@ -1232,12 +1279,37 @@ struct ScreenTimeKidSetupSheet: View {
                         .multilineTextAlignment(.center)
                 }
             } else {
-                Text("Your deal still stands.")
+                Text(setupComplete ? "Your saved agreement still stands. The current rules registered successfully on this device."
+                     : "Your saved agreement still stands. This device still needs a protection check.")
                     .font(Typography.body)
                     .foregroundStyle(Palette.textSecond)
             }
+            if checkingFinish {
+                HStack(spacing: Space.sm) { ProgressView(); Text("Checking this device…") }.font(Typography.body)
+            } else if !deviceReady {
+                if let health = service.deviceHealth {
+                    Text(health.state == "needsSelection" ? "App selection is still needed. Choose apps with your grown-up."
+                         : health.state == "failed" || health.state == "partial" ? "Some device rules could not register. Retry the device check together."
+                         : "Waiting for the current device check. Keep Fam ETC open and retry when online.")
+                        .font(Typography.body).foregroundStyle(Palette.textSecond)
+                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                }
+                if let error = service.lastError { Text(error).font(Typography.label).foregroundStyle(Palette.frDanger) }
+            }
+            if service.policy?.enabled == false {
+                Text("Screen Time is off in the saved rules. Your parent can turn it on in their controls.")
+                    .font(Typography.label).foregroundStyle(Palette.textSecond)
+            }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var verificationTitle: String {
+        if setupComplete { return "Setup checked" }
+        if makingDeal && saveState == .saved { return "Agreement saved — one step left" }
+        if makingDeal && saveState == .saving { return "Saving agreement" }
+        if makingDeal { return "Agreement needs to save" }
+        return "One device check left"
     }
 
     @ViewBuilder private var celebrateFooter: some View {
@@ -1253,26 +1325,63 @@ struct ScreenTimeKidSetupSheet: View {
                     .frame(minHeight: 44)
             }
         case .idle, .saved:
-            BigButton(title: "Done") { dismiss() }
+            VStack(spacing: Space.sm) {
+                if !setupComplete {
+                    if service.needsTotalSelection || service.needsUsageSelection {
+                        BigButton(title: "Choose apps with your grown-up", enabled: !checkingFinish) {
+                            turnOn = .pickAll
+                            if !pages.contains(.permission) { pages.insert(.permission, at: max(0, pages.count - 1)) }
+                            go(to: .permission)
+                        }
+                    } else {
+                        BigButton(title: "Retry device check", systemImage: "arrow.clockwise", enabled: !checkingFinish) { Task { await verifyDevice() } }
+                    }
+                }
+                Button(setupComplete ? "Done" : "Close — finish later") { dismiss() }
+                    .font(Typography.body.weight(.semibold)).frame(minHeight: 44)
+            }
         }
+    }
+
+    private func verifyDevice() async {
+        guard !checkingFinish else { return }
+        if !makingDeal && !currentSignedAgreement {
+            requireAgreementReview("Review and sign your family agreement before finishing setup.")
+            return
+        }
+        let generation = flowGeneration
+        verificationAttempted = false
+        checkingFinish = true
+        await service.checkThisDevice()
+        guard generation == flowGeneration, !Task.isCancelled else { return }
+        verificationAttempted = true
+        checkingFinish = false
     }
 
     private func saveDeal() async {
         guard saveState != .saving else { return }
+        guard promisesValid, kidSigned, parentSigned,
+              let reviewedRules, reviewedRules == ScreenTimeAgreementRules(policy: service.policy ?? .disabled) else {
+            requireAgreementReview("Review the current rules and both sets of promises, then sign together.")
+            return
+        }
+        let generation = flowGeneration
         saveState = .saving
         let deal = ScreenTimeAgreement(
             kidPromises: kidPromises,
             parentPromises: parentPromises,
             kidStamp: stamp ?? "⭐️",
             parentSigner: trimmedSigner,
-            rules: ScreenTimeAgreementRules(policy: service.policy ?? .disabled),
+            rules: reviewedRules,
             signedAt: nil,
             deviceId: nil)
         do {
             try await service.saveAgreement(deal)
-            Haptics.notify(.success)
+            guard generation == flowGeneration, !Task.isCancelled else { return }
             saveState = .saved
+            await verifyDevice()
         } catch {
+            guard generation == flowGeneration, !Task.isCancelled else { return }
             saveState = .failed(service.lastError ?? error.localizedDescription)
         }
     }
@@ -1523,6 +1632,8 @@ struct ScreenTimeKidRulesSheet: View {
     @State private var saving = false
     @State private var error: String?
     @State private var showMoreTime = false
+    @State private var showEssentialApps = false
+    @State private var checkingDevice = false
     private var service: ScreenTimeService { .shared }
 
     var body: some View {
@@ -1536,7 +1647,7 @@ struct ScreenTimeKidRulesSheet: View {
                             .foregroundStyle(Palette.frDanger)
                     }
                     if let until = ScreenTimeFormat.pauseUntil(service.policy) {
-                        Label("Paused by a grown-up until \(ScreenTimeFormat.clock(until))", systemImage: "pause.circle.fill")
+                        Label("\(ScreenTimeEnforcer.shared.shieldReasons[ScreenTimeSchedule.pauseStore] != nil ? "Paused by a grown-up" : "Pause requested") until \(ScreenTimeFormat.clock(until))", systemImage: "pause.circle.fill")
                             .font(Typography.body.weight(.semibold))
                             .foregroundStyle(Palette.frYouInk)
                     }
@@ -1551,6 +1662,7 @@ struct ScreenTimeKidRulesSheet: View {
                     }
                     let appLimits = service.policy?.limits.filter { !$0.isTotal } ?? []
                     if !appLimits.isEmpty { appLimitsCard(appLimits) }
+                    essentialAppsCard
                     Card(padding: Space.lg) {
                         VStack(alignment: .leading, spacing: Space.xs) {
                             Text(DealWords.fairness(DealWords.parentNames(store)))
@@ -1562,6 +1674,15 @@ struct ScreenTimeKidRulesSheet: View {
                                     .font(Typography.caption)
                                     .foregroundStyle(Palette.textSecond)
                             }
+                            if let message = service.lastError {
+                                Text(message).font(Typography.label).foregroundStyle(Palette.frDanger)
+                            }
+                            Button(checkingDevice ? "Checking this device…" : "Check this device") {
+                                guard !checkingDevice else { return }
+                                checkingDevice = true
+                                Task { await service.checkThisDevice(); checkingDevice = false }
+                            }
+                            .frame(minHeight: 44).disabled(checkingDevice)
                         }
                     }
                 }
@@ -1578,6 +1699,10 @@ struct ScreenTimeKidRulesSheet: View {
             }
             .familyActivityPicker(isPresented: $showPicker, selection: $selection)
             .sheet(isPresented: $showMoreTime) { ScreenTimeMoreTimeSheet() }
+            .sheet(isPresented: $showEssentialApps) { ScreenTimeEssentialAppsProposalSheet() }
+            .onChange(of: store.me?.id) { _, _ in dismiss() }
+            .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { dismiss() } }
+            .onChange(of: service.enrolledKidId) { _, _ in dismiss() }
             .onChange(of: showPicker) { _, open in
                 guard !open, let limit = pickingLimit else { return }
                 pickingLimit = nil
@@ -1593,6 +1718,31 @@ struct ScreenTimeKidRulesSheet: View {
             }
         }
         .presentationDetents([.large])
+    }
+
+    private var essentialAppsCard: some View {
+        Card(padding: Space.lg) {
+            VStack(alignment: .leading, spacing: Space.sm) {
+                Text("Essential apps").font(Typography.cardTitle).accessibilityAddTraits(.isHeader)
+                Text("Approved: \(service.policy?.essentialApps?.summary.map { ScreenTimeFormat.summary($0) } ?? "No essential apps")")
+                    .font(Typography.label)
+                if let pending = service.policy?.essentialApps?.pending {
+                    Text("Waiting for a parent: \(ScreenTimeFormat.summary(pending.summary))")
+                        .font(Typography.label.weight(.semibold)).foregroundStyle(Palette.frYouInk)
+                    if let note = pending.note, !note.isEmpty {
+                        Text("“\(note)”").font(Typography.label).foregroundStyle(Palette.textSecond)
+                    }
+                }
+                Text("Ask to keep individual apps available during bedtime and quiet time. Your daily limits and a grown-up's pause still apply. Only a parent can approve.")
+                    .font(Typography.label).foregroundStyle(Palette.textSecond)
+                Button(service.policy?.essentialApps?.pending == nil ? "Propose essential apps" : "Review or replace proposal") {
+                    showEssentialApps = true
+                }
+                .frame(minHeight: 44).buttonStyle(.borderless)
+                .accessibilityIdentifier("screentime.kid.essentialApps")
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func appLimitsCard(_ limits: [ScreenTimeLimit]) -> some View {
@@ -1628,6 +1778,210 @@ struct ScreenTimeKidRulesSheet: View {
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
             }
+        }
+    }
+}
+
+/// A proposal never grants an exception. Apple's picker stays on the child's
+/// device, where a parent can review the actual apps before approving remotely.
+private struct ScreenTimeEssentialAppsProposalSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var selection = FamilyActivitySelection()
+    @State private var note = ""
+    @State private var showPicker = false
+    @State private var saving = false
+    @State private var sent = false
+    @State private var error: String?
+    @State private var reviewedRequestId: String?
+    @State private var submittedSelection: FamilyActivitySelection?
+    @State private var submittedNote: String?
+    private var service: ScreenTimeService { .shared }
+
+    private var validation: String? {
+        ScreenTimeEssentialsPresentation.selectionError(apps: selection.applicationTokens.count,
+                                                        categories: selection.categoryTokens.count,
+                                                        websites: selection.webDomainTokens.count)
+    }
+
+    private var canPropose: Bool {
+        !store.isParent && !store.needsAuth && service.isEnrolled && service.enrolledKidId == store.me?.kidId
+    }
+
+    private var reviewIdentity: ScreenTimeEssentialAppsReviewDraft.Identity? {
+        guard canPropose, let deviceId = ScreenTimeEnforcer.shared.deviceId,
+              let accountId = store.me?.id, let kidId = store.me?.kidId else { return nil }
+        return .init(deviceId: deviceId, assignmentGeneration: ScreenTimeEnforcer.shared.assignmentGeneration,
+                     kidId: kidId, accountId: accountId)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Choose individual apps to request during bedtime and quiet time. Daily limits and a parent pause still apply.")
+                        .font(Typography.body).fixedSize(horizontal: false, vertical: true)
+                    Text("Only a parent can approve. Review the selected apps together on this device before your parent approves in their Screen Time controls.")
+                        .font(Typography.label).foregroundStyle(Palette.textSecond)
+                }
+                if let pending = service.policy?.essentialApps?.pending {
+                    Section("Waiting for a parent") {
+                        Text(ScreenTimeFormat.summary(pending.summary)).font(Typography.body.weight(.semibold))
+                        if let pendingNote = pending.note, !pendingNote.isEmpty { Text("“\(pendingNote)”") }
+                        if reviewedRequestId == pending.id && selection == submittedSelection {
+                            Text("The submitted apps are restored below. Tap Review selected apps to show them in Apple's picker together.")
+                                .font(Typography.label).foregroundStyle(Palette.textSecond)
+                        } else if reviewedRequestId == pending.id {
+                            Text("These edited choices differ from the waiting proposal. Resubmit them before reviewing for parent approval.")
+                                .font(Typography.label.weight(.semibold)).foregroundStyle(Palette.frFamsInk)
+                        } else {
+                            Text("The previous selected apps can't be reviewed here. Choose the apps again and resubmit before reviewing them together for parent approval.")
+                                .font(Typography.label.weight(.semibold)).foregroundStyle(Palette.frFamsInk)
+                        }
+                        Text("Sending again replaces this waiting proposal. Apps already approved are kept until a parent approves the replacement or removes them.")
+                            .font(Typography.label).foregroundStyle(Palette.textSecond)
+                    }
+                }
+                Section {
+                    Button {
+                        showPicker = true
+                    } label: {
+                        Label(selection.applicationTokens.isEmpty ? "Choose individual apps" : "Review selected apps", systemImage: "square.grid.2x2")
+                            .frame(minHeight: 44)
+                    }
+                    .disabled(saving)
+                    Text(ScreenTimeFormat.summary(ScreenTimeService.summary(of: selection)))
+                        .font(Typography.label)
+                    if let validation, !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty || !selection.webDomainTokens.isEmpty {
+                        Text(validation).font(Typography.label).foregroundStyle(Palette.frDanger)
+                    }
+                } header: { Text("Apps on this device") }
+                footer: { Text("Select 1–50 individual apps. Categories and websites cannot be essential apps.") }
+                Section("Note to your parent (optional)") {
+                    TextField("Why do you need these apps?", text: $note, axis: .vertical)
+                        .lineLimit(2...4)
+                        .disabled(saving)
+                        .onChange(of: note) { _, value in
+                            if value.count > 80 { note = String(value.prefix(80)) }
+                            if note != submittedNote { sent = false }
+                        }
+                    Text("\(note.count) of 80 characters").font(Typography.caption).foregroundStyle(Palette.textSecond)
+                }
+                if let error {
+                    Section {
+                        Text(error).font(Typography.label).foregroundStyle(Palette.frDanger)
+                        Text("Your choices are kept here. Try sending again when you're online.")
+                            .font(Typography.label).foregroundStyle(Palette.textSecond)
+                        Button("Check proposal status") {
+                            Task { await service.checkThisDevice() }
+                        }
+                        .frame(minHeight: 44).disabled(saving)
+                    }
+                }
+                Section {
+                    if sent {
+                        Label("Proposal sent · waiting for a parent", systemImage: "clock")
+                            .foregroundStyle(Palette.frYouInk)
+                    }
+                    Button { sendProposal() } label: {
+                        HStack(spacing: Space.sm) {
+                            if saving { ProgressView() }
+                            Text(saving ? "Sending proposal…" : error == nil ? "Send for parent approval" : "Retry sending proposal")
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .disabled(saving || sent || validation != nil || !canPropose)
+                    .accessibilityIdentifier("screentime.kid.essentialApps.send")
+                }
+            }
+            .font(Typography.body)
+            .scrollContentBackground(.hidden)
+            .frame(maxWidth: 680)
+            .frame(maxWidth: .infinity)
+            .background(ScreenBackground())
+            .navigationTitle("Essential apps")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(saving) }
+            }
+            .familyActivityPicker(isPresented: $showPicker, selection: $selection)
+            .onChange(of: selection) { _, chosen in
+                error = nil
+                if chosen != submittedSelection { sent = false }
+            }
+            .task { restoreReviewDraft() }
+            .onChange(of: service.policy?.essentialApps?.pending?.id) { _, _ in
+                if !saving { restoreReviewDraft() }
+            }
+            .onChange(of: store.me?.id) { _, _ in clearAndDismiss() }
+            .onChange(of: service.enrolledKidId) { _, _ in clearAndDismiss() }
+            .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { clearAndDismiss() } }
+            .onChange(of: ScreenTimeEnforcer.shared.assignmentGeneration) { _, _ in clearAndDismiss() }
+            .onChange(of: ScreenTimeEnforcer.shared.deviceId) { _, _ in clearAndDismiss() }
+        }
+        .interactiveDismissDisabled(saving)
+        .presentationDetents([.large])
+    }
+
+    private func clearAndDismiss() {
+        ScreenTimeEssentialAppsReviewDraft.clear(defaults: ScreenTimeEnforcer.shared.defaults)
+        selection = FamilyActivitySelection(); note = ""; error = nil; sent = false
+        reviewedRequestId = nil; submittedSelection = nil; submittedNote = nil
+        dismiss()
+    }
+
+    private func restoreReviewDraft() {
+        guard service.policy != nil else { return }
+        let pendingId = service.policy?.essentialApps?.pending?.id
+        guard let record = ScreenTimeEssentialAppsReviewDraft.restore(identity: reviewIdentity, pendingId: pendingId,
+                                                                     defaults: ScreenTimeEnforcer.shared.defaults),
+              let restored = ScreenTimeEnforcer.decodeSelection(record.selection),
+              ScreenTimeEssentialsPresentation.selectionError(apps: restored.applicationTokens.count,
+                                                               categories: restored.categoryTokens.count,
+                                                               websites: restored.webDomainTokens.count) == nil else {
+            ScreenTimeEssentialAppsReviewDraft.clear(defaults: ScreenTimeEnforcer.shared.defaults)
+            if reviewedRequestId != nil {
+                selection = FamilyActivitySelection(); note = ""; sent = false
+            }
+            reviewedRequestId = nil; submittedSelection = nil; submittedNote = nil
+            return
+        }
+        submittedSelection = restored; submittedNote = record.note
+        selection = restored; note = record.note; sent = true; reviewedRequestId = record.pendingId
+    }
+
+    private func sendProposal() {
+        guard !saving, canPropose else { return }
+        if let validation { error = validation; return }
+        let chosen = selection
+        let chosenNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let account = store.me?.id
+        let assignment = ScreenTimeEnforcer.shared.assignmentGeneration
+        let identity = reviewIdentity
+        saving = true
+        error = nil
+        Task {
+            do {
+                try await service.proposeEssentialApps(selection: chosen, note: chosenNote.isEmpty ? nil : chosenNote)
+                guard account == store.me?.id, assignment == ScreenTimeEnforcer.shared.assignmentGeneration else {
+                    clearAndDismiss(); saving = false; return
+                }
+                if let identity, let pendingId = service.policy?.essentialApps?.pending?.id,
+                   let encoded = ScreenTimeService.encode(chosen),
+                   ScreenTimeEssentialAppsReviewDraft.save(.init(identity: identity, pendingId: pendingId, selection: encoded,
+                                                                note: chosenNote), defaults: ScreenTimeEnforcer.shared.defaults) {
+                    submittedSelection = chosen; submittedNote = chosenNote; note = chosenNote
+                    reviewedRequestId = pendingId; sent = true
+                } else {
+                    reviewedRequestId = nil
+                    error = "The proposal was sent, but its apps couldn't be saved for later review. Keep this screen open to review them, or select and resubmit before parent approval."
+                }
+            } catch {
+                if account == store.me?.id && assignment == ScreenTimeEnforcer.shared.assignmentGeneration {
+                    self.error = error.localizedDescription
+                }
+            }
+            saving = false
         }
     }
 }

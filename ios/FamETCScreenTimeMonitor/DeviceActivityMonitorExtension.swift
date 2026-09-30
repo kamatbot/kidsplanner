@@ -67,6 +67,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         guard ScreenTimeSchedule.isTodayActivity(activity.rawValue, now: now) else { return }
         let name = event.rawValue
         if let minutes = ScreenTimeSchedule.usageMinutes(fromEvent: name) {
+            guard enforcer.canAcceptAssignmentEvent(now: now) else { return }
             // More minutes than have passed since midnight is a spurious milestone: drop it.
             guard ScreenTimeSchedule.isPlausibleUsage(minutes: minutes, now: now) else { return }
             // Coarse total only (the highest 15-minute step today) — never which apps.

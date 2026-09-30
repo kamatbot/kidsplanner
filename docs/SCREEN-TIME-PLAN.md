@@ -1,5 +1,90 @@
 # Screen Time — parent controls + child enforcement
 
+## Launch-safety refinement — 2026-09-30
+
+The parent-simplicity section of SCREEN-TIME-UX.md supersedes older alert copy
+and setup descriptions below. Unknown authorization never becomes revocation
+just because time elapsed. Invalid push tokens indicate a delivery problem,
+not proven deletion. Recovery notifications distinguish authorization from
+successfully registered rules. A neutral 24-hour uncertainty reminder is
+deduplicated per episode, including after the parent dismisses it.
+
+Extra-time approval must revalidate that Screen Time and its total daily limit
+are still enabled before spending Fams. Rejected pending approval cannot change
+the ledger, balance or request status; approved replay stays idempotent. Removing
+a child profile also purges that child's Screen Time data, including device
+credentials, selections, usage and agreement. No other child's records change.
+
+Required agreement remains part of first setup. Physical enforcement, signing
+entitlements and published privacy disclosures remain independent launch gates;
+source/build-only verification cannot satisfy them.
+
+## Essentials contract — 2026-09-30
+
+This addendum supersedes the older health, assignment and usage descriptions
+below. Native presentation follows the matching addendum in SCREEN-TIME-UX.md.
+
+- **Device-confirmed setup:** heartbeats carry optional `health` with
+  `policyVersion`, `state` (`applied`, `off`, `partial`, `failed`,
+  `needsSelection`), `registeredActivities`, `expectedActivities`,
+  `hasUsageSelection`, and bounded stable failure codes. The server supplies
+  `checkedAt`. Missing health is unverified. Only successful registration of
+  the relevant activities advances `appliedVersion`; failed registration
+  remains retryable. This confirms configuration, not a live hardware test.
+  Parent `POST /api/screen-time/kids/:kidId/check` requests a device check-in;
+  push delivery is best-effort, never immediate proof of protection.
+- **Assignment isolation:** device enrollment, policy responses and public
+  device records include `assignmentGeneration`. Moving/re-enrolling a device
+  increments it and clears app approvals. Heartbeats from an old generation
+  cannot attribute usage, health or applied-version evidence to the new child.
+  Device mutations include the generation; stale mutations are rejected.
+  Legacy generation-less requests are compatible only with generation 1.
+  Native assignment-local usage, event evidence and drafts reset on a move;
+  older responses cannot revert a newer assignment. Signing out clears account
+  presentation state, but does not turn off device-owned enforcement.
+- **Essential apps:** each device stores one approved opaque selection and an
+  optional pending proposal. Device `PUT /api/screen-time/device/essential-apps`
+  accepts `{selection, summary, note?, assignmentGeneration}`. Selection must
+  contain 1–50 individual apps, no categories/websites; note is at most 80
+  characters. Parent `POST .../kids/:kidId/devices/:deviceId/essential-apps/approve`
+  or `/decline` requires `{requestId}`. Stale proposals cannot be approved.
+  `DELETE .../essential-apps` removes approval and the pending proposal.
+  Approval/removal bumps policy version and requests device sync.
+  Only **approved** selection tokens reach device enforcement; parent JSON
+  contains counts and pending metadata, never device token blobs. Parents must
+  verify the actual apps together on the child's device. Exceptions apply to
+  bedtime/quiet-time shields only, not daily limits or a manual parent pause.
+- **Per-device allowance:** usage rows include optional `updatedAt`,
+  `limitMinutes` and `remainingMinutes`. Unreported devices retain a row with
+  unknown usage. The allowance is per device, not a shared family/child budget;
+  a sum across devices must not be compared with one device's allowance.
+  Historical allowance is captured with the report; changing today's rules
+  must not rewrite yesterday's allowance. Older unknown history stays unknown.
+  Usage is approximate, reported in 15-minute steps, not a live countdown.
+  A nonempty activity selection proves only that selected activity can be
+  counted; it does not prove that every application on the device was selected.
+- **Schedule validation:** downtime must span at least 15 minutes, including
+  overnight windows, to fit DeviceActivity's scheduling constraints.
+
+Release evidence still requires entitled, physical-device verification of
+authorization, background delivery, schedule registration, overlapping shields,
+essential-app access and device reassignment. Source tests/builds cannot prove
+these OS-managed behaviors. No distribution approval is implied here.
+
+Focused physical-device acceptance before release (existing devices only):
+1. In both authorization modes, finish selection, check protection and verify
+   the parent transitions from awaiting to current device-confirmed health.
+2. Interrupt connectivity during a rule/pause update. Confirm the parent never
+   labels the unreceived rule as applied; reconnect and retry on the child device.
+3. Propose essential apps, close/reopen the proposal, review the exact selection
+   together, then approve. Verify access during downtime while daily-limit and
+   manual-pause stores still restrict those same apps. Decline/replacement/removal
+   must not enable an unapproved selection.
+4. Move/re-enroll a used device, including into a child with a lower policy
+   version. Old usage, drafts and delayed callbacks must not cross assignments.
+5. Switch accounts/sign out with requests in flight. Old account details must
+   disappear while the device's enforced restrictions remain.
+
 Status: building on `feat/screen-time` (2026-09-27). This file is the contract
 the server, iOS enforcement and iOS UX work are built against. States, alert
 lifecycle, presentation and enforcement rules were refined by
@@ -342,20 +427,24 @@ Apple keeps detailed Screen Time usage on the device that produced it (the
    - App Review note: coarse totals are shown only to the child's parents.
 
 ## Distribution gate (owner action)
-Development builds work with the `family-controls` entitlement today. App
+The targets declare the `family-controls` entitlement. App
 Store/TestFlight distribution needs Apple's **Family Controls (Distribution)**
 approval for `com.fametc.app`, `com.fametc.app.screentime-monitor` and
 `com.fametc.app.shield-config`, `com.fametc.app.usage-report` — request at
 developer.apple.com/contact/request/family-controls-distribution.
+This revision's unsigned build does not verify distribution approval or
+physical-device authorization. No installed provisioning profiles were available
+to establish that gate during the source/build-only check.
 
 ## Deferred (not built)
 Shared allowance across a kid's iPhone+iPad (each device enforces its own
-minutes), "ask for more time" shield action, usage reports, always-allowed
-apps during downtime, web (desktop) Screen Time UI, Android.
+minutes), "ask for more time" shield action and Android enforcement. Coarse
+usage reporting, the desktop read-only summary, and parent-approved essential
+apps during downtime are implemented; they are not full cross-device controls.
 
 ## Appendix: Family Controls (Distribution) request text
 
-Ready-to-paste answers for Apple's request form at
+Implementation-grounded draft for owner review before submitting Apple's form at
 developer.apple.com/contact/request/family-controls-distribution.
 
 - **App name**: Fam ETC
@@ -370,15 +459,17 @@ developer.apple.com/contact/request/family-controls-distribution.
 > time limits and downtime schedules for their kids from their own device or
 > the family server; the child's device enforces that policy locally using
 > FamilyControls, ManagedSettings, and DeviceActivity — shielding the chosen
-> apps/categories when a limit is reached or downtime begins, and lifting
-> shields when a parent pauses or adjusts the policy. We support both Family
+> apps/categories when a limit is reached or downtime begins. Parent pauses
+> add a restriction; resume or policy changes remove the applicable restriction.
+> We support both Family
 > Sharing child accounts (`.child` authorization) and, for families whose
 > kids' devices were never set up in Family Sharing, individual authorization
-> (`.individual`) approved directly on the child's device. No usage data
-> leaves the device. App selections are synced only as Apple's opaque tokens
-> plus counts, and the child's device reports its authorization status and
-> applied policy version so parents can be alerted if a child disables or
-> removes Screen Time protection on a cooperative-mode device.
+> (`.individual`) approved directly on the child's device. Coarse daily usage
+> totals in 15-minute steps and limit-reached timestamps are sent to the family
+> server; app-by-app usage details stay on the device. App selections sync as
+> Apple's opaque tokens plus counts. Devices report authorization and rule
+> registration health so parents can see confirmed status, permission problems
+> or uncertainty without attributing a change to a particular person.
 
 ## App Review notes
 
@@ -389,8 +480,9 @@ developer.apple.com/contact/request/family-controls-distribution.
   complete authorization (Family Sharing child account if available,
   otherwise the without-Family-Sharing / individual path with Face ID or
   passcode) to enroll the device and pull the policy.
-- To see tamper detection: on the child's device, go to Settings → Screen
+- To check permission-loss reporting: on the child's device, go to Settings → Screen
   Time → Apps with Screen Time Access and turn off access for Fam ETC (only
   possible in the without-Family-Sharing / cooperative mode). Within one
-  heartbeat cycle, the parent's account receives a push and in-app alert that
-  Screen Time was turned off on that device.
+  successful device check-in after denied authorization, the parent's account
+  receives a neutral permission-loss alert. Push delivery is best-effort. Unknown
+  authorization or missing check-ins do not prove revocation or app removal.

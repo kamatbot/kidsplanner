@@ -12,7 +12,7 @@ final class ScreenTimeUITests: XCTestCase {
 
     override func setUp() { continueAfterFailure = false }
 
-    func testParentTurnsOnBedtimeAndDailyTimeInTwoTaps() {
+    func testParentSavesBedtimeAndDailyTimeThenSeesDeviceHandoff() {
         resetScreenTime()
         let app = launch(.parent)
         let row = app.descendants(matching: .any)["Leo Visual, Screen Time"].firstMatch
@@ -36,6 +36,9 @@ final class ScreenTimeUITests: XCTestCase {
         // Saved = the draft matches the server again, so Save disables.
         let saved = expectation(for: NSPredicate(format: "isEnabled == false"), evaluatedWith: save)
         wait(for: [saved], timeout: 8)
+        let handoff = app.staticTexts["Set it up on Leo Visual's phone"].firstMatch
+        reveal(handoff, app)
+        XCTAssertTrue(handoff.exists, "Saved rules must lead to setup on the child's device")
         attach("parent-basic-saved")
     }
 
@@ -48,28 +51,26 @@ final class ScreenTimeUITests: XCTestCase {
         attach("kid-deal-card")
         app.buttons["Let's make it"].firstMatch.tap()
 
-        // Fixture-free pages only: device routes 401 in the fixture, so stop at "Turn it on".
-        XCTAssertTrue(app.staticTexts["Let's make a deal"].waitForExistence(timeout: 6))
-        attach("kid-deal-hello")
-        app.buttons["Let's go"].tap()
-        XCTAssertTrue(app.staticTexts["The plan"].waitForExistence(timeout: 4))
-        attach("kid-deal-plan")
-        app.buttons["Sounds fair"].tap()
-        XCTAssertTrue(app.staticTexts["Your promises"].waitForExistence(timeout: 4))
-        let next = app.buttons["Next"].firstMatch
+        // Device routes return 401 in this fixture; exercise the required
+        // agreement gates, then stop before requesting native permission.
+        XCTAssertTrue(app.staticTexts["Review your agreement"].waitForExistence(timeout: 6))
+        let next = app.buttons["Continue with this agreement"].firstMatch
+        reveal(next, app)
         XCTAssertFalse(next.isEnabled)
-        app.buttons["Homework before games"].tap()
+        let childPromise = app.buttons["Homework before games"]
+        reveal(childPromise, app)
+        childPromise.tap()
+        reveal(next, app)
+        XCTAssertFalse(next.isEnabled, "A parent's promise is required too")
+        let parentPromise = app.buttons["We'll review this together in a month"]
+        reveal(parentPromise, app)
+        parentPromise.tap()
+        reveal(next, app)
         XCTAssertTrue(next.isEnabled)
-        attach("kid-deal-kid-promises")
+        attach("kid-agreement-review")
         next.tap()
-        XCTAssertTrue(app.staticTexts["Pass the phone to your grown-up"].waitForExistence(timeout: 4))
-        app.buttons["I'm the grown-up"].tap()
-        XCTAssertTrue(app.staticTexts["Grown-up promises"].waitForExistence(timeout: 4))
-        app.buttons["We'll review this together in a month"].tap()
-        attach("kid-deal-parent-promises")
-        app.buttons["Next"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Turn it on"].waitForExistence(timeout: 4))
-        attach("kid-deal-turn-on")
+        XCTAssertTrue(app.staticTexts["Set up this device"].waitForExistence(timeout: 4))
+        attach("kid-device-setup")
     }
 
     /// No Family Sharing device in the fixture: Advanced shows the honest empty state
@@ -130,6 +131,7 @@ final class ScreenTimeUITests: XCTestCase {
         attach("parent-request-banner")
         review.tap()
         let approve = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Approve 15 more minutes'")).firstMatch
+        reveal(approve, app)
         XCTAssertTrue(approve.waitForExistence(timeout: 8))
         attach("parent-request-card")
         approve.tap()
@@ -148,7 +150,8 @@ final class ScreenTimeUITests: XCTestCase {
         var app = launch(.parent)
         var banner = app.descendants(matching: .any)["screentime.banner.alert"].firstMatch
         XCTAssertTrue(banner.waitForExistence(timeout: 12), "Seeded alert should show in the banner")
-        XCTAssertTrue(app.staticTexts["Leo Visual turned off Screen Time on iPad"].exists)
+        XCTAssertTrue(app.staticTexts["Screen Time access needs reconnecting on Leo Visual's device."].exists)
+        XCTAssertFalse(app.staticTexts["Leo Visual turned off Screen Time on iPad"].exists)
         attach("parent-alert-banner")
         let dismiss = app.buttons["screentime.banner.dismiss"].firstMatch
         XCTAssertTrue(dismiss.isHittable)
@@ -163,7 +166,7 @@ final class ScreenTimeUITests: XCTestCase {
 
         // The ack reached the server: once the overview is loaded again, no banner.
         app = launch(.parent)
-        waitForStatus("Leo Visual", beginsWith: "Turned off", in: app)
+        waitForStatus("Leo Visual", beginsWith: "Access needs reconnecting", in: app)
         XCTAssertFalse(app.descendants(matching: .any)["screentime.banner.alert"].exists)
         app.terminate()
 
@@ -173,7 +176,8 @@ final class ScreenTimeUITests: XCTestCase {
         banner = app.descendants(matching: .any)["screentime.banner.alert"].firstMatch
         XCTAssertTrue(banner.waitForExistence(timeout: 12))
         app.buttons["screentime.banner.review"].firstMatch.tap()
-        let status = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Leo Visual turned it off'")).firstMatch
+        let status = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS 'Access needs reconnecting on Leo Visual'")).firstMatch
+        reveal(status, app)
         XCTAssertTrue(status.waitForExistence(timeout: 8), "Review should open Leo's controls")
         XCTAssertTrue(app.buttons["screentime.controls.done"].firstMatch.exists)
         let rowDismiss = app.buttons["screentime.alert.dismiss"].firstMatch
@@ -194,7 +198,7 @@ final class ScreenTimeUITests: XCTestCase {
         XCTAssertEqual(post("/__qa/screen-time/device", ["kidId": leo, "finishSetup": true], role: .parent), 200)
 
         let app = launch(.parent)
-        let row = waitForStatus("Leo Visual", beginsWith: "On", in: app)
+        let row = waitForStatus("Leo Visual", beginsWith: "Waiting to check device", in: app)
         XCTAssertFalse(app.descendants(matching: .any)["screentime.promo"].exists)
         reveal(row, app)
         row.tap()

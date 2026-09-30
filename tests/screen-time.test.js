@@ -208,7 +208,7 @@ test("enroll requires approved auth and a valid mode; secret is returned once an
   const dbJSON = JSON.stringify(db.load().screenTime);
   assert.ok(!dbJSON.includes(deviceSecret), "raw secret is never stored");
   assert.ok(dbJSON.includes(hash), "only the SHA-256 hash is stored");
-  assert.deepEqual(Object.keys(overview(ctx).devices[0]).sort(), ["appliedVersion", "authStatus", "enrolledAt", "id", "label", "lastSeenAt", "mode", "state"]);
+  assert.deepEqual(Object.keys(overview(ctx).devices[0]).sort(), ["appliedVersion", "assignmentGeneration", "authStatus", "enrolledAt", "essentialApps", "health", "id", "label", "lastSeenAt", "mode", "state"]);
 });
 
 test("heartbeat: wrong/missing secret → 401, bad body → 400", () => {
@@ -228,21 +228,20 @@ test("approved → denied alerts parents once; approved again → restored", () 
   notified.length = 0;
   assert.equal(heartbeat(deviceSecret, "denied").statusCode, 200);
   heartbeat(deviceSecret, "denied");
-  heartbeat(deviceSecret, "notDetermined");
   let kid = overview(ctx);
   assert.equal(kid.devices[0].state, "revoked");
   assert.deepEqual(kid.alerts.map((a) => a.type), ["revoked"]);
-  assert.equal(kid.alerts[0].message, "Mia turned off Screen Time on iPhone");
+  assert.equal(kid.alerts[0].message, "Screen Time access is unavailable on Mia's iPhone. Check its permissions together.");
   assert.equal(notified.length, 1);
   assert.equal(notified[0].type, "revoked");
-  assert.equal(notified[0].title, "⚠️ Screen Time turned off");
+  assert.equal(notified[0].title, "Screen Time access needs attention");
   assert.deepEqual(notified[0].familyParentIds, [ctx.parent.id]);
 
-  heartbeat(deviceSecret, "approved");
+  heartbeat(deviceSecret, "approved", { health: health() });
   kid = overview(ctx);
   assert.equal(kid.devices[0].state, "ok");
   assert.deepEqual(kid.alerts.map((a) => a.type), ["restored", "revoked"]);
-  assert.equal(kid.alerts[0].message, "Screen Time is back on for Mia's iPhone");
+  assert.equal(kid.alerts[0].message, "Screen Time access restored on Mia's iPhone; checking rules.");
   assert.equal(kid.alerts[0].ackedAt, kid.alerts[0].at, "restored is created pre-acked");
   assert.ok(kid.alerts[1].ackedAt, "the approved heartbeat auto-resolves revoked");
   assert.equal(notified.length, 2, "restore after revoke pushes");
@@ -275,12 +274,12 @@ test("device projection prefers the device's own selection; parent sees summarie
     auth: `FamDevice ${a.deviceSecret}`, params: { limitId }, body: { selection, summary: { apps, categories: 0, webDomains: 0 } },
   });
   upload("REVWSUNG", 1);
-  assert.equal(notified.length, 0, "same counts do not alert");
+  assert.equal(notified.length, 1, "a changed opaque selection alerts even with the same counts");
   upload("REVWSUNH", 2);
   const after = overview(ctx);
-  assert.deepEqual(after.alerts.map((x) => x.type), ["selection_changed"]);
-  assert.equal(after.alerts[0].message, "Mia changed the apps in Games (1 app → 2 apps)");
-  assert.equal(notified.length, 1);
+  assert.deepEqual(after.alerts.map((x) => x.type), ["selection_changed", "selection_changed"]);
+  assert.equal(after.alerts[0].message, "App selection changed on Mia's iPhone. Review the selection together.");
+  assert.equal(notified.length, 2);
   assert.equal(call("PUT /api/screen-time/device/limits/:limitId/selection", { auth: `FamDevice ${a.deviceSecret}`, params: { limitId: "lim_nope" }, body: { selection: null } }).statusCode, 404);
 });
 
@@ -296,19 +295,19 @@ test("sweep marks silent devices stale once, and a heartbeat restores without pu
   await screenTime.sweep({ now: new Date(t0.getTime() + 30 * 3600000) });
   const kid = overview(ctx);
   assert.equal(kid.devices[0].state, "stale");
-  assert.deepEqual(kid.alerts.map((a) => a.type), ["stale"]);
-  assert.match(kid.alerts[0].message, /^Mia's iPhone hasn't checked in since \w{3} \d{1,2}:\d{2}\s[AP]M\. It may be off or offline\.$/);
+  assert.deepEqual(kid.alerts.map((a) => a.type), ["check_needed"]);
+  assert.match(kid.alerts[0].message, /protection is unverified.*may be offline or need a setup check/);
   assert.doesNotMatch(kid.alerts[0].message, /turned off/, "stale never claims Screen Time was turned off");
   assert.equal(notified.filter((n) => n.kidId === ctx.mia.id).length, 1);
 
-  heartbeat(deviceSecret);
+  heartbeat(deviceSecret, "approved", { health: health() });
   const back = overview(ctx);
   assert.equal(back.devices[0].state, "ok");
-  assert.deepEqual(back.alerts.map((a) => [a.type, Boolean(a.ackedAt)]), [["restored", true], ["stale", true]]);
+  assert.deepEqual(back.alerts.map((a) => [a.type, Boolean(a.ackedAt)]), [["restored", true], ["check_needed", true]]);
   assert.equal(notified.filter((n) => n.kidId === ctx.mia.id).length, 1, "stale recovery does not push");
 });
 
-test("sweep ping with shouldPruneToken marks the device removed", async () => {
+test("sweep ping with shouldPruneToken only prunes the invalid delivery token", async () => {
   const ctx = setup();
   const token = crypto.randomBytes(32).toString("hex");
   turnOn(ctx);
@@ -319,10 +318,10 @@ test("sweep ping with shouldPruneToken marks the device removed", async () => {
   await screenTime.sweep({ now: new Date(clock.getTime() + 60000), sendPing });
   assert.ok(seen.includes("screen_time_ping"));
   const kid = overview(ctx);
-  assert.equal(kid.devices[0].state, "removed");
-  assert.equal(kid.alerts[0].type, "removed");
-  assert.equal(kid.alerts[0].message, "Fam ETC may have been removed from Mia's iPhone");
-  assert.equal(notified.filter((n) => n.kidId === ctx.mia.id && n.type === "removed").length, 1);
+  assert.equal(kid.devices[0].state, "ok");
+  assert.deepEqual(kid.alerts, []);
+  assert.equal(db.load().screenTime[ctx.fam.id].kids[ctx.mia.id].devices[0].pushToken, null);
+  assert.equal(notified.filter((n) => n.kidId === ctx.mia.id).length, 0);
 });
 
 test("pause: 0 resumes, 10 is rejected, both valid calls bump and ping", async () => {
@@ -408,7 +407,7 @@ test("alerts are capped at 50 per kid", () => {
   const { deviceSecret } = enroll(ctx).body;
   for (let i = 0; i < 30; i++) {
     heartbeat(deviceSecret, "denied");
-    heartbeat(deviceSecret, "approved");
+    heartbeat(deviceSecret, "approved", { health: health() });
   }
   const alerts = overview(ctx).alerts;
   assert.equal(alerts.length, screenTime.MAX_ALERTS);
@@ -499,7 +498,7 @@ test("turning back on after the kid revoked while off raises revoked once", () =
   notified.length = 0;
   const on = turnOn(ctx);
   assert.equal(on.statusCode, 200);
-  assert.deepEqual(openAlerts(on.body).map((a) => [a.type, a.message]), [["revoked", "Mia turned off Screen Time on iPhone"]]);
+  assert.deepEqual(openAlerts(on.body).map((a) => [a.type, a.message]), [["revoked", "Screen Time access is unavailable on Mia's iPhone. Check its permissions together."]]);
   assert.deepEqual(notified.map((n) => n.type), ["revoked"], "the parent must know the device can't enforce");
 
   heartbeat(deviceSecret, "denied");
@@ -520,25 +519,25 @@ test("turning back on gives a stale (or silent-while-off) device a fresh grace p
 
   const later = new Date(t0.getTime() + 30 * 3600000);
   const on = withClock(later, () => turnOn(ctx));
-  assert.equal(on.body.devices[0].state, "ok");
-  assert.equal(on.body.devices[0].lastSeenAt, later.toISOString());
+  assert.equal(on.body.devices[0].state, "stale");
+  assert.equal(on.body.devices[0].lastSeenAt, t0.toISOString(), "parent edits do not fabricate a device check-in");
   assert.deepEqual(openAlerts(on.body), []);
   assert.equal(miaPushes(ctx).length, 0);
   await screenTime.sweep({ now: new Date(later.getTime() + 23 * 3600000) });
-  assert.equal(overview(ctx).devices[0].state, "ok", "24 h grace from turning back on");
+  assert.deepEqual(openAlerts(overview(ctx)), [], "24 h reminder grace from turning back on");
 
   // A device that went quiet while off (the sweep skipped it) gets the same grace.
   withClock(later, () => turnOff(ctx));
   const muchLater = new Date(later.getTime() + 72 * 3600000);
   await screenTime.sweep({ now: muchLater });
-  assert.equal(overview(ctx).devices[0].state, "ok");
+  assert.equal(overview(ctx).devices[0].state, "stale");
   const again = withClock(muchLater, () => turnOn(ctx));
-  assert.equal(again.body.devices[0].lastSeenAt, muchLater.toISOString());
+  assert.equal(again.body.devices[0].lastSeenAt, t0.toISOString());
   await screenTime.sweep({ now: new Date(muchLater.getTime() + 60000) });
   assert.deepEqual(openAlerts(overview(ctx)), [], "no instant stale alarm");
 });
 
-test("restore: a check-in acks that device's revoked/stale/removed alerts; restored is pre-acked", async () => {
+test("restore: confirmed health resolves that device's uncertainty; token failure creates no protection alert", async () => {
   const ctx = setup();
   const token = crypto.randomBytes(32).toString("hex");
   const saved = turnOn(ctx, { limits: [limit({ selection: "UEFSRU5U", selectionSummary: { apps: 3, categories: 0, webDomains: 0 } })] });
@@ -553,20 +552,17 @@ test("restore: a check-in acks that device's revoked/stale/removed alerts; resto
   heartbeat(b.deviceSecret, "denied"); // revoked on device b
   await screenTime.sweep({ now: new Date(clock.getTime() + 60000), sendPing: (t) => Promise.resolve({ ok: false, shouldPruneToken: t === token }) });
   let kid = overview(ctx);
-  assert.equal(kid.devices.find((d) => d.id === a.deviceId).state, "removed");
-  assert.deepEqual(openAlerts(kid).map((x) => x.type).sort(), ["removed", "revoked", "selection_changed"]);
+  assert.equal(kid.devices.find((d) => d.id === a.deviceId).state, "ok");
+  assert.deepEqual(openAlerts(kid).map((x) => x.type).sort(), ["revoked", "selection_changed"]);
   notified.length = 0;
 
-  heartbeat(a.deviceSecret, "approved", { pushToken: token });
+  heartbeat(a.deviceSecret, "approved", { pushToken: token, health: health() });
   kid = overview(ctx);
-  assert.equal(kid.alerts[0].type, "restored");
-  assert.equal(kid.alerts[0].deviceId, a.deviceId);
-  assert.equal(kid.alerts[0].ackedAt, kid.alerts[0].at, "restored never shows in the banner");
   assert.deepEqual(openAlerts(kid).map((x) => [x.type, x.deviceId]).sort(), [["revoked", b.deviceId], ["selection_changed", a.deviceId]],
     "only that device's device-health alerts are resolved");
-  assert.equal(notified.length, 0, "restore after removed does not push");
+  assert.equal(notified.length, 0, "delivery recovery does not fabricate a protection-restored push");
 
-  heartbeat(b.deviceSecret, "approved");
+  heartbeat(b.deviceSecret, "approved", { health: health() });
   kid = overview(ctx);
   assert.deepEqual(openAlerts(kid).map((x) => x.type), ["selection_changed"]);
   assert.deepEqual(notified.map((n) => n.type), ["restored"], "restore after revoked pushes");
@@ -639,12 +635,9 @@ test("forgetting a device acks its alerts only", () => {
   assert.deepEqual(gone.body.alerts.map((x) => [x.deviceId, Boolean(x.ackedAt)]).sort(), [[a.deviceId, true], [b.deviceId, false]].sort());
 });
 
-// ---------- notDetermined grace window (docs/SCREEN-TIME-UX.md revoked row) ----------
-// iOS can report notDetermined for a moment right after launch or a background
-// wake before the real status loads; a bare notDetermined must not read as
-// "kid turned it off" the way denied does.
+// ---------- unknown authorization remains uncertainty, regardless of duration ----------
 
-test("notDetermined (non-monitor): silent inside the 10-minute grace window, revokes once confirmed", () => {
+test("notDetermined (non-monitor): remains unknown without a permission-loss alert", () => {
   const ctx = setup();
   turnOn(ctx);
   const { deviceSecret } = enroll(ctx).body;
@@ -653,23 +646,23 @@ test("notDetermined (non-monitor): silent inside the 10-minute grace window, rev
 
   assert.equal(heartbeat(deviceSecret, "notDetermined", { source: "app" }).statusCode, 200);
   let kid = overview(ctx);
-  assert.equal(kid.devices[0].state, "ok");
-  assert.equal(kid.devices[0].authStatus, "approved", "an unconfirmed notDetermined never overwrites authStatus");
+  assert.equal(kid.devices[0].state, "unknown");
+  assert.equal(kid.devices[0].authStatus, "notDetermined", "unknown cannot appear as current approved authorization");
   assert.deepEqual(kid.alerts, []);
   assert.equal(notified.length, 0);
 
   withClock(new Date(t0.getTime() + 5 * 60000), () => heartbeat(deviceSecret, "notDetermined", { source: "app" }));
   kid = overview(ctx);
-  assert.equal(kid.devices[0].state, "ok");
+  assert.equal(kid.devices[0].state, "unknown");
   assert.deepEqual(kid.alerts, [], "still inside the grace window");
   assert.equal(notified.length, 0);
 
   withClock(new Date(t0.getTime() + 11 * 60000), () => heartbeat(deviceSecret, "notDetermined", { source: "app" }));
   kid = overview(ctx);
-  assert.equal(kid.devices[0].state, "revoked");
-  assert.equal(kid.devices[0].authStatus, "notDetermined", "confirmed: authStatus is finally written");
-  assert.deepEqual(kid.alerts.map((a) => a.type), ["revoked"]);
-  assert.equal(notified.length, 1);
+  assert.equal(kid.devices[0].state, "unknown");
+  assert.equal(kid.devices[0].authStatus, "notDetermined");
+  assert.deepEqual(kid.alerts, []);
+  assert.equal(notified.length, 0);
 });
 
 test("notDetermined from the monitor extension never confirms, however long it persists", () => {
@@ -684,13 +677,13 @@ test("notDetermined from the monitor extension never confirms, however long it p
   withClock(new Date(t0.getTime() + 9 * 3600000), () => heartbeat(deviceSecret, "notDetermined", { source: "monitor" }));
 
   const kid = overview(ctx);
-  assert.equal(kid.devices[0].state, "ok");
-  assert.equal(kid.devices[0].authStatus, "approved", "a monitor notDetermined never overwrites authStatus either");
+  assert.equal(kid.devices[0].state, "unknown");
+  assert.equal(kid.devices[0].authStatus, "notDetermined", "monitor uncertainty is not evidence of approved access");
   assert.deepEqual(kid.alerts, []);
   assert.equal(notified.length, 0);
 });
 
-test("notDetermined then approved inside the grace window: no alert either way; a later notDetermined starts a fresh window", () => {
+test("notDetermined then confirmed health: no blame alert; a later notDetermined starts new uncertainty", () => {
   const ctx = setup();
   turnOn(ctx);
   const { deviceSecret } = enroll(ctx).body;
@@ -699,7 +692,7 @@ test("notDetermined then approved inside the grace window: no alert either way; 
 
   heartbeat(deviceSecret, "notDetermined", { source: "app" });
   const t1 = new Date(t0.getTime() + 3 * 60000);
-  withClock(t1, () => heartbeat(deviceSecret, "approved"));
+  withClock(t1, () => heartbeat(deviceSecret, "approved", { health: health() }));
   let kid = overview(ctx);
   assert.equal(kid.devices[0].state, "ok");
   assert.deepEqual(kid.alerts, [], "no revoked, and no restored — the device was never actually marked down");
@@ -713,23 +706,23 @@ test("notDetermined then approved inside the grace window: no alert either way; 
   assert.deepEqual(kid.alerts, [], "the fresh window started at t2 (approved cleared it), not back at the first notDetermined");
 });
 
-test("a confirmed notDetermined revoke restores exactly like a denied one", () => {
+test("unknown app → 12h unknown monitor → unknown app never produces revocation or restoration", () => {
   const ctx = setup();
   turnOn(ctx);
   const { deviceSecret } = enroll(ctx).body;
   const t0 = clock;
   heartbeat(deviceSecret, "notDetermined", { source: "app" });
-  withClock(new Date(t0.getTime() + 11 * 60000), () => heartbeat(deviceSecret, "notDetermined", { source: "app" }));
-  assert.equal(overview(ctx).devices[0].state, "revoked");
+  withClock(new Date(t0.getTime() + 12 * 3600000), () => heartbeat(deviceSecret, "notDetermined", { source: "monitor" }));
+  withClock(new Date(t0.getTime() + 12 * 3600000 + 60000), () => heartbeat(deviceSecret, "notDetermined", { source: "app" }));
+  assert.equal(overview(ctx).devices[0].state, "unknown");
   notified.length = 0;
 
-  withClock(new Date(t0.getTime() + 12 * 60000), () => heartbeat(deviceSecret, "approved"));
+  withClock(new Date(t0.getTime() + 13 * 3600000), () => heartbeat(deviceSecret, "approved", { health: health() }));
   const kid = overview(ctx);
   assert.equal(kid.devices[0].state, "ok");
   assert.equal(kid.devices[0].authStatus, "approved");
-  assert.deepEqual(kid.alerts.map((a) => a.type), ["restored", "revoked"]);
-  assert.equal(kid.alerts[0].ackedAt, kid.alerts[0].at, "restored is pre-acked");
-  assert.equal(notified.length, 1, "restore after revoke pushes");
+  assert.deepEqual(kid.alerts, []);
+  assert.equal(notified.length, 0, "uncertainty never becomes permission-loss or protected-restored evidence");
 });
 
 // ---------- device reinstall / installKey (survives the app being deleted) ----------
@@ -799,7 +792,7 @@ test("enroll rejects a malformed installKey; publicDevice never leaks the hash",
   assert.equal(enroll(ctx, { installKey: "x".repeat(129) }).statusCode, 400);
   const ok = enroll(ctx, { installKey: "d".repeat(20) });
   assert.equal(ok.statusCode, 200);
-  assert.deepEqual(Object.keys(overview(ctx).devices[0]).sort(), ["appliedVersion", "authStatus", "enrolledAt", "id", "label", "lastSeenAt", "mode", "state"]);
+  assert.deepEqual(Object.keys(overview(ctx).devices[0]).sort(), ["appliedVersion", "assignmentGeneration", "authStatus", "enrolledAt", "essentialApps", "health", "id", "label", "lastSeenAt", "mode", "state"]);
 });
 
 // ---------- moving a device between kids ----------
@@ -1019,7 +1012,8 @@ test("usage: invalid usage is dropped but the check-in (tamper detection) still 
   for (const usage of bad) {
     assert.equal(heartbeat(deviceSecret, "approved", { appliedVersion: 7, usage }).statusCode, 200, JSON.stringify(usage));
   }
-  assert.equal(overview(ctx).devices[0].appliedVersion, 7, "the check-in itself was recorded");
+  assert.equal(overview(ctx).devices[0].lastSeenAt, clock.toISOString(), "the check-in itself was recorded");
+  assert.equal(overview(ctx).devices[0].appliedVersion, 0, "legacy claimed versions are unverified");
   assert.ok(usageQuery(ctx, 7).body.days.every((d) => d.minutes === null), "no invalid usage was stored");
   assert.equal(heartbeat(deviceSecret, "denied", { usage: bad[0] }).statusCode, 200);
   assert.equal(overview(ctx).devices[0].state, "revoked", "bad usage never hides a switch-off");
@@ -1091,7 +1085,7 @@ test("GET usage: 7-date shape, sums across devices, weekday/weekend + bonus limi
   const noReport = res.body.days[1];
   assert.equal(noReport.minutes, null, "no device reported that day");
   assert.deepEqual(noReport.devices, []);
-  assert.equal(noReport.limitMinutes, isWeekendStr(noReport.date) ? 150 : 90);
+  assert.equal(noReport.limitMinutes, null, "historic allowance without a recorded report is unknown");
 
   giveFams(ctx, 20);
   const req = ask(ctx, { minutes: 45, date: TODAY }).body.request;
@@ -1111,4 +1105,491 @@ test("GET usage: 7-date shape, sums across devices, weekday/weekend + bonus limi
 
   assert.equal(usageQuery(ctx, 7, ctx.kidUser).statusCode, 403, "kid session");
   assert.equal(usageQuery(ctx, 7, setup().parent).statusCode, 404, "other family");
+});
+
+// ---------- device health and parent-approved downtime exceptions ----------
+
+function health(extra = {}) {
+  return { policyVersion: 1, state: "applied", registeredActivities: 4, expectedActivities: 4, hasUsageSelection: true, failures: [], ...extra };
+}
+function propose(ctx, device, body = {}) {
+  return call("PUT /api/screen-time/device/essential-apps", {
+    auth: `FamDevice ${device.deviceSecret}`,
+    body: { selection: "RU5DT0RFRA==", summary: { apps: 2, categories: 0, webDomains: 0 }, note: "For school", ...body },
+  });
+}
+function essentialDecision(ctx, device, decision, requestId, user = ctx.parent, kidId = ctx.mia.id) {
+  return call(`POST /api/screen-time/kids/:kidId/devices/:deviceId/essential-apps/${decision}`, {
+    user, params: { kidId, deviceId: device.deviceId }, body: { requestId },
+  });
+}
+function removeEssential(ctx, device, user = ctx.parent) {
+  return call("DELETE /api/screen-time/kids/:kidId/devices/:deviceId/essential-apps", {
+    user, params: { kidId: ctx.mia.id, deviceId: device.deviceId },
+  });
+}
+
+test("health is validated, server stamped and only confirmed success advances appliedVersion", () => {
+  const ctx = setup();
+  turnOn(ctx);
+  const device = enroll(ctx).body;
+  heartbeat(device.deviceSecret, "approved", { appliedVersion: 999 });
+  assert.equal(overview(ctx).devices[0].health, null);
+  assert.equal(overview(ctx).devices[0].appliedVersion, 0, "legacy heartbeat does not confirm protection");
+  const bad = [
+    health({ registeredActivities: 3 }), health({ failures: ["registration_failed"] }),
+    health({ failures: ["https://secret.example"] }), health({ failures: ["A".repeat(70)] }),
+    health({ expectedActivities: 129 }), health({ hasUsageSelection: "yes" }),
+    health({ policyVersion: -1 }), health({ state: "healthy" }), health({ policyVersion: 2 }),
+  ];
+  for (const value of bad) assert.equal(heartbeat(device.deviceSecret, "approved", { health: value }).statusCode, 400);
+  assert.equal(overview(ctx).devices[0].health, null, "rejected payloads do not write evidence");
+  assert.equal(heartbeat(device.deviceSecret, "approved", { health: health({ checkedAt: "2000-01-01", arbitrarySecret: "secret" }) }).statusCode, 200);
+  let publicDev = overview(ctx).devices[0];
+  assert.equal(publicDev.appliedVersion, 1);
+  assert.equal(publicDev.health.checkedAt, clock.toISOString());
+  assert.ok(!JSON.stringify(publicDev).includes("arbitrarySecret"));
+  turnOn(ctx); // policy version 2
+  heartbeat(device.deviceSecret, "approved", { appliedVersion: 2, health: health({ policyVersion: 2, state: "partial", registeredActivities: 3, failures: ["registration_failed"] }) });
+  publicDev = overview(ctx).devices[0];
+  assert.equal(publicDev.appliedVersion, 1, "partial registration does not acknowledge the new policy");
+  assert.equal(publicDev.health.state, "partial");
+  heartbeat(device.deviceSecret, "approved", { appliedVersion: 2, health: health({ policyVersion: 2, state: "failed", registeredActivities: 0, failures: ["a_private_lowercase_token", "future_registration_failure"] }) });
+  assert.deepEqual(overview(ctx).devices[0].health.failures, ["unknown_registration_failure"], "unknown well-formed failure codes remain compatible without exposing their contents");
+  heartbeat(device.deviceSecret, "denied", { appliedVersion: 2, health: health({ policyVersion: 2 }) });
+  assert.equal(overview(ctx).devices[0].appliedVersion, 1, "revoked access cannot confirm protection");
+  heartbeat(device.deviceSecret, "approved", { appliedVersion: 2, health: health({ policyVersion: 2 }) });
+  assert.equal(overview(ctx).devices[0].appliedVersion, 2);
+  heartbeat(device.deviceSecret);
+  assert.equal(overview(ctx).devices[0].health, null, "a later legacy check-in is unverified, even after earlier success");
+});
+
+test("health cannot acknowledge enabled daily limits without a usage selection, and off must be explicit", () => {
+  const ctx = setup();
+  turnOn(ctx, { limits: [{ kind: "total", name: "Screen time", minutesPerDay: 90 }] });
+  const device = enroll(ctx).body;
+  heartbeat(device.deviceSecret, "approved", { health: health({ hasUsageSelection: false }) });
+  assert.equal(overview(ctx).devices[0].appliedVersion, 0);
+  heartbeat(device.deviceSecret, "approved", { health: health({ state: "off" }) });
+  assert.equal(overview(ctx).devices[0].appliedVersion, 0);
+  turnOff(ctx);
+  heartbeat(device.deviceSecret, "approved", { appliedVersion: 2, health: health({ policyVersion: 2, state: "off", hasUsageSelection: false }) });
+  assert.equal(overview(ctx).devices[0].appliedVersion, 2);
+});
+
+test("check protection is a scoped parent request, pings but does not fabricate health", async () => {
+  const ctx = setup();
+  enroll(ctx);
+  pinged.length = 0;
+  const route = "POST /api/screen-time/kids/:kidId/check";
+  assert.equal(call(route, { user: ctx.kidUser, params: { kidId: ctx.mia.id } }).statusCode, 403);
+  assert.equal(call(route, { user: setup().parent, params: { kidId: ctx.mia.id } }).statusCode, 404);
+  const checked = call(route, { user: ctx.parent, params: { kidId: ctx.mia.id } });
+  assert.equal(checked.statusCode, 200);
+  assert.equal(checked.headers["Cache-Control"], "no-store");
+  assert.equal(checked.body.devices[0].health, null);
+  await new Promise(setImmediate);
+  assert.equal(pinged.length, 1);
+});
+
+test("essential proposals remain pending until matching parent approval, stay device local and leak no token", async () => {
+  const ctx = setup();
+  turnOn(ctx);
+  const a = enroll(ctx).body;
+  const b = enroll(ctx, { label: "iPad" }).body;
+  const proposed = propose(ctx, a);
+  assert.equal(proposed.statusCode, 200);
+  const pending = proposed.body.policy.essentialApps.pending;
+  assert.equal(proposed.body.policy.essentialApps.selection, null, "proposal has no enforcement effect");
+  assert.equal(pending.note, "For school");
+  assert.equal(pending.requestedAt, clock.toISOString());
+  assert.ok(!JSON.stringify(overview(ctx)).includes("RU5DT0RFRA=="), "parent only sees summary and note");
+  assert.ok(!JSON.stringify(pending).includes("selection"), "even device pending metadata omits its token");
+  const second = propose(ctx, a, { selection: "TkVX", summary: { apps: 1 } });
+  assert.notEqual(second.body.policy.essentialApps.pending.id, pending.id);
+  assert.equal(essentialDecision(ctx, a, "approve", pending.id).statusCode, 409, "replaced proposal cannot be approved");
+  assert.equal(overview(ctx).policy.version, 1);
+  pinged.length = 0;
+  const approved = essentialDecision(ctx, a, "approve", second.body.policy.essentialApps.pending.id);
+  assert.equal(approved.statusCode, 200);
+  assert.equal(approved.body.policy.version, 2);
+  assert.equal(approved.body.devices.find((d) => d.id === a.deviceId).essentialApps.selection, null);
+  assert.deepEqual(approved.body.devices.find((d) => d.id === a.deviceId).essentialApps.summary, { apps: 1, categories: 0, webDomains: 0 });
+  assert.equal(heartbeat(a.deviceSecret).body.policy.essentialApps.selection, "TkVX");
+  assert.equal(heartbeat(b.deviceSecret).body.policy.essentialApps.selection, null, "other device has no exception");
+  assert.equal(call("GET /api/screen-time/mine", { user: ctx.kidUser }).body.policy.essentialApps.selection, null, "kid session is not a device credential");
+  assert.equal(essentialDecision(ctx, a, "approve", second.body.policy.essentialApps.pending.id).statusCode, 409, "consumed approval is not replayed");
+  await new Promise(setImmediate);
+  assert.equal(pinged.length, 2, "approval pings current devices");
+});
+
+test("essential decline preserves old approval; explicit parent removal clears approved and pending", () => {
+  const ctx = setup();
+  const device = enroll(ctx).body;
+  const first = propose(ctx, device).body.policy.essentialApps.pending;
+  essentialDecision(ctx, device, "approve", first.id);
+  const next = propose(ctx, device, { selection: "TkVX" }).body.policy.essentialApps.pending;
+  assert.equal(essentialDecision(ctx, device, "decline", next.id).statusCode, 200);
+  assert.equal(overview(ctx).policy.version, 1, "decline does not change enforcement policy");
+  assert.equal(heartbeat(device.deviceSecret).body.policy.essentialApps.selection, "RU5DT0RFRA==");
+  assert.equal(heartbeat(device.deviceSecret).body.policy.essentialApps.pending, null);
+  propose(ctx, device);
+  const removed = removeEssential(ctx, device);
+  assert.equal(removed.statusCode, 200);
+  assert.equal(removed.body.policy.version, 2);
+  assert.deepEqual(heartbeat(device.deviceSecret).body.policy.essentialApps, { selection: null, summary: null, pending: null });
+});
+
+test("essential mutation boundaries reject categories, websites, malformed blobs, notes and non-parent decisions", () => {
+  const ctx = setup();
+  const device = enroll(ctx).body;
+  const bad = [
+    { summary: { apps: 0 } }, { summary: { apps: 51 } }, { summary: { apps: 1, categories: 1 } },
+    { summary: { apps: 1, webDomains: 1 } }, { summary: { apps: 1.5 } },
+    { selection: null }, { selection: "" }, { selection: "not base64!" }, { selection: "eA==".repeat(17000) },
+    { note: "a".repeat(81) }, { note: {} },
+  ];
+  for (const value of bad) assert.equal(propose(ctx, device, value).statusCode, 400);
+  assert.equal(overview(ctx).devices[0].essentialApps.pending, null);
+  assert.equal(call("PUT /api/screen-time/device/essential-apps", { user: ctx.kidUser }).statusCode, 401);
+  const pending = propose(ctx, device).body.policy.essentialApps.pending;
+  for (const decision of ["approve", "decline"]) {
+    assert.equal(essentialDecision(ctx, device, decision, pending.id, ctx.kidUser).statusCode, 403);
+    assert.equal(essentialDecision(ctx, device, decision, pending.id, setup().parent).statusCode, 404);
+    assert.equal(essentialDecision(ctx, device, decision, pending.id, ctx.parent, ctx.leo.id).statusCode, 404);
+    assert.equal(essentialDecision(ctx, device, decision, null).statusCode, 400);
+  }
+  assert.equal(removeEssential(ctx, device, ctx.kidUser).statusCode, 403);
+  assert.equal(removeEssential(ctx, device, setup().parent).statusCode, 404);
+});
+
+test("assignment generations reject old evidence and drafts after move; returning a device cannot revive old usage", () => {
+  const ctx = setup();
+  turnOn(ctx);
+  const device = enroll(ctx).body;
+  assert.equal(device.assignmentGeneration, 1);
+  heartbeat(device.deviceSecret, "approved", { assignmentGeneration: 1, health: health(), usage: { date: TODAY, minutes: 90 } });
+  const pending = propose(ctx, device).body.policy.essentialApps.pending;
+  essentialDecision(ctx, device, "approve", pending.id);
+  moveDeviceCall(ctx, device.deviceId, ctx.leo.id);
+  const before = call("GET /api/screen-time", { user: ctx.parent }).body.kids.find((k) => k.kidId === ctx.leo.id).devices[0];
+  assert.equal(before.assignmentGeneration, 2);
+  assert.equal(before.health, null);
+  assert.equal(before.essentialApps.summary, null);
+  for (const generation of [undefined, 1, 3]) {
+    const response = heartbeat(device.deviceSecret, "denied", { assignmentGeneration: generation, health: health(), usage: { date: TODAY, minutes: 120 } });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.assignmentGeneration, 2);
+    assert.equal(response.body.kidId, ctx.leo.id);
+  }
+  const after = call("GET /api/screen-time", { user: ctx.parent }).body.kids.find((k) => k.kidId === ctx.leo.id).devices[0];
+  assert.deepEqual(after, before, "mismatched generation records no auth, health, appliedVersion or check-in evidence");
+  assert.equal(call("GET /api/screen-time/kids/:kidId/usage", { user: ctx.parent, params: { kidId: ctx.leo.id }, query: { days: 1 } }).body.days[0].minutes, null);
+  assert.equal(propose(ctx, device).statusCode, 409);
+  assert.equal(propose(ctx, device, { assignmentGeneration: 1 }).statusCode, 409);
+  assert.equal(propose(ctx, device, { assignmentGeneration: 2 }).statusCode, 200);
+  assert.equal(saveAgreement(device.deviceSecret, dealBody({ assignmentGeneration: 1 })).statusCode, 409);
+  assert.equal(call("PUT /api/screen-time/device/limits/:limitId/selection", { auth: `FamDevice ${device.deviceSecret}`, params: { limitId: "total" }, body: { assignmentGeneration: 1, selection: null } }).statusCode, 409);
+  call("POST /api/screen-time/kids/:kidId/devices/:deviceId/move", { user: ctx.parent, params: { kidId: ctx.leo.id, deviceId: device.deviceId }, body: { toKidId: ctx.mia.id } });
+  assert.equal(heartbeat(device.deviceSecret).body.assignmentGeneration, 3);
+  let today = usageQuery(ctx, 1).body.days[0];
+  assert.equal(today.devices.find((d) => d.label === "iPhone").minutes, null, "old assignment does not populate current device");
+  heartbeat(device.deviceSecret, "approved", { assignmentGeneration: 3, appliedVersion: 2, usage: { date: TODAY, minutes: 15 } });
+  today = usageQuery(ctx, 1).body.days[0];
+  assert.equal(today.devices.find((d) => d.label === "iPhone").minutes, 15, "new assignment starts at its own counter");
+  assert.equal(today.devices.find((d) => d.label === "Removed device").minutes, 90, "prior child's history remains separate");
+  assert.equal(new Set(today.devices.map((d) => d.deviceId)).size, today.devices.length, "archived and current assignments have distinct row identities");
+});
+
+test("re-enrollment increments generation, clears exceptions and rejects old approval even with the same id", () => {
+  const ctx = setup();
+  const device = enroll(ctx, { installKey: "same_device_install_key" }).body;
+  const first = propose(ctx, device).body.policy.essentialApps.pending;
+  essentialDecision(ctx, device, "approve", first.id);
+  const waiting = propose(ctx, device).body.policy.essentialApps.pending;
+  const reenrolled = enroll(ctx, { installKey: "same_device_install_key" }).body;
+  assert.equal(reenrolled.deviceId, device.deviceId);
+  assert.equal(reenrolled.assignmentGeneration, 2);
+  assert.deepEqual(reenrolled.policy.essentialApps, { selection: null, summary: null, pending: null });
+  assert.equal(essentialDecision(ctx, reenrolled, "approve", waiting.id).statusCode, 409);
+  assert.equal(heartbeat(device.deviceSecret).statusCode, 401);
+  assert.equal(propose(ctx, reenrolled, { assignmentGeneration: 2 }).statusCode, 200);
+  assert.equal(propose(ctx, reenrolled, { assignmentGeneration: "2" }).statusCode, 400);
+});
+
+test("usage exposes unknown devices, per-device remaining and recorded historical allowance", () => {
+  const ctx = setup();
+  putPolicy(ctx, { enabled: true, limits: [{ kind: "total", name: "Screen time", minutesPerDay: 90, weekendMinutes: 150 }], downtime: [] });
+  const a = enroll(ctx).body;
+  const b = enroll(ctx, { label: "iPad" }).body;
+  let today = usageQuery(ctx, 1).body.days[0];
+  assert.equal(today.devices.length, 2);
+  assert.ok(today.devices.every((d) => d.minutes === null && d.remainingMinutes === null && d.updatedAt === null));
+  const allowance = isWeekendStr(TODAY) ? 150 : 90;
+  heartbeat(a.deviceSecret, "approved", { usage: { date: TODAY, minutes: 30 } });
+  today = usageQuery(ctx, 1).body.days[0];
+  const known = today.devices.find((d) => d.deviceId === a.deviceId);
+  assert.equal(known.updatedAt, clock.toISOString());
+  assert.equal(known.limitMinutes, allowance);
+  assert.equal(known.remainingMinutes, allowance - 30);
+  assert.equal(today.devices.find((d) => d.deviceId === b.deviceId).minutes, null);
+  putPolicy(ctx, { enabled: true, limits: [{ kind: "total", name: "Screen time", minutesPerDay: 15, weekendMinutes: 30 }], downtime: [] });
+  today = usageQuery(ctx, 1).body.days[0];
+  assert.equal(today.devices.find((d) => d.deviceId === a.deviceId).limitMinutes, allowance, "planned policy is not yet the reported allowance");
+  assert.equal(today.devices.find((d) => d.deviceId === a.deviceId).remainingMinutes, allowance - 30, "delayed apply does not fabricate a new remaining value");
+  heartbeat(a.deviceSecret, "approved", { appliedVersion: 1, usage: { date: TODAY, minutes: 45 } });
+  assert.equal(usageQuery(ctx, 1).body.days[0].devices.find((d) => d.deviceId === a.deviceId).limitMinutes, allowance, "old version reports retain recorded allowance");
+  const savedClock = clock;
+  try {
+    clock = new Date(clock.getTime() + 86400000);
+    putPolicy(ctx, { enabled: true, limits: [{ kind: "total", name: "Screen time", minutesPerDay: 15, weekendMinutes: 30 }], downtime: [] });
+    const prior = usageQuery(ctx, 2).body.days[1];
+    assert.equal(prior.limitMinutes, allowance, "new policy does not recompute old allowance");
+    assert.equal(prior.devices[0].remainingMinutes, allowance - 45);
+    const rows = db.load().screenTime[ctx.fam.id].kids[ctx.mia.id].usage[TODAY];
+    delete rows[a.deviceId].limitMinutes; // pre-upgrade stored report
+    assert.equal(usageQuery(ctx, 2).body.days[1].limitMinutes, null, "legacy historic allowance stays unknown");
+    assert.equal(usageQuery(ctx, 2).body.days[1].devices[0].remainingMinutes, null);
+  } finally { clock = savedClock; }
+});
+
+test("downtime validation enforces Apple's 15-minute minimum including across midnight", () => {
+  const ctx = setup();
+  const save = (start, end) => putPolicy(ctx, { enabled: true, limits: [], downtime: [{ name: "Break", start, end, days: [1] }] });
+  assert.equal(save("09:00", "09:14").statusCode, 400);
+  assert.equal(save("23:55", "00:09").statusCode, 400);
+  assert.equal(save("09:00", "09:15").statusCode, 200);
+  assert.equal(save("23:55", "00:10").statusCode, 200);
+});
+
+test("one neutral reminder per continuous uncertain episode, reset only by confirmed recovery or off", async () => {
+  const ctx = setup();
+  turnOn(ctx);
+  const enrolled = enroll(ctx, { pushToken: null }).body;
+  const device = db.load().screenTime[ctx.fam.id].kids[ctx.mia.id].devices[0];
+  const saved = clock;
+  const atHour = (hours) => { clock = new Date(saved.getTime() + hours * 3600000); };
+  const reminders = () => overview(ctx).alerts.filter((a) => a.type === "check_needed");
+  const reminderPushes = () => notified.filter((n) => n.kidId === ctx.mia.id && n.type === "check_needed");
+  try {
+    heartbeat(enrolled.deviceSecret, "approved", { health: health() });
+    atHour(1);
+    heartbeat(enrolled.deviceSecret, "notDetermined");
+    atHour(24.9);
+    heartbeat(enrolled.deviceSecret, "notDetermined", { source: "monitor" });
+    await screenTime.sweep();
+    assert.equal(reminders().length, 0, "no reminder before 24h of uncertainty");
+    atHour(25);
+    heartbeat(enrolled.deviceSecret, "notDetermined", { source: "monitor" });
+    assert.equal(reminders().length, 1, "exactly 24h is due even with recent unknown heartbeats");
+    assert.equal(reminderPushes().length, 1);
+    assert.doesNotMatch(reminders()[0].message, /turned off|removed|back on|✅/);
+    ackOne(ctx, reminders()[0].id);
+    atHour(30);
+    await screenTime.sweep();
+    atHour(35);
+    heartbeat(enrolled.deviceSecret, "approved", { health: health({ state: "failed", registeredActivities: 0, failures: ["activity_registration_failed"] }) });
+    await screenTime.sweep();
+    assert.equal(reminders().length, 1, "acknowledgement or failed health cannot restart or re-send the episode");
+    assert.ok(device.uncertainSince && device.checkReminderAt);
+    atHour(36);
+    heartbeat(enrolled.deviceSecret, "denied");
+    atHour(37);
+    heartbeat(enrolled.deviceSecret, "approved");
+    atHour(38);
+    heartbeat(enrolled.deviceSecret, "denied");
+    assert.equal(notified.filter((n) => n.kidId === ctx.mia.id && n.type === "revoked").length, 1, "permission oscillation during unverified recovery does not repeat the loss alert");
+    atHour(40);
+    heartbeat(enrolled.deviceSecret, "approved", { health: health() });
+    assert.equal(device.uncertainSince, undefined);
+    assert.equal(device.checkReminderAt, undefined);
+    assert.ok(reminders()[0].ackedAt);
+    atHour(41);
+    heartbeat(enrolled.deviceSecret, "notDetermined");
+    atHour(65);
+    await screenTime.sweep();
+    assert.equal(reminders().length, 2, "a confirmed recovery permits a new episode");
+    atHour(66);
+    turnOff(ctx);
+    assert.equal(device.uncertainSince, undefined);
+    assert.equal(device.checkReminderAt, undefined);
+    atHour(100);
+    await screenTime.sweep();
+    assert.equal(reminders().length, 2, "policy off suppresses reminders");
+    atHour(101);
+    turnOn(ctx);
+    atHour(124.9);
+    await screenTime.sweep();
+    assert.equal(reminders().length, 2, "enable starts a fresh reminder window without forging lastSeenAt");
+    atHour(125);
+    await screenTime.sweep();
+    assert.equal(reminders().length, 3);
+    assert.equal(reminderPushes().length, 3);
+  } finally { clock = saved; }
+});
+
+test("approved access with failed or missing health never resolves an uncertainty reminder or claims protection restored", async () => {
+  const ctx = setup();
+  turnOn(ctx);
+  const { deviceSecret } = enroll(ctx, { pushToken: null }).body;
+  const saved = clock;
+  try {
+    clock = new Date(saved.getTime() + 24 * 3600000);
+    await screenTime.sweep();
+    heartbeat(deviceSecret, "denied");
+    heartbeat(deviceSecret, "approved", { health: health({ state: "failed", registeredActivities: 0, failures: ["activity_registration_failed"] }) });
+    let kid = overview(ctx);
+    assert.equal(kid.devices[0].appliedVersion, 0);
+    assert.equal(kid.devices[0].health.state, "failed");
+    assert.equal(kid.alerts.find((a) => a.type === "check_needed").ackedAt, null);
+    assert.equal(kid.alerts.find((a) => a.type === "revoked").ackedAt, null);
+    const restored = kid.alerts.filter((a) => a.type === "restored");
+    assert.equal(restored.length, 1);
+    assert.match(restored[0].message, /access restored.*checking rules/);
+    assert.doesNotMatch(restored[0].message, /back on|protection restored|✅/);
+    heartbeat(deviceSecret, "approved");
+    kid = overview(ctx);
+    assert.equal(kid.devices[0].health, null);
+    assert.equal(kid.alerts.find((a) => a.type === "check_needed").ackedAt, null);
+    heartbeat(deviceSecret, "approved", { health: health() });
+    assert.equal(overview(ctx).alerts.find((a) => a.type === "check_needed").ackedAt, clock.toISOString());
+  } finally { clock = saved; }
+});
+
+test("legacy false revocation/removal and actor-attributed wording are corrected on parent read without push", () => {
+  const ctx = setup();
+  turnOn(ctx);
+  const a = enroll(ctx).body;
+  const b = enroll(ctx, { label: "iPad" }).body;
+  const entry = db.load().screenTime[ctx.fam.id].kids[ctx.mia.id];
+  const old = entry.devices.find((d) => d.id === a.deviceId);
+  delete old.evidenceVersion;
+  Object.assign(old, { state: "revoked", authStatus: "notDetermined", authUnknownSince: clock.toISOString(), health: health() });
+  const removed = entry.devices.find((d) => d.id === b.deviceId);
+  delete removed.evidenceVersion;
+  removed.state = "removed";
+  entry.alerts = [
+    { id: "old_unknown", deviceId: a.deviceId, type: "revoked", message: "Mia turned off Screen Time on iPhone", at: clock.toISOString(), ackedAt: null },
+    { id: "old_removed", deviceId: b.deviceId, type: "removed", message: "Fam ETC may have been removed", at: clock.toISOString(), ackedAt: null },
+    { id: "old_restored", deviceId: a.deviceId, type: "restored", message: "✅ Screen Time is back on", at: clock.toISOString(), ackedAt: clock.toISOString() },
+    { id: "old_selection", deviceId: a.deviceId, type: "selection_changed", message: "Mia changed the apps", at: clock.toISOString(), ackedAt: null },
+  ];
+  const beforePushes = miaPushes(ctx).length;
+  const state = overview(ctx);
+  assert.equal(state.devices[0].authStatus, "notDetermined");
+  assert.equal(state.devices[0].state, "unknown");
+  assert.equal(state.devices[0].health, null);
+  assert.equal(state.devices[1].state, "unknown");
+  assert.equal(state.alerts.find((a) => a.id === "old_unknown").type, "check_needed");
+  assert.ok(state.alerts.find((a) => a.id === "old_unknown").ackedAt);
+  assert.equal(state.alerts.find((a) => a.id === "old_removed").type, "check_needed");
+  assert.doesNotMatch(JSON.stringify(state.alerts), /Mia turned off|Mia changed|may have been removed|back on|✅/);
+  assert.deepEqual(overview(ctx), state, "migration is idempotent");
+  assert.equal(miaPushes(ctx).length, beforePushes);
+});
+
+test("clearing a prior device selection alerts neutrally, repeated clearing and first selection do not", () => {
+  const ctx = setup();
+  const limitId = turnOn(ctx, { limits: [limit()] }).body.policy.limits[0].id;
+  const device = enroll(ctx).body;
+  const upload = (selection) => call("PUT /api/screen-time/device/limits/:limitId/selection", {
+    auth: `FamDevice ${device.deviceSecret}`, params: { limitId }, body: { selection, summary: { apps: 1 } },
+  });
+  upload(null);
+  upload("QUJD");
+  upload("QUJD");
+  assert.equal(overview(ctx).alerts.length, 0);
+  upload(null);
+  assert.equal(overview(ctx).alerts.length, 1);
+  assert.equal(overview(ctx).alerts[0].type, "selection_changed");
+  assert.doesNotMatch(overview(ctx).alerts[0].message, /Mia changed|turned off|tamper/);
+  upload(null);
+  assert.equal(overview(ctx).alerts.length, 1);
+});
+
+test("assignment/re-enrollment starts a new reminder window without inherited countdown or sent flags", async () => {
+  const ctx = setup();
+  turnOn(ctx);
+  call("PUT /api/screen-time/kids/:kidId/policy", { user: ctx.parent, params: { kidId: ctx.leo.id }, body: { enabled: true, limits: [], downtime: [] } });
+  const first = enroll(ctx, { installKey: "reminder_device_install_key", pushToken: null }).body;
+  const saved = clock;
+  try {
+    clock = new Date(saved.getTime() + 25 * 3600000);
+    await screenTime.sweep();
+    const original = db.load().screenTime[ctx.fam.id].kids[ctx.mia.id].devices[0];
+    assert.ok(original.checkReminderAt);
+    moveDeviceCall(ctx, first.deviceId, ctx.leo.id);
+    const moved = db.load().screenTime[ctx.fam.id].kids[ctx.leo.id].devices[0];
+    assert.equal(moved.checkReminderAt, undefined);
+    assert.equal(moved.uncertainSince, clock.toISOString());
+    clock = new Date(saved.getTime() + 48 * 3600000);
+    await screenTime.sweep();
+    assert.equal(db.load().screenTime[ctx.fam.id].kids[ctx.leo.id].alerts.filter((a) => a.type === "check_needed").length, 0);
+    clock = new Date(saved.getTime() + 50 * 3600000);
+    call("POST /api/screen-time/kids/:kidId/devices/:deviceId/move", { user: ctx.parent, params: { kidId: ctx.leo.id, deviceId: first.deviceId }, body: { toKidId: ctx.mia.id } });
+    const reenrolled = enroll(ctx, { installKey: "reminder_device_install_key", pushToken: null });
+    assert.equal(reenrolled.statusCode, 200);
+    assert.equal(original.checkReminderAt, undefined);
+    assert.equal(original.uncertainSince, clock.toISOString());
+    clock = new Date(saved.getTime() + 73 * 3600000);
+    await screenTime.sweep();
+    assert.equal(overview(ctx).alerts.filter((a) => a.type === "check_needed").length, 1, "only the old acknowledged reminder remains");
+  } finally { clock = saved; }
+});
+
+test("an old APNs rejection cannot prune a refreshed token, moved assignment or re-enrolled device", async () => {
+  for (const mutation of ["token", "move", "reenroll"]) {
+    const ctx = setup();
+    turnOn(ctx);
+    const first = enroll(ctx, { installKey: "apns_race_device_install_key", pushToken: crypto.randomBytes(32).toString("hex") }).body;
+    const entry = db.load().screenTime[ctx.fam.id].kids[ctx.mia.id];
+    const device = entry.devices[0];
+    const token = device.pushToken;
+    let finish;
+    let started;
+    const start = new Promise((resolve) => { started = resolve; });
+    const pending = screenTime.sweep({ sendPing: (value) => value === token ? (started(), new Promise((resolve) => { finish = resolve; })) : Promise.resolve({ ok: true }) });
+    await start;
+    if (mutation === "token") heartbeat(first.deviceSecret, "approved", { pushToken: "cd".repeat(32) });
+    else if (mutation === "move") moveDeviceCall(ctx, first.deviceId, ctx.leo.id);
+    else enroll(ctx, { installKey: "apns_race_device_install_key", pushToken: token });
+    const expectedToken = device.pushToken;
+    finish({ ok: false, shouldPruneToken: true });
+    await pending;
+    assert.equal(device.pushToken, expectedToken, mutation);
+    assert.notEqual(device.state, "removed");
+    assert.ok(entry.alerts.every((a) => a.type !== "removed"));
+  }
+});
+
+test("pending extra-time approval requires an enabled total limit and conserves balance/ledger until valid", () => {
+  for (const unavailable of ["off", "total_removed"]) {
+    const ctx = setup();
+    totalPolicy(ctx);
+    giveFams(ctx, 20);
+    const request = ask(ctx, { minutes: 30 }).body.request;
+    const snapshot = structuredClone(db.load().fams[ctx.fam.id][ctx.mia.id]);
+    if (unavailable === "off") putPolicy(ctx, { enabled: false, limits: overview(ctx).policy.limits, downtime: [] });
+    else putPolicy(ctx, { enabled: true, limits: [limit()], downtime: [] });
+    const before = structuredClone(overview(ctx));
+    assert.equal(decide(ctx, request.id, "approve").statusCode, 409, unavailable);
+    assert.equal(balance(ctx), 20);
+    assert.deepEqual(db.load().fams[ctx.fam.id][ctx.mia.id], snapshot, "no debit or consumed ledger event");
+    assert.deepEqual(overview(ctx).requests[0], before.requests[0], "request stays pending without decision metadata");
+    assert.equal(overview(ctx).policy.version, before.policy.version);
+    assert.equal(overview(ctx).policy.bonus, null);
+    totalPolicy(ctx);
+    assert.equal(decide(ctx, request.id, "approve").statusCode, 200);
+    assert.equal(balance(ctx), 10);
+    const debited = structuredClone(db.load().fams[ctx.fam.id][ctx.mia.id]);
+    turnOff(ctx);
+    assert.equal(decide(ctx, request.id, "approve").statusCode, 200, "already-approved replay remains idempotent even after disabling");
+    assert.deepEqual(db.load().fams[ctx.fam.id][ctx.mia.id], debited);
+    assert.equal(db.load().fams[ctx.fam.id][ctx.mia.id].transactions.filter((t) => t.event === `screen_time:${request.id}`).length, 1);
+    totalPolicy(ctx);
+    const decline = ask(ctx).body.request;
+    turnOff(ctx);
+    assert.equal(decide(ctx, decline.id, "decline").statusCode, 200, "decline remains available while off");
+    assert.equal(balance(ctx), 10);
+  }
 });

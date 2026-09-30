@@ -15,7 +15,10 @@ final class ScreenTimeParentStatusTests: XCTestCase {
         let seen = Date().addingTimeInterval(-daysAgo * 24 * 3600)
         return ScreenTimeDevice(id: id, label: "iPhone", mode: ScreenTimeMode.cooperative.rawValue,
                                  authStatus: "approved", appliedVersion: 1, lastSeenAt: iso(seen),
-                                 enrolledAt: iso(seen), state: state)
+                                 enrolledAt: iso(seen), state: state,
+                                 health: ScreenTimeDeviceHealth(policyVersion: 1, state: "applied", registeredActivities: 1,
+                                                               expectedActivities: 1, hasUsageSelection: true,
+                                                               failures: [], checkedAt: iso(seen)))
     }
 
     private func kidState(devices: [ScreenTimeDevice]) -> ScreenTimeKidState {
@@ -40,6 +43,49 @@ final class ScreenTimeParentStatusTests: XCTestCase {
         let ok = device(id: "new", state: "ok", daysAgo: 0)
         let revoked = device(id: "other", state: "revoked", daysAgo: 0)
         XCTAssertEqual(ScreenTimeKidStatus(state: kidState(devices: [ok, revoked])), .turnedOff(nil))
+    }
+
+    func testLegacyAppliedVersionDoesNotConfirmProtection() {
+        var legacy = device(id: "legacy", state: "ok", daysAgo: 0)
+        legacy.health = nil
+        XCTAssertEqual(ScreenTimeKidStatus(state: kidState(devices: [legacy])), .unverified)
+    }
+
+    func testUnknownAndDeniedAccessDoNotPresentConfirmedRules() {
+        var phone = device(id: "phone", state: "ok", daysAgo: 0)
+        phone.authStatus = "notDetermined"
+        let waiting = ScreenTimeKidStatus(state: kidState(devices: [phone]))
+        XCTAssertEqual(waiting, .unverified)
+        XCTAssertEqual(waiting.text, "Waiting to check device")
+        phone.authStatus = "denied"
+        let denied = ScreenTimeKidStatus(state: kidState(devices: [phone]))
+        XCTAssertEqual(denied.text, "Access needs reconnecting")
+    }
+
+    func testOfflineAndLegacyRemovedStatusAreNeutral() {
+        for state in ["stale", "removed"] {
+            let status = ScreenTimeKidStatus(state: kidState(devices: [device(id: "phone", state: state, daysAgo: 2)]))
+            XCTAssertEqual(status.text, "Can't reach device")
+            XCTAssertFalse(status.text.contains("removed"))
+        }
+    }
+
+    func testOnlyConfirmedEvidenceHasConfirmedRulesCopy() {
+        var phone = device(id: "phone", state: "ok", daysAgo: 0)
+        XCTAssertEqual(ScreenTimeKidStatus(state: kidState(devices: [phone])).text, "Rules confirmed")
+        phone.health?.registeredActivities = 0
+        XCTAssertEqual(ScreenTimeKidStatus(state: kidState(devices: [phone])).text, "Waiting to check device")
+    }
+
+    func testPauseIsRequestedUntilDeviceConfirmsCurrentPolicy() {
+        let until = Date().addingTimeInterval(3600)
+        var state = kidState(devices: [device(id: "phone", state: "ok", daysAgo: 0)])
+        state.policy.version = 2
+        state.policy.pauseUntil = iso(until)
+        XCTAssertEqual(ScreenTimeKidStatus(state: state), .pauseRequested(ScreenTimeFormat.date(iso(until))!))
+        state.devices[0].appliedVersion = 2
+        state.devices[0].health?.policyVersion = 2
+        XCTAssertEqual(ScreenTimeKidStatus(state: state), .paused(ScreenTimeFormat.date(iso(until))!))
     }
 
     // MARK: ScreenTimeFormat.moment (item 2)
