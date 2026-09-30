@@ -19,8 +19,7 @@ import SwiftUI
 struct ChatScreen<HeaderAccessory: View>: View {
     var roomId: String = familyRoomId
     var title: String? = nil
-    /// Extra header control, trailing the title — e.g. the compact circular
-    /// room switcher. Same generic-with-default-EmptyView shape as
+    /// Room controls below the title. Same generic-with-default-EmptyView shape as
     /// `SurfaceScaffold`'s `Trailing`.
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
 
@@ -101,7 +100,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // native tab page, the iPad docked column, or the slide-over sheet.
         // The onChange covers the iPad docked column, where a room switch
         // changes `roomId` on an already-appeared screen (no onAppear refires).
-        .onAppear { displayedRoomID = roomId; store.activeRoomId = roomId }
+        .onAppear { displayedRoomID = roomId; store.activeRoomId = roomId; store.markChatRead(roomId) }
         // If this screen came from a push tap, NotificationHandler already
         // started the fetch before navigation. Consume that in-flight result
         // immediately instead of waiting for the chat loop's first request.
@@ -110,6 +109,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
             composerFocused = false
             displayedRoomID = newValue
             store.activeRoomId = newValue
+            store.markChatRead(newValue)
             isNearBottom = true
             hasUnreadMessages = false
             scrollToBottom(animated: false)
@@ -172,13 +172,13 @@ struct ChatScreen<HeaderAccessory: View>: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             VStack(alignment: .leading, spacing: 2) {
                 MicroLabel(text: isFamilyRoom ? "Family chat" : (isHermesRoom ? "Private thread" : "Trip chat"))
                 Text(title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : (isHermesRoom ? "Hermes" : "Trip")))
                     .font(Typography.cardTitle).foregroundStyle(Palette.text)
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             headerAccessory()
         }
         .padding(.horizontal, Space.lg).padding(.top, Space.md).padding(.bottom, Space.sm)
@@ -484,9 +484,8 @@ extension ChatScreen where HeaderAccessory == EmptyView {
 
 // MARK: - Chat tab entry point + compact room switcher
 
-/// Chat always opens directly into the family thread. When trip rooms exist,
-/// a compact circular menu swaps rooms in place instead of adding a room-list
-/// navigation layer (and the large navigation header/back button it created).
+/// Chat opens into Family, with each available room directly reachable in
+/// the header. Room badges explain where the combined Chat tab count comes from.
 struct ChatTabHost: View {
     @Environment(AppStore.self) private var store
     @State private var selectedRoomId = familyRoomId
@@ -551,47 +550,65 @@ struct ChatTabHost: View {
     }
 }
 
-/// A 36pt visual circle inside a 44pt touch target. The current room's icon
-/// makes the state legible without consuming header space; the native Menu
-/// scales cleanly from one trip to many and preserves familiar iOS behavior.
+/// Separate, scrollable room tabs keep unread counts visible without a menu.
 struct ChatRoomSwitcher: View {
+    @Environment(AppStore.self) private var store
     let rooms: [ChatRoom]
     @Binding var selection: String
 
-    /// Family and Hermes get their own icons; everything else (trips) keeps
-    /// the airplane. Checks `roomId` first ("hermes" always means the private
-    /// thread) and falls back to `kind` for forward compatibility.
     private static func icon(for room: ChatRoom) -> String {
         if room.roomId == familyRoomId { return "person.2.fill" }
         if room.roomId == "hermes" || room.kind == "assistant" { return "sparkles" }
         return "airplane"
     }
 
-    private var currentRoom: ChatRoom? { rooms.first { $0.roomId == selection } }
-    private var currentIcon: String { currentRoom.map(Self.icon) ?? "person.2.fill" }
-
     var body: some View {
-        Menu {
-            ForEach(rooms) { room in
-                Button {
-                    Haptics.selection()
-                    selection = room.roomId
-                } label: {
-                    Label(room.title,
-                          systemImage: room.roomId == selection ? "checkmark.circle.fill" : Self.icon(for: room))
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: Space.sm) {
+                    ForEach(rooms) { room in
+                        roomButton(room).id(room.roomId)
+                    }
                 }
             }
-        } label: {
-            Image(systemName: currentIcon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Palette.accent)
-                .frame(width: 36, height: 36)
-                .background(Palette.accentSoft, in: Circle())
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+            .scrollIndicators(.hidden)
+            .accessibilityIdentifier("chat.rooms")
+            .onAppear { proxy.scrollTo(selection) }
+            .onChange(of: selection) { _, roomID in proxy.scrollTo(roomID) }
         }
-        .accessibilityLabel("Switch chat room")
-        .accessibilityValue(currentRoom?.title ?? "Chat")
+    }
+
+    private func roomButton(_ room: ChatRoom) -> some View {
+        let selected = room.roomId == selection
+        let unread = store.unreadCount(for: room.roomId)
+        let title = room.roomId == familyRoomId ? "Family" : room.title
+        return Button {
+            Haptics.selection()
+            selection = room.roomId
+            store.markChatRead(room.roomId)
+        } label: {
+            HStack(spacing: 6) {
+                Label(title, systemImage: Self.icon(for: room))
+                if unread > 0 {
+                    Text(unread, format: .number)
+                        .monospacedDigit()
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .foregroundStyle(Palette.onAccent)
+                        .background(Palette.accent, in: Capsule())
+                }
+            }
+            .font(Typography.label.weight(selected ? .semibold : .regular))
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .frame(minHeight: 44)
+            .foregroundStyle(selected ? Palette.accent : Palette.textSecond)
+            .background(selected ? Palette.accentSoft : Palette.panel, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(unread == 0 ? "No unread messages" : "\(unread) unread \(unread == 1 ? "message" : "messages")")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("chat.room.\(room.roomId)")
     }
 }
 

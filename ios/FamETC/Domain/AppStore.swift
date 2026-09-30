@@ -1786,6 +1786,23 @@ final class AppStore {
         add(12, "📚 New homework for QA: Card visibility check", card: ChatCard(type: "homework", id: "hw_qa", title: "Card visibility check"))
         add(13, "FINAL MARKER — visible without scroll")
         messages = msgs
+        // Isolated room-header fixture: never changes a real account or server.
+        if ProcessInfo.processInfo.environment["FAM_MOCK_CHAT_ROOMS"] == "1",
+           messagesByRoom["hermes"] == nil {
+            chatRooms = [ChatRoom(roomId: familyRoomId, title: "Family", kind: "family"),
+                         ChatRoom(roomId: "hermes", title: "Hermes", kind: "assistant"),
+                         ChatRoom(roomId: "trip:qa", tripId: "qa", title: "Weekend away", kind: "trip")]
+            messagesByRoom["hermes"] = (0..<3).map { i in
+                ChatMessage(id: "hermes-\(i)", familyId: famId, senderType: "agent", senderId: "hermes",
+                            text: "Private Hermes message \(i)", createdAt: "2026-01-01T11:0\(i):00.000Z", deleted: false, flagged: false)
+            }
+            messagesByRoom["trip:qa"] = (0..<2).map { i in
+                ChatMessage(id: "trip-\(i)", familyId: "trip:qa", senderType: "parent", senderId: "u_qa_other",
+                            text: "Trip message \(i)", createdAt: "2026-01-01T12:0\(i):00.000Z", deleted: false, flagged: false)
+            }
+            lastSeenChatIdByRoom["hermes"] = "hermes-0"
+            lastSeenChatIdByRoom["trip:qa"] = "trip-0"
+        }
     }
     #endif
 
