@@ -56,6 +56,20 @@ enum Tab: String, CaseIterable, Identifiable {
     }
 }
 
+/// Signs the user out from anywhere under `RootView` (clears private content, revokes the
+/// server session, returns to onboarding). Injected for the Screen Time plan layout, whose
+/// native Family screen has no sidebar footer to host the button.
+private struct FamSignOutKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+extension EnvironmentValues {
+    var famSignOut: () -> Void {
+        get { self[FamSignOutKey.self] }
+        set { self[FamSignOutKey.self] = newValue }
+    }
+}
+
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("fam_onboarded") private var onboarded = false
@@ -100,7 +114,8 @@ struct RootView: View {
             return
         }
         pendingAssistanceURL = nil
-        guard !store.needsAuth, store.assistanceIdentityVerified, let user = store.me, user.role != "kid",
+        // The parent attention sheet is hub content; the Screen Time plan has none.
+        guard !store.needsAuth, store.productPlan == .full, store.assistanceIdentityVerified, let user = store.me, user.role != "kid",
               store.family?.parentIds.contains(user.id) == true,
               store.kids.contains(where: { $0.id == id }) else { return }
         selection = .today
@@ -111,6 +126,13 @@ struct RootView: View {
     var body: some View {
         Group {
             if signingOut { ProgressView("Signing out…").frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else if store.productPlan == .screenTime {
+                // Screen Time plan: its own native shell. Every modifier below
+                // (banners, deep links, Screen Time load, reauth, sign-out) wraps
+                // whichever layout is active.
+                ScreenTimePlanRootView()
+                    .environment(\.famSignOut, { signOut() })
+            }
             else { adaptiveLayout }
         }
         .tint(Palette.frYou)
@@ -180,6 +202,8 @@ struct RootView: View {
             Task { await ScreenTimeService.shared.loadOverview() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToChat)) { _ in
+            // Hub-only deep links (chat, trips, hermes, meals) are ignored on the Screen Time plan.
+            guard store.productPlan == .full else { _ = NotificationHandler.shared.consumePendingChatRoomId(); return }
             routeFromLiveChatNotification(fallbackRoomId: familyRoomId)
         }
         // Trips (docs/TRIPS-PLAN.md) push routing: surface the Chat tab/room.
@@ -187,12 +211,14 @@ struct RootView: View {
         // room) once `store.pendingChatRoomId` matches a room it knows about —
         // see `AppStore.pendingChatRoomId`.
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToTripChat)) { note in
+            guard store.productPlan == .full else { _ = NotificationHandler.shared.consumePendingChatRoomId(); return }
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             routeFromLiveChatNotification(fallbackRoomId: "trip:\(tripId)")
         }
         // meal_prep push (docs/HERMES-THREADS-CONTRACT.md §4): no Planning→Meals
         // deep link exists yet, so this lands on Today.
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToToday)) { _ in
+            guard store.productPlan == .full else { return }
             selection = .today
         }
         // A tapped hermes-nudge card's `open` action (docs/HERMES-THREADS-CONTRACT.md
@@ -201,6 +227,7 @@ struct RootView: View {
         .onChange(of: store.pendingHermesOpen) { _, target in
             guard let target else { return }
             store.pendingHermesOpen = nil
+            guard store.productPlan == .full else { return }
             switch target {
             case .today: selection = .today
             case .homework: selection = .homework
@@ -226,6 +253,7 @@ struct RootView: View {
     }
 
     private func routeToChat(roomId: String) {
+        guard store.productPlan == .full else { return }
         selection = .chat
         store.pendingChatRoomId = roomId
     }

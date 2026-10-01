@@ -1062,3 +1062,75 @@ extension ModelDecodingTests {
         XCTAssertTrue(action.isDone)
     }
 }
+
+// MARK: - Screen Time plan (docs/SCREEN-TIME-ONLY-PLAN.md §10)
+
+extension ModelDecodingTests {
+    private func decodeFamily(_ extra: String) throws -> Family {
+        let json = #"{"id":"f1","name":"Test","inviteCode":null,"parentIds":["p1"],"kids":[],"createdAt":"2026-10-01T00:00:00.000Z"\#(extra)}"#
+        return try JSONDecoder().decode(Family.self, from: Data(json.utf8))
+    }
+
+    func testFamilyWithoutPlanReadsAsFull() throws {
+        let family = try decodeFamily("")
+        XCTAssertNil(family.plan)
+        XCTAssertNil(family.features)
+        XCTAssertNil(family.timezone)
+        XCTAssertEqual(family.productPlan, .full)
+    }
+
+    func testFamilyScreenTimePlanDecodes() throws {
+        let family = try decodeFamily(#","plan":"screen_time","features":["screen_time"],"timezone":"Asia/Singapore""#)
+        XCTAssertEqual(family.plan, "screen_time")
+        XCTAssertEqual(family.features, ["screen_time"])
+        XCTAssertEqual(family.timezone, "Asia/Singapore")
+        XCTAssertEqual(family.productPlan, .screenTime)
+    }
+
+    func testFamilyFullAndUnknownPlansReadAsFull() throws {
+        let full = try decodeFamily(#","plan":"full","features":["screen_time","hub"],"timezone":null"#)
+        XCTAssertEqual(full.productPlan, .full)
+        XCTAssertNil(full.timezone)
+        let unknown = try decodeFamily(#","plan":"enterprise_gold""#)
+        XCTAssertEqual(unknown.productPlan, .full)
+    }
+
+    @MainActor
+    func testStoreProductPlanFollowsFamily() throws {
+        let store = AppStore()
+        XCTAssertEqual(store.productPlan, .full)
+        store.family = try decodeFamily(#","plan":"screen_time""#)
+        XCTAssertEqual(store.productPlan, .screenTime)
+        store.family = try decodeFamily("")
+        XCTAssertEqual(store.productPlan, .full)
+    }
+
+    func testScreenTimeOverviewKidWithAndWithoutSetup() throws {
+        let policy = #""policy":{"version":1,"enabled":true,"limits":[],"downtime":[]}"#
+        let payload = """
+        {"kids":[
+          {"kidId":"k1",\(policy),"devices":[],"alerts":[],
+           "setup":{"codeActive":true,"requestPending":false,"signedIn":true,"dealSigned":false,"devices":2}},
+          {"kidId":"k2",\(policy),"devices":[],"alerts":[]}
+        ]}
+        """
+        let overview = try JSONDecoder().decode(ScreenTimeOverview.self, from: Data(payload.utf8))
+        XCTAssertEqual(overview.kids.count, 2)
+        let setup = try XCTUnwrap(overview.kids[0].setup)
+        XCTAssertTrue(setup.codeActive)
+        XCTAssertFalse(setup.requestPending)
+        XCTAssertTrue(setup.signedIn)
+        XCTAssertFalse(setup.dealSigned)
+        XCTAssertEqual(setup.devices, 2)
+        XCTAssertNil(overview.kids[1].setup)
+    }
+
+    func testKidSetupCodeDecodesIsoAndEpochExpiry() throws {
+        let iso = try JSONDecoder().decode(KidSetupCode.self, from: Data(#"{"code":"ABCD23","expiresAt":"2026-10-01T10:30:00.000Z","kidId":"k1"}"#.utf8))
+        XCTAssertEqual(iso.code, "ABCD23")
+        XCTAssertEqual(iso.kidId, "k1")
+        XCTAssertNotNil(iso.expiresAtDate)
+        let epoch = try JSONDecoder().decode(KidSetupCode.self, from: Data(#"{"code":"ABCD23","expiresAt":1790850600000,"kidId":"k1"}"#.utf8))
+        XCTAssertEqual(epoch.expiresAtDate?.timeIntervalSince1970 ?? 0, 1_790_850_600, accuracy: 1)
+    }
+}

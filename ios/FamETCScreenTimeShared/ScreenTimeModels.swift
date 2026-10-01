@@ -133,8 +133,20 @@ struct ScreenTimeKidState: Codable, Identifiable, Hashable, Sendable {
     var agreement: ScreenTimeAgreement?
     /// The kid's last 10 "more time" requests (nil on older servers).
     var requests: [ScreenTimeRequest]?
+    /// Parent-overview setup progress for the device checklist (nil on older servers).
+    var setup: ScreenTimeKidSetup?
 
     var id: String { kidId }
+}
+
+/// Server-evidenced setup progress for one kid (`GET /api/screen-time` -> `kids[].setup`,
+/// docs/SCREEN-TIME-ONLY-PLAN.md §10.1). Optional on `ScreenTimeKidState` so older JSON decodes.
+struct ScreenTimeKidSetup: Codable, Hashable, Sendable {
+    var codeActive: Bool
+    var requestPending: Bool
+    var signedIn: Bool
+    var dealSigned: Bool
+    var devices: Int
 }
 
 struct ScreenTimeOverview: Codable, Hashable, Sendable {

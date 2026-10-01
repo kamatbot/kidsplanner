@@ -41,6 +41,60 @@ struct Family: Codable, Identifiable {
     var parents: [Parent]? = nil   // id + display name for each parent (optional for cache back-compat)
     var kids: [Kid]
     let createdAt: String
+    /// Product plan (docs/SCREEN-TIME-ONLY-PLAN.md): "full" | "screen_time". Optional
+    /// for cache back-compat — absent (old servers/caches) means the whole Fam ETC.
+    var plan: String? = nil
+    /// Server-derived feature list: ["screen_time"] or ["screen_time", "hub"].
+    var features: [String]? = nil
+    /// IANA time zone stored on the family (nil until set).
+    var timezone: String? = nil
+
+    /// `.screenTime` only when `plan == "screen_time"`; absent or unknown values are `.full`.
+    var productPlan: ProductPlan { plan == "screen_time" ? .screenTime : .full }
+}
+
+/// Which product a family is on. Decided by the server from `Family.plan`.
+enum ProductPlan: Equatable, Sendable {
+    case full, screenTime
+}
+
+/// `POST /api/family/kids/:kidId/setup-code` — the short code a parent shows so the
+/// kid can type it on their own device (docs/SCREEN-TIME-ONLY-PLAN.md D6).
+struct KidSetupCode: Codable, Equatable {
+    let code: String
+    /// Expiry as an ISO-8601 string (an epoch-number response is normalised to one).
+    let expiresAt: String
+    let kidId: String
+
+    /// `expiresAt` parsed for countdowns; nil if it can't be read.
+    var expiresAtDate: Date? {
+        let plain = ISO8601DateFormatter()
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: expiresAt) ?? plain.date(from: expiresAt)
+    }
+
+    init(code: String, expiresAt: String, kidId: String) {
+        self.code = code
+        self.expiresAt = expiresAt
+        self.kidId = kidId
+    }
+
+    private enum CodingKeys: String, CodingKey { case code, expiresAt, kidId }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        code = try c.decode(String.self, forKey: .code)
+        kidId = try c.decode(String.self, forKey: .kidId)
+        if let text = try? c.decode(String.self, forKey: .expiresAt) {
+            expiresAt = text
+        } else {
+            // Epoch milliseconds (server `nowMs()` convention) or seconds.
+            let n = try c.decode(Double.self, forKey: .expiresAt)
+            let seconds = n > 100_000_000_000 ? n / 1000 : n
+            expiresAt = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: seconds))
+        }
+    }
 }
 
 /// A structured chat card: family homework/event references are tappable;

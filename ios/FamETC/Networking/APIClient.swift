@@ -97,6 +97,17 @@ final class APIClient: FamilyActionService, ChatMessageService {
         let r: FamilyResponse = try await request("/api/family", method: "POST", body: ["name": name])
         return r.family
     }
+    /// `POST /api/family/upgrade` — Screen Time family -> whole Fam ETC. The server
+    /// answers a bad code with 403 and an `error` message, surfaced via `APIError.http`.
+    func upgradeFamily(inviteCode: String) async throws -> Family {
+        let r: FamilyResponse = try await request("/api/family/upgrade", method: "POST", body: ["inviteCode": inviteCode])
+        return r.family
+    }
+    /// `POST /api/family/kids/:kidId/setup-code` (parent only): a fresh 30-minute code
+    /// the kid types on their own device. Replaces any previous code for that kid.
+    func kidSetupCode(kidId: String) async throws -> KidSetupCode {
+        try await request("/api/family/kids/\(pathComponent(kidId))/setup-code", method: "POST", body: [:])
+    }
     func joinFamily(code: String) async throws -> Family {
         let r: FamilyResponse = try await request("/api/family/join", method: "POST", body: ["code": code])
         return r.family
