@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fam ETC Screen Time lives in the app</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="/icons/fametc-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    .app-only-card { text-align: center; }
+    .app-only-card h2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 10px; }
+    .app-only-card p { color: var(--text-2); font-size: 15px; line-height: 1.5; margin: 0 0 20px; }
+    .app-only-badge { display: inline-block; margin-bottom: 20px; }
+    .app-only-badge img { display: block; height: 48px; width: auto; }
+    .app-only-actions { display: grid; gap: 10px; margin-top: 8px; }
+    .app-only-delete { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+    .app-only-delete p { font-size: 13px; margin-bottom: 12px; }
+    .btn-link-danger { background: none; border: none; color: var(--c-red); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 8px; }
+    .btn-link-danger:hover { text-decoration: underline; }
+    .btn-link-danger[hidden] { display: none; }
+    .app-only-confirm[hidden] { display: none; }
+    .app-only-confirm { display: grid; gap: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="auth-bg">
+  <div class="auth-blob auth-blob-1"></div>
+  <div class="auth-blob auth-blob-2"></div>
+  <div class="auth-blob auth-blob-3"></div>
+</div>
+<main class="auth-container">
+  <div class="auth-hero">
+    <div class="auth-logo">🗂️</div>
+    <h1 class="auth-title">Fam ETC</h1>
+    <p class="auth-subtitle">Screen Time for your family</p>
+  </div>
+  <div class="auth-card app-only-card">
+    <h2>Fam ETC Screen Time lives in the app</h2>
+    <p>Bedtime, daily limits and your family's deal are all in the Fam ETC app on iPhone and iPad. Open the app to manage them, or download it below.</p>
+    <a class="app-only-badge" href="https://apps.apple.com/us/app/fam-etc-family-planner-chat/id6787317215" aria-label="Download Fam ETC on the App Store"><img src="/img/download-on-the-app-store.svg" alt="Download on the App Store"></a>
+
+    <div class="app-only-actions">
+      <button type="button" class="btn-secondary full-width" id="signout-btn">Sign out</button>
+    </div>
+    <div id="signout-error" class="error-msg" role="alert" aria-live="polite"></div>
+
+    <div class="app-only-delete" id="delete-section" hidden>
+      <p>Deleting your account removes your sign-in and cannot be undone.</p>
+      <button type="button" class="btn-link-danger" id="delete-start">Delete my account</button>
+      <div class="app-only-confirm" id="delete-confirm" hidden>
+        <button type="button" class="btn-danger full-width" id="delete-confirm-btn">Yes, delete my account</button>
+        <button type="button" class="btn-secondary full-width" id="delete-cancel">Keep my account</button>
+      </div>
+      <div id="delete-error" class="error-msg" role="alert" aria-live="polite"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+  async function call(method, url) {
+    const res = await fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: method === 'GET' ? undefined : '{}' });
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* empty body */ }
+    if (!res.ok) throw new Error((body && body.error) || 'Something went wrong. Please try again.');
+    return body;
+  }
+
+  $('signout-btn').addEventListener('click', async function () {
+    $('signout-error').textContent = '';
+    try { await call('POST', '/api/logout'); } catch (e) { $('signout-error').textContent = e.message; return; }
+    window.location.href = '/login';
+  });
+
+  // Only parents can delete an account; kids see sign out only.
+  call('GET', '/api/me').then(function (me) {
+    if (me && me.user && me.user.role !== 'kid') $('delete-section').hidden = false;
+  }).catch(function () { /* leave delete hidden if we cannot tell */ });
+
+  $('delete-start').addEventListener('click', function () {
+    $('delete-start').hidden = true;
+    $('delete-confirm').hidden = false;
+  });
+  $('delete-cancel').addEventListener('click', function () {
+    $('delete-confirm').hidden = true;
+    $('delete-start').hidden = false;
+    $('delete-error').textContent = '';
+  });
+  $('delete-confirm-btn').addEventListener('click', async function () {
+    $('delete-error').textContent = '';
+    try { await call('DELETE', '/api/account'); } catch (e) { $('delete-error').textContent = e.message; return; }
+    window.location.href = '/';
+  });
+})();
+</script>
+</body>
+</html>
