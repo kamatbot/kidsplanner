@@ -33,6 +33,10 @@ struct KidSignInView: View {
 
     @State private var pending: Pending?
     @State private var viaFamilyCode = false
+    /// True once the kid cancelled the passkey sheet. "Continue without" is offered only
+    /// after a passkey attempt: a request used for the no-passkey session can no longer
+    /// register a passkey, so it must not be the first thing a kid can tap.
+    @State private var passkeyDeclined = false
     @State private var pollTask: Task<Void, Never>?
 
     var body: some View {
@@ -172,13 +176,17 @@ struct KidSignInView: View {
                      subtitle: "Make your sign-in with Face ID or your passcode, so you can get back in next time.")
             OnbPrimaryButton(title: busy ? "Setting up…" : "Make my sign-in", busy: busy, action: finishWithPasskey)
                 .accessibilityIdentifier(OnbID.kidPasskey)
-            OnbSecondaryButton(title: "Continue without", enabled: !busy, action: continueWithout)
-                .accessibilityIdentifier(OnbID.kidContinueWithout)
+            if passkeyDeclined {
+                OnbSecondaryButton(title: "Continue without", enabled: !busy, action: continueWithout)
+                    .accessibilityIdentifier(OnbID.kidContinueWithout)
+            }
             if let error { OnbErrorText(message: error) }
-            Text("Without one, a grown-up can show you a new code any time you need to sign in again.")
-                .font(Typography.label)
-                .foregroundStyle(Palette.textSecond)
-                .fixedSize(horizontal: false, vertical: true)
+            if passkeyDeclined {
+                Text("Without one, a grown-up can show you a new code any time you need to sign in again.")
+                    .font(Typography.label)
+                    .foregroundStyle(Palette.textSecond)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -229,6 +237,7 @@ struct KidSignInView: View {
                 await MainActor.run {
                     busy = false
                     viaFamilyCode = false
+                    passkeyDeclined = false
                     pending = Pending(id: result.requestId, pollToken: result.pollToken,
                                       kidName: result.kidName, familyName: result.familyName)
                     stage = .hello
@@ -250,6 +259,7 @@ struct KidSignInView: View {
                 await MainActor.run {
                     busy = false
                     viaFamilyCode = true
+                    passkeyDeclined = false
                     pending = Pending(id: request.id, pollToken: request.pollToken, kidName: request.name, familyName: nil)
                     startWaiting()
                 }
@@ -302,6 +312,7 @@ struct KidSignInView: View {
                 if OnbErrors.isCancellation(error) {
                     await MainActor.run {
                         busy = false
+                        passkeyDeclined = true
                         self.error = "No problem. Try again, or tap Continue without."
                     }
                     return
@@ -347,6 +358,17 @@ struct KidSignInView: View {
     }
 
     private func friendlyKid(_ error: Error) -> String {
+        if let e = error as? AuthServerError {
+            switch e.code {
+            case "session_already_issued":
+                return "This code was already used to sign in. Ask your grown-up to show you a new one."
+            case "not_approved":
+                return "Your grown-up hasn't approved yet. Ask them to tap Approve."
+            case "not_found":
+                return "That request is gone. Ask your grown-up for a new code."
+            default: break
+            }
+        }
         if let e = error as? AuthError, case .options = e {
             return "Couldn't reach your family. Check your connection and try again."
         }
