@@ -145,6 +145,22 @@ enum ScreenTimeFormat {
         return devices.filter(isRecent)
     }
 
+    /// "Mia asks for 15 more minutes", plus " · 5 fams" on the whole Fam ETC plan.
+    /// The Screen Time plan has no fams (docs/SCREEN-TIME-ONLY-PLAN.md D3).
+    static func moreTimeLine(name: String, minutes: Int, fams: Int, plan: ProductPlan) -> String {
+        plan == .screenTime
+            ? "\(name) asks for \(minutes) more minutes"
+            : "\(name) asks for \(minutes) more minutes · \(fams) fams"
+    }
+
+    /// Minutes until the next 7 AM (server accepts 15–1440).
+    static func minutesUntilMorning(now: Date = Date()) -> Int {
+        let cal = Calendar.current
+        let today7 = cal.date(bySettingHour: 7, minute: 0, second: 0, of: now) ?? now
+        let next = today7 > now ? today7 : cal.date(byAdding: .day, value: 1, to: today7) ?? today7
+        return min(1440, max(15, Int((next.timeIntervalSince(now) / 60).rounded(.up))))
+    }
+
     static func deviceNames(_ devices: [ScreenTimeDevice], kidName: String) -> String {
         let labels = devices.map(\.label)
         guard let first = labels.first else { return "\(kidName)'s phone" }
@@ -393,7 +409,7 @@ struct ScreenTimeAlertBanner: View {
                           hint: "Hides this banner. The request still waits in Screen Time.",
                           identifier: "screentime.banner.request.dismiss") { hideRequest(r.id) }
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(name) asks for \(r.minutes) more minutes · \(r.fams) fams")
+                Text(ScreenTimeFormat.moreTimeLine(name: name, minutes: r.minutes, fams: r.fams, plan: store.productPlan))
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                     .monospacedDigit()
@@ -504,37 +520,10 @@ struct ScreenTimeParentSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var kidId: String
-    @State private var draft = BasicDraft()
-    @State private var baseline = BasicDraft()
-    @State private var loadedKey = ""
-    @State private var error: String?
-    @State private var working = false
-    @State private var pausing = false
-    @State private var justSaved = false
-    @State private var showAdvanced = false
-    @State private var showHow = false
-    @State private var showProtectionDetails = false
-    @State private var showEssentialApps = false
-    @State private var editingLimit: ScreenTimeLimit?
-    @State private var editingDowntime: ScreenTimeDowntime?
-    @State private var forgetting: ScreenTimeDevice?
-    @State private var moving: MoveTarget?
-    @State private var showDeal = false
-    @State private var deciding: String?
-    @State private var requestError: String?
-    @State private var confirmTurnOff = false
     @State private var columns: NavigationSplitViewVisibility = .all
-    @State private var checkingProtection = false
-    @State private var checkRequestedAt: Date?
-    @State private var deviceRefreshTask: Task<Void, Never>?
-    @State private var essentialAction: EssentialAction?
-    @State private var essentialBusy = false
-    @State private var essentialError: String?
-    @State private var usageError: String?
-    /// Today's device reports (nil until loaded / none reported).
-    @State private var usageToday: ScreenTimeUsageDay?
+    /// Mirrors the embedded controls' "saving / sending" state so a swipe never closes mid-save.
+    @State private var controlsBusy = false
     private var service: ScreenTimeService { .shared }
 
     init(initialKidId: String) {
@@ -542,28 +531,6 @@ struct ScreenTimeParentSheet: View {
     }
 
     private var kid: Kid? { store.kids.first { $0.id == kidId } }
-    private var kidName: String { kid?.name ?? "your child" }
-    private var state: ScreenTimeKidState? { service.state(for: kidId) }
-    private var policy: ScreenTimePolicy? { state?.policy }
-    private var devices: [ScreenTimeDevice] { state?.devices ?? [] }
-    /// This kid's siblings, to offer "Move to <name>" on a device row (only when 2+ kids).
-    private var otherKids: [Kid] { store.kids.filter { $0.id != kidId } }
-    private var appLimits: [ScreenTimeLimit] { policy?.limits.filter { !$0.isTotal } ?? [] }
-    private var extraDowntime: [ScreenTimeDowntime] { policy?.downtime.filter { $0.id != ScreenTimeFormat.bedtimeID } ?? [] }
-    /// Open alerts, newest first, minus the ones just dismissed with ✕ (ack in flight).
-    private var unacked: [ScreenTimeAlert] {
-        (state?.alerts ?? []).filter { $0.ackedAt == nil && !service.hiddenAlertIds.contains($0.id) }
-            .sorted { (ScreenTimeFormat.date($0.at) ?? .distantPast) > (ScreenTimeFormat.date($1.at) ?? .distantPast) }
-    }
-    private var requests: [ScreenTimeRequest] {
-        (state?.requests ?? []).sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
-    }
-    private var hasRules: Bool { !(policy?.limits.isEmpty ?? true) || !(policy?.downtime.isEmpty ?? true) }
-    /// Screen Time is on for this kid (the parent can pause or turn it off).
-    private var isOn: Bool { policy?.enabled == true }
-    /// The parent turned it off with rules saved: the Basic switches give way to the Off
-    /// section and "Turn Screen Time back on" (docs/SCREEN-TIME-UX.md §4).
-    private var isOff: Bool { policy?.enabled == false && hasRules }
 
     var body: some View {
         Group {
@@ -574,7 +541,7 @@ struct ScreenTimeParentSheet: View {
                     kidSidebar
                 } detail: {
                     controlsChrome(
-                        controlsList
+                        controls
                             .frame(maxWidth: 720)
                             .frame(maxWidth: .infinity)
                             .background(ScreenBackground())
@@ -583,40 +550,19 @@ struct ScreenTimeParentSheet: View {
                 .navigationSplitViewStyle(.balanced)
             } else {
                 NavigationStack {
-                    controlsChrome(controlsList.background(ScreenBackground()))
+                    controlsChrome(controls.background(ScreenBackground()))
                 }
             }
         }
         // Swipe-down closes the compact sheet, except mid-save (covers ignore this).
-        .interactiveDismissDisabled(working || pausing || essentialBusy)
-        .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
-        .task(id: kidId) { await loadUsage() }
-        .onChange(of: kidId) { _, _ in
-            deviceRefreshTask?.cancel(); deviceRefreshTask = nil
-            error = nil; justSaved = false; requestError = nil
-            checkRequestedAt = nil; essentialError = nil; essentialAction = nil
-            showProtectionDetails = false; showEssentialApps = false
-        }
-        .onChange(of: store.me?.id) { _, _ in deviceRefreshTask?.cancel(); dismiss() }
-        .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { deviceRefreshTask?.cancel(); dismiss() } }
-        .onDisappear { deviceRefreshTask?.cancel() }
-        .sheet(isPresented: $showDeal) {
-            if let deal = state?.agreement { ScreenTimeDealSheet(deal: deal, kidName: kidName) }
-        }
-        .sheet(item: $editingLimit) { limit in
-            ScreenTimeLimitEditor(kidName: kidName, limit: limit,
-                                  isNew: !appLimits.contains { $0.id == limit.id && !limit.id.isEmpty },
-                                  devices: devices) { updated in
-                try await saveAdvancedLimit(replacing: limit.id, with: updated)
-            }
-        }
-        .sheet(item: $editingDowntime) { d in
-            ScreenTimeDowntimeEditor(downtime: d,
-                                     isNew: !extraDowntime.contains { $0.id == d.id && !d.id.isEmpty }) { updated in
-                try await saveAdvancedDowntime(replacing: d.id, with: updated)
-            }
-        }
-        .task { if service.overview == nil { await service.loadOverview() } }
+        .interactiveDismissDisabled(controlsBusy)
+        .onChange(of: store.me?.id) { _, _ in dismiss() }
+        .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { dismiss() } }
+    }
+
+    /// The shared controls body; the compact sheet adds the segmented kid picker.
+    private var controls: some View {
+        ScreenTimeKidControls(selectedKidId: $kidId, showsKidPicker: sizeClass != .regular, isBusy: $controlsBusy)
     }
 
     /// Title + Done, shared by the compact stack and the regular detail column.
@@ -663,12 +609,137 @@ struct ScreenTimeParentSheet: View {
         .accessibilityValue(status.text)
         .accessibilityIdentifier("screentime.controls.kid.\(kid.id)")
     }
+}
+
+// MARK: - Kid controls (embeddable)
+
+/// The Screen Time controls for one kid: Basic (bedtime, daily time, Save), status, the
+/// per-device protection check, more-time requests, Pause, Turn off and Advanced. A plain
+/// `List` with no chrome of its own, so the parent sheet (`ScreenTimeParentSheet`) and the
+/// Screen Time plan's iPad Home detail embed exactly the same behaviour.
+struct ScreenTimeKidControls: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let fixedKidId: String
+    private let kidBinding: Binding<String>?
+    private let showsKidPicker: Bool
+    private let isBusy: Binding<Bool>?
+    @State private var draft = BasicDraft()
+    @State private var baseline = BasicDraft()
+    @State private var loadedKey = ""
+    @State private var error: String?
+    @State private var working = false
+    @State private var pausing = false
+    @State private var justSaved = false
+    @State private var showAdvanced = false
+    @State private var showHow = false
+    @State private var showProtectionDetails = false
+    @State private var showEssentialApps = false
+    @State private var editingLimit: ScreenTimeLimit?
+    @State private var editingDowntime: ScreenTimeDowntime?
+    @State private var forgetting: ScreenTimeDevice?
+    @State private var moving: MoveTarget?
+    @State private var showDeal = false
+    @State private var deciding: String?
+    @State private var requestError: String?
+    @State private var confirmTurnOff = false
+    @State private var checkingProtection = false
+    @State private var checkRequestedAt: Date?
+    @State private var deviceRefreshTask: Task<Void, Never>?
+    @State private var essentialAction: EssentialAction?
+    @State private var essentialBusy = false
+    @State private var essentialError: String?
+    @State private var usageError: String?
+    @State private var usageToday: ScreenTimeUsageDay?
+    private var service: ScreenTimeService { .shared }
+
+    /// Embedded controls for one fixed kid (the Screen Time plan's iPad Home detail).
+    /// Switching `kidId` keeps working: the controls reset their draft for the new kid.
+    init(kidId: String) {
+        fixedKidId = kidId
+        kidBinding = nil
+        showsKidPicker = false
+        isBusy = nil
+    }
+
+    /// Controls that follow a selection owned by the host (the parent sheet), optionally with
+    /// the compact segmented kid picker, reporting save/send activity through `isBusy`.
+    init(selectedKidId: Binding<String>, showsKidPicker: Bool, isBusy: Binding<Bool>? = nil) {
+        fixedKidId = selectedKidId.wrappedValue
+        kidBinding = selectedKidId
+        self.showsKidPicker = showsKidPicker
+        self.isBusy = isBusy
+    }
+
+    private var kidId: String { kidBinding?.wrappedValue ?? fixedKidId }
+    private var kidSelection: Binding<String> { kidBinding ?? .constant(fixedKidId) }
+    /// Words for the kid's own screen, which the Screen Time plan makes their whole home.
+    private var kidHome: String { store.productPlan == .screenTime ? "the home screen" : "Today" }
+    /// No fams anywhere on the Screen Time plan (docs/SCREEN-TIME-ONLY-PLAN.md D3).
+    private var noFams: Bool { store.productPlan == .screenTime }
+
+    private var kid: Kid? { store.kids.first { $0.id == kidId } }
+    private var kidName: String { kid?.name ?? "your child" }
+    private var state: ScreenTimeKidState? { service.state(for: kidId) }
+    private var policy: ScreenTimePolicy? { state?.policy }
+    private var devices: [ScreenTimeDevice] { state?.devices ?? [] }
+    /// This kid's siblings, to offer "Move to <name>" on a device row (only when 2+ kids).
+    private var otherKids: [Kid] { store.kids.filter { $0.id != kidId } }
+    private var appLimits: [ScreenTimeLimit] { policy?.limits.filter { !$0.isTotal } ?? [] }
+    private var extraDowntime: [ScreenTimeDowntime] { policy?.downtime.filter { $0.id != ScreenTimeFormat.bedtimeID } ?? [] }
+    /// Open alerts, newest first, minus the ones just dismissed with ✕ (ack in flight).
+    private var unacked: [ScreenTimeAlert] {
+        (state?.alerts ?? []).filter { $0.ackedAt == nil && !service.hiddenAlertIds.contains($0.id) }
+            .sorted { (ScreenTimeFormat.date($0.at) ?? .distantPast) > (ScreenTimeFormat.date($1.at) ?? .distantPast) }
+    }
+    private var requests: [ScreenTimeRequest] {
+        (state?.requests ?? []).sorted { ($0.createdAt ?? "") > ($1.createdAt ?? "") }
+    }
+    private var hasRules: Bool { !(policy?.limits.isEmpty ?? true) || !(policy?.downtime.isEmpty ?? true) }
+    /// Screen Time is on for this kid (the parent can pause or turn it off).
+    private var isOn: Bool { policy?.enabled == true }
+    /// The parent turned it off with rules saved: the Basic switches give way to the Off
+    /// section and "Turn Screen Time back on" (docs/SCREEN-TIME-UX.md §4).
+    private var isOff: Bool { policy?.enabled == false && hasRules }
+
+    var body: some View {
+        controlsList
+            .task(id: "\(kidId)|\(policy?.version ?? -1)") { syncDraft() }
+            .task(id: kidId) { await loadUsage() }
+            .onChange(of: kidId) { _, _ in
+                deviceRefreshTask?.cancel(); deviceRefreshTask = nil
+                error = nil; justSaved = false; requestError = nil
+                checkRequestedAt = nil; essentialError = nil; essentialAction = nil
+                showProtectionDetails = false; showEssentialApps = false
+            }
+            .onChange(of: store.me?.id) { _, _ in deviceRefreshTask?.cancel() }
+            .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { deviceRefreshTask?.cancel() } }
+            .onChange(of: working || pausing || essentialBusy) { _, busy in isBusy?.wrappedValue = busy }
+            .onDisappear { deviceRefreshTask?.cancel(); isBusy?.wrappedValue = false }
+            .sheet(isPresented: $showDeal) {
+                if let deal = state?.agreement { ScreenTimeDealSheet(deal: deal, kidName: kidName) }
+            }
+            .sheet(item: $editingLimit) { limit in
+                ScreenTimeLimitEditor(kidName: kidName, limit: limit,
+                                      isNew: !appLimits.contains { $0.id == limit.id && !limit.id.isEmpty },
+                                      devices: devices) { updated in
+                    try await saveAdvancedLimit(replacing: limit.id, with: updated)
+                }
+            }
+            .sheet(item: $editingDowntime) { d in
+                ScreenTimeDowntimeEditor(downtime: d,
+                                         isNew: !extraDowntime.contains { $0.id == d.id && !d.id.isEmpty }) { updated in
+                    try await saveAdvancedDowntime(replacing: d.id, with: updated)
+                }
+            }
+            .task { if service.overview == nil { await service.loadOverview() } }
+    }
 
     private var controlsList: some View {
         List {
-            if sizeClass != .regular && store.kids.count > 1 {
+            if showsKidPicker && store.kids.count > 1 {
                 Section {
-                    Picker("Child", selection: $kidId) {
+                    Picker("Child", selection: kidSelection) {
                         ForEach(store.kids) { Text($0.name).tag($0.id) }
                     }
                     .pickerStyle(.segmented)
@@ -861,7 +932,7 @@ struct ScreenTimeParentSheet: View {
             }
             if hasRules { dealRow }
             if let state, ScreenTimeFormat.needsFinishSetup(state) {
-                Text("On \(kidName)'s device, open Fam ETC, tap “Finish setup” on Today, and follow the steps together.")
+                Text("On \(kidName)'s device, open Fam ETC, tap “Finish setup” on \(kidHome), and follow the steps together.")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
             }
@@ -1119,7 +1190,9 @@ struct ScreenTimeParentSheet: View {
                 Text(essentialError).foregroundStyle(Palette.frDanger)
                 Button("Refresh proposals") { Task { await service.loadOverview() } }.frame(minHeight: 44)
             }
-            Text("Choose or replace a proposal in Fam ETC on your child's device: Today → See our deal → Essential apps.")
+            Text(noFams
+                 ? "Choose or replace a proposal in Fam ETC on your child's device: See our deal → Essential apps."
+                 : "Choose or replace a proposal in Fam ETC on your child's device: Today → See our deal → Essential apps.")
                 .font(Typography.label).foregroundStyle(Palette.textSecond)
         } header: { Text("Essential apps") }
         footer: { Text("Approved apps stay available during bedtime and quiet time only. Daily limits and a parent pause still apply. Approval is for this device's selection.") }
@@ -1185,7 +1258,11 @@ struct ScreenTimeParentSheet: View {
             } header: {
                 Text("More time")
             } footer: {
-                if !pending.isEmpty { Text("Approving spends the fams and adds the minutes to today only. Bedtime never moves.") }
+                if !pending.isEmpty {
+                    Text(noFams
+                         ? "Approving adds the minutes to today only. Bedtime never moves."
+                         : "Approving spends the fams and adds the minutes to today only. Bedtime never moves.")
+                }
             }
         }
     }
@@ -1194,7 +1271,7 @@ struct ScreenTimeParentSheet: View {
         let name = DealWords.firstName(kid?.name) ?? "Your child"
         return VStack(alignment: .leading, spacing: Space.sm) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("⏱️ \(name) asks for \(r.minutes) more minutes · \(r.fams) fams")
+                Text("⏱️ \(ScreenTimeFormat.moreTimeLine(name: name, minutes: r.minutes, fams: r.fams, plan: store.productPlan))")
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                     .monospacedDigit()
@@ -1235,7 +1312,7 @@ struct ScreenTimeParentSheet: View {
                 .background(Palette.frYou, in: Capsule())
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel("Approve \(r.minutes) more minutes for \(r.fams) fams")
+        .accessibilityLabel(noFams ? "Approve \(r.minutes) more minutes" : "Approve \(r.minutes) more minutes for \(r.fams) fams")
         Button { decide(r, approve: false) } label: {
             Text("Not today")
                 .font(Typography.label.weight(.semibold))
@@ -1443,7 +1520,7 @@ struct ScreenTimeParentSheet: View {
 
     private var setupSteps: [String] {
         ["On \(kidName)'s phone, open Fam ETC and sign in as \(kidName).",
-         "Tap “Make our Screen Time deal” on Today.",
+         "Tap “Make our Screen Time deal” on \(kidHome).",
          "Make the deal together: add your promises, approve when the phone asks, and sign."]
     }
 
@@ -1579,12 +1656,7 @@ struct ScreenTimeParentSheet: View {
     }
 
     /// Minutes until the next 7 AM (server accepts 15–1440).
-    private var minutesUntilMorning: Int {
-        let cal = Calendar.current
-        let today7 = cal.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
-        let next = today7 > Date() ? today7 : cal.date(byAdding: .day, value: 1, to: today7) ?? today7
-        return min(1440, max(15, Int((next.timeIntervalSinceNow / 60).rounded(.up))))
-    }
+    private var minutesUntilMorning: Int { ScreenTimeFormat.minutesUntilMorning() }
 
     /// "Applied on Mia's iPhone" vs "Pending on Mia's iPad" — from each device's reported version.
     private func deliveryLine(_ policy: ScreenTimePolicy) -> some View {
@@ -1819,7 +1891,9 @@ struct ScreenTimeParentSheet: View {
     private var requestHistorySection: some View {
         Section {
             if requests.isEmpty {
-                Text("No requests yet. \(kidName) can ask for more time on their phone and pay with fams.")
+                Text(noFams
+                     ? "No requests yet. \(kidName) can ask for more time on their phone."
+                     : "No requests yet. \(kidName) can ask for more time on their phone and pay with fams.")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
             }
@@ -1827,7 +1901,7 @@ struct ScreenTimeParentSheet: View {
                 let chip = Self.requestChip(r.status)
                 HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(r.minutes) min · \(r.fams) fams")
+                        Text(noFams ? "\(r.minutes) min" : "\(r.minutes) min · \(r.fams) fams")
                             .font(Typography.body.weight(.semibold))
                             .foregroundStyle(Palette.text)
                             .monospacedDigit()

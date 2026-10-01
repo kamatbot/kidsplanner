@@ -1990,6 +1990,7 @@ private struct ScreenTimeEssentialAppsProposalSheet: View {
 
 /// "Ask for more time ⏱️" — only when there's a daily screen time limit to extend.
 private struct AskMoreTimeButton: View {
+    @Environment(AppStore.self) private var store
     @Binding var isPresented: Bool
     private var service: ScreenTimeService { .shared }
 
@@ -2016,7 +2017,9 @@ private struct AskMoreTimeButton: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(waiting ? "Asked for more time, waiting for a grown-up" : "Ask for more time")
-            .accessibilityHint("Swap fams for extra screen time today")
+            .accessibilityHint(store.productPlan == .screenTime
+                               ? "Ask a grown-up for extra screen time today"
+                               : "Swap fams for extra screen time today")
         }
     }
 }
@@ -2050,7 +2053,8 @@ private struct FamsBadge: View {
 }
 
 /// Pick 15/30/45/60 minutes, paid in fams (1 fam per 3 min) only if a grown-up
-/// says yes. One request waits at a time; the answer arrives by push + sync.
+/// says yes. On the Screen Time plan it is free: no fams badge, cost or balance check.
+/// One request waits at a time; the answer arrives by push + sync.
 struct ScreenTimeMoreTimeSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -2060,7 +2064,9 @@ struct ScreenTimeMoreTimeSheet: View {
     @State private var error: String?
     private var service: ScreenTimeService { .shared }
 
-    private var balance: Double? { service.famsBalance }
+    /// Screen Time plan: no fams anywhere (docs/SCREEN-TIME-ONLY-PLAN.md D3).
+    private var noFams: Bool { store.productPlan == .screenTime }
+    private var balance: Double? { noFams ? nil : service.famsBalance }
     private var latest: ScreenTimeRequest? { service.requests.first }
     /// Today's latest answer (approved / declined), shown above the choices.
     private var todaysAnswer: ScreenTimeRequest? {
@@ -2071,7 +2077,7 @@ struct ScreenTimeMoreTimeSheet: View {
 
     /// Fams still to earn for `minutes` (0 = affordable; unknown balance lets the server decide).
     private func shortfall(_ minutes: Int) -> Int {
-        guard let balance else { return 0 }
+        guard !noFams, let balance else { return 0 }
         return max(0, Int((Double(ScreenTimeRequest.cost(minutes: minutes)) - balance).rounded(.up)))
     }
 
@@ -2102,7 +2108,7 @@ struct ScreenTimeMoreTimeSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(sending) }
             }
             .interactiveDismissDisabled(sending)
-            .task { await service.loadFamsBalance(kidId: store.me?.kidId) }
+            .task { if !noFams { await service.loadFamsBalance(kidId: store.me?.kidId) } }
             // While waiting, check in now and then in case the push is slow.
             .task(id: service.pendingRequest?.id) {
                 guard service.pendingRequest != nil else { return }
@@ -2115,7 +2121,7 @@ struct ScreenTimeMoreTimeSheet: View {
             .onChange(of: latest?.status) { old, new in
                 guard old == "pending", let new else { return }
                 Haptics.notify(new == "approved" ? .success : .warning)
-                Task { await service.loadFamsBalance(kidId: store.me?.kidId) }
+                if !noFams { Task { await service.loadFamsBalance(kidId: store.me?.kidId) } }
             }
         }
         .presentationDetents([.large])
@@ -2130,7 +2136,9 @@ struct ScreenTimeMoreTimeSheet: View {
             .font(Typography.largeTitle)
             .foregroundStyle(Palette.text)
             .fixedSize(horizontal: false, vertical: true)
-        Text("Swap fams for extra screen time today. A grown-up says yes or no — fams are only spent if they say yes.")
+        Text(noFams
+             ? "Ask for extra screen time today. A grown-up says yes or no."
+             : "Swap fams for extra screen time today. A grown-up says yes or no — fams are only spent if they say yes.")
             .font(Typography.body)
             .foregroundStyle(Palette.textSecond)
             .fixedSize(horizontal: false, vertical: true)
@@ -2182,7 +2190,9 @@ struct ScreenTimeMoreTimeSheet: View {
                 Text("minutes")
                     .font(Typography.label.weight(.semibold))
                     .foregroundStyle(Palette.textSecond)
-                if short > 0 {
+                if noFams {
+                    EmptyView()
+                } else if short > 0 {
                     Text("Earn \(short) more fams")
                         .font(Typography.caption.weight(.semibold))
                         .foregroundStyle(Palette.frInk2)
@@ -2203,7 +2213,7 @@ struct ScreenTimeMoreTimeSheet: View {
         .buttonStyle(.plain)
         .disabled(short > 0 || sending)
         .opacity(short > 0 ? 0.55 : 1)
-        .accessibilityLabel("\(m) more minutes, \(cost) fams")
+        .accessibilityLabel(noFams ? "\(m) more minutes" : "\(m) more minutes, \(cost) fams")
         .accessibilityValue(short > 0 ? "Earn \(short) more fams first" : "")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -2215,8 +2225,10 @@ struct ScreenTimeMoreTimeSheet: View {
                 .font(Typography.title)
                 .foregroundStyle(Palette.text)
                 .monospacedDigit()
-            Text(yes ? "A grown-up said yes. \(r.fams) fams spent — enjoy!"
-                     : "Your fams are safe. You can ask again another time.")
+            Text(noFams
+                 ? (yes ? "A grown-up said yes — enjoy!" : "You can ask again another time.")
+                 : (yes ? "A grown-up said yes. \(r.fams) fams spent — enjoy!"
+                        : "Your fams are safe. You can ask again another time."))
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2244,7 +2256,7 @@ struct ScreenTimeMoreTimeSheet: View {
                     .font(Typography.title)
                     .foregroundStyle(Palette.frYouInk)
                     .monospacedDigit()
-                FamsBadge(amount: r.fams)
+                if !noFams { FamsBadge(amount: r.fams) }
                 if let note = r.note, !note.isEmpty {
                     Text("“\(note)”")
                         .font(Typography.body)
@@ -2257,7 +2269,9 @@ struct ScreenTimeMoreTimeSheet: View {
             .frame(maxWidth: .infinity)
             .background(Palette.frYouSoft, in: RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous))
             .accessibilityElement(children: .combine)
-            Text("We'll tell you as soon as they answer. Fams are only spent if they say yes.")
+            Text(noFams
+                 ? "We'll tell you as soon as they answer."
+                 : "We'll tell you as soon as they answer. Fams are only spent if they say yes.")
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
                 .multilineTextAlignment(.center)
