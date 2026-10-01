@@ -58,9 +58,15 @@ final class ScreenTimePlanOnboardingUITests: XCTestCase {
         invite.typeText("friends")
         XCTAssertTrue(proceed.isEnabled)
 
-        // Back returns to the welcome screen.
-        app.buttons["onb.back"].tap()
-        XCTAssertTrue(app.buttons["I'm a parent"].waitForExistence(timeout: 3))
+        // Back returns to the welcome screen. iPad: XCUITest types through a hardware-keyboard
+        // path and the software keyboard returns a beat later, moving the centred card under
+        // the tap, so tap again until Welcome shows.
+        let welcome = app.buttons["I'm a parent"]
+        for _ in 0..<3 where !welcome.exists {
+            app.buttons["onb.back"].tap()
+            _ = welcome.waitForExistence(timeout: 2)
+        }
+        XCTAssertTrue(welcome.exists)
     }
 
     @MainActor

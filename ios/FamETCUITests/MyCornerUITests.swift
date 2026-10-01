@@ -113,6 +113,7 @@ final class MyCornerUITests: XCTestCase {
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "my-corner-touch-removal-reopen"; shot.lifetime = .keepAlways; add(shot)
     }
     func testNativeTodayEditorSaveReopenAndAccountSwitch() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad landscape flow: sidebar Today and Sign out")
         continueAfterFailure = false
         let cookies = try sessions()
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -163,7 +164,11 @@ final class MyCornerUITests: XCTestCase {
         let note = field.exists ? field : multiline
         reveal(note, in: app); note.tap()
         note.typeText("Native corner note")
-        app.buttons["Done editing"].tap()
+        // iPad: the software keyboard (and its Done editing bar) returns a beat after XCUITest's
+        // hardware-keyboard typing, so a single tap can miss. Tap until the note lets go.
+        let doneEditing = app.buttons["Done editing"]
+        for _ in 0..<4 where doneEditing.exists { doneEditing.tap(); _ = doneEditing.waitForNonExistence(timeout: 2) }
+        XCTAssertFalse(doneEditing.exists)
         app.swipeUp()
         let save = app.buttons["corner-save"]; reveal(save, in: app); failNext("save"); save.tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Your draft is preserved.")).firstMatch.waitForExistence(timeout: 8))
@@ -193,6 +198,7 @@ final class MyCornerUITests: XCTestCase {
         other.terminate()
     }
     func testParentOwnCornerSaveReopenAndEnergyCancel() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad landscape flow: sidebar Today and Sign out")
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .landscapeLeft
         let cookies = try sessions()

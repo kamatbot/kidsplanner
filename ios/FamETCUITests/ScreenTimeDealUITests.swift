@@ -38,10 +38,10 @@ final class ScreenTimeDealUITests: XCTestCase {
         let proceed = app.buttons["Continue with this agreement"].firstMatch
         XCTAssertFalse(proceed.isEnabled, "Both promise groups are required")
         let childPromise = app.buttons["Homework before games"].firstMatch
-        reveal(childPromise, app); childPromise.tap()
+        reveal(childPromise, app, above: proceed); childPromise.tap()
         XCTAssertFalse(proceed.isEnabled, "A child promise alone must not bypass the parent agreement")
         let parentPromise = app.buttons["We'll review this together in a month"].firstMatch
-        reveal(parentPromise, app); parentPromise.tap()
+        reveal(parentPromise, app, above: proceed); parentPromise.tap()
         XCTAssertTrue(proceed.isEnabled)
         proceed.tap()
 
@@ -143,9 +143,14 @@ final class ScreenTimeDealUITests: XCTestCase {
         app.launch()
         return app
     }
-    private func reveal(_ element: XCUIElement, _ app: XCUIApplication) {
-        for _ in 0..<14 where !(element.exists && element.isHittable) { app.swipeUp() }
-        XCTAssertTrue(element.isHittable)
+    /// Swipes until `element` can be tapped. `bar` (the pinned Continue button) keeps it clear of
+    /// the deal's bottom bar, which XCUITest still counts as hittable ground for what's beneath.
+    private func reveal(_ element: XCUIElement, _ app: XCUIApplication, above bar: XCUIElement? = nil) {
+        func ready() -> Bool {
+            element.exists && element.isHittable && (bar.map { element.frame.maxY < $0.frame.minY - 24 } ?? true)
+        }
+        for _ in 0..<14 where !ready() { app.swipeUp() }
+        XCTAssertTrue(ready())
     }
     private func attach(_ name: String) {
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
