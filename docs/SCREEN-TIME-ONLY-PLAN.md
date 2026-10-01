@@ -314,7 +314,7 @@ Family JSON (every place `publicFamily` is returned, incl. `/api/me`):
 | Core | `AppStore.productPlan: ProductPlan` | From the loaded family; `.full` while unknown. |
 | Core | `AppStore.upgradeFamily(inviteCode: String) async throws` | Calls the upgrade endpoint, replaces the family, so `productPlan` flips and the root rebuilds. Throws `APIError` with the server message on 403. |
 | Core | `struct KidSetupCode: Codable { code, expiresAt, kidId }`; `APIClient.kidSetupCode(kidId:) async throws -> KidSetupCode` | Parent setup code. |
-| Core | `ScreenTimeKid.setup: ScreenTimeKidSetup?` (`codeActive, requestPending, signedIn, dealSigned: Bool; devices: Int`) | Decoded from the overview; optional. |
+| Core | `ScreenTimeKidState.setup: ScreenTimeKidSetup?` (`codeActive, requestPending, signedIn, dealSigned: Bool; devices: Int`) | Decoded from the overview; optional. |
 | Core | `RootView` | `store.productPlan == .screenTime` → `ScreenTimePlanRootView()`; else today's layout. Root hooks (banners, push routing, Screen Time load, reauth) apply to both. |
 | Home | `struct ScreenTimePlanRootView: View` (Features/ScreenTimePlan/) | Parent: Home + Family (tab bar compact, sidebar regular). Kid: single kid home, no tab bar. |
 | Home | `struct DeviceSetupChecklistView: View { init(kidIds: [String]? = nil) }` | §2.1 checklist driven by `ScreenTimeService.shared.overview` setup fields; used on Home and as the last onboarding step. |
