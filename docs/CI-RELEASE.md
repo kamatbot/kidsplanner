@@ -63,3 +63,7 @@ signup, invite-gated full plan, kid setup codes): the branch listing reports
 this session (GitHub connector only). Local Node 24 `node --test` was fully
 green on the release source before the merge; the push-to-`main` run is the
 release gate.
+
+Confirmed 2026-10-01 at deploy time for `0b74e45`: the effective rules endpoint
+returns `[]`, `main` is `protected=false`, and the push-to-`main` CI run for
+`0b74e45` passed the full Node 24 gate before the Hostinger build went live.
