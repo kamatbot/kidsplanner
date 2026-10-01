@@ -183,6 +183,7 @@ private struct KidHomeCard: View {
 
     @Environment(AppStore.self) private var store
     @State private var pausing = false
+    @State private var granting = false
     @State private var error: String?
     private var service: ScreenTimeService { .shared }
 
@@ -285,6 +286,7 @@ private struct KidHomeCard: View {
 
     @ViewBuilder private var actions: some View {
         pauseControl
+        bonusControl
         PlanButton(title: "Rules", systemImage: "slider.horizontal.3", action: onRules)
             .accessibilityHint("Opens \(first)'s Screen Time rules")
             .accessibilityIdentifier("screentimeplan.rules.\(kid.id)")
@@ -310,6 +312,35 @@ private struct KidHomeCard: View {
                 .accessibilityLabel("Pause \(first)'s devices")
                 .accessibilityIdentifier("screentimeplan.pause.\(kid.id)")
             }
+        }
+    }
+
+    /// "+15 min" extra time today, only when Screen Time is on and the kid has a daily total
+    /// limit to extend (the server answers 409 otherwise).
+    @ViewBuilder private var bonusControl: some View {
+        if let policy = state?.policy, policy.enabled, policy.limits.contains(where: \.isTotal) {
+            PlanButton(title: "+15 min", systemImage: "plus.circle", busy: granting) {
+                grantBonus(minutes: 15)
+            }
+            .accessibilityLabel("Give \(first) 15 more minutes today")
+            .accessibilityIdentifier("screentimeplan.bonus.\(kid.id)")
+        }
+    }
+
+    private func grantBonus(minutes: Int) {
+        guard !granting else { return }
+        let account = store.me?.id
+        Haptics.impact(.light)
+        granting = true
+        error = nil
+        Task {
+            do {
+                try await service.grantBonus(kidId: kid.id, minutes: minutes)
+                if account == store.me?.id { Haptics.notify(.success) }
+            } catch {
+                if account == store.me?.id { self.error = error.localizedDescription }
+            }
+            granting = false
         }
     }
 

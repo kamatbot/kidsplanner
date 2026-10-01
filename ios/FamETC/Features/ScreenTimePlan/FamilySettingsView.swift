@@ -475,7 +475,7 @@ struct FamilySettingsView: View {
         deleteError = nil
         Task {
             do {
-                try await ScreenTimePlanAccount.deleteAccount()
+                try await APIClient.shared.deleteAccount()
                 // The server has ended the session; sign out locally the same way as a normal sign-out.
                 signOut()
             } catch {
@@ -554,37 +554,6 @@ private struct AddKidSheet: View {
                 error = "Couldn't add \(kidName). Try again."
             }
             working = false
-        }
-    }
-}
-
-// MARK: - Delete account
-
-/// `DELETE /api/account` (parent only). There is no `APIClient` method for it yet, so this
-/// talks to the same endpoint with the same shared cookie jar and client headers; sign-out
-/// afterwards is the app's normal one. Move into `APIClient` when that file is next opened.
-enum ScreenTimePlanAccount {
-    static func deleteAccount() async throws {
-        guard let url = URL(string: Config.baseURL.absoluteString + "/api/account") else { throw APIError.badURL }
-        let configuration = URLSessionConfiguration.default
-        configuration.httpCookieStorage = .shared
-        configuration.httpCookieAcceptPolicy = .always
-        configuration.httpShouldSetCookies = true
-        configuration.timeoutIntervalForRequest = 30
-        configuration.httpAdditionalHeaders = Config.clientHeaders
-        let session = URLSession(configuration: configuration)
-        defer { session.finishTasksAndInvalidate() }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let data: Data
-        let response: URLResponse
-        do { (data, response) = try await session.data(for: request) } catch { throw APIError.transport(error) }
-        guard let http = response as? HTTPURLResponse else { throw APIError.transport(URLError(.badServerResponse)) }
-        if http.statusCode == 401 { throw APIError.unauthenticated }
-        guard (200..<300).contains(http.statusCode) else {
-            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw APIError.http(http.statusCode, message ?? "Couldn't delete your account (\(http.statusCode)). Try again.")
         }
     }
 }

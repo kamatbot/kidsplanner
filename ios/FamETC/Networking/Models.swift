@@ -214,6 +214,9 @@ struct KidAccessRequest: Codable, Identifiable {
     var name: String
     var deviceLabel: String?
     let createdAt: String
+    /// The kid this request is for when a parent's setup code created it (the server sends
+    /// `kidId` only for targeted requests, null otherwise and on older servers).
+    var kidId: String? = nil
 }
 
 /// A calendar event from a subscribed school feed (read-only). Mirrors the

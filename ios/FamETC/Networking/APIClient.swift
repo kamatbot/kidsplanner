@@ -619,6 +619,11 @@ final class APIClient: FamilyActionService, ChatMessageService {
     func updateMyName(_ name: String) async throws -> MeResponse {
         try await request("/api/me", method: "PATCH", body: ["name": name])
     }
+    /// Parent: permanently deletes the signed-in account (`DELETE /api/account`). The server
+    /// ends the session; the caller then signs out locally the normal way.
+    func deleteAccount() async throws {
+        let _: OKResponse = try await request("/api/account", method: "DELETE")
+    }
     @MainActor func logout() async -> Bool {
         SessionSignOut.generation += 1
         let cookies = HTTPCookieStorage.shared.cookies(for: base) ?? []
@@ -817,6 +822,12 @@ extension APIClient {
     /// Parent. `minutes` 0 resumes, else 15–1440.
     func pauseScreenTime(kidId: String, minutes: Int) async throws -> ScreenTimeKidState {
         try await request("/api/screen-time/kids/\(pathComponent(kidId))/pause", method: "POST", body: ["minutes": minutes])
+    }
+
+    /// Parent: adds `minutes` (15, 30 or 60) to today's daily limit. 409 when Screen Time is
+    /// off or the kid has no daily limit.
+    func grantScreenTimeBonus(kidId: String, minutes: Int) async throws -> ScreenTimeKidState {
+        try await request("/api/screen-time/kids/\(pathComponent(kidId))/bonus", method: "POST", body: ["minutes": minutes])
     }
 
     func ackScreenTimeAlerts(kidId: String) async throws -> ScreenTimeKidState {

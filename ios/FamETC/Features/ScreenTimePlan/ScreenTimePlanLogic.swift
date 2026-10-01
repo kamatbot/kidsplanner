@@ -100,17 +100,25 @@ enum SetupCodeDisplay {
 
 enum KidRequestMatch {
     /// The pending sign-in request for `kid`, or nil when it can't be told apart safely.
-    /// `AppStore.kidRequests` carries a display name, not a kid id, so a request is matched
-    /// by name; with no name match it is used only when it is the single request and the
-    /// single kid the server says is waiting. Callers must also require the server's
-    /// `setup.requestPending` for this kid, so an untargeted request is never approved here.
+    ///
+    /// Exact first: a request created from a parent's setup code carries the kid's id
+    /// (`KidAccessRequest.kidId`), so it matches by id alone, whatever name the kid typed.
+    /// Older servers send no `kidId`; then a request is matched by display name, and with no
+    /// name match it is used only when it is the single request and the single kid the server
+    /// says is waiting. A request that names a *different* kid is never matched by name.
+    /// Callers must also require the server's `setup.requestPending` for this kid, so an
+    /// untargeted request is never approved here.
     static func request(for kid: Kid, in requests: [KidAccessRequest], waitingKidIds: [String]) -> KidAccessRequest? {
+        // Several requests for the same kid (two devices) are all this kid's; the list is
+        // oldest-first, so offer the oldest.
+        if let exact = requests.first(where: { $0.kidId == kid.id }) { return exact }
         func normalized(_ text: String) -> String {
             text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
-        let named = requests.filter { normalized($0.name) == normalized(kid.name) }
+        let named = requests.filter { $0.kidId == nil && normalized($0.name) == normalized(kid.name) }
         if named.count == 1 { return named[0] }
-        if named.isEmpty, requests.count == 1, waitingKidIds == [kid.id] { return requests[0] }
+        if named.isEmpty, requests.count == 1, requests[0].kidId == nil,
+           waitingKidIds == [kid.id] { return requests[0] }
         return nil
     }
 }

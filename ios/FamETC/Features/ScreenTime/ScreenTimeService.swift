@@ -545,6 +545,11 @@ enum ScreenTimeServiceError: LocalizedError {
         try await parentMutation { try await api.pauseScreenTime(kidId: kidId, minutes: minutes) }
     }
 
+    /// Adds `minutes` (15, 30 or 60) to today's daily limit for one kid.
+    func grantBonus(kidId: String, minutes: Int) async throws {
+        try await parentMutation { try await api.grantScreenTimeBonus(kidId: kidId, minutes: minutes) }
+    }
+
     func approveRequest(kidId: String, requestId: String) async throws {
         try await parentMutation { try await api.decideScreenTimeRequest(kidId: kidId, requestId: requestId, approve: true) }
     }

@@ -139,10 +139,19 @@ enum KidSetupCodeFormat {
 }
 
 enum FamilyNameSuggestion {
+    /// Generational suffixes that are never the surname ("Jane Smith Jr." -> "Smith").
+    private static let suffixes: Set<String> = ["jr", "sr", "ii", "iii", "iv"]
+
+    private static func isSuffix(_ word: Substring) -> Bool {
+        suffixes.contains(word.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".,")))
+    }
+
     /// "The {Surname} family" from a full name; "Our family" when there is no surname to use.
     static func suggest(forParentName name: String) -> String {
-        let parts = name.split(whereSeparator: { $0.isWhitespace })
+        var parts = name.split(whereSeparator: { $0.isWhitespace })
+        while parts.count > 1, let last = parts.last, isSuffix(last) { parts.removeLast() }
         guard parts.count >= 2, let last = parts.last else { return "Our family" }
-        return "The \(last) family"
+        let surname = last.trimmingCharacters(in: CharacterSet(charactersIn: ","))
+        return surname.isEmpty ? "Our family" : "The \(surname) family"
     }
 }
