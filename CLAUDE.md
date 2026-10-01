@@ -30,6 +30,10 @@ explicit confirmation first.
   FamETCScreenTimeMonitor/FamETCShieldConfig extensions. Tamper alerts
   (revoked/stale/removed/etc.) go to parents only, never family chat — full
   contract in [docs/SCREEN-TIME-PLAN.md](docs/SCREEN-TIME-PLAN.md).
+- **Plans**: a family is `full` (the whole hub, invite code) or `screen_time`
+  (free, app-only, any family). The server gates hub APIs on `family.plan`
+  (`requireHub`); iOS switches its root on `AppStore.productPlan`. Spec and
+  build contract: [docs/SCREEN-TIME-ONLY-PLAN.md](docs/SCREEN-TIME-ONLY-PLAN.md).
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
 - **Private child feeds** (`lib/school-api.js`): parents connect each child in

@@ -13,7 +13,7 @@
 | Decision | Value |
 |---|---|
 | Name | Fam ETC |
-| Pitch / target user | "The etcetera hub for your family — school calendars, homework, activities, goals, and family chat in one place." Target: families (2 parents + kids), starting with St Andrews (standrews.ac.th) parents. |
+| Pitch / target user | "The etcetera hub for your family — school calendars, homework, activities, goals, and family chat in one place." Target: families (2 parents + kids), starting with St Andrews (standrews.ac.th) parents. Second line (owner-confirmed 2026-10-01): "Screen Time for any family, free, in the app." — the Screen Time plan is open to every family; the full hub stays invite-code gated. |
 | Domain (www canonical) | fametc.com |
 | Hostinger status | on Hostinger (purchased + set up) |
 | Prefix (JS globals, env) | `FAM` / `fam` (note: existing KidsPlanner uses `kp_` localStorage keys — migrate to `fam_` during scaffold) |
@@ -26,7 +26,7 @@
 | Native screens at launch | **Today/dashboard, Chat, Calendar, Homework fully native**; Settings, Goals, Activities, billing, marketing stay web via HybridWebView | native where interaction speed matters; web where content churns |
 | iPad support | **iPad is a KEY app surface, co-equal with iPhone** (kids may have iPhones and/or iPads — both personal devices). Every native screen designed for both from the start: iPad landscape = nav rail + main content + docked family chat column; iPad portrait = chat collapses to slide-over; iPhone = tab-bar layout. Not a stretched-iPhone afterthought. Auth/usage model unchanged: one passkey login per person per device. | SwiftUI size classes + responsive web |
 | Chat backend | lightweight custom (WebSocket/polling on our Node/Hostinger backend, same auth + encryption) | net-new chat.js module; not a copy-ready RetireOdds component |
-| Auth | passkey-only + backup codes; family invite code links members into one Fam ETC group | webauthn.js, backup-codes.js, AuthService.swift |
+| Auth | passkey-only + backup codes; family invite code links members into one Fam ETC group. Since 2026-10-01 the signup invite code gates the **full plan** (at family creation or upgrade), not account creation — see the Screen Time plan section | webauthn.js, backup-codes.js, AuthService.swift |
 | Account sync | shared cookie session (AuthService syncs HTTPCookieStorage ↔ WKWebsiteDataStore) — one passkey login covers native tabs AND the embedded web surfaces; web app also serves billing/settings/marketing + desktop access | AuthService.swift as-is |
 | Encryption at rest | **yes** — chat messages + kids' schedule/activity data. Key backup location: ⚠ TBD, record before first prod deploy (Hostinger panel DATA_ENCRYPTION_KEY + offline backup) | datacrypto.js, gen-encryption-key.js |
 | Worker pool | no | skip simpool.js |
@@ -56,10 +56,23 @@
 | Distribution gate | Apple's Family Controls (Distribution) entitlement is required for com.fametc.app and both extensions before TestFlight/App Store distribution. |
 | Deferred | Shared allowance across a kid's iPhone+iPad, "ask for more time" shield action, usage reports, always-allowed apps during downtime, web (desktop) Screen Time UI, Android. |
 
+## Screen Time plan (app-only signup tier, decided 2026-10-01; spec: docs/SCREEN-TIME-ONLY-PLAN.md)
+| Decision | Value |
+|---|---|
+| Plans | A family is `full` (the whole Fam ETC) or `screen_time`. Plan lives on the family; families created before this read as `full`. |
+| Who | Screen Time plan: any family, no invite code, created in the iOS app. Full plan: invite code, at family creation or later upgrade. |
+| Gate | The server enforces features from `family.plan` (`requireHub` on every hub API); only the server sets `full`, after an invite-code check. |
+| Price | Screen Time plan free; no paywall code. |
+| Fams | Not on the Screen Time plan — kids ask for more time without spending fams; fams start after upgrade. |
+| Home | Parent: Home (setup checklist, per-kid status and quick actions, requests) + Family settings; iPad shows the kid list as a sidebar. Kid: a single Screen Time home. No hub tabs. |
+| Kid devices | Parent shows a per-kid 6-character code; kid types it, parent approves, kid makes a passkey or continues without one, then the required Screen Time deal. |
+| Web | fametc.com shows Screen Time families an "it lives in the app" page only. |
+| Upgrade | Family settings → invite code → whole family moves to `full`, keeping all Screen Time data. No downgrade in v1. |
+
 ## Monetization
 | Decision | Value | → Components |
 |---|---|---|
-| Model | free 30-day no-card trial → paid annual (+ optional lifetime later) | billing.js |
+| Model | free 30-day no-card trial → paid annual (+ optional lifetime later) for the full hub; the **Screen Time plan is free** (owner decision 2026-10-01) | billing.js |
 | Web payments | Stripe, env-gated, test mode until launch | webhook-before-json-parser pattern |
 | iOS payments | ship iOS free at launch → StoreKit 2 IAP later; NEVER Stripe in-app; grandfather existing iOS users when IAP flips on | docs/IAP-PLAN.md + IAP-GUIDE.md playbook |
 | Promo codes / grandfathering | both | promo-codes.json, grandfatherExisting() |
@@ -94,7 +107,7 @@
 |---|---|
 | Who is the customer | **Parents' app.** The parent is the account owner, customer, and billing relationship. The trial/subscription belongs to a parent. All App Store listing, onboarding copy, and marketing address parents. |
 | Kid accounts | **No direct kid signup — ever.** Kid profiles/logins are created only by a parent from inside the family and joined via family invite. This doubles as the verifiable-parental-consent mechanism (COPPA / GDPR-K / Thailand PDPA): the parent consents by creating the kid's profile. |
-| Kid sign-in (revised 2026-07-04) | **Request → parent approves → device passkey.** A kid has NO email and NO self-signup. On their OWN device the kid picks "I'm a kid" on the login screen, enters the family invite code + a name, and submits a request (no parent session needed on that device). Every family parent gets a push + an in-app approval banner; a parent approving CREATES the kid profile and unlocks passkey registration. The kid then registers a device-bound passkey and is signed straight in with Face ID / Touch ID. Parent consent is still required (the approval), but the parent never has to sign in on the kid's device. Kid sessions stay role-scoped: their own calendar/homework/goals + family chat, but NOT billing, family management, or removing members. Server: lib/kid-access.js + /api/kid/access-request/* (public, pollToken-gated) and /api/family/access-requests/* (parent approve/deny). Supersedes the earlier "parent-provisioned on the kid's device" flow, which was removed. |
+| Kid sign-in (revised 2026-07-04) | **Request → parent approves → device passkey.** A kid has NO email and NO self-signup. On their OWN device the kid picks "I'm a kid" on the login screen, enters the family invite code + a name, and submits a request (no parent session needed on that device). Every family parent gets a push + an in-app approval banner; a parent approving CREATES the kid profile and unlocks passkey registration. The kid then registers a device-bound passkey and is signed straight in with Face ID / Touch ID. Parent consent is still required (the approval), but the parent never has to sign in on the kid's device. Kid sessions stay role-scoped: their own calendar/homework/goals + family chat, but NOT billing, family management, or removing members. Server: lib/kid-access.js + /api/kid/access-request/* (public, pollToken-gated) and /api/family/access-requests/* (parent approve/deny). Supersedes the earlier "parent-provisioned on the kid's device" flow, which was removed. **Added 2026-10-01:** the parent can also show a per-kid 6-character setup code (30 min, single use); the kid types it on their device (no QR/camera), the request targets that parent-created kid profile, and after approval the kid creates a passkey or continues without one (an approved request may sign the kid in once without a passkey; a fresh code signs them in again). |
 | App Store category | Standard family/productivity app rated 4+ (parent-facing) — NOT the Kids Category (avoids its ad/analytics/link restrictions, honest because parents are the target customer). Revisit only if marketing ever targets kids directly. |
 | UGC compliance (Apple 1.2) | Chat ships with parent-admin controls framed as parental controls: parents can delete any message in the family, a report/flag path exists, and members can be removed from the family (block equivalent). Required for App Review of any chat app. |
 | Kid data minimization | Collect the minimum for kid profiles (name, grade, color, optional parent-selected thumbnail); no kid emails required; no per-user analytics (already decided: aggregate counters only); kids' data encrypted at rest (already decided). |
