@@ -736,6 +736,7 @@ struct ScreenTimeKidControls: View {
     }
 
     private var controlsList: some View {
+        ScrollViewReader { proxy in
         List {
             if showsKidPicker && store.kids.count > 1 {
                 Section {
@@ -833,7 +834,16 @@ struct ScreenTimeKidControls: View {
                     : "Remove approved essential apps and any waiting proposal from this device? Bedtime and quiet time will include these apps once the device confirms the change.")
         }
         .accessibilityIdentifier("screentime.controls")
+        // Turning off happens at the bottom of a long list while the Off section replaces the
+        // switches at the top; bring it into view so the parent sees the change land. No anchor:
+        // only scrolls when the row is hidden, so opening an off kid keeps the kid picker.
+        .onChange(of: isOff) { _, off in
+            if off { withAnimation(Motion.maybe(Motion.gentle, reduceMotion: reduceMotion)) { proxy.scrollTo(Self.offRowID) } }
+        }
+        }
     }
+
+    private static let offRowID = "screentime.off"
 
     /// Reload the Basic draft from the server policy unless the parent has unsaved edits
     /// for this kid (a kid switch always reloads).
@@ -1529,15 +1539,18 @@ struct ScreenTimeKidControls: View {
     /// Shown instead of the Basic switches while the parent has Screen Time off.
     private var offSection: some View {
         Section {
-            if working {
-                HStack(spacing: Space.sm) { ProgressView(); Text("Saving…") }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .foregroundStyle(Palette.textSecond)
-            } else {
-                AccentButton(title: "Turn Screen Time back on", systemImage: "power") { setEnabled(true) }
-                    .accessibilityHint("Bedtime and daily time start again on \(kidName)'s devices")
-                    .accessibilityIdentifier("screentime.turnOn")
+            Group {
+                if working {
+                    HStack(spacing: Space.sm) { ProgressView(); Text("Saving…") }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .foregroundStyle(Palette.textSecond)
+                } else {
+                    AccentButton(title: "Turn Screen Time back on", systemImage: "power") { setEnabled(true) }
+                        .accessibilityHint("Bedtime and daily time start again on \(kidName)'s devices")
+                        .accessibilityIdentifier("screentime.turnOn")
+                }
             }
+            .id(Self.offRowID)
         }
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets())
