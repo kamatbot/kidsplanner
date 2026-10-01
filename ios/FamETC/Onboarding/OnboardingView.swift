@@ -53,10 +53,22 @@ struct OnboardingView: View {
                 .background(Palette.panel)
             }
         }
-        .task { await resumeIfNeeded() }
+        .task {
+            #if DEBUG
+            if applyDebugStart() { return }
+            #endif
+            await resumeIfNeeded()
+        }
     }
 
     // MARK: Parent steps
+
+    /// Setup runs account → devices: six steps on the Screen Time plan (it ends with the device
+    /// checklist), five on the whole Fam ETC. An unknown plan counts as the whole Fam ETC, like
+    /// `advance(from:)`.
+    private var setupSteps: Int { (plan ?? .full) == .screenTime ? 6 : 5 }
+    /// Where the current step sits in the setup progress bar (account = 1 … devices = 6).
+    private var setupPosition: Int { step.rawValue - 1 }
 
     @ViewBuilder private var parentScreen: some View {
         switch step {
@@ -81,6 +93,7 @@ struct OnboardingView: View {
                 plan: plan ?? .screenTime,
                 parentName: $parentName,
                 inviteCode: inviteCode,
+                step: setupPosition, steps: setupSteps,
                 onBack: { go(.choose) },
                 onCreated: { go(.family) },
                 onInviteInvalid: {
@@ -93,16 +106,18 @@ struct OnboardingView: View {
                 plan: plan,
                 inviteCode: inviteCode,
                 suggestedName: FamilyNameSuggestion.suggest(forParentName: parentName),
+                step: setupPosition, steps: setupSteps,
                 onDone: familyDone
             )
         case .kids:
-            OnbKidsView(plan: plan ?? .full, initialKids: familyKids, onContinue: { advance(from: .kids) })
+            OnbKidsView(plan: plan ?? .full, initialKids: familyKids,
+                        step: setupPosition, steps: setupSteps, onContinue: { advance(from: .kids) })
         case .recovery:
-            OnbRecoveryStepView(onDone: { advance(from: .recovery) })
+            OnbRecoveryStepView(step: setupPosition, steps: setupSteps, onDone: { advance(from: .recovery) })
         case .notifications:
-            OnbNotificationsView(onDone: { advance(from: .notifications) })
+            OnbNotificationsView(step: setupPosition, steps: setupSteps, onDone: { advance(from: .notifications) })
         case .devices:
-            OnbDevicesView(onLater: { finish(track: true) })
+            OnbDevicesView(step: setupPosition, steps: setupSteps, onLater: { finish(track: true) })
         }
     }
 
@@ -146,6 +161,18 @@ struct OnboardingView: View {
     }
 
     // MARK: Resume
+
+    #if DEBUG
+    /// QA screenshots only (FAM_ONBOARDING_STEP / FAM_KID_STAGE); inert unless those are set.
+    private func applyDebugStart() -> Bool {
+        if DebugLaunch.kidStage != nil { kidFlow = true; return true }
+        guard let target = DebugLaunch.onboardingStep else { return false }
+        plan = .screenTime
+        parentName = "Kate Walker"
+        step = target
+        return true
+    }
+    #endif
 
     /// If the app was closed after the account or family was created, pick up at the first
     /// unfinished step using server state (me / family / kids), not only local flags.

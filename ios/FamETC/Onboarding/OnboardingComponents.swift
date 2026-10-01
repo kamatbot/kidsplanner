@@ -71,13 +71,16 @@ struct OnbPage<Content: View>: View {
     /// 1-based position in the parent setup steps; nil hides the progress bar.
     var step: Int? = nil
     var steps: Int = 0
+    /// A smaller hero on iPhone for screens that open the keyboard (so the action stays visible).
+    var compactHero: CGFloat? = nil
     @ViewBuilder var content: () -> Content
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var regular: Bool { sizeClass == .regular }
 
     private var heroSize: CGFloat {
-        if playful { return regular ? 220 : 176 }
+        if !regular, let compactHero { return compactHero }
+        if playful { return regular ? 250 : 176 }
         return regular ? 128 : 108
     }
 
@@ -105,13 +108,15 @@ struct OnbPage<Content: View>: View {
                         }
                     }
                     if let hero {
+                        // New identity per sticker, so each kid stage's sticker lands afresh.
                         OnbStickerHero(sticker: hero, hue: hue, size: heroSize, tilt: playful ? -6 : -4)
+                            .id(hero)
                             .padding(.vertical, playful ? Space.sm : 0)
                     }
                     content()
                 }
                 .padding(regular ? 40 : Space.xl)
-                .frame(maxWidth: regular ? (playful ? 600 : 560) : .infinity, alignment: .topLeading)
+                .frame(maxWidth: regular ? (playful ? 680 : 560) : .infinity, alignment: .topLeading)
                 .background {
                     if regular {
                         RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
@@ -139,10 +144,14 @@ struct OnbTitle: View {
     /// Kid screens use 34 so the heading reads first.
     var size: CGFloat = 30
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// Kid (centred) headings step up on iPad, where kids mostly use the app.
+    private var titleSize: CGFloat { centered && sizeClass == .regular ? size * 1.2 : size }
+
     var body: some View {
         VStack(alignment: centered ? .center : .leading, spacing: Space.sm) {
             Text(title)
-                .font(Theme.font(size, weight: .bold, relativeTo: .largeTitle))
+                .font(Theme.font(titleSize, weight: .bold, relativeTo: .largeTitle))
                 .foregroundStyle(Palette.text)
                 .multilineTextAlignment(centered ? .center : .leading)
                 .fixedSize(horizontal: false, vertical: true)

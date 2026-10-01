@@ -40,22 +40,50 @@ struct KidSignInView: View {
     @State private var pollTask: Task<Void, Never>?
 
     var body: some View {
-        OnbPage(onBack: backAction) {
+        OnbPage(onBack: backAction, hero: art.sticker, hue: art.hue, playful: true,
+                compactHero: stage == .code || stage == .familyCode ? 118 : nil) {
             switch stage {
             case .code: codeEntry
             case .hello: hello
             case .waiting: waiting
             case .approved: approved
             case .denied:
-                outcome(emoji: "🙅", title: "Not right now",
+                outcome(title: "Not right now",
                         message: "Your grown-up didn't approve this time. Check with them and try again.")
             case .expired:
-                outcome(emoji: "⏳", title: "That took too long",
+                outcome(title: "That took a while",
                         message: "Requests time out after a while. Ask your grown-up for a new code and try again.")
             case .familyCode: familyCodeForm
             }
         }
         .onDisappear { pollTask?.cancel() }
+        #if DEBUG
+        .onAppear(perform: applyDebugStage)
+        #endif
+    }
+
+    #if DEBUG
+    /// QA screenshots only (FAM_KID_STAGE); nothing is claimed or polled.
+    private func applyDebugStage() {
+        let stages: [String: Stage] = ["code": .code, "hello": .hello, "waiting": .waiting, "approved": .approved,
+                                       "denied": .denied, "expired": .expired, "familyCode": .familyCode]
+        guard let name = DebugLaunch.kidStage, let target = stages[name] else { return }
+        pending = Pending(id: "qa", pollToken: "qa", kidName: "Mia", familyName: "The Walker family")
+        stage = target
+    }
+    #endif
+
+    /// One sticker and one colour per stage (OnbPlayKit "Sticker adventure").
+    private var art: (sticker: OnbSticker, hue: OnbHue) {
+        switch stage {
+        case .code: return (.spaceRocket, .violet)
+        case .hello: return (.joyfulPanda, .pink)
+        case .waiting: return (.curiousOwl, .teal)
+        case .approved: return (.braveLion, .gold)
+        case .denied: return (.shyBunny, .pink)
+        case .expired: return (.tiredSloth, .orange)
+        case .familyCode: return (.paperPlane, .violet)
+        }
     }
 
     /// Back is only offered where nothing is in flight.
@@ -75,11 +103,15 @@ struct KidSignInView: View {
 
     private var codeEntry: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
-            OnbTitle(title: "Type your code",
-                     subtitle: "Your grown-up has a code for you. Ask them to open Fam ETC and show it to you.")
+            OnbTitle(title: "Ready for lift-off?",
+                     subtitle: "Type the secret code your grown-up shows you on their phone.",
+                     centered: true, size: 34)
 
             VStack(alignment: .leading, spacing: Space.md) {
                 KidCodeEntryView(code: $code, onSubmit: claim)
+                OnbPrimaryButton(title: busy ? "Checking…" : "Let's go!", busy: busy,
+                                 enabled: KidSetupCodeFormat.isComplete(code), action: claim)
+                    .accessibilityIdentifier(OnbID.kidCodeContinue)
                 HStack(spacing: Space.md) {
                     Text("Codes use the letters A to Z (no I or O) and the numbers 2 to 9.")
                         .font(Typography.caption)
@@ -97,10 +129,6 @@ struct KidSignInView: View {
                 }
             }
 
-            OnbPrimaryButton(title: busy ? "Checking…" : "Continue", busy: busy,
-                             enabled: KidSetupCodeFormat.isComplete(code), action: claim)
-                .accessibilityIdentifier(OnbID.kidCodeContinue)
-
             if let error { OnbErrorText(message: error) }
 
             OnbLinkButton(title: "I have a family code instead", enabled: !busy) {
@@ -115,11 +143,10 @@ struct KidSignInView: View {
 
     private var hello: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
-            Text("👋").font(.system(size: 52)).accessibilityHidden(true)
             let kid = pending?.kidName ?? ""
             OnbTitle(title: kid.isEmpty ? "Hi there!" : "Hi \(kid)!",
-                     subtitle: helloSubtitle)
-            OnbPrimaryButton(title: "Yes, that's me", action: startWaiting)
+                     subtitle: helloSubtitle, centered: true, size: 40)
+            OnbPrimaryButton(title: "Yes, that's me!", action: startWaiting)
                 .accessibilityIdentifier(OnbID.kidConfirm)
             OnbLinkButton(title: "Not you? Ask your grown-up for your own code") {
                 pollTask?.cancel()
@@ -134,7 +161,7 @@ struct KidSignInView: View {
 
     private var helloSubtitle: String {
         if let family = pending?.familyName, !family.isEmpty {
-            return "This is the \(family) setup. Is that you?"
+            return "Is that you? You're joining \(family)."
         }
         return "Is that you?"
     }
@@ -143,18 +170,11 @@ struct KidSignInView: View {
 
     private var waiting: some View {
         VStack(spacing: Space.xl) {
-            ProgressView().scaleEffect(1.4).tint(Palette.accent).padding(.top, Space.xl)
             let kid = pending?.kidName ?? ""
-            Text(kid.isEmpty ? "Ask your grown-up to tap Approve." : "Ask your grown-up to tap Approve for \(kid).")
-                .font(Theme.font(20, weight: .semibold, relativeTo: .title3))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Palette.text)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Keep this screen open. It unlocks as soon as they do.")
-                .font(Typography.body)
-                .foregroundStyle(Palette.textSecond)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            OnbTitle(title: kid.isEmpty ? "Ask your grown-up to tap Approve" : "Ask your grown-up to tap Approve for \(kid)",
+                     subtitle: "Keep this screen open. It unlocks as soon as they do.",
+                     centered: true, size: 30)
+            KidWaitingDots(hue: .teal)
             OnbLinkButton(title: "Cancel") {
                 pollTask?.cancel()
                 pending = nil
@@ -170,10 +190,10 @@ struct KidSignInView: View {
 
     private var approved: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
-            Text("🎉").font(.system(size: 52)).accessibilityHidden(true)
             let kid = pending?.kidName ?? ""
-            OnbTitle(title: kid.isEmpty ? "You're approved!" : "You're approved, \(kid)!",
-                     subtitle: "Make your sign-in with Face ID or your passcode, so you can get back in next time.")
+            OnbTitle(title: kid.isEmpty ? "You're in!" : "You're in, \(kid)!",
+                     subtitle: "Make your sign-in with Face ID or your passcode, so you can get back in next time.",
+                     centered: true, size: 34)
             OnbPrimaryButton(title: busy ? "Setting up…" : "Make my sign-in", busy: busy, action: finishWithPasskey)
                 .accessibilityIdentifier(OnbID.kidPasskey)
             if passkeyDeclined {
@@ -190,10 +210,9 @@ struct KidSignInView: View {
         }
     }
 
-    private func outcome(emoji: String, title: String, message: String) -> some View {
+    private func outcome(title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: Space.xl) {
-            Text(emoji).font(.system(size: 48)).accessibilityHidden(true)
-            OnbTitle(title: title, subtitle: message)
+            OnbTitle(title: title, subtitle: message, centered: true, size: 34)
             OnbPrimaryButton(title: "Try again") {
                 error = nil
                 pending = nil
@@ -208,7 +227,8 @@ struct KidSignInView: View {
     private var familyCodeForm: some View {
         VStack(alignment: .leading, spacing: Space.xl) {
             OnbTitle(title: "Use a family code",
-                     subtitle: "Type your family code and your name. A parent will let you in on their phone.")
+                     subtitle: "Type your family code and your name. A parent will let you in on their phone.",
+                     centered: true, size: 30)
             OnbTextField(title: "Family code", prompt: "e.g. ABC123", text: $familyCode,
                          capitalization: .characters, submitLabel: .next)
             OnbTextField(title: "Your name", prompt: "e.g. Arya", text: $name,
@@ -373,5 +393,31 @@ struct KidSignInView: View {
             return "Couldn't reach your family. Check your connection and try again."
         }
         return OnbErrors.friendly(error)
+    }
+}
+
+/// Three dots taking turns to grow while the kid waits for approval; still under Reduce Motion.
+private struct KidWaitingDots: View {
+    var hue: OnbHue
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { index in
+                    let phase = reduceMotion ? 0.5 : (sin(t * 4 - Double(index) * 0.9) + 1) / 2
+                    Circle()
+                        .fill(hue.strong)
+                        .frame(width: 10, height: 10)
+                        .scaleEffect(1 + 0.45 * phase)
+                        .opacity(0.45 + 0.55 * phase)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 20)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Waiting for your grown-up")
     }
 }

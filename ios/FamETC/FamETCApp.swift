@@ -68,11 +68,22 @@ struct FamETCApp: App {
 ///   FAM_THEME       "light" | "dark"                   — force the app theme
 ///   FAM_SCREEN      today|chat|calendar|homework        — deep-link target tab
 ///   FAM_RESET_ENERGY "1"                               — forget today's energy check-in answers
+///   FAM_ONBOARDING_STEP choose|account|family|kids|notifications|devices — open setup at that step
+///   FAM_KID_STAGE   code|hello|waiting|approved|denied|expired|familyCode — open the kid flow there (as "Mia")
 enum DebugLaunch {
     private static var env: [String: String] { ProcessInfo.processInfo.environment }
 
     /// The deep-link target screen for this launch (read by RootView).
     static var screen: String? { env["FAM_SCREEN"] }
+
+    /// QA screenshots: open parent onboarding at this step on the Screen Time plan.
+    static var onboardingStep: OnboardingStep? {
+        guard let name = env["FAM_ONBOARDING_STEP"] else { return nil }
+        return OnboardingStep.allCases.first { "\($0)" == name }
+    }
+
+    /// QA screenshots: open the kid flow at this stage with a sample kid.
+    static var kidStage: String? { env["FAM_KID_STAGE"] }
 
     /// UI-test hook: when set, AppStore skips the network chat loop and
     /// injects a mock family + messages after this many milliseconds —

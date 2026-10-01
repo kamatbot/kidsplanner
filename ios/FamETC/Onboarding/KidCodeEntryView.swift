@@ -9,6 +9,7 @@ struct KidCodeEntryView: View {
     var onSubmit: () -> Void = {}
 
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var characters: [Character] { Array(code) }
 
@@ -52,18 +53,33 @@ struct KidCodeEntryView: View {
         .onAppear { focused = true }
     }
 
+    /// Chunky tiles, each filled one in its own Family Rings hue; the next empty one is outlined violet.
     private func box(_ index: Int) -> some View {
         let filled = index < characters.count
-        let isCurrent = focused && index == min(characters.count, KidSetupCodeFormat.length - 1)
+        let isCurrent = focused && index == min(characters.count, KidSetupCodeFormat.length - 1) && !filled
+        let hue = OnbHue.allCases[index % OnbHue.allCases.count]
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
         return Text(filled ? String(characters[index]) : "")
-            .font(Theme.font(30, weight: .bold, relativeTo: .largeTitle))
-            .foregroundStyle(Palette.text)
+            .font(Theme.font(32, weight: .heavy, relativeTo: .largeTitle))
+            .foregroundStyle(filled ? hue.ink : Palette.text)
             .minimumScaleFactor(0.6)
-            .frame(maxWidth: .infinity, minHeight: 64)
-            .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .background(filled ? hue.soft : Palette.frCard, in: shape)
             .overlay(
-                RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
-                    .strokeBorder(isCurrent ? Palette.accent : Palette.border, lineWidth: isCurrent ? 2 : 1)
+                shape.strokeBorder(filled ? hue.strong : (isCurrent ? Palette.frYou : Palette.frRule),
+                                   lineWidth: filled ? 2 : (isCurrent ? 2.5 : 1.5))
             )
+            // A tile pops once when its character lands. Keyed to the tile's own filled
+            // state, so typing never writes extra view state (fast typing keeps every key).
+            .keyframeAnimator(initialValue: 1.0, trigger: filled) { tile, scale in
+                tile.scaleEffect(scale)
+            } keyframes: { _ in
+                if filled && !reduceMotion {
+                    CubicKeyframe(1.12, duration: 0.09)
+                    SpringKeyframe(1.0, duration: 0.3, spring: .bouncy)
+                } else {
+                    LinearKeyframe(1.0, duration: 0.01)
+                }
+            }
     }
 }

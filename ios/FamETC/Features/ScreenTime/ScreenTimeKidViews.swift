@@ -500,7 +500,24 @@ struct ScreenTimeKidSetupSheet: View {
     @State private var showFamilyHelp = false
     @State private var flowGeneration = 0
     @State private var verificationAttempted = false
+    /// The deal-done confetti plays once per sheet.
+    @State private var celebrated = false
     private var service: ScreenTimeService { .shared }
+
+    /// "Sticker adventure": one sticker and one colour per page; the finished deal gets a collage.
+    private var pageArt: (sticker: OnbSticker, hue: OnbHue) {
+        switch page {
+        case .review: return (.gratefulOtter, .pink)
+        case .permission: return turnOn == .pickAll ? (.gameController, .orange) : (.focusedRobot, .teal)
+        case .signatures: return (.paintingPalette, .violet)
+        case .verification: return setupComplete ? (.dancingDino, .gold) : (.focusedRobot, .teal)
+        }
+    }
+    private static let dealDone: [OnbStickerCollage.Item] = [
+        .init(sticker: .dancingDino, size: 0.6, x: 0.32, y: 0.56, tilt: -6),
+        .init(sticker: .rainbow, size: 0.5, x: 0.7, y: 0.34, tilt: 7),
+        .init(sticker: .smallStar, size: 0.4, x: 0.74, y: 0.76, tilt: -4),
+    ]
 
     init(makeDeal: Bool = true) {
         let s = ScreenTimeService.shared
@@ -570,7 +587,11 @@ struct ScreenTimeKidSetupSheet: View {
                     .frame(maxWidth: .infinity)
                     .background(Palette.bg.opacity(0.94))
             }
-            .background(ScreenBackground())
+            .background(OnbWash(hue: pageArt.hue).animation(Motion.maybe(Motion.gentle, reduceMotion: reduceMotion), value: page))
+            .overlay { if celebrated { OnbConfettiBurst() } }
+            .onChange(of: setupComplete) { _, done in
+                if done && makingDeal && !celebrated { celebrated = true }
+            }
             .navigationTitle(makingDeal ? "Our Screen Time deal" : "Screen Time")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -644,11 +665,19 @@ struct ScreenTimeKidSetupSheet: View {
     }
 
     @ViewBuilder private var pageContent: some View {
-        switch page {
-        case .review: reviewAgreement
-        case .permission: turnOnPage
-        case .signatures: sign
-        case .verification: celebrate
+        VStack(alignment: .leading, spacing: Space.lg) {
+            if page == .verification && setupComplete && makingDeal {
+                OnbStickerCollage(items: Self.dealDone, hue: .gold, height: regular ? 220 : 190)
+            } else {
+                OnbStickerHero(sticker: pageArt.sticker, hue: pageArt.hue, size: regular ? 190 : 150)
+                    .id(pageArt.sticker)
+            }
+            switch page {
+            case .review: reviewAgreement
+            case .permission: turnOnPage
+            case .signatures: sign
+            case .verification: celebrate
+            }
         }
     }
 
@@ -758,6 +787,10 @@ struct ScreenTimeKidSetupSheet: View {
             Text("Review your agreement")
                 .font(titleFont)
                 .foregroundStyle(Palette.text)
+            Text("A deal helps you sleep well, finish what matters and keep screens fun — and nobody has to argue about it.")
+                .font(Theme.font(17, weight: .semibold, relativeTo: .body))
+                .foregroundStyle(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Check the rules together, then each choose a promise. You will both sign before the agreement is saved.")
                 .font(Typography.body)
                 .foregroundStyle(Palette.textSecond)
@@ -1240,10 +1273,6 @@ struct ScreenTimeKidSetupSheet: View {
 
     private var celebrate: some View {
         VStack(alignment: .center, spacing: Space.lg) {
-            Image(systemName: setupComplete ? "checkmark.circle" : "clock.arrow.circlepath")
-                .font(.largeTitle).foregroundStyle(setupComplete ? Palette.frD3Ink : Palette.frFamsInk)
-                .accessibilityHidden(true)
-            .padding(.top, Space.xl)
             Text(verificationTitle)
                 .font(Typography.display(40, .heavy))
                 .foregroundStyle(Palette.text)
@@ -1305,7 +1334,7 @@ struct ScreenTimeKidSetupSheet: View {
     }
 
     private var verificationTitle: String {
-        if setupComplete { return "Setup checked" }
+        if setupComplete { return makingDeal ? "Deal done!" : "Setup checked" }
         if makingDeal && saveState == .saved { return "Agreement saved — one step left" }
         if makingDeal && saveState == .saving { return "Saving agreement" }
         if makingDeal { return "Agreement needs to save" }

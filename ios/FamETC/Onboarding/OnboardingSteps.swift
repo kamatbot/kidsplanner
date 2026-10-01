@@ -178,20 +178,22 @@ struct OnbChooseView: View {
 
     private var screenTimeCard: some View {
         Button { onPick(.screenTime) } label: {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                    Image(systemName: "hourglass").foregroundStyle(Palette.accent).accessibilityHidden(true)
-                    Text("Screen Time")
-                        .font(Typography.cardTitle)
-                        .foregroundStyle(Palette.text)
-                    Spacer(minLength: Space.sm)
-                    OnbBadge(text: "Free")
+            HStack(alignment: .top, spacing: Space.lg) {
+                OnbStickerBadge(sticker: .sleepyCat, hue: .violet, size: 64)
+                VStack(alignment: .leading, spacing: Space.sm) {
+                    HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                        Text("Screen Time")
+                            .font(Typography.cardTitle)
+                            .foregroundStyle(Palette.text)
+                        Spacer(minLength: Space.sm)
+                        OnbBadge(text: "Free")
+                    }
+                    Text("Bedtime, daily limits and a deal you make together. For any family.")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
                 }
-                Text("Bedtime, daily limits and a deal you make together. For any family.")
-                    .font(Typography.body)
-                    .foregroundStyle(Palette.textSecond)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
             }
             .onbPanel()
         }
@@ -205,20 +207,22 @@ struct OnbChooseView: View {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { fullOpen.toggle() }
             } label: {
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                        Image(systemName: "house.fill").foregroundStyle(Palette.accent).accessibilityHidden(true)
-                        Text("The whole Fam ETC")
-                            .font(Typography.cardTitle)
-                            .foregroundStyle(Palette.text)
-                        Spacer(minLength: Space.sm)
-                        OnbBadge(text: "Invite code")
+                HStack(alignment: .top, spacing: Space.lg) {
+                    OnbStickerBadge(sticker: .rainbow, hue: .orange, size: 64)
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                            Text("The whole Fam ETC")
+                                .font(Typography.cardTitle)
+                                .foregroundStyle(Palette.text)
+                            Spacer(minLength: Space.sm)
+                            OnbBadge(text: "Invite code")
+                        }
+                        Text("School calendar, homework, family chat, trips, meals — plus Screen Time.")
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
                     }
-                    Text("School calendar, homework, family chat, trips, meals — plus Screen Time.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
                 }
             }
             .buttonStyle(.plain)
@@ -253,6 +257,9 @@ struct OnbAccountView: View {
     let plan: OnboardingPlan
     @Binding var parentName: String
     let inviteCode: String
+    /// Position in the setup progress bar (1-based); nil hides it.
+    var step: Int? = nil
+    var steps: Int = 0
     let onBack: () -> Void
     let onCreated: () -> Void
     /// The server said the invite code was wrong: the router sends the parent back to Choose.
@@ -262,7 +269,7 @@ struct OnbAccountView: View {
     @State private var error: String?
 
     var body: some View {
-        OnbPage(onBack: busy ? nil : onBack) {
+        OnbPage(onBack: busy ? nil : onBack, hero: .sunshine, hue: .gold, step: step, steps: steps) {
             OnbTitle(title: "What should we call you?",
                      subtitle: "No password. Your face or fingerprint signs you in.")
 
@@ -316,6 +323,9 @@ struct OnbFamilyView: View {
     let plan: OnboardingPlan?
     let inviteCode: String
     let suggestedName: String
+    /// Position in the setup progress bar (1-based); nil hides it.
+    let step: Int?
+    let steps: Int
     let onDone: (OnbFamilyOutcome) -> Void
 
     @State private var familyName: String
@@ -328,16 +338,18 @@ struct OnbFamilyView: View {
     @State private var planOverride: OnboardingPlan?
 
     init(plan: OnboardingPlan?, inviteCode: String, suggestedName: String,
-         onDone: @escaping (OnbFamilyOutcome) -> Void) {
+         step: Int? = nil, steps: Int = 0, onDone: @escaping (OnbFamilyOutcome) -> Void) {
         self.plan = plan
         self.inviteCode = inviteCode
         self.suggestedName = suggestedName
+        self.step = step
+        self.steps = steps
         self.onDone = onDone
         _familyName = State(initialValue: suggestedName)
     }
 
     var body: some View {
-        OnbPage {
+        OnbPage(hero: .happyCapybara, hue: .teal, step: step, steps: steps) {
             OnbTitle(
                 title: joinOpen ? "Join your partner's family" : "Name your family",
                 subtitle: joinOpen
@@ -451,6 +463,9 @@ struct OnbFamilyView: View {
 
 struct OnbKidsView: View {
     let plan: OnboardingPlan
+    /// Position in the setup progress bar (1-based); nil hides it.
+    let step: Int?
+    let steps: Int
     let onContinue: () -> Void
 
     @State private var kids: [String]
@@ -458,8 +473,11 @@ struct OnbKidsView: View {
     @State private var busy = false
     @State private var error: String?
 
-    init(plan: OnboardingPlan, initialKids: [String], onContinue: @escaping () -> Void) {
+    init(plan: OnboardingPlan, initialKids: [String], step: Int? = nil, steps: Int = 0,
+         onContinue: @escaping () -> Void) {
         self.plan = plan
+        self.step = step
+        self.steps = steps
         self.onContinue = onContinue
         _kids = State(initialValue: initialKids)
     }
@@ -468,7 +486,7 @@ struct OnbKidsView: View {
     private var canContinue: Bool { !kids.isEmpty || !trimmedName.isEmpty }
 
     var body: some View {
-        OnbPage {
+        OnbPage(hero: .joyfulPanda, hue: .pink, step: step, steps: steps) {
             OnbTitle(title: "Add your kids",
                      subtitle: "Just a first name each. Every kid gets their own sign-in on their own iPhone or iPad.")
 
@@ -552,6 +570,9 @@ struct OnbKidsView: View {
 // MARK: - Recovery codes (the existing RecoveryCodesView, now a step)
 
 struct OnbRecoveryStepView: View {
+    /// Position in the setup progress bar (1-based); nil hides it.
+    var step: Int? = nil
+    var steps: Int = 0
     let onDone: () -> Void
 
     @State private var codes: [String]?
@@ -566,6 +587,15 @@ struct OnbRecoveryStepView: View {
             } else {
                 ProgressView("Getting your recovery codes…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let step, steps > 0 {
+                OnbStepProgress(current: step, total: steps)
+                    .padding(.horizontal, Space.xl)
+                    .padding(.vertical, Space.sm)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
             }
         }
         .task { await mint() }
@@ -592,19 +622,15 @@ struct OnbRecoveryStepView: View {
 // MARK: - Notifications
 
 struct OnbNotificationsView: View {
+    /// Position in the setup progress bar (1-based); nil hides it.
+    var step: Int? = nil
+    var steps: Int = 0
     let onDone: () -> Void
 
     @State private var busy = false
 
     var body: some View {
-        OnbPage {
-            Image(systemName: "bell.badge.fill")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(Palette.accent)
-                .frame(width: 60, height: 60)
-                .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-                .accessibilityHidden(true)
-
+        OnbPage(hero: .paperPlane, hue: .violet, step: step, steps: steps) {
             OnbTitle(title: "Stay in the loop",
                      subtitle: "Get a nudge when a kid asks for more time or a device needs a look. You can change this any time in Settings.")
 
@@ -631,6 +657,9 @@ struct OnbNotificationsView: View {
 // MARK: - Device setup
 
 struct OnbDevicesView: View {
+    /// Position in the setup progress bar (1-based); nil hides it.
+    var step: Int? = nil
+    var steps: Int = 0
     /// "Do it later" (Home keeps the checklist pinned) or the end of the list.
     let onLater: () -> Void
 
@@ -660,12 +689,22 @@ struct OnbDevicesView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
+        VStack(alignment: .leading, spacing: Space.sm) {
             OnbBrand()
-            Text("Set up each kid's device")
-                .font(Typography.title)
-                .foregroundStyle(Palette.text)
-                .accessibilityAddTraits(.isHeader)
+            if let step, steps > 0 { OnbStepProgress(current: step, total: steps) }
+            HStack(alignment: .center, spacing: Space.md) {
+                OnbStickerBadge(sticker: .spaceRocket, hue: .orange, size: 58)
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Set up each kid's device")
+                        .font(Typography.title)
+                        .foregroundStyle(Palette.text)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("This is where your deal comes to life — sit down together with each kid.")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Text("Follow these steps for each kid. You can pick this up later from Home.")
                 .font(Typography.label)
                 .foregroundStyle(Palette.textSecond)
