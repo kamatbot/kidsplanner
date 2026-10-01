@@ -719,61 +719,60 @@ test("a request made on the Screen Time plan still approves free after the famil
   assert.equal(approved.body.requests[0].status, "approved");
 });
 
-// ===================== invite code, production fail-closed =====================
+// ===================== invite code =====================
 
-test("production fails closed: with NODE_ENV=production and no SIGNUP_INVITE_CODE every invite check is 403", async () => {
+test("production without SIGNUP_INVITE_CODE accepts the current code fitodds for full and upgrade", async () => {
   const savedEnv = process.env.NODE_ENV;
   const savedCode = process.env.SIGNUP_INVITE_CODE;
   try {
     process.env.NODE_ENV = "production";
     delete process.env.SIGNUP_INVITE_CODE;
 
-    // Even the legacy hardcoded code no longer works.
     const signup = await api(null, "POST", "/api/webauthn/signup/options", { name: "Pat", inviteCode: "fitodds" });
-    assert.equal(signup.status, 403);
-    assert.equal(signup.body.code, "invite_invalid");
-    // No code at all is still fine (Screen Time signup).
+    assert.equal(signup.status, 200);
+    // A wrong code is still refused, and no code at all is fine (Screen Time signup).
+    const wrong = await api(null, "POST", "/api/webauthn/signup/options", { name: "Pat", inviteCode: "nope" });
+    assert.equal(wrong.status, 403);
+    assert.equal(wrong.body.code, "invite_invalid");
     assert.equal((await api(null, "POST", "/api/webauthn/signup/options", { name: "Pat" })).status, 200);
 
     const parent = newParent();
-    const refused = await api(parent, "POST", "/api/family", { name: "Nope", plan: "full", inviteCode: "fitodds" });
-    assert.equal(refused.status, 403);
-    assert.equal(refused.body.code, "invite_required");
-    assert.equal(family.familiesForUser(parent.id).length, 0);
-
-    // Screen Time creation is unaffected, and the upgrade check fails closed too.
     const st = await api(parent, "POST", "/api/family", { name: "Ok", plan: "screen_time" });
     assert.equal(st.status, 200);
-    const up = await api(parent, "POST", "/api/family/upgrade", { inviteCode: "fitodds" });
-    assert.equal(up.status, 403);
-    assert.equal(up.body.code, "invite_invalid");
-    assert.equal(family.planOf(family.getFamily(st.body.family.id)), "screen_time");
+    const bad = await api(parent, "POST", "/api/family/upgrade", { inviteCode: "nope" });
+    assert.equal(bad.status, 403);
+    assert.equal(bad.body.code, "invite_invalid");
+    const up = await api(parent, "POST", "/api/family/upgrade", { inviteCode: "FitOdds" });
+    assert.equal(up.status, 200);
+    assert.equal(family.planOf(family.getFamily(st.body.family.id)), "full");
 
-    // Once configured in production, only that code works.
-    process.env.SIGNUP_INVITE_CODE = "Prod-Code";
-    assert.equal((await api(parent, "POST", "/api/family/upgrade", { inviteCode: "fitodds" })).status, 403);
-    assert.equal((await api(parent, "POST", "/api/family/upgrade", { inviteCode: "prod-code" })).status, 200);
+    const other = newParent();
+    const full = await api(other, "POST", "/api/family", { name: "Full", plan: "full", inviteCode: "fitodds" });
+    assert.equal(full.status, 200);
+    assert.equal(full.body.family.plan, "full");
   } finally {
     process.env.NODE_ENV = savedEnv;
     process.env.SIGNUP_INVITE_CODE = savedCode;
   }
 });
 
-test("non-production without SIGNUP_INVITE_CODE keeps the dev fallback", () => {
+test("SIGNUP_INVITE_CODE overrides the default code in every environment", () => {
   const inviteCode = require("../lib/invite-code");
   const savedEnv = process.env.NODE_ENV;
   const savedCode = process.env.SIGNUP_INVITE_CODE;
   try {
-    process.env.NODE_ENV = "test";
-    delete process.env.SIGNUP_INVITE_CODE;
-    assert.equal(inviteCode.isValid("fitodds"), true);
-    assert.equal(inviteCode.isValid(" FITODDS "), true);
-    assert.equal(inviteCode.isValid(""), false);
-    assert.equal(inviteCode.isValid(undefined), false);
-    assert.equal(inviteCode.isValid({ toString: () => "fitodds" }) , true);
-    process.env.NODE_ENV = "production";
-    assert.equal(inviteCode.isValid("fitodds"), false);
-    assert.equal(inviteCode.configuredCode(), null);
+    for (const env of ["test", "production"]) {
+      process.env.NODE_ENV = env;
+      delete process.env.SIGNUP_INVITE_CODE;
+      assert.equal(inviteCode.configuredCode(), "fitodds");
+      assert.equal(inviteCode.isValid("fitodds"), true);
+      assert.equal(inviteCode.isValid(" FITODDS "), true);
+      assert.equal(inviteCode.isValid(""), false);
+      assert.equal(inviteCode.isValid(undefined), false);
+      process.env.SIGNUP_INVITE_CODE = "Prod-Code";
+      assert.equal(inviteCode.isValid("prod-code"), true);
+      assert.equal(inviteCode.isValid("fitodds"), false);
+    }
   } finally {
     process.env.NODE_ENV = savedEnv;
     process.env.SIGNUP_INVITE_CODE = savedCode;

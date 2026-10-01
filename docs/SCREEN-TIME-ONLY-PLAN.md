@@ -200,7 +200,7 @@ deals, history. Fams start at 0 and earning begins. Downgrade: not offered.
 | `lib/screen-time.js` | `requestMoreTime`/`decideRequest` skip the fams balance/spend when `plan === "screen_time"` (D3). |
 | `lib/kid-access.js` | Per-kid **setup codes**; a claimed code creates a request targeted at that `kidId`; approve links to that kid instead of creating one; approved requests can sign the kid in without a passkey. Without `kidId`, today's behaviour. |
 | Setup progress | `GET /api/screen-time` adds per-kid `setup: {requested, signedIn, dealSigned, devices:[health]}` so the checklist is server-evidenced. |
-| Invite code hardening | The full-plan gate now matters more: require `SIGNUP_INVITE_CODE` in production (remove the hardcoded fallback in `lib/routes/auth.js`), add it to `.env.example`. Per-code issuing/revocation stays future work. |
+| Invite code | Keeps the current code `fitodds` (owner decision 2026-10-01); `SIGNUP_INVITE_CODE` overrides it. Per-code issuing/revocation stays future work. |
 | Web | `/app` for a Screen Time family serves the "lives in the app" page (D4). |
 | Analytics | `recordSignup(source, plan)`, `recordUpgrade()` — aggregate counters only. |
 
@@ -303,7 +303,7 @@ Family JSON (every place `publicFamily` is returned, incl. `/api/me`):
 | `GET /api/screen-time` (parent overview) | Each kid gains `setup: {codeActive: bool, requestPending: bool, signedIn: bool, dealSigned: bool, devices: number}` (`signedIn` = a kid user exists for that kid with a passkey or a completed no-passkey session). |
 | More time on `"screen_time"` | `requestMoreTime` skips the fams balance check and records `fams: 0`; `decideRequest` approves without spending. Responses keep their shape. |
 | Web | `GET /app` (and `/`, when signed in) for a `"screen_time"` family serves `public/app-only.html`: "Fam ETC Screen Time lives in the app", App Store link, sign out, delete account. |
-| Invite code | Production refuses to start signup/upgrade checks with the hardcoded fallback: when `NODE_ENV=production` and `SIGNUP_INVITE_CODE` is unset, every invite check fails closed (403). Add `SIGNUP_INVITE_CODE` to `.env.example`. |
+| Invite code | The current code `fitodds` stays valid everywhere (owner decision 2026-10-01); `SIGNUP_INVITE_CODE`, when set, replaces it. Documented in `.env.example`. |
 | Analytics | `recordSignup(source)` unchanged; add aggregate `family_created_full`, `family_created_screen_time`, `family_upgraded` counters via the existing analytics module. |
 
 ### 10.2 iOS interfaces
