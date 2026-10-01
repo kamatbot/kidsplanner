@@ -9,6 +9,7 @@ final class ScreenTimePlanOnboardingUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    @MainActor
     private func launchFresh() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["FAM_BASE_URL"] = "http://127.0.0.1:9"
@@ -20,6 +21,7 @@ final class ScreenTimePlanOnboardingUITests: XCTestCase {
     }
 
     /// Buttons carry identifiers, so look them up by their visible label explicitly.
+    @MainActor
     private func button(labeled label: String, in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
     }

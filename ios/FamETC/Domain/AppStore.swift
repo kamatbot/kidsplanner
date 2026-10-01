@@ -312,7 +312,12 @@ final class AppStore {
             refreshRetries = 0
             needsAuth = false
             persist()
-            await ParentFamilyAssistancePublisher.publish(from: self)
+            if family?.productPlan == .screenTime {
+                // The assistance snapshot reads calendar/homework (hub endpoints, 403 here).
+                ParentFamilyAssistancePublisher.clear()
+            } else {
+                await ParentFamilyAssistancePublisher.publish(from: self)
+            }
         } catch APIError.unauthenticated {
             guard generation == refreshGeneration else { return }
             assistanceIdentityVerified = false

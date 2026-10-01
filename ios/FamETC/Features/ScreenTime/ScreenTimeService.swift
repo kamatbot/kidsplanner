@@ -596,7 +596,13 @@ enum ScreenTimeServiceError: LocalizedError {
 
     private func merge(_ state: ScreenTimeKidState) {
         var o = overview ?? ScreenTimeOverview(kids: [])
-        if let i = o.kids.firstIndex(where: { $0.kidId == state.kidId }) { o.kids[i] = state } else { o.kids.append(state) }
+        if let i = o.kids.firstIndex(where: { $0.kidId == state.kidId }) {
+            // Only the parent overview carries `setup`; per-kid mutation responses omit it,
+            // so keep the last overview's evidence until the next overview load.
+            var next = state
+            if next.setup == nil { next.setup = o.kids[i].setup }
+            o.kids[i] = next
+        } else { o.kids.append(state) }
         overview = o
     }
 
