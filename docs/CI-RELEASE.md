@@ -56,3 +56,10 @@ The push-to-`main` runs for `080f165` and `aa4d1e4` failed on a timing-
 dependent datastore-writer test; `878b200` makes that test wait for the
 writer instead of sleeping, and its full Node 24 gate passed before the
 Hostinger build went live.
+
+Refreshed 2026-10-01 for the Screen Time plan release (app-only Screen Time
+signup, invite-gated full plan, kid setup codes): the branch listing reports
+`main` `protected=false`; the effective-rules endpoint could not be read from
+this session (GitHub connector only). Local Node 24 `node --test` was fully
+green on the release source before the merge; the push-to-`main` run is the
+release gate.
