@@ -57,37 +57,61 @@ struct OnbBrand: View {
 }
 
 /// One onboarding screen: brand header (+ optional Back), then the content. On a regular
-/// width (iPad) the content sits in a centred card at most 560 pt wide; on a compact
-/// width it fills the screen. Always scrolls, so large Dynamic Type never clips.
+/// width (iPad) the content sits in a centred card at most 560 pt wide (600 when playful);
+/// on a compact width it fills the screen. Always scrolls, so large Dynamic Type never clips.
+///
+/// The "Sticker adventure" options (OnbPlayKit): `hero` puts a sticker above the content
+/// in `hue`; `playful` (kid screens) makes it big, centred and paints the page with that
+/// hue; `step`/`steps` show the parent setup progress under the header.
 struct OnbPage<Content: View>: View {
     var onBack: (() -> Void)? = nil
+    var hero: OnbSticker? = nil
+    var hue: OnbHue = .violet
+    var playful = false
+    /// 1-based position in the parent setup steps; nil hides the progress bar.
+    var step: Int? = nil
+    var steps: Int = 0
     @ViewBuilder var content: () -> Content
 
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var regular: Bool { sizeClass == .regular }
 
+    private var heroSize: CGFloat {
+        if playful { return regular ? 220 : 176 }
+        return regular ? 128 : 108
+    }
+
     var body: some View {
         GeometryReader { geo in
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.xl) {
-                    HStack(alignment: .center) {
-                        OnbBrand()
-                        Spacer(minLength: Space.md)
-                        if let onBack {
-                            Button(action: onBack) {
-                                Label("Back", systemImage: "chevron.left")
-                                    .font(Typography.body.weight(.semibold))
-                                    .foregroundStyle(Palette.textSecond)
-                                    .frame(minHeight: 44)
+                    VStack(alignment: .leading, spacing: Space.md) {
+                        HStack(alignment: .center) {
+                            OnbBrand()
+                            Spacer(minLength: Space.md)
+                            if let onBack {
+                                Button(action: onBack) {
+                                    Label("Back", systemImage: "chevron.left")
+                                        .font(Typography.body.weight(.semibold))
+                                        .foregroundStyle(Palette.textSecond)
+                                        .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier(OnbID.back)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier(OnbID.back)
                         }
+                        if let step, steps > 0 {
+                            OnbStepProgress(current: step, total: steps)
+                        }
+                    }
+                    if let hero {
+                        OnbStickerHero(sticker: hero, hue: hue, size: heroSize, tilt: playful ? -6 : -4)
+                            .padding(.vertical, playful ? Space.sm : 0)
                     }
                     content()
                 }
                 .padding(regular ? 40 : Space.xl)
-                .frame(maxWidth: regular ? 560 : .infinity, alignment: .topLeading)
+                .frame(maxWidth: regular ? (playful ? 600 : 560) : .infinity, alignment: .topLeading)
                 .background {
                     if regular {
                         RoundedRectangle(cornerRadius: Radius.cardLarge, style: .continuous)
@@ -101,28 +125,37 @@ struct OnbPage<Content: View>: View {
             .scrollBounceBehavior(.basedOnSize)
             .scrollDismissesKeyboard(.interactively)
         }
+        .background {
+            if playful { OnbWash(hue: hue) }
+        }
     }
 }
 
 struct OnbTitle: View {
     let title: String
     var subtitle: String? = nil
+    /// Kid screens: centred under the sticker.
+    var centered = false
+    /// Kid screens use 34 so the heading reads first.
+    var size: CGFloat = 30
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
+        VStack(alignment: centered ? .center : .leading, spacing: Space.sm) {
             Text(title)
-                .font(Theme.font(30, weight: .bold, relativeTo: .largeTitle))
+                .font(Theme.font(size, weight: .bold, relativeTo: .largeTitle))
                 .foregroundStyle(Palette.text)
+                .multilineTextAlignment(centered ? .center : .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let subtitle {
                 Text(subtitle)
-                    .font(Typography.body)
+                    .font(centered ? Theme.font(17, relativeTo: .body) : Typography.body)
                     .foregroundStyle(Palette.textSecond)
+                    .multilineTextAlignment(centered ? .center : .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
     }
 }
 

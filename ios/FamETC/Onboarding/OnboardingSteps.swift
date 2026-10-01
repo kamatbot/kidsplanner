@@ -37,13 +37,21 @@ struct OnbWelcomeView: View {
     @State private var error: String?
     @State private var showBackupSignIn = false
 
+    /// Sleep, play and reading — the three things a screen time deal protects.
+    private static let collage: [OnbStickerCollage.Item] = [
+        .init(sticker: .sleepyCat, size: 0.66, x: 0.32, y: 0.56, tilt: -8),
+        .init(sticker: .cyclingBunny, size: 0.54, x: 0.70, y: 0.32, tilt: 8),
+        .init(sticker: .readingBear, size: 0.48, x: 0.74, y: 0.74, tilt: -5),
+    ]
+
     var body: some View {
         OnbPage {
+            OnbStickerCollage(items: Self.collage, hue: .violet, height: 196)
+
             OnbTitle(
-                title: "Family life, sorted — or just screen time.",
-                subtitle: "Screen Time is free for any family. Add school calendars, homework and family chat whenever you like."
+                title: "More sleep. More play. Fewer screen fights.",
+                subtitle: "Make a screen time deal with your kids — bedtime, daily limits and promises you agree on together. Free for any family."
             )
-            .padding(.top, Space.lg)
 
             VStack(spacing: Space.md) {
                 OnbPrimaryButton(title: "Set up Fam ETC", enabled: !signingIn, action: onSetUp)
@@ -68,6 +76,8 @@ struct OnbWelcomeView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
             }
+
+            whyItMatters
         }
         .sheet(isPresented: $showBackupSignIn) {
             BackupCodeSignInView {
@@ -76,6 +86,27 @@ struct OnbWelcomeView: View {
             }
             .presentationDetents([.large])
         }
+    }
+
+    /// Why families set screen time — plain family reasons, no statistics.
+    private var whyItMatters: some View {
+        VStack(alignment: .leading, spacing: Space.lg) {
+            Text("Why it matters")
+                .font(Theme.font(22, weight: .bold, relativeTo: .title2))
+                .foregroundStyle(Palette.text)
+                .accessibilityAddTraits(.isHeader)
+            OnbReasonRow(sticker: .sleepyCat, hue: .violet, title: "Sleep comes first",
+                         detail: "Phones go to bed at bedtime too, so kids wake up ready for the day.")
+            OnbReasonRow(sticker: .readingBear, hue: .teal, title: "Time for everything",
+                         detail: "Homework, play and friends each get their turn — not just the screen.")
+            OnbReasonRow(sticker: .gratefulOtter, hue: .pink, title: "Rules you make together",
+                         detail: "Kids help set the deal and sign it with you, so it feels fair to everyone.")
+            Text("Want school calendars, homework and family chat too? Add the whole Fam ETC any time.")
+                .font(Typography.label)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, Space.xl)
     }
 
     private func signIn() {
