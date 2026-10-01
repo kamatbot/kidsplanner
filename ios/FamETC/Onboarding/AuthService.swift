@@ -54,6 +54,49 @@ enum AuthError: Error {
     var isCancellation: Bool { if case .cancelled = self { return true }; return false }
 }
 
+/// A server refusal that carries the machine-readable `code` the server sends
+/// alongside `error` (docs/SCREEN-TIME-ONLY-PLAN.md §10.1): `invite_invalid`,
+/// `invite_required`, `setup_code_invalid`, … Only the requests that need to branch
+/// on a code opt in (`postJSON(coded: true)`), so every existing `AuthError.verify`
+/// caller keeps its behaviour.
+struct AuthServerError: Error, LocalizedError {
+    let status: Int
+    let code: String?
+    let message: String
+    var errorDescription: String? { message }
+    var isInviteInvalid: Bool { code == "invite_invalid" }
+    var isInviteRequired: Bool { code == "invite_required" }
+    var isSetupCodeInvalid: Bool { code == "setup_code_invalid" }
+}
+
+/// What a kid's device gets back from typing a setup code: a request already
+/// targeted at that kid (a parent still has to approve it), plus the names for
+/// the "Hi Maya!" confirmation.
+struct KidSetupClaim: Equatable {
+    let requestId: String
+    let pollToken: String
+    let kidName: String
+    let familyName: String
+}
+
+/// Server truth about a signed-in account, read to resume onboarding at the
+/// first unfinished step (not just local flags).
+struct OnboardingServerState: Equatable {
+    var userId: String
+    var role: String?          // "parent" | "kid"
+    var parentName: String?
+    var hasFamily: Bool
+    var familyName: String?
+    var plan: String?          // "full" | "screen_time" | nil (older server = full)
+    var kidNames: [String]
+}
+
+enum OnboardingServerLookup: Equatable {
+    case signedOut                          // 401: no session
+    case unavailable                        // offline / server error: leave the user where they are
+    case signedIn(OnboardingServerState)
+}
+
 /// Centralizes the native WebAuthn policy so every parent/kid registration and
 /// sign-in request carries the same server-required user-verification setting.
 /// Kept internal so FamETCTests can guard this security boundary directly.
@@ -124,19 +167,22 @@ final class AuthService: NSObject {
     private var authContinuation: CheckedContinuation<ASAuthorization, Error>?
 
     /// Create a passwordless account with a passkey and establish a web session.
-    /// Requires a valid signup invite code enforced by the server.
+    /// The invite code is OPTIONAL (it gates the whole Fam ETC plan, not the account):
+    /// absent/empty creates a Screen Time-eligible account; a wrong code throws
+    /// `AuthServerError` with `code == "invite_invalid"`.
     /// Recovery codes are NOT minted here — they're issued + shown later, once the
     /// account is worth protecting (after onboarding), via `issueBackupCodesIfNeeded`.
-    func signUpWithPasskey(inviteCode: String, name: String? = nil) async throws {
-        var body: [String: Any] = [
-            "inviteCode": inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        ]
+    func signUpWithPasskey(inviteCode: String?, name: String? = nil) async throws {
+        var body: [String: Any] = [:]
+        if let code = inviteCode?.trimmingCharacters(in: .whitespacesAndNewlines), !code.isEmpty {
+            body["inviteCode"] = code
+        }
         if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
             body["name"] = name
         }
 
         // 1) registration options
-        let options = try await postJSON("/api/webauthn/signup/options", body: body)
+        let options = try await postJSON("/api/webauthn/signup/options", body: body, coded: true)
         guard
             let challengeB64 = options["challenge"] as? String,
             let challenge = Data(base64URLEncoded: challengeB64),
@@ -348,22 +394,72 @@ final class AuthService: NSObject {
         await syncCookiesToWebView()
     }
 
+    /// Kid code path (docs/SCREEN-TIME-ONLY-PLAN.md §3): the kid types the 6-character
+    /// setup code a parent is showing. The server opens a request targeted at that kid
+    /// and pushes the parents; nothing is granted until a parent approves. Throws
+    /// `AuthServerError` (`setup_code_invalid` for a wrong/expired/used code).
+    func claimKidSetupCode(code: String, deviceLabel: String? = nil) async throws -> KidSetupClaim {
+        let trimmedLabel = deviceLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let label = trimmedLabel.isEmpty ? self.deviceLabel : trimmedLabel
+        let json = try await postJSON("/api/kid/setup-code/claim", body: [
+            "code": KidSetupCodeFormat.normalize(code),
+            "deviceLabel": label,
+        ], coded: true)
+        guard let id = json["requestId"] as? String, let token = json["pollToken"] as? String else {
+            throw AuthError.options
+        }
+        return KidSetupClaim(
+            requestId: id,
+            pollToken: token,
+            kidName: (json["kidName"] as? String) ?? "",
+            familyName: (json["familyName"] as? String) ?? ""
+        )
+    }
+
+    /// D7: once a request is approved, sign the kid in WITHOUT a passkey (used when the
+    /// kid taps "Continue without" or passkey creation fails). The server allows this
+    /// once per approved request; a second call answers 409. Establishes fam_sess and
+    /// syncs it into the WebView exactly like the passkey path.
+    func kidSignInWithoutPasskey(requestId: String, pollToken: String) async throws {
+        _ = try await postJSON("/api/kid/access-request/\(requestId)/session",
+                               body: ["token": pollToken], coded: true)
+        await syncCookiesToWebView()
+    }
+
     // MARK: - Family onboarding (authenticated after sign-up)
     // Fam ETC has no financial onboarding — a brand-new parent either creates a
     // family or joins one via invite code, then optionally adds kid profiles.
     // These call the same /api/family* routes server.js exposes to the web app.
 
     /// Create a new family (this parent becomes its first/only parent member).
+    /// Kept for older call sites: the server then picks the plan (full only if the
+    /// account was created with a valid invite code).
     @discardableResult
     func createFamily(name: String) async throws -> [String: Any] {
-        let json = try await postJSON("/api/family", body: ["name": name])
+        try await createFamily(name: name, plan: nil, inviteCode: nil, timezone: nil)
+    }
+
+    /// Create a family on a plan: `"screen_time"` (always allowed) or `"full"` (the
+    /// server needs a valid invite code, here or from sign-up, else 403
+    /// `invite_required` and nothing is created). `timezone` is the device's IANA zone;
+    /// the server ignores an invalid one. A second create answers 409.
+    @discardableResult
+    func createFamily(name: String, plan: String?, inviteCode: String? = nil,
+                      timezone: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["name": name]
+        if let plan, !plan.isEmpty { body["plan"] = plan }
+        if let code = inviteCode?.trimmingCharacters(in: .whitespacesAndNewlines), !code.isEmpty {
+            body["inviteCode"] = code
+        }
+        if let timezone, !timezone.isEmpty { body["timezone"] = timezone }
+        let json = try await postJSON("/api/family", body: body, coded: true)
         return (json["family"] as? [String: Any]) ?? [:]
     }
 
     /// Join an existing family as the second parent, via its invite code.
     @discardableResult
     func joinFamily(code: String) async throws -> [String: Any] {
-        let json = try await postJSON("/api/family/join", body: ["code": code])
+        let json = try await postJSON("/api/family/join", body: ["code": code.trimmingCharacters(in: .whitespacesAndNewlines)])
         return (json["family"] as? [String: Any]) ?? [:]
     }
 
@@ -377,9 +473,55 @@ final class AuthService: NSObject {
         return (json["family"] as? [String: Any]) ?? [:]
     }
 
+    /// Reads /api/me then /api/family so onboarding can resume at the first unfinished
+    /// step from server truth. `.signedOut` only on a 401; any other failure is
+    /// `.unavailable` so a flaky network never bounces someone back to the start.
+    func onboardingServerState() async -> OnboardingServerLookup {
+        do {
+            let me = try await fetchJSON("/api/me", timeout: 6)
+            if me.status == 401 { return .signedOut }
+            guard (200..<300).contains(me.status), let user = me.json["user"] as? [String: Any] else {
+                return .unavailable
+            }
+            var state = OnboardingServerState(
+                userId: (user["id"] as? String) ?? "",
+                role: user["role"] as? String,
+                parentName: user["name"] as? String,
+                hasFamily: false, familyName: nil, plan: nil, kidNames: []
+            )
+            if state.role == "kid" { return .signedIn(state) }
+            let fam = try await fetchJSON("/api/family", timeout: 6)
+            if fam.status == 401 { return .signedOut }
+            guard (200..<300).contains(fam.status) else { return .unavailable }
+            if let first = (fam.json["families"] as? [[String: Any]])?.first {
+                state.hasFamily = true
+                state.familyName = first["name"] as? String
+                state.plan = first["plan"] as? String
+                state.kidNames = ((first["kids"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }
+            }
+            return .signedIn(state)
+        } catch {
+            return .unavailable
+        }
+    }
+
     // MARK: - HTTP
 
-    private func postJSON(_ path: String, method: String = "POST", body: [String: Any]) async throws -> [String: Any] {
+    /// GET that reports the status instead of throwing on non-2xx.
+    private func fetchJSON(_ path: String, timeout: TimeInterval) async throws -> (status: Int, json: [String: Any]) {
+        guard let url = URL(string: apiBase + path) else { throw AuthError.options }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = timeout
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, resp) = try await session.data(for: req)
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        return ((resp as? HTTPURLResponse)?.statusCode ?? 0, json)
+    }
+
+    /// `coded: true` surfaces the server's `code` as an `AuthServerError`; the default keeps
+    /// the long-standing `AuthError.verify(message)` for every existing caller.
+    private func postJSON(_ path: String, method: String = "POST", body: [String: Any],
+                          coded: Bool = false) async throws -> [String: Any] {
         guard let url = URL(string: apiBase + path) else { throw AuthError.options }
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -389,7 +531,12 @@ final class AuthService: NSObject {
         let (data, resp) = try await session.data(for: req)
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw AuthError.verify((json["error"] as? String) ?? "Request failed")
+            let message = (json["error"] as? String) ?? "Request failed"
+            if coded {
+                throw AuthServerError(status: (resp as? HTTPURLResponse)?.statusCode ?? 0,
+                                      code: json["code"] as? String, message: message)
+            }
+            throw AuthError.verify(message)
         }
         return json
     }

@@ -1,168 +1,273 @@
 import SwiftUI
 
-// Native kid sign-in — the on-device counterpart to the web login.html kid panes.
-// The kid enters the family invite code + their name (no parent session here),
-// a parent approves remotely, then the kid registers a device passkey and is
-// signed straight in. Drives AuthService.requestKidAccess → poll kidAccessStatus
-// → completeKidPasskey. See server.js "Kid sign-in" and lib/kid-access.js.
+// Native kid sign-in on the kid's OWN device (docs/SCREEN-TIME-ONLY-PLAN.md §3). The main path
+// is a code: a parent shows a short setup code, the kid TYPES it (no camera), sees "Hi Maya!",
+// waits for the parent's approval, then makes a passkey — or continues without one.
+//   AuthService.claimKidSetupCode → poll kidAccessStatus → completeKidPasskey
+//                                        └ or kidSignInWithoutPasskey (D7)
+// The older family-code + name request stays reachable ("I have a family code instead") for
+// whole-Fam-ETC families: requestKidAccess → the same polling and passkey steps.
+// See lib/kid-access.js and the /api/kid/* routes.
 struct KidSignInView: View {
-    /// Called once the kid is signed in (passkey registered, session established).
+    /// Called once the kid is signed in (passkey registered or session issued).
     let onFinish: (String?) -> Void
-    /// Called when the kid backs out to the role chooser.
+    /// Called when the kid backs out to the welcome screen.
     let onBack: () -> Void
 
-    private enum Stage { case form, waiting, approved, denied, expired }
+    private enum Stage { case code, hello, waiting, approved, denied, expired, familyCode }
 
-    @State private var stage: Stage = .form
+    /// The access request this device is driving, however it was opened.
+    private struct Pending {
+        let id: String
+        let pollToken: String
+        let kidName: String
+        let familyName: String?
+    }
+
+    @State private var stage: Stage = .code
     @State private var code = ""
+    @State private var familyCode = ""
     @State private var name = ""
     @State private var busy = false
     @State private var error: String?
 
-    @State private var request: AuthService.KidRequest?
+    @State private var pending: Pending?
+    @State private var viaFamilyCode = false
     @State private var pollTask: Task<Void, Never>?
 
-    private var accent: Color { Palette.accent }
-
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("✨").font(.system(size: 18))
-                Text("Fam ETC").font(.system(size: 18, weight: .bold)).foregroundColor(Palette.text)
-                Spacer()
-            }
-            .padding(.top, 8)
-
-            Spacer(minLength: 12)
-
-            Group {
-                switch stage {
-                case .form: form
-                case .waiting: waiting
-                case .approved: approved
-                case .denied: outcome(emoji: "🙅", title: "Not right now",
-                                       message: "A parent didn't approve this time. Check with them and try again.")
-                case .expired: outcome(emoji: "⏳", title: "That request expired",
-                                       message: "Requests time out after a while. Let's try again.")
-                }
-            }
-
-            Spacer(minLength: 12)
-
-            if stage == .form {
-                Text("Back")
-                    .font(.system(size: 14, weight: .semibold)).foregroundColor(Palette.textSecond)
-                    .padding(.vertical, 10).padding(.horizontal, 24).contentShape(Rectangle())
-                    .onTapGesture { onBack() }
-                    .padding(.bottom, 16)
+        OnbPage(onBack: backAction) {
+            switch stage {
+            case .code: codeEntry
+            case .hello: hello
+            case .waiting: waiting
+            case .approved: approved
+            case .denied:
+                outcome(emoji: "🙅", title: "Not right now",
+                        message: "Your grown-up didn't approve this time. Check with them and try again.")
+            case .expired:
+                outcome(emoji: "⏳", title: "That took too long",
+                        message: "Requests time out after a while. Ask your grown-up for a new code and try again.")
+            case .familyCode: familyCodeForm
             }
         }
-        .padding(.horizontal, 24)
-        .foregroundColor(Palette.text)
         .onDisappear { pollTask?.cancel() }
     }
 
-    // MARK: Enter invite code + name
-
-    private var form: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Let's get you in 🧒").font(.system(size: 28, weight: .bold))
-                Text("Type your family code and your name. A parent will let you in on their phone.")
-                    .font(.system(size: 15)).foregroundColor(Palette.textSecond)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Family code").font(.system(size: 13)).foregroundColor(Palette.textSecond)
-                TextField("e.g. ABC123", text: $code)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                Text("Your name").font(.system(size: 13)).foregroundColor(Palette.textSecond).padding(.top, 4)
-                TextField("e.g. Arya", text: $name)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-            }
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Palette.panel))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.border, lineWidth: 1))
-
-            primaryButton(busy ? "Asking…" : "Ask a parent to let me in 🙋", enabled: canSubmit) { submit() }
-
-            if let error {
-                Text(error).font(.system(size: 13)).foregroundColor(Palette.red)
-                    .multilineTextAlignment(.leading)
-            }
+    /// Back is only offered where nothing is in flight.
+    private var backAction: (() -> Void)? {
+        switch stage {
+        case .code:
+            return onBack
+        case .familyCode:
+            if busy { return nil }
+            return { error = nil; stage = .code }
+        default:
+            return nil
         }
     }
 
-    private var canSubmit: Bool {
-        !busy && !code.trimmingCharacters(in: .whitespaces).isEmpty
-            && !name.trimmingCharacters(in: .whitespaces).isEmpty
+    // MARK: Type the code
+
+    private var codeEntry: some View {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            OnbTitle(title: "Type your code",
+                     subtitle: "Your grown-up has a code for you. Ask them to open Fam ETC and show it to you.")
+
+            VStack(alignment: .leading, spacing: Space.md) {
+                KidCodeEntryView(code: $code, onSubmit: claim)
+                HStack(spacing: Space.md) {
+                    Text("Codes use the letters A to Z (no I or O) and the numbers 2 to 9.")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let first = strings.first else { return }
+                        DispatchQueue.main.async { code = KidSetupCodeFormat.normalize(first) }
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.capsule)
+                    .tint(Palette.accent)
+                    .accessibilityLabel("Paste code")
+                }
+            }
+
+            OnbPrimaryButton(title: busy ? "Checking…" : "Continue", busy: busy,
+                             enabled: KidSetupCodeFormat.isComplete(code), action: claim)
+                .accessibilityIdentifier(OnbID.kidCodeContinue)
+
+            if let error { OnbErrorText(message: error) }
+
+            OnbLinkButton(title: "I have a family code instead", enabled: !busy) {
+                error = nil
+                stage = .familyCode
+            }
+            .accessibilityIdentifier(OnbID.kidLegacy)
+        }
+    }
+
+    // MARK: Hi {Kid}!
+
+    private var hello: some View {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            Text("👋").font(.system(size: 52)).accessibilityHidden(true)
+            let kid = pending?.kidName ?? ""
+            OnbTitle(title: kid.isEmpty ? "Hi there!" : "Hi \(kid)!",
+                     subtitle: helloSubtitle)
+            OnbPrimaryButton(title: "Yes, that's me", action: startWaiting)
+                .accessibilityIdentifier(OnbID.kidConfirm)
+            OnbLinkButton(title: "Not you? Ask your grown-up for your own code") {
+                pollTask?.cancel()
+                pending = nil
+                code = ""
+                error = nil
+                stage = .code
+            }
+            .accessibilityIdentifier(OnbID.kidNotYou)
+        }
+    }
+
+    private var helloSubtitle: String {
+        if let family = pending?.familyName, !family.isEmpty {
+            return "This is the \(family) setup. Is that you?"
+        }
+        return "Is that you?"
     }
 
     // MARK: Waiting for approval
 
     private var waiting: some View {
-        VStack(spacing: 18) {
-            ProgressView().scaleEffect(1.4).tint(accent)
-            Text("Waiting for a parent to approve\n\(request?.name ?? name)…")
-                .font(.system(size: 17, weight: .semibold)).multilineTextAlignment(.center)
-            Text("Keep this screen open — it'll unlock as soon as a parent taps approve.")
-                .font(.system(size: 13)).foregroundColor(Palette.textSecond).multilineTextAlignment(.center)
-            Button {
+        VStack(spacing: Space.xl) {
+            ProgressView().scaleEffect(1.4).tint(Palette.accent).padding(.top, Space.xl)
+            let kid = pending?.kidName ?? ""
+            Text(kid.isEmpty ? "Ask your grown-up to tap Approve." : "Ask your grown-up to tap Approve for \(kid).")
+                .font(Theme.font(20, weight: .semibold, relativeTo: .title3))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Keep this screen open. It unlocks as soon as they do.")
+                .font(Typography.body)
+                .foregroundStyle(Palette.textSecond)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            OnbLinkButton(title: "Cancel") {
                 pollTask?.cancel()
-                stage = .form
-            } label: {
-                Text("Cancel").font(.system(size: 14, weight: .semibold)).foregroundColor(Palette.textSecond)
+                pending = nil
+                error = nil
+                stage = viaFamilyCode ? .familyCode : .code
             }
-            .padding(.top, 4)
         }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
     }
 
-    // MARK: Approved → register passkey
+    // MARK: Approved → passkey (or continue without)
 
     private var approved: some View {
-        VStack(spacing: 18) {
-            Text("🎉").font(.system(size: 52))
-            Text("You're approved, \(request?.name ?? name)!")
-                .font(.system(size: 22, weight: .bold)).multilineTextAlignment(.center)
-            Text("Set up this device so you can sign in with Face ID or your passcode next time.")
-                .font(.system(size: 14)).foregroundColor(Palette.textSecond).multilineTextAlignment(.center)
-            primaryButton(busy ? "Setting up…" : "Set up this device 🔑", enabled: !busy) { finishSetup() }
-            if let error {
-                Text(error).font(.system(size: 13)).foregroundColor(Palette.red).multilineTextAlignment(.center)
-            }
+        VStack(alignment: .leading, spacing: Space.xl) {
+            Text("🎉").font(.system(size: 52)).accessibilityHidden(true)
+            let kid = pending?.kidName ?? ""
+            OnbTitle(title: kid.isEmpty ? "You're approved!" : "You're approved, \(kid)!",
+                     subtitle: "Make your sign-in with Face ID or your passcode, so you can get back in next time.")
+            OnbPrimaryButton(title: busy ? "Setting up…" : "Make my sign-in", busy: busy, action: finishWithPasskey)
+                .accessibilityIdentifier(OnbID.kidPasskey)
+            OnbSecondaryButton(title: "Continue without", enabled: !busy, action: continueWithout)
+                .accessibilityIdentifier(OnbID.kidContinueWithout)
+            if let error { OnbErrorText(message: error) }
+            Text("Without one, a grown-up can show you a new code any time you need to sign in again.")
+                .font(Typography.label)
+                .foregroundStyle(Palette.textSecond)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func outcome(emoji: String, title: String, message: String) -> some View {
-        VStack(spacing: 16) {
-            Text(emoji).font(.system(size: 48))
-            Text(title).font(.system(size: 22, weight: .bold))
-            Text(message).font(.system(size: 14)).foregroundColor(Palette.textSecond).multilineTextAlignment(.center)
-            primaryButton("Try again", enabled: true) { error = nil; stage = .form }
-        }
-    }
-
-    // MARK: Actions
-
-    private func submit() {
-        guard canSubmit else { return }
-        busy = true; error = nil
-        Task {
-            do {
-                let req = try await AuthService.shared.requestKidAccess(inviteCode: code, name: name)
-                await MainActor.run { request = req; busy = false; stage = .waiting; startPolling() }
-            } catch {
-                await MainActor.run { busy = false; self.error = friendly(error) }
+        VStack(alignment: .leading, spacing: Space.xl) {
+            Text(emoji).font(.system(size: 48)).accessibilityHidden(true)
+            OnbTitle(title: title, subtitle: message)
+            OnbPrimaryButton(title: "Try again") {
+                error = nil
+                pending = nil
+                code = ""
+                stage = viaFamilyCode ? .familyCode : .code
             }
         }
     }
 
+    // MARK: Family code + name (whole-Fam-ETC families)
+
+    private var familyCodeForm: some View {
+        VStack(alignment: .leading, spacing: Space.xl) {
+            OnbTitle(title: "Use a family code",
+                     subtitle: "Type your family code and your name. A parent will let you in on their phone.")
+            OnbTextField(title: "Family code", prompt: "e.g. ABC123", text: $familyCode,
+                         capitalization: .characters, submitLabel: .next)
+            OnbTextField(title: "Your name", prompt: "e.g. Arya", text: $name,
+                         contentType: .givenName, capitalization: .words, submitLabel: .go,
+                         onSubmit: submitFamilyCode)
+            OnbPrimaryButton(title: busy ? "Asking…" : "Ask a parent to let me in", busy: busy,
+                             enabled: canSubmitFamilyCode, action: submitFamilyCode)
+            if let error { OnbErrorText(message: error) }
+        }
+    }
+
+    private var canSubmitFamilyCode: Bool {
+        !busy && !familyCode.trimmingCharacters(in: .whitespaces).isEmpty
+            && !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    // MARK: Actions
+
+    private func claim() {
+        guard KidSetupCodeFormat.isComplete(code), !busy else { return }
+        busy = true; error = nil
+        let typed = code
+        Task {
+            do {
+                let result = try await AuthService.shared.claimKidSetupCode(code: typed, deviceLabel: nil)
+                await MainActor.run {
+                    busy = false
+                    viaFamilyCode = false
+                    pending = Pending(id: result.requestId, pollToken: result.pollToken,
+                                      kidName: result.kidName, familyName: result.familyName)
+                    stage = .hello
+                }
+            } catch {
+                await MainActor.run { busy = false; self.error = friendlyClaim(error) }
+            }
+        }
+    }
+
+    private func submitFamilyCode() {
+        guard canSubmitFamilyCode else { return }
+        busy = true; error = nil
+        let typedCode = familyCode
+        let typedName = name
+        Task {
+            do {
+                let request = try await AuthService.shared.requestKidAccess(inviteCode: typedCode, name: typedName)
+                await MainActor.run {
+                    busy = false
+                    viaFamilyCode = true
+                    pending = Pending(id: request.id, pollToken: request.pollToken, kidName: request.name, familyName: nil)
+                    startWaiting()
+                }
+            } catch {
+                await MainActor.run { busy = false; self.error = friendlyKid(error) }
+            }
+        }
+    }
+
+    private func startWaiting() {
+        error = nil
+        stage = .waiting
+        startPolling()
+    }
+
     private func startPolling() {
         pollTask?.cancel()
-        guard let req = request else { return }
+        guard let req = pending else { return }
         pollTask = Task {
             // Poll every 3s until a terminal state. The request TTL is 30 min
             // server-side, so we cap at 200 ticks (~10 min) as a safety net.
@@ -174,7 +279,7 @@ struct KidSignInView: View {
                 if Task.isCancelled { return }
                 switch status {
                 case "approved": await MainActor.run { stage = .approved }; return
-                case "denied":   await MainActor.run { stage = .denied }; return
+                case "denied": await MainActor.run { stage = .denied }; return
                 case "expired", "not_found": await MainActor.run { stage = .expired }; return
                 default: break // still pending — keep polling
                 }
@@ -183,49 +288,68 @@ struct KidSignInView: View {
         }
     }
 
-    private func finishSetup() {
-        guard let req = request, !busy else { return }
+    /// Passkey first. If creating one fails for any reason other than the kid cancelling the
+    /// system sheet, fall straight back to the no-passkey sign-in (D7) so a flaky device
+    /// never strands an approved kid.
+    private func finishWithPasskey() {
+        guard let req = pending, !busy else { return }
         busy = true; error = nil
         Task {
             do {
                 try await AuthService.shared.completeKidPasskey(requestId: req.id, pollToken: req.pollToken)
-                APIClient.shared.track("kid_signin_complete")
-                await MainActor.run { busy = false; onFinish(nil) }
+                await signedIn()
             } catch {
-                await MainActor.run {
-                    busy = false
-                    if let e = error as? AuthError, e.isCancellation { return }
-                    self.error = friendly(error)
+                if OnbErrors.isCancellation(error) {
+                    await MainActor.run {
+                        busy = false
+                        self.error = "No problem. Try again, or tap Continue without."
+                    }
+                    return
                 }
+                await signInWithoutPasskey(req)
             }
         }
     }
 
-    private func friendly(_ error: Error) -> String {
-        if let e = error as? AuthError {
-            switch e {
-            case .verify(let m): return m
-            case .options: return "Couldn't reach the family. Double-check the code and try again."
-            case .registration: return "That device setup didn't work — try again."
-            case .unsupported: return "Passkeys aren't available on this device."
-            case .cancelled: return "Cancelled."
-            }
-        }
-        return error.localizedDescription
+    private func continueWithout() {
+        guard let req = pending, !busy else { return }
+        busy = true; error = nil
+        Task { await signInWithoutPasskey(req) }
     }
 
-    private func primaryButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundColor(Palette.onAccent)
-                .frame(maxWidth: .infinity).frame(height: 56)
-                .background(accent)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .shadow(color: accent.opacity(0.28), radius: 18, x: 0, y: 10)
+    private func signInWithoutPasskey(_ req: Pending) async {
+        do {
+            try await AuthService.shared.kidSignInWithoutPasskey(requestId: req.id, pollToken: req.pollToken)
+            await signedIn()
+        } catch {
+            await MainActor.run { busy = false; self.error = friendlyKid(error) }
         }
-        .buttonStyle(.plain)
-        .opacity(enabled ? 1 : 0.6)
-        .disabled(!enabled)
+    }
+
+    private func signedIn() async {
+        APIClient.shared.track("kid_signin_complete")
+        await MainActor.run {
+            busy = false
+            onFinish(nil)
+        }
+    }
+
+    // MARK: Wording
+
+    private func friendlyClaim(_ error: Error) -> String {
+        if let e = error as? AuthServerError {
+            if e.isSetupCodeInvalid {
+                return "That code didn't work. Check it with your grown-up. A code only lasts 30 minutes, so they may need to show you a new one."
+            }
+            if e.status == 429 { return "That's a lot of tries. Wait a few minutes, then try again." }
+        }
+        return friendlyKid(error)
+    }
+
+    private func friendlyKid(_ error: Error) -> String {
+        if let e = error as? AuthError, case .options = e {
+            return "Couldn't reach your family. Check your connection and try again."
+        }
+        return OnbErrors.friendly(error)
     }
 }

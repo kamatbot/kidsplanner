@@ -5,7 +5,9 @@ import Foundation
 struct FamETCApp: App {
     // Persisted across launches: native onboarding shows once, then the native app
     // shell (RootView) is the home. Onboarding creates/joins a family server-side
-    // via AuthService + APIClient, so the store just loads it.
+    // via AuthService + APIClient, so the store just loads it. RootView then picks the
+    // layout for the family's plan (Screen Time or the whole Fam ETC); a relaunch
+    // mid-onboarding resumes at the first unfinished step (see OnboardingView).
     @AppStorage("fam_onboarded") private var onboarded = false
     @State private var store = AppStore()
 
@@ -48,7 +50,9 @@ struct FamETCApp: App {
         if onboarded {
             RootView().environment(store)
         } else {
+            // The store is shared so the device-setup step can embed views that read it.
             OnboardingView { _ in onboarded = true }
+                .environment(store)
         }
     }
 
