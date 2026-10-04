@@ -388,6 +388,7 @@ struct RecentNewsItem: Codable, Identifiable {
     var publishedAt: String
     var source: String
     var question: String
+    var scheduledFor: String? = nil
 }
 
 struct RecentNewsResponse: Codable {

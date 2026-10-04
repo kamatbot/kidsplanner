@@ -163,12 +163,18 @@ enum DailyNewsSelection {
     ]
 
     static func choices(_ response: RecentNewsResponse?, day: String, now: Date = Date()) -> [DailyNewsChoice] {
-        categories.map { category in
+        var choices = categories.map { category in
             let selected = response?.editionDate == day
                 ? response?.choices?.first(where: { $0.category == category.id })?.article : nil
             return DailyNewsChoice(category: category.id, label: category.label,
                 article: selected.flatMap { recent([$0], now: now).first })
         }
+        if response?.editionDate == day,
+           let featured = response?.choices?.first(where: { $0.category == "featured" })?.article,
+           featured.scheduledFor != nil, let article = recent([featured], now: now).first {
+            choices.insert(DailyNewsChoice(category: "featured", label: "Editor's pick", article: article), at: 0)
+        }
+        return choices
     }
 
     static func publishedDate(_ value: String) -> Date? {
@@ -179,7 +185,13 @@ enum DailyNewsSelection {
     }
 
     static func recent(_ items: [RecentNewsItem], now: Date = Date()) -> [RecentNewsItem] {
-        items.compactMap { item -> (RecentNewsItem, Date)? in
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Bangkok")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let scheduledDay = formatter.string(from: now)
+        return items.compactMap { item -> (RecentNewsItem, Date)? in
+            if let scheduledFor = item.scheduledFor, scheduledFor != scheduledDay { return nil }
             guard let url = URL(string: item.url), url.scheme?.lowercased() == "https",
                   let host = url.host, !host.isEmpty, url.user == nil, url.password == nil,
                   let date = publishedDate(item.publishedAt),
@@ -194,6 +206,7 @@ enum DailyNewsSelection {
     }
 
     static func publisherLine(_ item: RecentNewsItem) -> String {
+        if item.scheduledFor != nil { return "\(item.source) · Selected for today" }
         guard let date = publishedDate(item.publishedAt) else { return item.source }
         return "\(item.source) · \(date.formatted(date: .abbreviated, time: .omitted))"
     }

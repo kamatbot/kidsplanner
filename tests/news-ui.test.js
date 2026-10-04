@@ -362,3 +362,18 @@ test("the dashboard no longer contains a static news rotation", () => {
   assert.doesNotMatch(appSource, /NASA STEM|NASA Kids/);
   assert.doesNotMatch(iosDashboardSource, /NASA STEM|NASA Kids/);
 });
+
+test("scheduled pick is first without replacing automatic stories and expires at Bangkok midnight", async () => {
+  const now = new Date("2026-10-04T12:00:00Z");
+  const featured = item(now, 2, { id: "featured-1", headline: "Chosen for all families", scheduledFor: "2026-10-04" });
+  const science = item(now, 1, { id: "science-1", headline: "An automatic story" });
+  const helpers = newsHelpers({ auth: { getRecentNews: async () => ({ editionDate: "2026-10-04", choices: [
+    { category: "science", article: science }, { category: "featured", article: featured },
+  ] }) } });
+  await helpers.loadRecentNews(0, now);
+  const html = helpers.elements['news-choices'].innerHTML;
+  assert.ok(html.indexOf("Chosen for all families") < html.indexOf("An automatic story"));
+  assert.match(html, /Selected for today/);
+  assert.equal(helpers.isRecentNewsItem(featured, new Date("2026-10-04T17:00:00Z")), false);
+  assert.equal(helpers.isRecentNewsItem({ ...featured, scheduledFor: "2026-10-05" }, now), false);
+});
