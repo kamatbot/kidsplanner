@@ -51,7 +51,7 @@ fun DailyFiveCard(
             } catch (e: Exception) {}
             try {
                 val news = ApiClient.api.recentNews()
-                recentNews = news.items.take(3)
+                recentNews = news.items.take(4) // Scheduled pick plus the three automatic categories.
             } catch (e: Exception) {}
             try {
                 puzzle = ApiClient.api.dailyPuzzle()

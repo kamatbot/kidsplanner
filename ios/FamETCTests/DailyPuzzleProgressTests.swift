@@ -186,6 +186,19 @@ final class DailyPuzzleProgressTests: XCTestCase {
         XCTAssertEqual(DailyNewsSelection.choices(nil, day: "2026-09-07", now: now).count, 3)
     }
 
+    func testFeaturedNewsLeadsAutomaticChoicesOnlyDuringBangkokDate() throws {
+        let now = ISO8601DateFormatter().date(from: "2026-10-04T12:00:00Z")!
+        let data = Data(#"{"items":[],"maxAgeDays":14,"editionDate":"2026-10-04","choices":[{"category":"featured","label":"Editor's pick","article":{"id":"scheduled","cat":"Editor's pick","headline":"Shared story","summary":"Read together","url":"https://www.nasa.gov/learning","publishedAt":"2026-10-03T17:00:00Z","scheduledFor":"2026-10-04","source":"NASA","question":"Why?"}}]}"#.utf8)
+        let response = try JSONDecoder().decode(RecentNewsResponse.self, from: data)
+        let choices = DailyNewsSelection.choices(response, day: "2026-10-04", now: now)
+        XCTAssertEqual(choices.map(\.category), ["featured", "regional", "science", "culture"])
+        XCTAssertEqual(choices.first?.article?.id, "scheduled")
+        XCTAssertEqual(DailyNewsSelection.publisherLine(choices[0].article!), "NASA · Selected for today")
+        let midnight = ISO8601DateFormatter().date(from: "2026-10-04T17:00:00Z")!
+        XCTAssertEqual(DailyNewsSelection.choices(response, day: "2026-10-04", now: midnight).count, 3)
+        XCTAssertEqual(DailyNewsSelection.choices(response, day: "2026-10-05", now: now).count, 3)
+    }
+
     func testRestoreAndClearProgress() {
         let puzzle = crossword()
         let identity = DailyPuzzleProgressIdentity(puzzle: puzzle)

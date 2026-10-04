@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Article editor · Fam ETC</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/article-admin.css">
+  <script src="/js/article-admin.js" defer></script>
+</head>
+<body>
+  <header class="site-header"><a class="brand" href="/" aria-label="Fam ETC home">fam<span>etc.</span></a><span class="workspace-label">ARTICLE EDITOR</span><button id="sign-out" class="quiet" hidden>Sign out</button></header>
+  <main>
+    <section class="intro"><p class="eyebrow">A little curiosity, every day</p><h1>A story worth sharing.</h1><p>Choose an article to start a conversation with every family.</p></section>
+    <div id="global-status" class="notice" role="status" aria-live="polite">Opening the editor…</div>
+    <section id="login-panel" class="card login-card" hidden>
+      <div class="section-icon" aria-hidden="true">✦</div><h2>Welcome back</h2><p>Enter the editor password to plan the next good read.</p>
+      <form id="login-form"><label for="password">Editor password</label><input id="password" name="password" type="password" autocomplete="current-password" required><button class="primary" id="login-button" type="submit">Open editor <span aria-hidden="true">→</span></button></form>
+    </section>
+    <section id="unavailable-panel" class="card login-card" hidden><h2>The editor isn’t ready yet</h2><p>Password access needs to be set up by the site owner. Please try again once setup is complete.</p><button id="retry-session" class="secondary">Try again</button></section>
+    <div id="workspace" class="workspace" hidden>
+      <section class="card editor-card" aria-labelledby="editor-heading">
+        <div class="section-heading"><div><p class="eyebrow">THE NEXT GOOD READ</p><h2 id="editor-heading">Schedule an article</h2></div><span class="section-icon" aria-hidden="true">✦</span></div>
+        <form id="article-form">
+          <label for="article-date">Publish date</label><input type="date" id="article-date" name="date" required aria-describedby="date-help"><p class="field-help" id="date-help"></p>
+          <label for="article-url">Article link</label><div class="url-row"><input type="url" id="article-url" name="url" placeholder="https://…" required><button id="preview-button" class="secondary" type="button">Fetch details</button></div><p class="field-help">Paste the original article link, then fetch its headline and summary.</p>
+          <label for="article-headline">Headline</label><input id="article-headline" name="headline" required maxlength="240" placeholder="What will spark their curiosity?">
+          <label for="article-summary">Short summary <span class="optional">Optional</span></label><textarea id="article-summary" name="summary" rows="3" maxlength="800" placeholder="A few words to invite families into the story."></textarea>
+          <label for="article-question">Conversation starter <span class="optional">Optional</span></label><textarea id="article-question" name="question" rows="2" maxlength="400" placeholder="What would you ask around the dinner table?"></textarea>
+          <p class="field-help" id="source-note" hidden></p>
+          <div class="placement-note"><span aria-hidden="true">↗</span><p><strong>First in the feed, for every family.</strong><br>One chosen article each day. Automatic stories will still appear alongside it.</p></div>
+          <div id="form-status" class="notice" role="status" aria-live="polite" hidden></div>
+          <div class="form-actions"><button class="primary" id="save-button" type="submit">Schedule article</button><button id="cancel-edit" type="button" class="quiet" hidden>Cancel editing</button></div>
+        </form>
+      </section>
+      <section class="schedule-column" aria-labelledby="schedule-heading"><div class="list-heading"><div><p class="eyebrow">ON THE CALENDAR</p><h2 id="schedule-heading">Your articles</h2></div><button id="refresh-list" class="quiet">Refresh</button></div><p class="field-help">Review, edit or remove a scheduled story.</p><div id="list-status" class="notice" role="status" aria-live="polite"></div><div id="article-list"></div></section>
+    </div>
+    <footer>Small stories. Bigger conversations.</footer>
+  </main>
+</body>
+</html>

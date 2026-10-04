@@ -313,6 +313,7 @@ function newsPublishedAtIsFresh(publishedAt, now) {
 
 function isRecentNewsItem(item, now) {
   return !!item && typeof item === 'object' &&
+    (!item.scheduledFor || item.scheduledFor === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now || Date.now()))) &&
     newsPublishedAtIsFresh(item.publishedAt, now) && newsUrlIsHttps(item.url);
 }
 
@@ -424,7 +425,7 @@ function renderNewsItem(n, now) {
   currentNews = n;
   const category = typeof n.cat === 'string' ? n.cat.trim() : '';
   const source = typeof n.source === 'string' ? n.source.trim() : '';
-  const freshness = newsFreshnessLabel(n.publishedAt, now);
+  const freshness = n.scheduledFor ? 'Selected for today' : newsFreshnessLabel(n.publishedAt, now);
   const cue = [source, freshness].filter(Boolean).join(' · ');
   const badge = document.getElementById('news-badge');
   if (badge) badge.textContent = [category, cue].filter(Boolean).join(' · ');
@@ -466,7 +467,7 @@ function renderNewsChoices() {
       : stories === 2 ? 'Pick either of today’s stories — read one or both.'
       : stories === 1 ? 'Today’s story is ready to read.' : '';
   }
-  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}>${choice.article ? `<span class="news-choice-headline">${esc(choice.article.headline)}</span><span class="news-choice-meta">${esc(choice.label)} · ${esc(choice.article.source || '')} · ${esc(newsFreshnessLabel(choice.article.publishedAt))}</span>` : `<span class="news-choice-empty">No recent ${esc(choice.label)} story today.</span>`}</button>`).join('');
+  container.innerHTML = newsChoices.map((choice, index) => `<button type="button" class="news-choice" onclick="selectNewsStory(${index})" aria-pressed="${!!choice.article && choice.article === currentNews}" ${choice.article ? '' : 'disabled'}>${choice.article ? `<span class="news-choice-headline">${esc(choice.article.headline)}</span><span class="news-choice-meta">${esc(choice.label)} · ${esc(choice.article.source || '')} · ${esc(choice.article.scheduledFor ? 'Selected for today' : newsFreshnessLabel(choice.article.publishedAt))}</span>` : `<span class="news-choice-empty">No recent ${esc(choice.label)} story today.</span>`}</button>`).join('');
 }
 
 function selectNewsStory(index) {
@@ -494,6 +495,10 @@ async function loadRecentNews(requestToken, now) {
       const choice = data && Array.isArray(data.choices) && data.choices.find((item) => item.category === category);
       return { category, label, article: choice && isRecentNewsItem(choice.article, currentTime) ? choice.article : null };
     });
+    const featured = data.choices?.find((choice) => choice.category === 'featured');
+    if (featured?.article?.scheduledFor && isRecentNewsItem(featured.article, currentTime)) {
+      newsChoices.unshift({ category: 'featured', label: "Editor's pick", article: featured.article });
+    }
     // A fake headline while nothing is picked is exactly what the redesign
     // removed (#news-headline:empty collapses to nothing in CSS) — only the
     // true empty-state gets a visible message here.

@@ -690,6 +690,7 @@ require("./lib/routes/meals")(app, routeDeps);
 require("./lib/routes/trips")(app, routeDeps);
 require("./lib/routes/activities")(app, routeDeps);
 require("./lib/routes/learning")(app, routeDeps);
+require("./lib/routes/article-admin").mount(app, routeDeps);
 require("./lib/routes/child-insights")(app, routeDeps);
 require("./lib/routes/fams")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
@@ -795,6 +796,10 @@ app.get("/login", (req, res) => {
 app.get("/signup", (req, res) => {
   if (currentUser(req)) return res.redirect(safeNext(req.query.next));
   sendPage(req, res, "signup.html");
+});
+app.get("/admin", (req, res) => {
+  res.set("X-Robots-Tag", "noindex, nofollow");
+  sendPage(req, res, "article-admin.html");
 });
 app.get("/privacy", (req, res) => sendPage(req, res, "privacy.html", PUB));
 app.get("/terms", (req, res) => sendPage(req, res, "terms.html", PUB));
