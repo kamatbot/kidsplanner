@@ -15,7 +15,7 @@ Set `FAM_ARTICLE_ADMIN_PASSWORD_HASH` in the deployment environment. Never use a
 ```zsh
 export PATH=/opt/homebrew/opt/node@24/bin:$PATH
 node --version # must report v24.*
-read -rs 'fam_editor_password?New editor password (14+ characters): '
+read -rs 'fam_editor_password?New editor password (10+ characters): '
 print -rn -- "$fam_editor_password" | node scripts/article-admin-password.js .dev-data/article-editor-password.env
 unset fam_editor_password
 ```
@@ -30,4 +30,4 @@ The script outputs no password/hash to the console and refuses to overwrite an e
 - Independent source review of the password/session and URL-fetch boundaries found no actionable issue. Publisher fetch is intentionally IPv4-only and never falls back to unchecked resolution. Unsupported/blocked publishers use the saved content.
 - Local receipts: `.dev-data/article-admin/` (ignored). No production accounts or schedules changed. No deployment, archive, or TestFlight upload.
 
-Deployment remains paused under the owner's prior instruction. Claude can merge this branch; any later Hostinger release must use committed, merged `main` matching `origin/main`. The editor password must be configured separately before launch. No full CI was manually dispatched for this implementation.
+Owner authorized merge and deployment on 4 October 2026 and supplied the editor password privately. Provision only its salted hash through the existing deployment configuration. Hostinger must use committed, merged `main` matching `origin/main`, after its authoritative push-triggered CI succeeds. Native changes are included in the regenerated Xcode project; distribution remains separate.
