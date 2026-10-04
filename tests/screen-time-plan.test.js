@@ -346,6 +346,18 @@ test("gate: a Screen Time family is refused 403 upgrade_required on EVERY hub ro
   }
 });
 
+test("gate: article editing is plan-independent but family cookies never grant editor access", async () => {
+  assert.equal(classify("/api/article-admin/articles"), "open");
+  for (const plan of ["full", "screen_time"]) {
+    const { parent, fam, kid } = familyFor(plan);
+    const child = store.findOrCreateKidUser(fam.id, kid.id, "Editor test child");
+    for (const user of [parent, child]) {
+      assert.equal((await api(user, "GET", "/api/article-admin/articles")).status, 401);
+      assert.equal((await api(user, "GET", "/api/article-admin/session")).body.authenticated, false);
+    }
+  }
+});
+
 test("gate: a full family passes every hub prefix (the route's own answer, never upgrade_required)", async () => {
   const { parent } = familyFor("full");
   for (const prefix of hubGate.HUB_PREFIXES) {
