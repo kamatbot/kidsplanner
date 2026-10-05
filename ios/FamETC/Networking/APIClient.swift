@@ -87,6 +87,16 @@ final class APIClient: FamilyActionService, ChatMessageService {
         let _: FamsMutation = try await request("/api/fams/goals", method: "POST", body: ["kidId": kidId, "name": name, "target": target])
     }
 
+    // MARK: Student organization (additive, full-hub scoped)
+    func studentSupport(kidID: String) async throws -> StudentSupportSnapshot {
+        let response: StudentSupportResponse = try await request("/api/student-support?kidId=\(pathComponent(kidID))")
+        return response.support
+    }
+    func studentSupportCommand(_ command: SupportCommand) async throws -> StudentSupportSnapshot {
+        let response: StudentSupportResponse = try await request("/api/student-support/commands", method: "POST", body: command.body)
+        return response.support
+    }
+
     // MARK: Family
 
     func families() async throws -> [Family] {

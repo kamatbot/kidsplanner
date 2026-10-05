@@ -54,6 +54,7 @@ struct MyNextView: View {
                             .font(.body)
                             .foregroundStyle(.secondary)
                     }
+                    WatchStudentSupportLink()
                     completionAcknowledgment
                     if store.reminderStatus == "Turn on gentle reminders" || store.reminderStatus == "Enable reminders to get a nudge" {
                         Button("Turn on reminders", systemImage: "bell.badge") {
@@ -106,7 +107,7 @@ struct MyNextView: View {
     }
 
     private var connectionSummary: String {
-        if store.pendingMutationCount > 0 { return "\(store.pendingMutationCount) changes waiting to sync" }
+        if store.totalPendingCount > 0 { return "\(store.totalPendingCount) changes waiting to sync" }
         if store.lastError != nil { return "Sync needs attention" }
         return store.connection.label
     }
@@ -149,6 +150,7 @@ struct MyNextView: View {
     private var dayPage: some View {
         List {
             Text("Your day").font(.title3.bold())
+            WatchStudentSupportLink()
             TimelineView(.periodic(from: Date(), by: 60)) { clock in
                 let events = store.snapshot.dayEvents(at: clock.date)
                 if events.isEmpty {
@@ -176,6 +178,7 @@ struct MyNextView: View {
     private var morePage: some View {
         List {
             Text("More").font(.title3.bold())
+            WatchStudentSupportLink()
             NavigationLink {
                 List {
                     if store.openHomework.isEmpty { EmptyWatchRow(text: "All caught up. Nice work!") }
@@ -283,8 +286,8 @@ private struct WatchConnectionView: View {
             Section("Sync") {
                 Text(store.connection.label)
                 if let error = store.lastError { Text(error).font(.footnote).foregroundStyle(.secondary) }
-                if store.pendingMutationCount > 0 {
-                    Text("\(store.pendingMutationCount) saved changes are waiting to sync. Refresh when connected.")
+                if store.totalPendingCount > 0 {
+                    Text("\(store.totalPendingCount) saved changes are waiting to sync. Refresh when connected.")
                         .font(.footnote)
                 }
                 if let updated = store.snapshot.updatedAt {
@@ -305,8 +308,8 @@ private struct WatchConnectionView: View {
         .confirmationDialog("Disconnect this watch?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
             Button("Disconnect", role: .destructive, action: onDisconnect)
         } message: {
-            Text(store.pendingMutationCount > 0
-                 ? "You have \(store.pendingMutationCount) unsynced changes. Disconnecting removes saved data and these changes from this watch."
+            Text(store.totalPendingCount > 0
+                 ? "You have \(store.totalPendingCount) unsynced changes. Disconnecting removes saved data and these changes from this watch."
                  : "Saved data will be removed from this watch. You can connect again from setup.")
         }
     }
@@ -471,7 +474,7 @@ private struct FocusSessionCard: View {
                         .accessibilityLabel("Focus step")
                         .accessibilityValue(currentStep.text)
                 } else {
-                    Text("Open the assignment and spend 20 minutes on the first move.")
+                    Text("Open the assignment and spend \(Int(session.duration / 60)) minutes on the first move.")
                         .font(.body)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -486,7 +489,7 @@ private struct FocusSessionCard: View {
                         .font(.subheadline.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text(timerInterval: session.startedAt...session.endsAt, countsDown: true)
+                    Text(String(format: "%02d:%02d", Int(session.remaining(at: context.date)) / 60, Int(session.remaining(at: context.date)) % 60))
                         .font(.system(.title2, design: .rounded).weight(.semibold))
                         .monospacedDigit()
                         .accessibilityLabel("Focus time remaining")
@@ -509,6 +512,9 @@ private struct FocusSessionCard: View {
                         .accessibilityHint("Marks the assignment done only when you choose.")
                 }
 
+                if !session.isComplete() {
+                    Button(session.pausedAt == nil ? "Pause timer" : "Resume timer") { store.pauseOrResumeFocus() }
+                }
                 Button("End focus") {
                     store.endFocus()
                 }

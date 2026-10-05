@@ -45,6 +45,7 @@ final class AppStore {
     var me: User? {
         didSet {
             ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
+            StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
             if oldValue?.id != me?.id {
                 clearGoals()
                 notes = []
@@ -56,6 +57,7 @@ final class AppStore {
     var family: Family? {
         didSet {
             ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
+            StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
             if oldValue?.id != family?.id {
                 clearGoals()
                 notes = []
@@ -114,7 +116,10 @@ final class AppStore {
     var pendingHermesOpen: HermesNudgeOpenTarget?
     var isRefreshing = false
     var needsAuth = false {
-        didSet { ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id) }
+        didSet {
+            ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
+            StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
+        }
     }
     var syncError: String?
     private var refreshRetries = 0
@@ -342,6 +347,7 @@ final class AppStore {
     }
 
     func signedOut() {
+        StudentSupportStore.shared.reset()
         clearGoals()
         sessionGeneration &+= 1
         notesLoadGeneration &+= 1

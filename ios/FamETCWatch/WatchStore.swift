@@ -54,6 +54,10 @@ final class WatchStore: ObservableObject {
     @Published private(set) var reminderStatus = "Turn on gentle reminders"
     @Published private(set) var needsConnection = false
     private var connectionEpoch = 0
+    @Published private(set) var supportOutbox: [WatchSupportCommand] = []
+    @Published private(set) var supportConflict = false
+    @Published private(set) var supportError: String?
+    @Published private(set) var drainingSupport = false
 
     private let api: WatchAPIClient
     private let credentials: WatchCredentialStore
@@ -78,7 +82,11 @@ final class WatchStore: ObservableObject {
         self.pendingMutationCount = self.outbox.count
         self.connection = restored == nil ? .disconnected : .cached
         self.lastError = nil
+        self.supportOutbox = restored?.supportOutbox ?? []
+        self.supportConflict = restored?.supportConflict ?? false
     }
+
+    var totalPendingCount: Int { pendingMutationCount + supportOutbox.count }
 
     var urgentActions: [WatchAction] { snapshot.urgentActions }
     var openHomework: [WatchHomework] { snapshot.openHomework }
@@ -130,7 +138,7 @@ final class WatchStore: ObservableObject {
                 let context = try await withWatchTimeout(seconds: 8) { try await contextClient.fetchContext() }
                 guard epoch == connectionEpoch else { return }
                 if let previous = snapshot.context?.profile,
-                   previous.userId != context.profile.userId || previous.familyId != context.profile.familyId {
+                   previous.userId != context.profile.userId || previous.familyId != context.profile.familyId || previous.kidId != context.profile.kidId || previous.role != context.profile.role {
                     resetLocalState()
                     needsConnection = true
                     lastError = "The watch account changed. Please reconnect."
@@ -157,6 +165,7 @@ final class WatchStore: ObservableObject {
         // fails, the entry remains durable and is reapplied below to any
         // successfully fetched section.
         if replayMutations { _ = await drainOutbox() }
+        if contextFresh { await refreshSupport(replay: replayMutations) }
         guard epoch == connectionEpoch else { return }
 
         do {
@@ -261,7 +270,7 @@ final class WatchStore: ObservableObject {
     /// Start the one local focus block the watch can hold. The focus record is
     /// saved synchronously before the optional status mutation can touch the
     /// network, so suspension at any point still restores the block.
-    func startFocus(on homework: WatchHomework, checklistIndex: Int? = nil) async {
+    func startFocus(on homework: WatchHomework, checklistIndex: Int? = nil, minutes: Int = 20) async {
         guard focusSession == nil else { return }
 
         let selectedIndex: Int?
@@ -273,7 +282,8 @@ final class WatchStore: ObservableObject {
         focusSession = WatchFocusSession(
             homeworkID: homework.id,
             checklistIndex: selectedIndex,
-            titleSnapshot: homework.title
+            titleSnapshot: homework.title,
+            duration: TimeInterval(([5, 10, 15, 20].contains(minutes) ? minutes : 10) * 60)
         )
         // Persist focus before awaiting status replay or checking credentials.
         persist()
@@ -512,6 +522,10 @@ final class WatchStore: ObservableObject {
         isRefreshing = false
         isDraining = false
         foregroundRefreshUsed = false
+        supportOutbox = []
+        supportConflict = false
+        supportError = nil
+        drainingSupport = false
         snapshot = WatchSnapshot()
         outbox = []
         focusSession = nil
@@ -532,7 +546,8 @@ final class WatchStore: ObservableObject {
     }
 
     private func persist() {
-        let savedSnapshot = snapshot
+        var savedSnapshot = snapshot
+        savedSnapshot.support = studentSupport
         let savedFocus = focusSession
         let epoch = connectionEpoch
         Task {
@@ -541,20 +556,142 @@ final class WatchStore: ObservableObject {
             guard epoch == connectionEpoch else { return }
             reminderStatus = status
         }
-        persistence.save(WatchPersistedState(
+        var state = WatchPersistedState(
             snapshot: snapshot,
             outbox: outbox,
             focusSession: focusSession
-        ))
+        )
+        state.supportOutbox = supportOutbox
+        state.supportConflict = supportConflict
+        persistence.save(state)
         WatchComplicationSnapshotStore.save(FamETCWatchComplicationSnapshot(
             urgentCount: snapshot.urgentActions.count,
             homeworkCount: snapshot.openHomework.count,
             shoppingCount: snapshot.openShopping.count,
             updatedAt: snapshot.updatedAt,
-            focusActive: focusSession != nil && !(focusSession?.isComplete() ?? true),
-            focusEndsAt: focusSession?.endsAt
+            focusActive: focusSession != nil && focusSession?.pausedAt == nil && !(focusSession?.isComplete() ?? true),
+            focusEndsAt: focusSession?.pausedAt == nil ? focusSession?.endsAt : nil
         ))
         WidgetCenter.shared.reloadTimelines(ofKind: "FamETCWatchComplication")
+    }
+
+    var studentSupport: WatchStudentSupport? {
+        guard let support = snapshot.support, support.belongs(to: snapshot.context?.profile) else { return nil }
+        return support.projecting(supportOutbox, profile: snapshot.context?.profile)
+    }
+
+    func pauseOrResumeFocus(at now: Date = Date()) {
+        guard var focus = focusSession, !focus.isComplete(at: now) else { return }
+        if let paused = focus.pausedAt {
+            focus.startedAt = focus.startedAt.addingTimeInterval(now.timeIntervalSince(paused))
+            focus.pausedAt = nil
+        } else { focus.pausedAt = now }
+        focusSession = focus
+        persist()
+    }
+
+    func setSupportReminders(_ enabled: Bool) async {
+        snapshot.supportRemindersEnabled = enabled
+        if enabled { await enableReminders() }
+        persist()
+    }
+
+    func supportCommand(_ type: String, _ payload: WatchSupportCommand.Payload) async {
+        guard let support = studentSupport, support.enabled, !supportConflict,
+              let profile = snapshot.context?.profile else { return }
+        var pending = supportOutbox
+        pending.append(WatchSupportCommand(userId: profile.userId, familyId: support.familyId,
+            kidId: support.kidId, expectedRevision: supportOutbox.last.map { $0.expectedRevision + 1 } ?? support.revision,
+            type: type, payload: payload))
+        guard saveSupportQueue(pending, conflict: supportConflict) else { return }
+        supportOutbox = pending
+        persist()
+        await refreshSupport(replay: true)
+    }
+
+    func discardSupportChanges() async {
+        guard !drainingSupport else {
+            supportError = "A change is still syncing. Wait for the result before discarding."
+            return
+        }
+        guard saveSupportQueue([], conflict: false) else { return }
+        supportOutbox = []
+        supportConflict = false
+        persist()
+        await refreshSupport(replay: false)
+    }
+
+    private func saveSupportQueue(_ pending: [WatchSupportCommand], conflict: Bool) -> Bool {
+        var state = WatchPersistedState(snapshot: snapshot, outbox: outbox, focusSession: focusSession)
+        state.supportOutbox = pending
+        state.supportConflict = conflict
+        persistence.save(state)
+        guard persistence.load() == state else {
+            supportError = "Change not saved. Free storage on this Watch and try again."
+            return false
+        }
+        return true
+    }
+
+    private func refreshSupport(replay: Bool) async {
+        guard let client = api as? WatchStudentSupportClient,
+              let profile = snapshot.context?.profile, profile.role == "kid", !drainingSupport, credentialIsAvailable() else { return }
+        let epoch = connectionEpoch
+        drainingSupport = true
+        defer { if epoch == connectionEpoch { drainingSupport = false } }
+        do {
+            if let contextClient = api as? WatchContextClient {
+                let context = try await contextClient.fetchContext()
+                guard epoch == connectionEpoch else { return }
+                guard context.profile.userId == profile.userId, context.profile.familyId == profile.familyId,
+                      context.profile.kidId == profile.kidId, context.profile.role == profile.role else {
+                    resetLocalState()
+                    needsConnection = true
+                    return
+                }
+            }
+            if replay && !supportConflict {
+                while let command = supportOutbox.first {
+                    guard command.userId == profile.userId, command.familyId == profile.familyId,
+                          command.kidId == profile.kidId else {
+                        supportConflict = true
+                        supportError = "Saved changes belong to another connection. Discard and reload."
+                        persist()
+                        return
+                    }
+                    persist()
+                    guard persistence.load()?.supportOutbox == supportOutbox else {
+                        supportError = "Could not save changes on this Watch. Free storage and retry."
+                        return
+                    }
+                    let result = try await client.sendStudentSupport(command)
+                    guard epoch == connectionEpoch else { return }
+                    guard result.belongs(to: profile) else { throw WatchAPIError.forbidden }
+                    guard supportOutbox.first?.commandId == command.commandId else { return }
+                    snapshot.support = result
+                    supportOutbox.removeFirst()
+                    // An idempotent retry can return a later revision. Never silently rebase the tail.
+                    if !supportOutbox.isEmpty && result.revision != command.expectedRevision + 1 {
+                        supportConflict = true
+                        supportError = "Support changed on another device. Review, then discard and reload saved changes."
+                    }
+                    persist()
+                    if supportConflict { return }
+                }
+            }
+            let result = try await client.fetchStudentSupport()
+            guard epoch == connectionEpoch else { return }
+            guard result.belongs(to: profile) else { throw WatchAPIError.forbidden }
+            snapshot.support = result
+            if !supportConflict { supportError = nil }
+            persist()
+        } catch {
+            guard epoch == connectionEpoch else { return }
+            if case WatchAPIError.unauthenticated = error { handleNetworkError(error); return }
+            if case WatchAPIError.http(409, _) = error { supportConflict = true }
+            supportError = supportConflict ? "Support changed. Review saved changes, then discard and reload." : error.localizedDescription
+            persist()
+        }
     }
 
     private func isForbidden(_ error: Error) -> Bool {

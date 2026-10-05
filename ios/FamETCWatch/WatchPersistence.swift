@@ -39,7 +39,7 @@ struct FileWatchPersistence: WatchPersistence {
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try data.write(to: fileURL, options: .atomic)
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             // A cache write must never take down the watch UI. The in-memory
             // state remains usable and the next mutation retries persistence.

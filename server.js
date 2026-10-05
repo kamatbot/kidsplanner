@@ -40,6 +40,7 @@ const schoolFeeds = require("./lib/school-feeds");
 const homework = require("./lib/homework");
 const goals = require("./lib/goals");
 const actions = require("./lib/actions");
+const studentSupport = require("./lib/student-support");
 const decisions = require("./lib/decisions");
 const watchAuth = require("./lib/watch-auth");
 const meals = require("./lib/meals");
@@ -662,7 +663,7 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, actions, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications, screenTime,
+  schoolFeeds, homework, goals, actions, studentSupport, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications, screenTime,
   requireAuth, requireParent, requireFamily, requireHub, requireAdmin, requireOperatorAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter, buzzLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -682,6 +683,7 @@ require("./lib/routes/hermes-threads")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/actions")(app, routeDeps);
+require("./lib/routes/student-support")(app, routeDeps);
 require("./lib/routes/my-corner")(app, routeDeps);
 require("./lib/routes/decisions")(app, routeDeps);
 require("./lib/routes/watch")(app, routeDeps);

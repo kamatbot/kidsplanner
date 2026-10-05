@@ -11,6 +11,8 @@ struct WatchSnapshot: Codable, Equatable {
     var shopping: [WatchShoppingItem]
     var updatedAt: Date?
     var context: WatchContext? = nil
+    var support: WatchStudentSupport? = nil
+    var supportRemindersEnabled: Bool? = nil
 
     init(actions: [WatchAction] = [],
          homework: [WatchHomework] = [],
@@ -29,10 +31,12 @@ struct WatchSnapshot: Codable, Equatable {
         shopping = try container.decodeIfPresent([WatchShoppingItem].self, forKey: .shopping) ?? []
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
         context = try container.decodeIfPresent(WatchContext.self, forKey: .context)
+        support = try container.decodeIfPresent(WatchStudentSupport.self, forKey: .support)
+        supportRemindersEnabled = try container.decodeIfPresent(Bool.self, forKey: .supportRemindersEnabled)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case actions, homework, shopping, updatedAt, context
+        case actions, homework, shopping, updatedAt, context, support, supportRemindersEnabled
     }
 
     /// Open actions are ordered by the server's due date fields. The string
@@ -324,6 +328,7 @@ struct WatchMutation: Codable, Equatable, Identifiable {
 /// A local focus block is intentionally a small timestamped record. It is
 /// not a background timer and contains only a title snapshot for the watch's
 /// in-app display; the canonical assignment remains the server's homework.
+// ponytail: one device-local timer; cross-device takeover needs an ownership protocol.
 struct WatchFocusSession: Codable, Equatable, Identifiable {
     static let duration: TimeInterval = 20 * 60
 
@@ -331,7 +336,8 @@ struct WatchFocusSession: Codable, Equatable, Identifiable {
     let homeworkID: String
     let checklistIndex: Int?
     let titleSnapshot: String
-    let startedAt: Date
+    var startedAt: Date
+    var pausedAt: Date? = nil
     let duration: TimeInterval
     var completionAcknowledged: Bool
 
@@ -354,11 +360,11 @@ struct WatchFocusSession: Codable, Equatable, Identifiable {
     var endsAt: Date { startedAt.addingTimeInterval(duration) }
 
     func remaining(at date: Date = Date()) -> TimeInterval {
-        max(0, endsAt.timeIntervalSince(date))
+        max(0, endsAt.timeIntervalSince(pausedAt ?? date))
     }
 
     func isComplete(at date: Date = Date()) -> Bool {
-        date >= endsAt
+        pausedAt == nil && date >= endsAt
     }
 
     var hasChecklistStep: Bool { checklistIndex != nil }
@@ -371,6 +377,8 @@ struct WatchPersistedState: Codable, Equatable {
     var snapshot: WatchSnapshot
     var outbox: [WatchMutation]
     var focusSession: WatchFocusSession?
+    var supportOutbox: [WatchSupportCommand]? = nil
+    var supportConflict: Bool? = nil
 
     init(snapshot: WatchSnapshot = WatchSnapshot(),
          outbox: [WatchMutation] = [],
@@ -390,10 +398,12 @@ struct WatchPersistedState: Codable, Equatable {
             ?? WatchSnapshot()
         outbox = try container.decodeIfPresent([WatchMutation].self, forKey: .outbox) ?? []
         focusSession = try container.decodeIfPresent(WatchFocusSession.self, forKey: .focusSession)
+        supportOutbox = try container.decodeIfPresent([WatchSupportCommand].self, forKey: .supportOutbox)
+        supportConflict = try container.decodeIfPresent(Bool.self, forKey: .supportConflict)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, snapshot, outbox, focusSession
+        case schemaVersion, snapshot, outbox, focusSession, supportOutbox, supportConflict
     }
 }
 

@@ -26,8 +26,10 @@ struct TodayScreen: View {
                                              onDaily3: { scrollToDaily3(proxy) })
                         } else {
                             TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
+                            StudentSupportEntry()
                             KidTodayStack(onOpenHomework: onOpenHomework, onDaily3: { scrollToDaily3(proxy) })
                         }
+                        if store.isParent { StudentSupportEntry() }
                     }
                     .padding(sizeClass == .regular ? 32 : 16)
                     .padding(.bottom, max(Layout.bottomNavigationClearance, Space.xl))

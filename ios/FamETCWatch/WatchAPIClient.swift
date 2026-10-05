@@ -63,7 +63,7 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
@@ -93,6 +93,20 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         self.clientKey = clientKey
         self.decoder = decoder
         self.requestExecutor = requestExecutor
+    }
+
+    private struct SupportResponse: Decodable { let support: WatchStudentSupport }
+
+    func fetchStudentSupport() async throws -> WatchStudentSupport {
+        try await request("/api/student-support", response: SupportResponse.self).support
+    }
+
+    func sendStudentSupport(_ command: WatchSupportCommand) async throws -> WatchStudentSupport {
+        let payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(command.payload))
+        return try await request("/api/student-support/commands", method: "POST", body: [
+            "kidId": command.kidId, "commandId": command.commandId,
+            "expectedRevision": command.expectedRevision, "type": command.type, "payload": payload
+        ], response: SupportResponse.self).support
     }
 
     func fetchContext() async throws -> WatchContext {
