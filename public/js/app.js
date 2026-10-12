@@ -1078,23 +1078,28 @@ function renderManageFamily() {
     const max = currentFamily.maxParents || 2;
     const count = (currentFamily.parentIds || []).length;
     const code = esc(currentFamily.inviteCode || '');
-    // Same code invites the co-parent AND kids, so always show it — just
-    // reframe once both parent slots are full.
-    const heading = count >= max ? 'Family code' : 'Invite the other parent';
-    const blurb = count >= max
-      ? `Share this code with your kids. They sign up at <strong>fametc.com</strong>
-         (or in the app), enter the code, and you approve them from Today.`
-      : `Ask them to sign up at <strong>fametc.com</strong> and enter this family code.
-         They'll get their own passkey on their own device.`;
+    // The family code is for kids only; a co-parent needs a single-use parent
+    // invite (kids know the family code, so it can't make anyone a parent).
+    const parentInvite = count < max
+      ? `<div class="invite-box" style="margin-top:12px">
+          <p style="margin:0 0 6px;font-weight:700">Invite the other parent</p>
+          <p class="text-muted" style="margin:0 0 12px">Make a one-time parent code (valid 48 hours).
+            They sign up at <strong>fametc.com</strong> or in the app and enter it. They'll get their own passkey.</p>
+          <div class="invite-code-row" id="parent-invite-row">
+            <button type="button" class="btn-secondary" onclick="makeParentInvite()">Make parent code</button>
+          </div>
+        </div>`
+      : '';
     inviteEl.innerHTML =
       `<div class="invite-box">
-        <p style="margin:0 0 6px;font-weight:700">${heading}</p>
-        <p class="text-muted" style="margin:0 0 12px">${blurb}</p>
+        <p style="margin:0 0 6px;font-weight:700">Family code for kids</p>
+        <p class="text-muted" style="margin:0 0 12px">Share this code with your kids. They enter it in the app
+          and you approve them from Today. It can't be used to join as a parent.</p>
         <div class="invite-code-row">
           <code id="invite-code-value" class="invite-code">${code}</code>
           <button type="button" class="btn-secondary" onclick="copyInviteCode()">Copy code</button>
         </div>
-      </div>`;
+      </div>${parentInvite}`;
   }
 
   // --- Kids ---
@@ -1178,6 +1183,18 @@ function copyInviteCode() {
   const code = currentFamily && currentFamily.inviteCode;
   if (!code) return;
   copyTextToClipboard(code, 'Invite code copied! 📋');
+}
+
+async function makeParentInvite() {
+  const row = document.getElementById('parent-invite-row');
+  try {
+    const res = await window.auth.createParentInvite();
+    const code = esc(res.code || '');
+    if (row) row.innerHTML = `<code class="invite-code">${code}</code>
+      <button type="button" class="btn-secondary" onclick="copyTextToClipboard('${code}', 'Parent code copied! 📋')">Copy code</button>`;
+  } catch (e) {
+    toast((e && e.message) || 'Could not make a parent code.');
+  }
 }
 
 function copyTextToClipboard(text, message) {

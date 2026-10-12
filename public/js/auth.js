@@ -167,6 +167,10 @@
     return api("/api/family/join", { method: "POST", body: JSON.stringify({ code: code || "" }) });
   }
 
+  async function createParentInvite() {
+    return api("/api/family/parent-invite", { method: "POST", body: "{}" });
+  }
+
   async function addKid(name, grade, color) {
     return api("/api/family/kids", {
       method: "POST",
@@ -1100,6 +1104,7 @@
     getMe,
     createFamily,
     joinFamily,
+    createParentInvite,
     getFamilies,
     addKid,
     updateKid,

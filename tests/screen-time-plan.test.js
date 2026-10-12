@@ -269,10 +269,38 @@ test("POST /api/family/upgrade: parent only, bad code 403, good code flips the w
   assert.equal((await api(parent, "GET", "/api/screen-time")).body.kids.length, 1);
 });
 
+test("POST /api/family/join: the family code (known to kids) can never make someone a parent", async () => {
+  const { fam } = familyFor("full");
+  const outsider = newParent();
+  const refused = await api(outsider, "POST", "/api/family/join", { code: fam.inviteCode });
+  assert.equal(refused.status, 400);
+  assert.deepEqual(family.getFamily(fam.id).parentIds.length, 1);
+});
+
+test("POST /api/family/parent-invite: single use, parent-only, and expires", async () => {
+  const { parent, fam, kid } = familyFor("full");
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, "Mia");
+  assert.equal((await api(kidUser, "POST", "/api/family/parent-invite")).status, 403, "kids can't mint");
+  const minted = await api(parent, "POST", "/api/family/parent-invite");
+  assert.equal(minted.status, 200);
+  assert.match(minted.body.code, /^[A-Z2-9]{8}$/);
+  const first = newParent();
+  assert.equal((await api(first, "POST", "/api/family/join", { code: minted.body.code })).status, 200);
+  const second = newParent();
+  assert.equal((await api(second, "POST", "/api/family/join", { code: minted.body.code })).status, 400, "used once");
+  // A full family can't mint another invite.
+  assert.equal((await api(parent, "POST", "/api/family/parent-invite")).status, 400);
+
+  const other = familyFor("full");
+  const stale = family.createParentInvite(other.fam.id, other.parent.id, Date.now() - family.PARENT_INVITE_TTL_MS - 1000);
+  assert.equal(family.joinWithParentInvite(stale.code, newParent().id).error !== undefined, true, "expired");
+});
+
 test("POST /api/family/join: the joiner inherits the family plan and needs no signup invite", async () => {
   const { parent, fam } = familyFor("screen_time");
   const partner = newParent(); // no invite validated
-  const joined = await api(partner, "POST", "/api/family/join", { code: fam.inviteCode });
+  const invite = family.createParentInvite(fam.id, parent.id);
+  const joined = await api(partner, "POST", "/api/family/join", { code: invite.code });
   assert.equal(joined.status, 200);
   assert.equal(joined.body.family.id, fam.id);
   assert.equal(joined.body.family.plan, "screen_time");
@@ -281,7 +309,7 @@ test("POST /api/family/join: the joiner inherits the family plan and needs no si
 
   const full = familyFor("full");
   const partner2 = newParent();
-  const joinedFull = await api(partner2, "POST", "/api/family/join", { code: full.fam.inviteCode });
+  const joinedFull = await api(partner2, "POST", "/api/family/join", { code: family.createParentInvite(full.fam.id, full.parent.id).code });
   assert.equal(joinedFull.status, 200);
   assert.equal(joinedFull.body.family.plan, "full");
   assert.equal((await api(partner2, "GET", "/api/chat/rooms")).status, 200);
