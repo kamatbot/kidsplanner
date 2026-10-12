@@ -45,6 +45,12 @@ final class SessionCancellationDelegate: NSObject, URLSessionDelegate, @unchecke
         for cookie in cookies where isSessionCookie(cookie, baseURL: baseURL) {
             await web.deleteCookie(cookie)
         }
+        // Shared-device privacy: drop every other WKWebView trace (localStorage,
+        // caches, IndexedDB…) of the previous account. Skipped when a test
+        // injects its own cookie store.
+        if let websiteData {
+            await websiteData.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        }
         return confirmed
     }
 }

@@ -71,6 +71,17 @@ enum NotificationScheduler {
         }
     }
 
+    /// Sign-out: drop every pending and delivered local reminder we created, so
+    /// the next account on a shared device never sees the previous one's.
+    static func clearAllReminders() async {
+        let center = UNUserNotificationCenter.current()
+        let isOurs: (String) -> Bool = { $0.hasPrefix(eventPrefix) || $0.hasPrefix(homeworkPrefix) }
+        let pending = await center.pendingNotificationRequests().map(\.identifier).filter(isOurs)
+        center.removePendingNotificationRequests(withIdentifiers: pending)
+        let delivered = await center.deliveredNotifications().map(\.request.identifier).filter(isOurs)
+        center.removeDeliveredNotifications(withIdentifiers: delivered)
+    }
+
     static func reschedule(events: [FamilyEvent], homework: [HomeworkItem], kids: [Kid]) async {
         let center = UNUserNotificationCenter.current()
 

@@ -46,7 +46,10 @@ final class AppStore {
         didSet {
             ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
-            if oldValue?.id != me?.id {
+            // Account switch without sign-out (re-auth, backup-code sign-in): drop
+            // everything the previous user could see. First load from nil is a no-op.
+            if oldValue != nil, oldValue?.id != me?.id { resetUserScopedState() }
+            else if oldValue?.id != me?.id {
                 clearGoals()
                 notes = []
                 notesLoadGeneration &+= 1
@@ -346,16 +349,17 @@ final class AppStore {
         }
     }
 
-    func signedOut() {
+    /// Everything scoped to one account, minus `me`/`family`/`needsAuth` and the
+    /// refresh generation (so an in-flight `refresh()` for the NEW account survives).
+    /// Shared by `signedOut()` and the account-switch path in `me.didSet`.
+    private func resetUserScopedState() {
         StudentSupportStore.shared.reset()
         clearGoals()
         sessionGeneration &+= 1
         notesLoadGeneration &+= 1
         notes = []
         assistanceIdentityVerified = false
-        refreshGeneration &+= 1
         actionLoadGeneration &+= 1
-        isRefreshing = false
         ParentFamilyAssistancePublisher.clear()
         stopChatLoop()
         familyPollTask?.cancel()
@@ -367,8 +371,6 @@ final class AppStore {
         events = []
         familyEvents = []
         homework = []
-        me = nil
-        family = nil
         meals = nil
         isLoadingMeals = false
         mealsError = nil
@@ -388,7 +390,20 @@ final class AppStore {
         lastSeenChatIdByRoom = [:]
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
         activeRoomId = nil
+        kidRequests = []
+        pendingChatRoomId = nil
+        pendingHermesOpen = nil
+    }
+
+    func signedOut() {
+        refreshGeneration &+= 1
+        isRefreshing = false
+        resetUserScopedState()
+        me = nil
+        family = nil
         needsAuth = true
+        // Local reminders are device-global; remove the previous account's.
+        Task { await NotificationScheduler.clearAllReminders() }
     }
 
     // MARK: Appearance

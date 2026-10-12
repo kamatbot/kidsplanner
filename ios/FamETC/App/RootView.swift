@@ -337,6 +337,8 @@ struct RootView: View {
         // Unmount private native/web content before the network revocation wait.
         store.signedOut()
         Task {
+            // Detach push while the session cookie is still valid.
+            await PushRegistrationService.shared.unregisterStoredToken()
             let confirmed = await APIClient.shared.logout()
             UserDefaults.standard.set(!confirmed, forKey: "fam_logout_unconfirmed")
             onboarded = false

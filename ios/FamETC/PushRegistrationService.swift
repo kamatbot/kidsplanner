@@ -12,6 +12,24 @@ final class PushRegistrationService {
 
     private init() {}
 
+    static let tokenKey = "fam_apns_token"
+
+    /// Detaches this device from the signed-in account. Must run while the
+    /// session cookie is still valid (i.e. before `APIClient.logout()`), so the
+    /// next account on a shared device does not inherit the previous user's
+    /// pushes. Best-effort: bounded by `timeout` so sign-out never hangs. The
+    /// token is kept locally; the next sign-in re-registers it via
+    /// `requestAuthorizationAndRegister()`.
+    func unregisterStoredToken(timeout: Duration = .seconds(3)) async {
+        guard let token = UserDefaults.standard.string(forKey: Self.tokenKey), !token.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { try? await APIClient.shared.unregisterPushToken(token) }
+            group.addTask { try? await Task.sleep(for: timeout) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     /// Requests notification authorization and, if granted, registers for remote
     /// notifications. Call this after sign-in (see FamETCApp / RootView TODO).
     func requestAuthorizationAndRegister() {
@@ -29,6 +47,7 @@ final class PushRegistrationService {
     /// cookie rides along automatically via `HTTPCookieStorage.shared`).
     func didRegister(deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
+        UserDefaults.standard.set(hex, forKey: Self.tokenKey)
         Task {
             do {
                 try await APIClient.shared.registerPushToken(hex)

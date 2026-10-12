@@ -22,7 +22,12 @@ struct BrainTeaserView: View {
     @State private var isSavingAnswer = false
     @State private var failedAnswer: Int? = nil
     @State private var answerError: String? = nil
-    @AppStorage(Daily5Done.teaserKey) private var teaserDoneStamp = ""
+    @AppStorage private var teaserDoneStamp: String
+
+    /// Scoped per account (device-shared iPads); the old unscoped key is never read.
+    init(userID: String) {
+        _teaserDoneStamp = AppStorage(wrappedValue: "", "\(Daily5Done.teaserKey):\(userID)")
+    }
 
     var body: some View {
         // The enclosing WordWidget/QuizWidget provides the DashCard chrome, so

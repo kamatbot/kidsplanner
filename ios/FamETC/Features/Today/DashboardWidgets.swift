@@ -87,19 +87,21 @@ struct QuoteWidget: View {
 }
 
 struct WordWidget: View {
+    @Environment(AppStore.self) private var store
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             LearningActivityHeading(title: "SAT Word of the Day", subtitle: "Build confidence one useful word at a time.", systemImage: "textformat.abc")
-            SATActivityView()
+            SATActivityView(userID: store.me?.id ?? "")
         }
     }
 }
 
 struct QuizWidget: View {
+    @Environment(AppStore.self) private var store
     var body: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             LearningActivityHeading(title: "Daily Brain Teaser", subtitle: "Take a quiet moment to reason it through.", systemImage: "brain.head.profile")
-            BrainTeaserView()
+            BrainTeaserView(userID: store.me?.id ?? "")
         }
     }
 }

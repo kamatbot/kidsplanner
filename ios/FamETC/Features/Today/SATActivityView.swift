@@ -3,7 +3,12 @@ import SwiftUI
 /// Server-selected daily context challenge, with the existing word-bank tools.
 struct SATActivityView: View {
     @Environment(AppStore.self) private var store
-    @AppStorage("fam_sat_placement_done") private var placementDone = false
+    @AppStorage private var placementDone: Bool
+
+    /// Scoped per account (device-shared iPads); the old unscoped key is never read.
+    init(userID: String) {
+        _placementDone = AppStorage(wrappedValue: false, "fam_sat_placement_done:\(userID)")
+    }
     @State private var response: DailyVocabularyResponse?
     @State private var loading = true
     @State private var showWordBank = false
