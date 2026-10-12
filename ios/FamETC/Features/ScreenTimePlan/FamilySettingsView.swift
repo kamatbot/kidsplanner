@@ -16,8 +16,13 @@ struct FamilySettingsView: View {
     @State private var renaming: Kid?
     @State private var renameText = ""
     @State private var removing: Kid?
+    @State private var removingParent: Parent?
     @State private var showUpgrade = false
     @State private var copiedCode = false
+    @State private var copiedFamilyCode = false
+    @State private var parentInvite: ParentInvite?
+    @State private var makingInvite = false
+    @State private var inviteError: String?
     @State private var notificationStatus: UNAuthorizationStatus?
     @State private var recoveryRemaining: Int?
     @State private var confirmNewCodes = false
@@ -30,6 +35,9 @@ struct FamilySettingsView: View {
     @State private var deleteError: String?
     @State private var kidError: String?
     private var service: ScreenTimeService { .shared }
+    /// A family has at most two parents.
+    private let maxParents = 2
+    private var isScreenTimePlan: Bool { store.productPlan == .screenTime }
 
     private struct KidRoute: Identifiable { let id: String }
     private struct CodesPayload: Identifiable { let id = UUID(); let codes: [String] }
@@ -103,9 +111,21 @@ struct FamilySettingsView: View {
             Button("Remove \(kid.name)", role: .destructive) { remove(kid) }
             Button("Cancel", role: .cancel) {}
         } message: { kid in
-            Text("This removes \(kid.name)'s profile, sign-in, devices and Screen Time rules from Fam ETC. It can't be undone.")
+            Text(isScreenTimePlan
+                 ? "This removes \(kid.name)'s profile, sign-in, devices and Screen Time rules from Fam ETC. It can't be undone."
+                 : "This removes \(kid.name)'s profile, sign-in, devices, homework and Screen Time rules from Fam ETC. It can't be undone.")
         }
-        .confirmationDialog("Make new recovery codes?", isPresented: $confirmNewCodes, titleVisibility: .visible) {
+        .confirmationDialog("Remove \(removingParent.map(parentName) ?? "this parent")?", isPresented: Binding(
+            get: { removingParent != nil }, set: { if !$0 { removingParent = nil } }
+        ), titleVisibility: .visible, presenting: removingParent) { parent in
+            Button("Remove \(parentName(parent))", role: .destructive) {
+                Task { await store.removeMember(parent.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("They lose access to family chat, calendar and Screen Time controls right away. They can only come back with a new parent code from you.")
+        }
+                .confirmationDialog("Make new recovery codes?", isPresented: $confirmNewCodes, titleVisibility: .visible) {
             Button("Make new codes") { regenerateCodes() }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -121,7 +141,7 @@ struct FamilySettingsView: View {
             Button("Delete my account", role: .destructive) { deleteAccount() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently deletes your account and passkeys. You can't undo it.")
+            Text(deletionSummary + " You can't undo it.")
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await loadNotificationStatus() }
@@ -154,17 +174,22 @@ struct FamilySettingsView: View {
                     Spacer()
                     if parent.id == store.me?.id {
                         Text("You").font(Typography.label).foregroundStyle(Palette.textSecond)
+                    } else {
+                        // App Store 1.2 "block": remove a co-parent from the family.
+                        Button("Remove", role: .destructive) { removingParent = parent }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("family.removeParent")
                     }
                 }
                 .frame(minHeight: 44)
                 .accessibilityElement(children: .combine)
             }
-            if let code = familyCode { coParentRow(code) }
+            if canInviteCoParent { coParentRow }
         } header: {
             Text("Parents")
         } footer: {
-            if familyCode != nil {
-                Text("Your co-parent installs Fam ETC, creates their own passkey, and enters this family code when asked. Only share it with them.")
+            if canInviteCoParent {
+                Text("Single use, valid for 48 hours. Your co-parent installs Fam ETC, creates their own passkey, and enters this code.")
             }
         }
     }
@@ -174,46 +199,78 @@ struct FamilySettingsView: View {
         return name.isEmpty ? "Parent" : name
     }
 
-    private func coParentRow(_ code: String) -> some View {
+    private var canInviteCoParent: Bool {
+        guard let family = store.family else { return false }
+        return max(family.parents?.count ?? 0, family.parentIds.count) < maxParents
+    }
+
+    /// The family code is for kids' sign-in only; a co-parent joins with a separate single-use parent code.
+    private var coParentRow: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             Text("Invite a co-parent").font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-            Text(code)
-                .font(Typography.mono(20, .semibold))
-                .foregroundStyle(Palette.text)
-                .textSelection(.enabled)
-                .accessibilityLabel("Family code")
-                .accessibilityValue(code.map(String.init).joined(separator: " "))
-                .accessibilityIdentifier("screentimeplan.familyCode")
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.sm) { coParentButtons(code) }
-                VStack(alignment: .leading, spacing: Space.sm) { coParentButtons(code) }
+            if let invite = parentInvite {
+                Text(invite.code)
+                    .font(Typography.mono(20, .semibold))
+                    .foregroundStyle(Palette.text)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Parent code")
+                    .accessibilityValue(invite.code.map(String.init).joined(separator: " "))
+                    .accessibilityIdentifier("screentimeplan.parentCode")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.sm) { coParentButtons(invite.code) }
+                    VStack(alignment: .leading, spacing: Space.sm) { coParentButtons(invite.code) }
+                }
+            } else {
+                PlanButton(title: "Make parent code", systemImage: "person.badge.plus", busy: makingInvite) {
+                    makeParentInvite()
+                }
+                .accessibilityIdentifier("screentimeplan.makeParentCode")
             }
+            if let inviteError { PlanErrorLine(message: inviteError) }
         }
         .padding(.vertical, Space.xs)
+    }
+
+    private func makeParentInvite() {
+        guard !makingInvite else { return }
+        makingInvite = true
+        inviteError = nil
+        Task {
+            do {
+                parentInvite = try await APIClient.shared.createParentInvite()
+            } catch {
+                inviteError = error.localizedDescription
+            }
+            makingInvite = false
+        }
     }
 
     /// Two buttons in one List row: both use the borderless style so each taps on its own.
     @ViewBuilder
     private func coParentButtons(_ code: String) -> some View {
-        ShareLink(item: "Join our family on Fam ETC. Install the app from \(ScreenTimePlanLinks.appStore.absoluteString), create your account, then choose “Joining your partner's family?” and enter our family code: \(code)",
+        ShareLink(item: "Join our family on Fam ETC. Install the app from \(ScreenTimePlanLinks.appStore.absoluteString), create your account, then choose “Joining your partner's family?” and enter this parent invite code (single use, valid for 48 hours): \(code)",
                   subject: Text("Join our family on Fam ETC")) {
-            PlanButtonLabel(title: "Share the family code", systemImage: "square.and.arrow.up")
+            PlanButtonLabel(title: "Share the parent code", systemImage: "square.and.arrow.up")
         }
         .buttonStyle(.borderless)
-        .accessibilityIdentifier("screentimeplan.shareFamilyCode")
+        .accessibilityIdentifier("screentimeplan.shareParentCode")
         Button {
-            Haptics.selection()
-            UIPasteboard.general.string = code
-            copiedCode = true
-            Task {
-                try? await Task.sleep(for: .seconds(2))
-                copiedCode = false
-            }
+            copy(code, flag: $copiedCode)
         } label: {
             PlanButtonLabel(title: copiedCode ? "Copied" : "Copy", systemImage: copiedCode ? "checkmark" : "doc.on.doc",
                             style: .quiet)
         }
         .buttonStyle(.borderless)
+    }
+
+    private func copy(_ text: String, flag: Binding<Bool>) {
+        Haptics.selection()
+        UIPasteboard.general.string = text
+        flag.wrappedValue = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            flag.wrappedValue = false
+        }
     }
 
     // MARK: Kids
@@ -230,15 +287,39 @@ struct FamilySettingsView: View {
                     .frame(minHeight: 44, alignment: .leading)
             }
             .accessibilityIdentifier("screentimeplan.addKid")
+            if let code = familyCode { familyCodeRow(code) }
         } header: {
             Text("Kids")
         } footer: {
-            Text("Each kid gets their own sign-in on their own iPhone or iPad.")
+            Text(familyCode == nil
+                 ? "Each kid gets their own sign-in on their own iPhone or iPad."
+                 : "Each kid gets their own sign-in on their own iPhone or iPad. The family code is for kids' sign-in requests only. It can't be used to join as a parent.")
         }
     }
 
+    private func familyCodeRow(_ code: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.sm) {
+            Text("Family code for kids").font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+            Text(code)
+                .font(Typography.mono(20, .semibold))
+                .foregroundStyle(Palette.text)
+                .textSelection(.enabled)
+                .accessibilityLabel("Family code for kids")
+                .accessibilityValue(code.map(String.init).joined(separator: " "))
+                .accessibilityIdentifier("screentimeplan.familyCode")
+            Button {
+                copy(code, flag: $copiedFamilyCode)
+            } label: {
+                PlanButtonLabel(title: copiedFamilyCode ? "Copied" : "Copy", systemImage: copiedFamilyCode ? "checkmark" : "doc.on.doc",
+                                style: .quiet)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, Space.xs)
+    }
+
     private func deviceSummary(_ kid: Kid) -> String {
-        guard let state = service.state(for: kid.id) else { return "Screen Time" }
+        guard let state = service.state(for: kid.id) else { return isScreenTimePlan ? "Screen Time" : "Sign-in and devices" }
         let count = max(state.setup?.devices ?? 0, state.devices.count)
         return count == 0 ? "No device yet" : "\(count) device\(count == 1 ? "" : "s")"
     }
@@ -366,7 +447,9 @@ struct FamilySettingsView: View {
         Section {
             VStack(alignment: .leading, spacing: Space.sm) {
                 Text(notificationHeadline).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                Text("Get a nudge when a kid asks for more time or a device needs a look.")
+                Text(isScreenTimePlan
+                     ? "Get a nudge when a kid asks for more time or a device needs a look."
+                     : "Get a nudge for family chat and when a kid asks for more time or a device needs a look.")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
@@ -465,8 +548,17 @@ struct FamilySettingsView: View {
         } header: {
             Text("Account")
         } footer: {
-            Text("Deleting your account removes your sign-in and passkeys. Your family's kids and Screen Time rules stay with any other parent.")
+            Text(deletionSummary)
         }
+    }
+
+    /// Mirrors the server (lib/account-deletion.js): the last parent takes the
+    /// whole family with them; with a co-parent, only this account goes.
+    private var deletionSummary: String {
+        if (store.family?.parentIds.count ?? 1) > 1 {
+            return "Deleting your account removes your sign-in and passkeys. Your family, kids and Screen Time rules stay with your co-parent."
+        }
+        return "Deleting your account also deletes your family: every kid's profile and sign-in, family chat, Screen Time rules and devices."
     }
 
     private func deleteAccount() {

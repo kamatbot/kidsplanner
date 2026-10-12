@@ -122,6 +122,11 @@ final class APIClient: FamilyActionService, ChatMessageService {
     func kidSetupCode(kidId: String) async throws -> KidSetupCode {
         try await request("/api/family/kids/\(pathComponent(kidId))/setup-code", method: "POST", body: [:])
     }
+    /// `POST /api/family/parent-invite` (parent only): a single-use co-parent code.
+    /// A family that already has two parents answers 400 with an `error` message.
+    func createParentInvite() async throws -> ParentInvite {
+        try await request("/api/family/parent-invite", method: "POST", body: [:])
+    }
     func joinFamily(code: String) async throws -> Family {
         let r: FamilyResponse = try await request("/api/family/join", method: "POST", body: ["code": code])
         return r.family

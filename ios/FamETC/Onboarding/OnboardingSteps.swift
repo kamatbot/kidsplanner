@@ -353,12 +353,12 @@ struct OnbFamilyView: View {
             OnbTitle(
                 title: joinOpen ? "Join your partner's family" : "Name your family",
                 subtitle: joinOpen
-                    ? "Ask your partner to show you their family code in Fam ETC."
+                    ? "Ask your co-parent to tap Make parent code in Family settings, then enter their parent invite code here."
                     : "This is what everyone in your family sees. You can change it later."
             )
 
             if joinOpen {
-                OnbTextField(title: "Family code", prompt: "e.g. ABC123", text: $joinCode,
+                OnbTextField(title: "Parent invite code", prompt: "e.g. ABCD2345", text: $joinCode,
                              capitalization: .characters, submitLabel: .go, onSubmit: join,
                              identifier: OnbID.familyJoinCode)
                 OnbPrimaryButton(title: busy ? "Joining…" : "Join our family", busy: busy,
@@ -383,7 +383,7 @@ struct OnbFamilyView: View {
             }
 
             OnbLinkButton(title: joinOpen ? "Creating a new family instead? Go back"
-                                          : "Joining your partner's family? Enter their code",
+                                          : "Joining your partner's family? Enter their parent invite code",
                           enabled: !busy) {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     joinOpen.toggle()

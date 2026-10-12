@@ -30,6 +30,7 @@ struct TodayScreen: View {
                             KidTodayStack(onOpenHomework: onOpenHomework, onDaily3: { scrollToDaily3(proxy) })
                         }
                         if store.isParent { StudentSupportEntry() }
+                        FamilyAccountEntry()
                     }
                     .padding(sizeClass == .regular ? 32 : 16)
                     .padding(.bottom, max(Layout.bottomNavigationClearance, Space.xl))

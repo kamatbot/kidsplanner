@@ -181,7 +181,7 @@ final class MyCornerUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Native corner note")).firstMatch.waitForExistence(timeout: 5))
         closeCornerAndPanel(app)
         XCUIDevice.shared.orientation = .landscapeLeft
-        let signOut = app.buttons["Sign out"]; XCTAssertTrue(signOut.waitForExistence(timeout: 5)); signOut.tap()
+        let signOut = app.buttons["sidebar.signOut"]; XCTAssertTrue(signOut.waitForExistence(timeout: 5)); signOut.tap()
         XCTAssertTrue(app.buttons["I’m a parent"].exists || app.buttons["I'm a parent"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Native corner note")).firstMatch.exists)
         app.terminate()

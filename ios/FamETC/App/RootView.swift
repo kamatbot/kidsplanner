@@ -79,6 +79,7 @@ struct RootView: View {
     @State private var pendingAssistanceURL: URL?
     @State private var signingOut = false
     @State private var showHermesGoals = false
+    @State private var showFamilyAccount = false
     @State private var screenTimeKid: ScreenTimeKidRoute?
     private struct AssistanceChildRoute: Identifiable { let id: String }
     private struct ScreenTimeKidRoute: Identifiable { let id: String }
@@ -131,10 +132,10 @@ struct RootView: View {
                 // (banners, deep links, Screen Time load, reauth, sign-out) wraps
                 // whichever layout is active.
                 ScreenTimePlanRootView()
-                    .environment(\.famSignOut, { signOut() })
             }
             else { adaptiveLayout }
         }
+        .environment(\.famSignOut, { signOut() })
         .tint(Palette.frYou)
         .preferredColorScheme(store.colorScheme)
         .onOpenURL { openAssistanceRoute($0) }
@@ -297,8 +298,18 @@ struct RootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .tabViewSidebarFooter {
-            Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", action: signOut)
+            // Parents manage the account (sign out + delete) inside Family & account; kids only sign out.
+            if store.isParent {
+                Button("Family & account", systemImage: "person.2") { showFamilyAccount = true }
+                    .accessibilityIdentifier("sidebar.familyAccount")
+            } else {
+                Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", action: signOut)
+                    .accessibilityIdentifier("sidebar.signOut")
+            }
         }
+        .sheet(isPresented: $showFamilyAccount) { FamilyAccountSheet() }
+        .onChange(of: store.me?.id) { _, _ in showFamilyAccount = false }
+        .onChange(of: store.needsAuth) { _, needsAuth in if needsAuth { showFamilyAccount = false } }
         .onChange(of: selection) { _, _ in Haptics.selection() }
     }
 

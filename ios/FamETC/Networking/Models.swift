@@ -58,6 +58,12 @@ enum ProductPlan: Equatable, Sendable {
     case full, screenTime
 }
 
+/// `POST /api/family/parent-invite` — the single-use, 48-hour code a parent gives a co-parent.
+struct ParentInvite: Decodable, Equatable {
+    let code: String
+    let expiresAt: String
+}
+
 /// `POST /api/family/kids/:kidId/setup-code` — the short code a parent shows so the
 /// kid can type it on their own device (docs/SCREEN-TIME-ONLY-PLAN.md D6).
 struct KidSetupCode: Codable, Equatable {
