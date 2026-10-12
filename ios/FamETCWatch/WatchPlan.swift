@@ -59,21 +59,45 @@ enum WatchMoment: Identifiable, Equatable {
 }
 
 enum WatchPlanDate {
+    // Cached: formatter allocation dominated SwiftUI renders (sort comparators call these per comparison).
+    private static let dayTime: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        f.isLenient = false
+        return f
+    }()
+    private static let plainISO = ISO8601DateFormatter()
+    private static let fractionalISO: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions.insert(.withFractionalSeconds)
+        return f
+    }()
+    // Parsing costs ~60µs and the same few hundred strings recur every render, so memoize (nil results too).
+    private static let lock = NSLock()
+    private static var memo: [String: Date?] = [:]
+    private static func cached(_ key: String, _ parse: () -> Date?) -> Date? {
+        lock.lock(); defer { lock.unlock() }
+        if let hit = memo[key] { return hit }
+        let value = parse()
+        if memo.count > 4096 { memo.removeAll() }
+        memo[key] = .some(value)
+        return value
+    }
     static func date(_ day: String?, _ time: String?) -> Date? {
         guard let day else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        formatter.isLenient = false
-        return formatter.date(from: "\(day) \(time ?? "17:00")")
+        let text = "\(day) \(time ?? "17:00")"
+        // Wall-clock times depend on the zone; key by it so travel can't serve stale dates.
+        let zone = TimeZone.current
+        return cached(zone.identifier + text) {
+            dayTime.timeZone = zone
+            return dayTime.date(from: text)
+        }
     }
     static func iso(_ value: String?) -> Date? {
         guard let value else { return nil }
-        let f = ISO8601DateFormatter()
-        if let date = f.date(from: value) { return date }
-        f.formatOptions.insert(.withFractionalSeconds)
-        return f.date(from: value)
+        return cached("i" + value) { plainISO.date(from: value) ?? fractionalISO.date(from: value) }
     }
 }
 
@@ -81,36 +105,46 @@ extension WatchEvent {
     var startsAt: Date? {
         WatchPlanDate.iso(start) ?? WatchPlanDate.date(date, allDay ? "09:00" : time)
     }
-    var endsAt: Date {
+    var endsAt: Date { endsAt(start: startsAt) }
+    /// Same as `endsAt`, reusing an already-parsed start so hot paths parse it once.
+    func endsAt(start: Date?) -> Date {
         if let end = WatchPlanDate.iso(end) ?? endTime.flatMap({ WatchPlanDate.date(date, $0) }) { return end }
         // ponytail: feeds without an end remain current for one hour; use an
         // explicit feed end as soon as the upstream source provides one.
-        return (startsAt ?? .distantPast).addingTimeInterval(allDay ? 15 * 3600 : 3600)
+        return (start ?? .distantPast).addingTimeInterval(allDay ? 15 * 3600 : 3600)
     }
 }
 
 extension WatchSnapshot {
     var isParent: Bool { context?.profile.role == "parent" }
     func dayEvents(at now: Date = Date()) -> [WatchEvent] {
-        (context?.events ?? []).filter { e in
-            guard let d = e.startsAt else { return false }
-            return Calendar.current.isDate(d, inSameDayAs: now)
-        }.sorted { ($0.startsAt ?? .distantFuture) < ($1.startsAt ?? .distantFuture) }
+        let calendar = Calendar.current
+        return (context?.events ?? []).compactMap { e -> (WatchEvent, Date)? in
+            guard let d = e.startsAt, calendar.isDate(d, inSameDayAs: now) else { return nil }
+            return (e, d)
+        }.sorted { $0.1 < $1.1 }.map(\.0)
     }
     func moments(at now: Date = Date()) -> [WatchMoment] {
-        let work = openHomework.map(WatchMoment.homework)
-        let actionMoments = urgentActions.filter { a in
-            !(a.sourceType == "homework" && openHomework.contains { $0.id == a.sourceId })
-        }.map(WatchMoment.action)
-        let upcoming = (context?.events ?? []).filter { !$0.allDay && $0.endsAt > now }.map(WatchMoment.event)
-        func rank(_ moment: WatchMoment) -> Int {
-            if case .event = moment, let date = moment.scheduledAt, date <= now.addingTimeInterval(15 * 60) { return 0 }
-            return 1
+        let open = openHomework
+        let openIDs = Set(open.map(\.id))
+        let soon = now.addingTimeInterval(15 * 60)
+        typealias Row = (moment: WatchMoment, at: Date?, rank: Int, id: String)
+        // Decorate once: parsing dates inside the sort comparator is what made scrolling hang.
+        func row(_ m: WatchMoment, _ at: Date?) -> Row {
+            (m, at, { if case .event = m, let at, at <= soon { return 0 } else { return 1 } }(), m.id)
         }
-        return (work + actionMoments + upcoming).sorted {
-            if rank($0) != rank($1) { return rank($0) < rank($1) }
-            if $0.scheduledAt != $1.scheduledAt { return ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture) }
+        var rows = open.map { row(.homework($0), WatchMoment.homework($0).scheduledAt) }
+        rows += urgentActions.filter { a in
+            !(a.sourceType == "homework" && a.sourceId.map(openIDs.contains) == true)
+        }.map { row(.action($0), WatchMoment.action($0).scheduledAt) }
+        for e in context?.events ?? [] where !e.allDay {
+            let start = e.startsAt
+            if e.endsAt(start: start) > now { rows.append(row(.event(e), start)) }
+        }
+        return rows.sorted {
+            if $0.rank != $1.rank { return $0.rank < $1.rank }
+            if $0.at != $1.at { return ($0.at ?? .distantFuture) < ($1.at ?? .distantFuture) }
             return $0.id < $1.id
-        }
+        }.map(\.moment)
     }
 }

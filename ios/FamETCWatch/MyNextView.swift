@@ -29,7 +29,7 @@ struct MyNextView: View {
 
     private var nowPage: some View {
         ScrollView {
-            TimelineView(.periodic(from: Date(), by: 60)) { clock in
+            TimelineView(.everyMinute) { clock in
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
                         WatchIdentity(profile: store.snapshot.context?.profile)
@@ -151,7 +151,7 @@ struct MyNextView: View {
         List {
             Text("Your day").font(.title3.bold())
             WatchStudentSupportLink()
-            TimelineView(.periodic(from: Date(), by: 60)) { clock in
+            TimelineView(.everyMinute) { clock in
                 let events = store.snapshot.dayEvents(at: clock.date)
                 if events.isEmpty {
                     EmptyWatchRow(text: "No calendar events today. Your work is in More.")
@@ -222,17 +222,23 @@ struct MyNextView: View {
 
 private struct WatchIdentity: View {
     let profile: WatchProfile?
+    private let photo: UIImage?
+
+    // Decode the (up to 200 KB) base64 photo once, not on every render.
+    init(profile: WatchProfile?) {
+        self.profile = profile
+        guard let value = profile?.photo, value.hasPrefix("data:image/jpeg;base64,"), value.count <= 200_000,
+              let data = Data(base64Encoded: String(value.dropFirst("data:image/jpeg;base64,".count))) else {
+            photo = nil
+            return
+        }
+        photo = UIImage(data: data)
+    }
 
     private var color: Color {
         guard let value = profile?.color, value.count == 7, value.hasPrefix("#"),
               let hex = UInt32(value.dropFirst(), radix: 16) else { return watchAccent }
         return Color(red: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255, blue: Double(hex & 255) / 255)
-    }
-
-    private var photo: UIImage? {
-        guard let value = profile?.photo, value.hasPrefix("data:image/jpeg;base64,"), value.count <= 200_000,
-              let data = Data(base64Encoded: String(value.dropFirst("data:image/jpeg;base64,".count))) else { return nil }
-        return UIImage(data: data)
     }
 
     var body: some View {
@@ -458,7 +464,7 @@ private struct FocusSessionCard: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: Date(), by: 1)) { context in
+        TimelineView(.periodic(from: .distantPast, by: 1)) { context in
             let complete = session.isComplete(at: context.date)
             VStack(alignment: .leading, spacing: 9) {
                 Text(session.titleSnapshot.isEmpty ? "Your focus block" : session.titleSnapshot)

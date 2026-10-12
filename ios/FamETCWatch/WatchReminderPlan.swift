@@ -54,10 +54,13 @@ enum WatchReminderPlan {
         if let completion { reminders.append(completion) }
         return reminders.sorted { $0.fireAt == $1.fireAt ? $0.id < $1.id : $0.fireAt < $1.fireAt }
     }
+    private static let fractionalISO: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
     private static func supportCues(_ support: WatchStudentSupport, hasHomework: Bool, now: Date, horizon: Date) -> [WatchReminder] {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let updated = iso.date(from: support.refreshedAt) ?? ISO8601DateFormatter().date(from: support.refreshedAt),
+        guard let updated = fractionalISO.date(from: support.refreshedAt) ?? WatchPlanDate.iso(support.refreshedAt),
               updated <= now, now.timeIntervalSince(updated) < 48 * 3600,
               let zone = TimeZone(identifier: support.timezone) else { return [] }
         let formatter = DateFormatter()
@@ -93,7 +96,7 @@ enum WatchReminderPlan {
             ($0.date + $0.time) < ($1.date + $1.time)
         }).first {
             if routine.status == "snoozed", let snoozed = routine.snoozedUntil,
-               let date = iso.date(from: snoozed) ?? ISO8601DateFormatter().date(from: snoozed) {
+               let date = fractionalISO.date(from: snoozed) ?? WatchPlanDate.iso(snoozed) {
                 let value = formatter.string(from: date).split(separator: " ")
                 if value.count == 2 { add("routine", String(value[0]), String(value[1])) }
             } else { add("routine", routine.date, routine.time) }
