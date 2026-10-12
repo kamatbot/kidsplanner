@@ -63,6 +63,13 @@ Hostinger deployments must come from committed, merged `main`, never a feature b
   hosting build, or deploy it—even when an earlier deployment was planned or
   authorized—unless the user explicitly asks to deploy again after receiving
   the artifact.
+- **Bare fametc.com is served by LiteSpeed, not Node:** the Business plan can't
+  start the extra Node process the apex host needs (it answered 503, breaking
+  passkey association). `public_html` carries the files in
+  [`deploy/hostinger-public_html/`](deploy/hostinger-public_html/) (static
+  `.well-known` association files + an apex→www 301). After every deploy run
+  [`scripts/check-apex.sh`](scripts/check-apex.sh); if it fails, re-upload those
+  files (TUS, same as the archive) and keep them in sync with server.js.
 - Run tests (`node --test`) before committing.
 - Commit each completed task with a conventional commit message; never bundle
   unrelated changes.

@@ -1,0 +1,19 @@
+# Bare fametc.com never reaches Node: this plan can't start a second Node
+# process for the apex host (LiteSpeed answers 503). LiteSpeed serves the
+# passkey association files statically from .well-known/ and 301s the rest
+# to www. Keep in sync with server.js (/.well-known handlers).
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^fametc\.com$ [NC]
+RewriteCond %{REQUEST_URI} !^/\.well-known/(apple-app-site-association|assetlinks\.json)$
+RewriteRule ^ https://www.fametc.com%{REQUEST_URI} [R=301,L]
+
+PassengerAppRoot /home/u293207803/domains/fametc.com/hbuilds/current/nodejs
+PassengerAppType node
+PassengerNodejs /opt/alt/alt-nodejs24/root/bin/node
+PassengerStartupFile server.js
+PassengerBaseURI /
+PassengerRestartDir /home/u293207803/domains/fametc.com/hbuilds/current/nodejs/tmp
+SetEnv NODE_OPTIONS "--require /home/u293207803/domains/fametc.com/hbuilds/config/preload-timestamp.js"
+SetEnv LSNODE_CONSOLE_LOG console.log
+RewriteRule ^\.builds - [F,L]
+SetEnv TOKIO_WORKER_THREADS 2
