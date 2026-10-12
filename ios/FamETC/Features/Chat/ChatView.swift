@@ -213,6 +213,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    isMine: store.isMine(m),
                                    senderName: store.senderName(for: m),
                                    onTapCard: handleCardTap,
+                                   roomId: roomId,
                                    canAddToCalendar: isFamilyRoom,
                                    onAddToCalendar: handleAddToCalendar,
                                    canAddToShopping: isFamilyRoom,
@@ -1832,6 +1833,19 @@ private struct ChatAddEventSheet: View {
     }
 }
 
+// MARK: - Moderation rules (App Store guideline 1.2)
+
+/// Pure rules for the Report / Delete message actions. Hermes threads have no
+/// flag/delete routes, and helper (agent) messages are not user-generated.
+enum ChatModeration {
+    static func canReport(_ m: ChatMessage, isMine: Bool, roomId: String) -> Bool {
+        roomId != "hermes" && !isMine && !m.deleted && m.senderType != "agent"
+    }
+    static func canDelete(_ m: ChatMessage, isParent: Bool, roomId: String) -> Bool {
+        roomId != "hermes" && isParent && !m.deleted
+    }
+}
+
 // MARK: - One message row (fun bubbles + avatar, or a system card)
 
 struct ChatMessageRow: View, Equatable {
@@ -1841,6 +1855,7 @@ struct ChatMessageRow: View, Equatable {
     let isMine: Bool
     let senderName: String
     var onTapCard: (ChatCard) -> Void
+    var roomId: String = familyRoomId
     var canAddToCalendar: Bool = true
     var onAddToCalendar: (ChatMessage) -> Void = { _ in }
     var canAddToShopping: Bool = false
@@ -1854,11 +1869,15 @@ struct ChatMessageRow: View, Equatable {
     /// §3) — disables that button until the server replies. Keyed by action id,
     /// not message id, since a card can carry more than one action.
     @State private var pendingNudgeActionIds: Set<String> = []
+    @State private var showReportDialog = false
+    @State private var showDeleteDialog = false
+    @State private var showReportedThanks = false
 
     static func == (lhs: ChatMessageRow, rhs: ChatMessageRow) -> Bool {
         lhs.message == rhs.message
             && lhs.isMine == rhs.isMine
             && lhs.senderName == rhs.senderName
+            && lhs.roomId == rhs.roomId
             && lhs.canAddToCalendar == rhs.canAddToCalendar
             && lhs.canAddToShopping == rhs.canAddToShopping
             && lhs.canImportMealPlan == rhs.canImportMealPlan
@@ -1914,6 +1933,44 @@ struct ChatMessageRow: View, Equatable {
                 Text(ChatTime.short(message.createdAt)).font(Typography.mono(10.5)).foregroundStyle(Palette.textSecond).padding(.horizontal, 6)
             }
             if !isMine { Spacer(minLength: typeSize.isAccessibilitySize ? 8 : 36) }
+        }
+        .confirmationDialog("Report this message?", isPresented: $showReportDialog, titleVisibility: .visible) {
+            ForEach(["Unkind or bullying", "Inappropriate", "Something else"], id: \.self) { reason in
+                Button(reason) {
+                    Task {
+                        await store.flagMessage(message.id, reason: reason, roomId: roomId)
+                        if store.messagesByRoom[roomId]?.first(where: { $0.id == message.id })?.flagged == true {
+                            showReportedThanks = true
+                        }
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Delete this message for everyone?", isPresented: $showDeleteDialog, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task { await store.deleteMessage(message.id, roomId: roomId) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Reported", isPresented: $showReportedThanks) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Thanks — a parent can review it.")
+        }
+    }
+
+    @ViewBuilder private var moderationActions: some View {
+        if ChatModeration.canReport(message, isMine: isMine, roomId: roomId) {
+            if message.flagged {
+                Button {} label: { Label("Reported", systemImage: "flag.fill") }
+                    .disabled(true)
+            } else {
+                Button { showReportDialog = true } label: { Label("Report", systemImage: "flag") }
+            }
+        }
+        if ChatModeration.canDelete(message, isParent: store.isParent, roomId: roomId) {
+            Button(role: .destructive) { showDeleteDialog = true } label: { Label("Delete", systemImage: "trash") }
         }
     }
 
@@ -2118,13 +2175,14 @@ struct ChatMessageRow: View, Equatable {
 
     @ViewBuilder private var bubble: some View {
         if message.deleted {
-            Text("Message deleted")
+            Text(roomId.hasPrefix("trip:") ? "Message removed" : "Message removed by a parent")
                 .font(Typography.body.italic()).foregroundStyle(Palette.textSecond)
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
                 .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
         } else if let card = message.card, card.type == "news", !message.isBuzz {
             ChatNewsCard(card: card, note: message.text)
+                .contextMenu { moderationActions }
         } else if message.isBuzz {
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 Label("BUZZ", systemImage: "wave.3.right")
@@ -2141,13 +2199,14 @@ struct ChatMessageRow: View, Equatable {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("BUZZ message from \(senderName): \(message.text)")
             .accessibilityHint("Time Sensitive alert")
-            .contextMenu { shareMessageAction }
+            .contextMenu { shareMessageAction; moderationActions }
         } else if let media = message.media, media.isChatAttachment {
             ChatAttachmentBubble(media: media)
                 .contextMenu {
                     if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         shareMessageAction
                     }
+                    moderationActions
                 }
         } else if let media = message.media, media.type == "gif",
                   let url = URL(string: media.previewUrl ?? media.url ?? "") {
@@ -2176,6 +2235,7 @@ struct ChatMessageRow: View, Equatable {
                             Label("Add to Calendar", systemImage: "calendar.badge.plus")
                         }
                     }
+                    moderationActions
                 }
         } else {
             // Each sender keeps a readable identity color in both the sender
@@ -2223,6 +2283,7 @@ struct ChatMessageRow: View, Equatable {
                     } label: {
                         Label("Pin to Notes", systemImage: "pin")
                     }
+                    moderationActions
                 }
         }
     }
