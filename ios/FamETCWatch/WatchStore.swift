@@ -58,6 +58,9 @@ final class WatchStore: ObservableObject {
     @Published private(set) var supportConflict = false
     @Published private(set) var supportError: String?
     @Published private(set) var drainingSupport = false
+    /// True when the server refuses chat to this watch (older server or plan).
+    @Published private(set) var chatUnavailable = false
+    @Published private(set) var chatSendError: String?
 
     private let api: WatchAPIClient
     private let credentials: WatchCredentialStore
@@ -173,15 +176,20 @@ final class WatchStore: ObservableObject {
                 async let actions = captureWatchSection { try await api.fetchActions() }
                 async let homework = captureWatchSection { try await api.fetchHomework() }
                 async let shopping = captureWatchSection { try await api.fetchShopping() }
-                return await (actions, homework, shopping)
+                async let chat = captureWatchSection { () -> [WatchChatMessage]? in
+                    guard let client = api as? WatchChatClient else { return nil }
+                    return try await client.fetchChat(afterId: nil, wait: false)
+                }
+                return await (actions, homework, shopping, chat)
             }
 
             guard epoch == connectionEpoch else { return }
             let actionResult = sections.0
             let homeworkResult = sections.1
             let shoppingResult = sections.2
+            let chatResult = sections.3
             // Revocation wins over a concurrently successful section.
-            if [actionResult.error, homeworkResult.error, shoppingResult.error].contains(where: {
+            if [actionResult.error, homeworkResult.error, shoppingResult.error, chatResult.error].contains(where: {
                 if case WatchAPIError.unauthenticated? = $0 { return true }
                 return false
             }) { throw WatchAPIError.unauthenticated }
@@ -208,6 +216,13 @@ final class WatchStore: ObservableObject {
                 // a kid or a partially provisioned credential instead of
                 // turning an otherwise useful My next refresh into a failure.
                 if !isForbidden(error) { errors.append(error) }
+            }
+            if let messages = chatResult.value ?? nil {
+                snapshot.chat = messages
+                chatUnavailable = false
+                successfulSections += 1
+            } else if let error = chatResult.error {
+                if isForbidden(error) { chatUnavailable = true } else { errors.append(error) }
             }
 
             guard successfulSections > 0 else {
@@ -364,6 +379,59 @@ final class WatchStore: ObservableObject {
         ))
     }
 
+    /// Optimistic family-chat send through the same durable, ordered outbox.
+    func sendChat(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, snapshot.context != nil else { return }
+        await enqueue(WatchMutation(kind: .chatMessage, resourceID: UUID().uuidString, stringValue: trimmed))
+    }
+
+    /// Live chat while the chat screen is visible and the watch is active. The
+    /// caller's task owns the lifetime: cancelling it ends the parked request.
+    /// Without a cursor the server answers with the recent window.
+    func listenForChat() async {
+        guard let client = api as? WatchChatClient else { return }
+        let epoch = connectionEpoch
+        while !Task.isCancelled, epoch == connectionEpoch, !chatUnavailable, credentialIsAvailable() {
+            let afterId = snapshot.chat?.last(where: { $0.pending != true })?.id
+            do {
+                let messages = try await client.fetchChat(afterId: afterId, wait: true)
+                guard epoch == connectionEpoch, !Task.isCancelled else { return }
+                if !messages.isEmpty {
+                    mergeChat(messages)
+                    saveState()
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard epoch == connectionEpoch, !Task.isCancelled else { return }
+                if case WatchAPIError.unauthenticated = error { handleNetworkError(error); return }
+                if isForbidden(error) { chatUnavailable = true; return }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    private func mergeChat(_ incoming: [WatchChatMessage]) {
+        var chat = snapshot.chat ?? []
+        let profile = snapshot.context?.profile
+        for message in incoming {
+            if let index = chat.firstIndex(where: { $0.id == message.id }) {
+                chat[index] = message
+                continue
+            }
+            // ponytail: the long-poll usually echoes our own send before its POST
+            // returns; drop the oldest pending bubble with the same text. A server
+            // echo of clientMessageId would make this exact.
+            if message.isMine(profile),
+               let index = chat.firstIndex(where: { $0.pending == true && $0.text == message.text }) {
+                chat.remove(at: index)
+            }
+            chat.append(message)
+        }
+        snapshot.chat = Array(chat.suffix(60))
+    }
+
     func isPending(_ id: String, kind: WatchMutationKind) -> Bool {
         outbox.contains { $0.resourceID == id && $0.kind == kind }
     }
@@ -442,6 +510,16 @@ final class WatchStore: ObservableObject {
                     }
                     guard epoch == connectionEpoch else { return false }
                     replace(updated)
+                case .chatMessage:
+                    guard let client = api as? WatchChatClient else { throw WatchAPIError.forbidden }
+                    let text = entry.stringValue ?? ""
+                    let sent = try await withWatchTimeout(seconds: 8) {
+                        try await client.sendChat(text: text, clientMessageId: entry.resourceID)
+                    }
+                    guard epoch == connectionEpoch else { return false }
+                    snapshot.chat?.removeAll { $0.id == "local-" + entry.resourceID }
+                    mergeChat([sent])
+                    chatSendError = nil
                 }
 
                 outbox.removeFirst()
@@ -451,6 +529,16 @@ final class WatchStore: ObservableObject {
                 return false
             } catch {
                 guard epoch == connectionEpoch else { return false }
+                // A rejected chat message (empty, refused, bad key) can never
+                // succeed; drop it so it doesn't block every later check-off.
+                if entry.kind == .chatMessage, isPermanentRejection(error) {
+                    outbox.removeFirst()
+                    pendingMutationCount = outbox.count
+                    snapshot.chat?.removeAll { $0.id == "local-" + entry.resourceID }
+                    chatSendError = "Not sent: \(error.localizedDescription)"
+                    persist()
+                    continue
+                }
                 handleNetworkError(error)
                 return false
             }
@@ -499,6 +587,20 @@ final class WatchStore: ObservableObject {
                   let checklistIndex = mutation.index,
                   snapshot.homework[homeworkIndex].checklist.indices.contains(checklistIndex) else { return }
             snapshot.homework[homeworkIndex].checklist[checklistIndex].done = mutation.boolValue ?? true
+        case .chatMessage:
+            let localID = "local-" + mutation.resourceID
+            guard snapshot.chat?.contains(where: { $0.id == localID }) != true else { return }
+            let profile = snapshot.context?.profile
+            let isKid = profile?.role == "kid"
+            snapshot.chat = (snapshot.chat ?? []) + [WatchChatMessage(
+                id: localID,
+                senderType: isKid ? "kid" : "parent",
+                senderId: (isKid ? profile?.kidId : profile?.userId) ?? "",
+                senderName: profile?.name,
+                text: mutation.stringValue ?? "",
+                createdAt: mutation.createdAt.ISO8601Format(),
+                pending: true
+            )]
         }
     }
 
@@ -526,6 +628,8 @@ final class WatchStore: ObservableObject {
         supportConflict = false
         supportError = nil
         drainingSupport = false
+        chatUnavailable = false
+        chatSendError = nil
         snapshot = WatchSnapshot()
         outbox = []
         focusSession = nil
@@ -556,14 +660,7 @@ final class WatchStore: ObservableObject {
             guard epoch == connectionEpoch else { return }
             reminderStatus = status
         }
-        var state = WatchPersistedState(
-            snapshot: snapshot,
-            outbox: outbox,
-            focusSession: focusSession
-        )
-        state.supportOutbox = supportOutbox
-        state.supportConflict = supportConflict
-        persistence.save(state)
+        saveState()
         WatchComplicationSnapshotStore.save(FamETCWatchComplicationSnapshot(
             urgentCount: snapshot.urgentActions.count,
             homeworkCount: snapshot.openHomework.count,
@@ -573,6 +670,18 @@ final class WatchStore: ObservableObject {
             focusEndsAt: focusSession?.pausedAt == nil ? focusSession?.endsAt : nil
         ))
         WidgetCenter.shared.reloadTimelines(ofKind: "FamETCWatchComplication")
+    }
+
+    /// Cache-only write for chat traffic: no reminder or complication reload.
+    private func saveState() {
+        var state = WatchPersistedState(
+            snapshot: snapshot,
+            outbox: outbox,
+            focusSession: focusSession
+        )
+        state.supportOutbox = supportOutbox
+        state.supportConflict = supportConflict
+        persistence.save(state)
     }
 
     var studentSupport: WatchStudentSupport? {
@@ -691,6 +800,14 @@ final class WatchStore: ObservableObject {
             if case WatchAPIError.http(409, _) = error { supportConflict = true }
             supportError = supportConflict ? "Support changed. Review saved changes, then discard and reload." : error.localizedDescription
             persist()
+        }
+    }
+
+    private func isPermanentRejection(_ error: Error) -> Bool {
+        switch error {
+        case WatchAPIError.forbidden: return true
+        case WatchAPIError.http(let status, _): return (400..<500).contains(status) && status != 408 && status != 429
+        default: return false
         }
     }
 

@@ -13,7 +13,7 @@ struct FamETCWatchApp: App {
         WindowGroup {
             Group {
                 if isPaired {
-                    MyNextView(onDisconnect: disconnect)
+                    WatchChatView(onDisconnect: disconnect)
                 } else {
                     WatchPairingView {
                         isPaired = true

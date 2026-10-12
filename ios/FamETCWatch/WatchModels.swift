@@ -13,6 +13,8 @@ struct WatchSnapshot: Codable, Equatable {
     var context: WatchContext? = nil
     var support: WatchStudentSupport? = nil
     var supportRemindersEnabled: Bool? = nil
+    /// Recent family-room messages, oldest first. Nil until chat first loads.
+    var chat: [WatchChatMessage]? = nil
 
     init(actions: [WatchAction] = [],
          homework: [WatchHomework] = [],
@@ -33,10 +35,11 @@ struct WatchSnapshot: Codable, Equatable {
         context = try container.decodeIfPresent(WatchContext.self, forKey: .context)
         support = try container.decodeIfPresent(WatchStudentSupport.self, forKey: .support)
         supportRemindersEnabled = try container.decodeIfPresent(Bool.self, forKey: .supportRemindersEnabled)
+        chat = try container.decodeIfPresent([WatchChatMessage].self, forKey: .chat)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case actions, homework, shopping, updatedAt, context, support, supportRemindersEnabled
+        case actions, homework, shopping, updatedAt, context, support, supportRemindersEnabled, chat
     }
 
     /// Open actions are ordered by the server's due date fields. The string
@@ -268,6 +271,8 @@ enum WatchMutationKind: String, Codable {
     case homeworkStatus
     case shoppingDone
     case homeworkChecklistStep
+    /// resourceID is the client message id (server retry key); stringValue is the text.
+    case chatMessage
 }
 
 /// One user mutation in the durable outbox. The entry is written before any
@@ -434,4 +439,52 @@ struct WatchEvent: Codable, Equatable, Identifiable {
     var kidId: String?
     var location: String?
     var isTimetable: Bool
+}
+
+/// Family-room chat message: the subset of the server's ChatMessage the watch
+/// renders. `pending` is local-only for an optimistic send still in the outbox.
+struct WatchChatMessage: Codable, Equatable, Identifiable {
+    struct Media: Codable, Equatable { var type: String?; var kind: String? }
+    struct Card: Codable, Equatable { var title: String? }
+
+    var id: String
+    var senderType: String
+    var senderId: String
+    var senderName: String?
+    var text: String
+    var createdAt: String
+    var deleted: Bool? = nil
+    var buzz: Bool? = nil
+    var media: Media? = nil
+    var card: Card? = nil
+    var pending: Bool? = nil
+
+    func isMine(_ profile: WatchProfile?) -> Bool {
+        guard let profile else { return false }
+        return profile.role == "kid"
+            ? senderType == "kid" && senderId == profile.kidId
+            : senderType == "parent" && senderId == profile.userId
+    }
+
+    /// One line the watch can always show, even for media/cards it can't render.
+    var displayText: String {
+        if deleted == true { return "Message removed" }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let extra: String? = {
+            if let title = card?.title, !title.isEmpty { return "📰 \(title)" }
+            switch (media?.type, media?.kind) {
+            case ("gif", _): return "GIF"
+            case (_, "photo"): return "📷 Photo"
+            case (_, "video"): return "🎬 Video"
+            case (_, "audio"): return "🎙️ Audio"
+            case ("attachment", _): return "📎 File"
+            default: return nil
+            }
+        }()
+        switch (extra, body.isEmpty) {
+        case let (extra?, true): return extra
+        case let (extra?, false): return "\(extra) · \(body)"
+        default: return body
+        }
+    }
 }

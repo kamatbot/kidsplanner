@@ -2,6 +2,8 @@
 
 The shared watchOS 11 source presents Now, Day, and More, with direct HTTPS reads and mutations, durable local work, and locally scheduled reminders. The visual system is recorded in [DESIGN.md](DESIGN.md).
 
+**Family chat is the root screen** (`WatchChatView`): newest messages at the bottom, one-tap 👍, the system reply field (dictation, Scribble, emoji), and a quick-reply sheet. Sends go through the same durable outbox as check-offs (`WatchMutationKind.chatMessage`, server retry key = client message id). While chat is on screen and the wrist is raised, the watch long-polls `GET /api/chat/messages?wait=1`; leaving the screen or dropping the wrist cancels it. Watch tokens may only `GET`/`POST /api/chat/messages` (family room; no trips, Hermes, attachments, buzz, flag, or delete). Kids' standalone watches receive their own chat alert with an inline reply (`FAM_CHAT` category); parent watches rely on the mirrored iPhone alert. Now/Day/More sit behind the bottom-bar button.
+
 ## App identities and setup
 
 | Target | Bundle identifier | Distribution relationship |

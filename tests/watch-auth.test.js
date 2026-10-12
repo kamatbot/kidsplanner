@@ -104,7 +104,12 @@ test("pairing stores only hashes, claims once, scopes the member, and revokes", 
   assert.equal(resolved.targetUserId, kidUser.id);
   assert.equal(resolved.label, "Riley's watch");
   assert.equal(watchAuth.allowedRequest("GET", "/api/family/actions"), true);
-  assert.equal(watchAuth.allowedRequest("GET", "/api/chat/messages"), false);
+  assert.equal(watchAuth.allowedRequest("GET", "/api/chat/messages"), true);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/chat/messages"), true);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/chat/buzz"), false);
+  assert.equal(watchAuth.allowedRequest("DELETE", "/api/chat/messages/m_1"), false);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/chat/attachments"), false);
+  assert.equal(watchAuth.allowedRequest("GET", "/api/chat/rooms"), false);
   assert.equal(watchAuth.allowedRequest("POST", "/api/family/actions"), false);
   assert.equal(watchAuth.allowedRequest("GET", "/api/student-support"), true);
   assert.equal(watchAuth.allowedRequest("POST", "/api/student-support/commands"), true);
@@ -176,7 +181,8 @@ test("watch request allowlist excludes sessions, creation, deletion, and trip su
     ["PATCH", "/api/homework/h_1/checklist/0/text"],
     ["DELETE", "/api/meals/shopping/s_1"],
     ["GET", "/api/trips"],
-    ["GET", "/api/chat/messages"],
+    ["GET", "/api/chat/messages/m_1"],
+    ["POST", "/api/chat/messages/m_1/flag"],
   ]) assert.equal(watchAuth.allowedRequest(method, pathName), false, `${method} ${pathName}`);
 });
 

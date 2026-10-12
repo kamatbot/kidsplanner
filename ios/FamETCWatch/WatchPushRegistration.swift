@@ -118,8 +118,17 @@ final class FamETCWatchExtensionDelegate: NSObject, WKApplicationDelegate {
     }
 
     func applicationDidFinishLaunching() {
-        UNUserNotificationCenter.current().delegate = self
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        // Chat alerts (category set by the server) offer an inline reply with
+        // dictation, Scribble and suggestions straight from the notification.
+        let reply = UNTextInputNotificationAction(identifier: Self.chatReplyAction, title: "Reply",
+                                                  textInputButtonTitle: "Send", textInputPlaceholder: "Reply")
+        center.setNotificationCategories([UNNotificationCategory(identifier: "FAM_CHAT", actions: [reply],
+                                                                 intentIdentifiers: [], options: [])])
     }
+
+    static let chatReplyAction = "FAM_CHAT_REPLY"
 
     func didRegisterForRemoteNotifications(withDeviceToken deviceToken: Data) {
         WatchPushRegistrationService.shared.didRegister(deviceToken: deviceToken)
@@ -132,7 +141,9 @@ final class FamETCWatchExtensionDelegate: NSObject, WKApplicationDelegate {
 
 extension FamETCWatchExtensionDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let reply = (response as? UNTextInputNotificationResponse)?.userText
         Task { @MainActor in
+            if let reply { await WatchStore.shared.sendChat(reply) }
             await WatchStore.shared.refresh()
             completionHandler()
         }

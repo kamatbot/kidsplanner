@@ -11,20 +11,19 @@ struct MyNextView: View {
     var onDisconnect: () -> Void = {}
 
     var body: some View {
-        NavigationStack {
-            TabView {
-                nowPage
-                    .tag(0)
-                dayPage
-                    .tag(1)
-                morePage
-                    .tag(2)
-            }
-            .tabViewStyle(.verticalPage)
-            .navigationTitle("Fam ETC")
-            .fontDesign(.rounded)
-            .tint(watchAccent)
+        // Pushed from WatchChatView's NavigationStack; no stack of its own.
+        TabView {
+            nowPage
+                .tag(0)
+            dayPage
+                .tag(1)
+            morePage
+                .tag(2)
         }
+        .tabViewStyle(.verticalPage)
+        .navigationTitle("My next")
+        .fontDesign(.rounded)
+        .tint(watchAccent)
     }
 
     private var nowPage: some View {

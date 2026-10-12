@@ -465,4 +465,64 @@ extension WatchStoreTests {
         XCTAssertTrue(store.snapshot.actions.isEmpty)
         XCTAssertNil(persistence.state)
     }
+
+    func testChatSendIsOptimisticThenReplacedAndEchoDoesNotDuplicate() async {
+        let api = ChatTestAPI()
+        let persistence = TestPersistence()
+        var snapshot = WatchSnapshot()
+        snapshot.context = WatchContext(profile: WatchProfile(role: "kid", userId: "u", familyId: "f", kidId: "k", name: "Maya"), events: [])
+        snapshot.chat = [WatchChatMessage(id: "m1", senderType: "parent", senderId: "p", senderName: "Mum", text: "Dinner at 6", createdAt: "2026-10-12T09:00:00Z")]
+        let store = WatchStore(api: api, credentials: TestCredentials(), persistence: persistence,
+                               initialState: WatchPersistedState(snapshot: snapshot))
+
+        api.sendError = WatchAPIError.transport("offline")
+        await store.sendChat("  On my way ")
+        XCTAssertEqual(store.snapshot.chat?.map(\.text), ["Dinner at 6", "On my way"])
+        XCTAssertEqual(store.snapshot.chat?.last?.pending, true)
+        XCTAssertTrue(store.snapshot.chat?.last?.isMine(snapshot.context?.profile) == true)
+        XCTAssertEqual(persistence.state?.outbox.first?.kind, .chatMessage)
+
+        api.sendError = nil
+        await store.refresh()
+        XCTAssertEqual(api.sent, ["On my way"])
+        XCTAssertEqual(store.pendingMutationCount, 0)
+        XCTAssertEqual(store.snapshot.chat?.map(\.id), ["m1", "m2"])
+        XCTAssertNil(store.snapshot.chat?.last?.pending)
+    }
+
+    func testRejectedChatMessageDoesNotBlockLaterCheckOffs() async {
+        let api = ChatTestAPI()
+        api.sendError = WatchAPIError.http(400, "Message is empty.")
+        var snapshot = WatchSnapshot()
+        snapshot.context = WatchContext(profile: WatchProfile(role: "parent", userId: "p", familyId: "f", kidId: nil, name: "Mum"), events: [])
+        let store = WatchStore(api: api, credentials: TestCredentials(), persistence: TestPersistence(),
+                               initialState: WatchPersistedState(snapshot: snapshot))
+        await store.sendChat("hi")
+        XCTAssertEqual(store.pendingMutationCount, 0)
+        XCTAssertEqual(store.snapshot.chat ?? [], [])
+        XCTAssertEqual(store.chatSendError, "Not sent: Message is empty.")
+    }
+}
+
+private final class ChatTestAPI: WatchAPIClient, WatchChatClient {
+    var server: [WatchChatMessage] = [WatchChatMessage(id: "m1", senderType: "parent", senderId: "p", senderName: "Mum", text: "Dinner at 6", createdAt: "2026-10-12T09:00:00Z")]
+    var sendError: Error?
+    var sent: [String] = []
+
+    func fetchActions() async throws -> [WatchAction] { [] }
+    func fetchHomework() async throws -> [WatchHomework] { [] }
+    func fetchShopping() async throws -> [WatchShoppingItem] { [] }
+    func updateActionStatus(_ id: String, status: String) async throws -> WatchAction { throw WatchAPIError.forbidden }
+    func updateHomeworkStatus(_ id: String, status: String) async throws -> WatchHomework { throw WatchAPIError.forbidden }
+    func updateHomeworkChecklistStep(_ id: String, index: Int, done: Bool) async throws -> WatchHomework { throw WatchAPIError.forbidden }
+    func updateShoppingDone(_ id: String, done: Bool) async throws -> WatchShoppingItem { throw WatchAPIError.forbidden }
+
+    func fetchChat(afterId: String?, wait: Bool) async throws -> [WatchChatMessage] { server }
+    func sendChat(text: String, clientMessageId: String) async throws -> WatchChatMessage {
+        if let sendError { throw sendError }
+        sent.append(text)
+        let message = WatchChatMessage(id: "m2", senderType: "kid", senderId: "k", senderName: "Maya", text: text, createdAt: "2026-10-12T09:01:00Z")
+        server.append(message)
+        return message
+    }
 }

@@ -15,6 +15,13 @@ protocol WatchContextClient {
     func fetchContext() async throws -> WatchContext
 }
 
+/// Family-room chat. `wait` long-polls (server holds up to 25 s) for messages
+/// after `afterId`; without it the call returns the recent window at once.
+protocol WatchChatClient {
+    func fetchChat(afterId: String?, wait: Bool) async throws -> [WatchChatMessage]
+    func sendChat(text: String, clientMessageId: String) async throws -> WatchChatMessage
+}
+
 protocol WatchPairingClient {
     func claimPairing(code: String, deviceLabel: String) async throws -> WatchCredential
 }
@@ -63,7 +70,7 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
@@ -73,6 +80,8 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     private struct PairingDevice: Decodable { let targetType: String; let targetUserId: String; let familyId: String }
     private struct PairingResponse: Decodable { let token: String; let tokenKind: String; let device: PairingDevice? }
     private struct EmptyResponse: Decodable {}
+    private struct ChatMessagesResponse: Decodable { let messages: [WatchChatMessage] }
+    private struct ChatMessageResponse: Decodable { let message: WatchChatMessage }
 
     private let baseURL: URL
     private let session: URLSession
@@ -107,6 +116,21 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
             "kidId": command.kidId, "commandId": command.commandId,
             "expectedRevision": command.expectedRevision, "type": command.type, "payload": payload
         ], response: SupportResponse.self).support
+    }
+
+    func fetchChat(afterId: String?, wait: Bool) async throws -> [WatchChatMessage] {
+        var path = "/api/chat/messages?limit=40"
+        if wait {
+            path += "&wait=1"
+            if let afterId { path += "&afterId=\(afterId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? afterId)" }
+        }
+        return try await request(path, response: ChatMessagesResponse.self, longPoll: wait).messages
+    }
+
+    func sendChat(text: String, clientMessageId: String) async throws -> WatchChatMessage {
+        try await request("/api/chat/messages", method: "POST",
+                          body: ["text": text, "clientMessageId": clientMessageId],
+                          response: ChatMessageResponse.self).message
     }
 
     func fetchContext() async throws -> WatchContext {
@@ -211,12 +235,24 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         return URLSession(configuration: configuration)
     }
 
+    /// Separate session so a parked chat long-poll outlives the 10 s resource cap.
+    private static let longPollSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = 35
+        configuration.timeoutIntervalForResource = 40
+        return URLSession(configuration: configuration)
+    }()
+
     private func request<Response: Decodable>(_ path: String,
                                                method: String = "GET",
                                                body: [String: Any]? = nil,
                                                response: Response.Type,
-                                               requiresCredential: Bool = true) async throws -> Response {
-        let data = try await send(path, method: method, body: body, requiresCredential: requiresCredential)
+                                               requiresCredential: Bool = true,
+                                               longPoll: Bool = false) async throws -> Response {
+        let data = try await send(path, method: method, body: body, requiresCredential: requiresCredential, longPoll: longPoll)
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
@@ -227,7 +263,8 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     private func send(_ path: String,
                       method: String,
                       body: [String: Any]?,
-                      requiresCredential: Bool = true) async throws -> Data {
+                      requiresCredential: Bool = true,
+                      longPoll: Bool = false) async throws -> Data {
         guard let url = URL(string: baseURL.absoluteString + path) else {
             throw WatchAPIError.badURL
         }
@@ -248,7 +285,7 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 8
+        request.timeoutInterval = longPoll ? 35 : 8
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         // The server's native-client gate intentionally accepts the existing
         // iOS signal for the watch companion as well. The credential remains
@@ -284,7 +321,7 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
             if let requestExecutor {
                 (data, response) = try await requestExecutor(request)
             } else {
-                (data, response) = try await session.data(for: request)
+                (data, response) = try await (longPoll ? Self.longPollSession : session).data(for: request)
             }
         } catch let error as URLError where error.code == .timedOut {
             throw WatchAPIError.timedOut

@@ -108,7 +108,7 @@ test("notifyChatMessage: web push fan-out excludes the sender, includes kids", a
   }
 });
 
-test("notifyChatMessage: APNs fan-out includes kid iPads, excludes sender, and skips watch tokens", async () => {
+test("notifyChatMessage: APNs fan-out includes kid iPads and kid watches, excludes sender and parent watches", async () => {
   process.env.APNS_TEAM_ID = "team";
   process.env.APNS_KEY_ID = "key";
   process.env.APNS_BUNDLE_ID = "com.example.app";
@@ -130,6 +130,7 @@ test("notifyChatMessage: APNs fan-out includes kid iPads, excludes sender, and s
   freshNotifications.registerToken("p1", "watch-p1", { kind: "watch", topic: "com.fametc.watch" });
   freshNotifications.registerToken("p2", "token-p2");
   freshNotifications.registerToken("k1", "token-k1");
+  freshNotifications.registerToken("k1", "watch-k1", { kind: "watch", topic: "com.fametc.watch" });
 
   try {
     await freshNotifications.notifyChatMessage({
@@ -140,7 +141,8 @@ test("notifyChatMessage: APNs fan-out includes kid iPads, excludes sender, and s
       familyId: "fam1",
       text: "Hi",
     });
-    assert.deepEqual(sentTo.sort(), ["token-k1", "token-p1"]);
+    // Parent watches mirror the iPhone alert; only a kid's standalone watch gets its own.
+    assert.deepEqual(sentTo.sort(), ["token-k1", "token-p1", "watch-k1"]);
   } finally {
     apnsSender.createAPNsClient = originalCreate;
     delete process.env.APNS_TEAM_ID;
