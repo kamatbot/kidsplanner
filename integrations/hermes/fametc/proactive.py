@@ -46,6 +46,15 @@ BUSY_BEFORE_DINNER = timedelta(minutes=90)
 WEEK_PLAN = ("sun", "17:00", "20:00")
 WEEK_PLAN_MIN_PLANNED = 4
 MAX_NUDGES_PER_TICK = 20
+# What the family lets Hermes help with (FamETC's state.helpsWith; parents set
+# it). Defaults match the server: dinner and meal planning are opt-in.
+HELP_DEFAULTS = {"schoolDay": True, "homework": True, "dinner": False}
+TOPIC_OF_KIND = {
+    "day-end": "schoolDay",
+    "home-kid": "homework", "home-kid-later": "homework", "home-kid-followup": "homework",
+    "kid-reminder": "homework", "home-parent": "homework",
+    "dinner-tonight": "dinner", "dinner-week": "dinner",
+}
 
 
 def _parse(value: Any) -> Optional[datetime]:
@@ -87,6 +96,8 @@ class _Facts:
         self.parents = [p for p in people if p.get("role") == "parent"]
         self.kids = [k for k in state.get("kids") or [] if isinstance(k, dict) and k.get("kidId")]
         self.dinner = state.get("dinner") or {}
+        helps = state.get("helpsWith") if isinstance(state.get("helpsWith"), dict) else {}
+        self.helps = {k: helps[k] if isinstance(helps.get(k), bool) else v for k, v in HELP_DEFAULTS.items()}
         self.sent = [s for s in state.get("sent") or [] if isinstance(s, dict)]
         self.sent_keys = {(s.get("userId"), s.get("nudgeKey")) for s in self.sent}
 
@@ -289,7 +300,7 @@ def _home_parent(f: _Facts) -> List[Dict[str, Any]]:
             sentences.append(f"{name} is all set.")
         if (due or overdue) and kid.get("userIds"):
             nudge_kids.append(kid)
-    dinner_open = not _dinner_planned(f)
+    dinner_open = f.helps["dinner"] and not _dinner_planned(f)
     if dinner_open:
         sentences.append("Dinner isn't planned yet.")
     if not busy and not dinner_open:
@@ -366,6 +377,8 @@ def plan(state: Dict[str, Any], now: Optional[datetime] = None) -> List[Dict[str
             uid = nudge["userId"]
             kind = nudge["card"]["kind"]
             if (uid, nudge["nudgeKey"]) in f.sent_keys or uid not in f.role_of:
+                continue
+            if not f.helps.get(TOPIC_OF_KIND.get(kind, ""), True):
                 continue
             if kind != "day-end" and f.quiet(uid):
                 continue

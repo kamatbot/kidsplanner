@@ -46,6 +46,8 @@ def base_state(**overrides):
         ],
         "dinner": {"time": "18:30", "at": iso("18:30"), "tonight": {"planned": False, "title": None},
                    "nextWeek": {"start": "2026-09-28", "planned": 2, "days": 7}},
+        # These table tests describe a family that opted into dinner help.
+        "helpsWith": {"schoolDay": True, "homework": True, "dinner": True},
         "sent": [],
     }
     state.update(overrides)
@@ -176,6 +178,22 @@ class Parents(unittest.TestCase):
         planned = copy.deepcopy(sunday)
         planned["dinner"]["nextWeek"]["planned"] = 4
         self.assertEqual(of_kind(proactive.plan(planned, at("17:05", "2026-09-27")), "dinner-week"), [])
+
+
+class HelpsWith(unittest.TestCase):
+    def test_dinner_is_off_unless_the_family_turns_it_on(self):
+        state = base_state()
+        del state["helpsWith"]
+        nudges = proactive.plan(state, at("15:30")) + proactive.plan(state, at("17:35"))
+        self.assertEqual([n for n in nudges if n["card"]["kind"].startswith("dinner")], [])
+        [p1, _] = of_kind(proactive.plan(state, at("17:35")), "home-parent")
+        self.assertNotIn("Dinner", p1["text"])
+        self.assertNotIn("dinner-ideas", [a["id"] for a in p1["card"]["actions"]])
+
+    def test_turned_off_topics_are_skipped(self):
+        state = base_state(helpsWith={"schoolDay": False, "homework": False, "dinner": True})
+        kinds = {n["card"]["kind"] for t in ("14:40", "15:30", "16:15", "17:35") for n in proactive.plan(state, at(t))}
+        self.assertEqual(kinds, {"dinner-tonight"})
 
 
 class Guards(unittest.TestCase):

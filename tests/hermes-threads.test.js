@@ -52,13 +52,15 @@ function setup(label = "Rings") {
   const arya = family.addKid(fam.id, parent.id, { name: "Arya" }).kid;
   const ryshiUser = store.findOrCreateKidUser(fam.id, ryshi.id, "Ryshi");
   const aryaUser = store.findOrCreateKidUser(fam.id, arya.id, "Arya");
+  // These tests describe a family that opted into dinner help (off by default).
+  hermesThreads.setHelpsWith(family.getFamily(fam.id), { dinner: true });
   return { parent, fam: family.getFamily(fam.id), ryshi, arya, ryshiUser, aryaUser };
 }
 
 function harness() {
   const routes = {};
   const register = (method) => (pattern, ...handlers) => { routes[`${method} ${pattern}`] = { method, handlers }; };
-  const app = { get: register("GET"), post: register("POST"), delete: register("DELETE"), patch: register("PATCH") };
+  const app = { get: register("GET"), post: register("POST"), put: register("PUT"), delete: register("DELETE"), patch: register("PATCH") };
   const deps = {
     hermes, family, chat, store, events, homework, meals, userRole,
     notifications: {
@@ -389,4 +391,38 @@ test("tonight's ideas fit the time left before dinner", () => {
   const none = hermesThreads.suggestDinners(fam, { count: 2, today, maxMinutes: 1 });
   assert.equal(none.length, 2, "falls back to the quickest when nothing fits");
   assert.ok(Number.isFinite(dinnerAt));
+});
+
+test("what Hermes helps with: dinner is opt-in, off topics never reach anyone, parents set it", async () => {
+  const routes = harness();
+  const { parent, fam, ryshiUser } = setup("Helps");
+  delete fam.hermesHelpsWith; // a family that never touched the settings
+  const auth = connect(fam);
+  const settings = await invoke(routes["GET /api/hermes/settings"], { user: parent });
+  assert.deepEqual(settings.body.helpsWith, { schoolDay: true, homework: true, dinner: false });
+  assert.deepEqual((await invoke(routes["GET /api/hermes/proactive/state"], { headers: auth })).body.helpsWith,
+    { schoolDay: true, homework: true, dinner: false });
+
+  const dinner = { userId: parent.id, nudgeKey: "dinner-tonight:helps", text: "Dinner tonight isn't planned.",
+    card: { kind: "dinner-tonight", actions: [{ id: "dinner-ideas", label: "Show 3 ideas" }] } };
+  const evening = { userId: parent.id, nudgeKey: "home-parent:helps", text: "Tonight: Ryshi has 1 due tomorrow (not started). Dinner isn't planned yet.",
+    card: { kind: "home-parent", actions: [{ id: "dinner-ideas", label: "Dinner ideas" }, { id: "nudge-kid:" + fam.kids[0].id, label: "Nudge Ryshi" }] } };
+  const dinnerOnly = { userId: parent.id, nudgeKey: "home-parent:helps2", text: "Tonight: Dinner isn't planned yet.",
+    card: { kind: "home-parent", actions: [{ id: "dinner-ideas", label: "Dinner ideas" }] } };
+  const before = chat.listMessages(hermesThreads.scopeFor(parent.id)).length;
+  const posted = await invoke(routes["POST /api/hermes/proactive/nudges"], { headers: auth, body: { nudges: [dinner, evening, dinnerOnly] } });
+  assert.deepEqual(posted.body.results.map((r) => r.skipped || r.created), ["dinner", true, "dinner"]);
+  const messages = chat.listMessages(hermesThreads.scopeFor(parent.id)).slice(before);
+  assert.equal(messages.length, 1, "only the homework part of the evening check-in arrives");
+  assert.equal(messages[0].text, "Tonight: Ryshi has 1 due tomorrow (not started).");
+  assert.deepEqual(messages[0].card.actions.map((a) => a.id), ["nudge-kid:" + fam.kids[0].id]);
+
+  // Kids can't change it; a bad topic is refused; a parent turns dinner on and off.
+  assert.equal((await invoke(routes["PUT /api/hermes/settings"], { user: ryshiUser, body: { helpsWith: { dinner: true } } })).statusCode, 403);
+  assert.equal((await invoke(routes["PUT /api/hermes/settings"], { user: parent, body: { helpsWith: { lasers: true } } })).statusCode, 400);
+  const on = await invoke(routes["PUT /api/hermes/settings"], { user: parent, body: { helpsWith: { dinner: true, homework: false } } });
+  assert.deepEqual(on.body.helpsWith, { schoolDay: true, homework: false, dinner: true });
+  const again = await invoke(routes["POST /api/hermes/proactive/nudges"], { headers: auth, body: { nudges: [dinner, { ...evening, nudgeKey: "home-parent:helps3" }] } });
+  assert.equal(again.body.results[0].created, true, "dinner offer arrives once opted in");
+  assert.equal(again.body.results[1].skipped, "homework", "homework check-ins stop when turned off");
 });
