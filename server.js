@@ -25,6 +25,7 @@ const {
 } = require("@simplewebauthn/server");
 
 const store = require("./lib/store");
+const accountDeletion = require("./lib/account-deletion");
 const db = require("./lib/db");
 const datacrypto = require("./lib/datacrypto");
 const hermes = require("./lib/hermes");
@@ -526,7 +527,7 @@ app.post("/api/logout", (req, res) => {
 });
 
 app.delete("/api/account", requireAuth, requireParent, (req, res) => {
-  store.deleteUser(req.user.id);
+  accountDeletion.deleteParentAccount(req.user.id, { schoolApi });
   req.session = null;
   res.json({ ok: true });
 });
