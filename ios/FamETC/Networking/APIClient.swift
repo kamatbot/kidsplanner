@@ -127,6 +127,14 @@ final class APIClient: FamilyActionService, ChatMessageService {
     func createParentInvite() async throws -> ParentInvite {
         try await request("/api/family/parent-invite", method: "POST", body: [:])
     }
+    /// `GET /api/hermes/settings` (parent, full plan): which topics Hermes helps with.
+    func hermesSettings() async throws -> HermesSettings {
+        try await request("/api/hermes/settings")
+    }
+    /// `PUT /api/hermes/settings` (parent, full plan): partial update; only the keys sent change.
+    func updateHermesSettings(_ changes: [String: Bool]) async throws -> HermesSettings {
+        try await request("/api/hermes/settings", method: "PUT", body: ["helpsWith": changes])
+    }
     func joinFamily(code: String) async throws -> Family {
         let r: FamilyResponse = try await request("/api/family/join", method: "POST", body: ["code": code])
         return r.family

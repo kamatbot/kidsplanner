@@ -34,6 +34,9 @@ struct FamilySettingsView: View {
     @State private var deleting = false
     @State private var deleteError: String?
     @State private var kidError: String?
+    @State private var hermes: HermesSettings?
+    @State private var hermesSaving: Set<String> = []
+    @State private var hermesError: String?
     private var service: ScreenTimeService { .shared }
     /// A family has at most two parents.
     private let maxParents = 2
@@ -52,6 +55,7 @@ struct FamilySettingsView: View {
             familySection
             parentsSection
             kidsSection
+            if showsHermesSection { hermesSection }
             securitySection
             notificationsSection
             if store.productPlan == .screenTime { upgradeSection }
@@ -69,6 +73,7 @@ struct FamilySettingsView: View {
             recoveryRemaining = await AuthService.shared.backupCodesRemaining()
             if service.overview == nil { await service.loadOverview() }
         }
+        .task { await loadHermes() }
         .sheet(item: $setupKid) { route in
             NavigationStack {
                 DeviceSetupChecklistView(kidIds: [route.id])
@@ -377,6 +382,81 @@ struct FamilySettingsView: View {
             } else {
                 await service.loadOverview()
             }
+        }
+    }
+
+    // MARK: Hermes helps with
+
+    private static let hermesTopics: [(key: String, title: String, detail: String)] = [
+        ("schoolDay", "School day updates", "When lessons and activities end, so you know who's coming home."),
+        ("homework", "Homework check-ins", "Evening nudges for kids, and a homework summary for parents."),
+        ("dinner", "Dinner & meal planning", "Offers to plan tonight's dinner and draft next week's meals."),
+    ]
+
+    private var showsHermesSection: Bool { store.productPlan != .screenTime && store.isParent }
+
+    private var hermesSection: some View {
+        Section {
+            ForEach(Self.hermesTopics, id: \.key) { topic in
+                Toggle(isOn: hermesBinding(topic.key)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(topic.title).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
+                        Text(topic.detail)
+                            .font(Typography.label)
+                            .foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .disabled(hermes == nil || hermesSaving.contains(topic.key))
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("hermes.toggle.\(topic.key)")
+            }
+            if let hermesError { PlanErrorLine(message: hermesError) }
+        } header: {
+            Text("Hermes helps with")
+        } footer: {
+            Text("Turned-off topics stop right away for the whole family. Hermes always asks a parent before anything that needs approval.")
+        }
+    }
+
+    private func hermesBinding(_ key: String) -> Binding<Bool> {
+        Binding(
+            get: { hermes?.value(for: key) ?? false },
+            set: { setHermes(key, $0) }
+        )
+    }
+
+    private func loadHermes() async {
+        guard showsHermesSection else { return }
+        do {
+            hermes = try await APIClient.shared.hermesSettings()
+        } catch {
+            hermesError = error.localizedDescription
+        }
+    }
+
+    /// Optimistic: the toggle flips at once; a failed save puts the previous value back.
+    private func setHermes(_ key: String, _ value: Bool) {
+        guard let before = hermes, !hermesSaving.contains(key), before.value(for: key) != value else { return }
+        var optimistic = before
+        var topics = optimistic.helpsWith ?? .init()
+        switch key {
+        case "schoolDay": topics.schoolDay = value
+        case "homework": topics.homework = value
+        default: topics.dinner = value
+        }
+        optimistic.helpsWith = topics
+        hermes = optimistic
+        hermesSaving.insert(key)
+        hermesError = nil
+        Task {
+            do {
+                hermes = try await APIClient.shared.updateHermesSettings([key: value])
+            } catch {
+                hermes = before
+                hermesError = error.localizedDescription
+            }
+            hermesSaving.remove(key)
         }
     }
 

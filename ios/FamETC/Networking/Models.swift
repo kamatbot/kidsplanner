@@ -64,6 +64,29 @@ struct ParentInvite: Decodable, Equatable {
     let expiresAt: String
 }
 
+/// `GET|PUT /api/hermes/settings` (parents, full plan) — which topics Hermes may help the family with.
+/// Decoded tolerantly: unknown keys are ignored, missing keys fall back to the defaults below.
+struct HermesSettings: Decodable, Equatable {
+    struct HelpsWith: Decodable, Equatable {
+        var schoolDay: Bool?
+        var homework: Bool?
+        var dinner: Bool?
+    }
+    var helpsWith: HelpsWith?
+
+    var schoolDay: Bool { helpsWith?.schoolDay ?? true }
+    var homework: Bool { helpsWith?.homework ?? true }
+    var dinner: Bool { helpsWith?.dinner ?? false }
+
+    func value(for key: String) -> Bool {
+        switch key {
+        case "schoolDay": return schoolDay
+        case "homework": return homework
+        default: return dinner
+        }
+    }
+}
+
 /// `POST /api/family/kids/:kidId/setup-code` — the short code a parent shows so the
 /// kid can type it on their own device (docs/SCREEN-TIME-ONLY-PLAN.md D6).
 struct KidSetupCode: Codable, Equatable {
