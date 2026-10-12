@@ -307,3 +307,10 @@ test("rich family/trip APNs and web payloads retain deep links and fit APNs limi
     delete require.cache[require.resolve("../lib/fam-notifications")];
   }
 });
+
+test("an iOS token moves to the account that registers it last (shared iPad)", () => {
+  notifications.registerToken("shared-parent", "shared-ipad-token");
+  notifications.registerToken("shared-kid", "shared-ipad-token");
+  assert.deepEqual(notifications.tokensForUser("shared-parent"), []);
+  assert.deepEqual(notifications.tokensForUser("shared-kid"), ["shared-ipad-token"]);
+});
