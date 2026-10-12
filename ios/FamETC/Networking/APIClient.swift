@@ -52,6 +52,10 @@ final class APIClient: FamilyActionService, ChatMessageService {
         return URLSession(configuration: configuration)
     }()
     private var session = APIClient.makeSession()
+    /// True while `logout()` holds an invalidated `session`. Creating a task on an
+    /// invalidated URLSession throws an Objective-C exception (a crash), so any
+    /// request that races sign-out fails as cancelled instead.
+    private var signingOut = false
     private static func makeSession() -> URLSession {
         let c = URLSessionConfiguration.default
         c.httpCookieStorage = .shared
@@ -640,6 +644,8 @@ final class APIClient: FamilyActionService, ChatMessageService {
         let cookie = HTTPCookie.requestHeaderFields(with: cookies)["Cookie"] ?? ""
         // Drain old native/auth responses before clearing credentials. Revocation
         // uses the captured cookie without accepting any response cookies.
+        signingOut = true
+        defer { signingOut = false }
         if let delegate = session.delegate as? SessionCancellationDelegate { await delegate.cancel(session) }
         await AuthService.shared.cancelSessionRequests()
         let confirmed = await SessionSignOut.finish(baseURL: base) {
@@ -677,6 +683,7 @@ final class APIClient: FamilyActionService, ChatMessageService {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if signingOut { throw APIError.transport(URLError(.cancelled)) }
         let (data, resp) = try await session.upload(for: req, from: body)
         guard let http = resp as? HTTPURLResponse else { throw APIError.transport(URLError(.badServerResponse)) }
         if http.statusCode == 401 { throw APIError.unauthenticated }
@@ -744,6 +751,7 @@ final class APIClient: FamilyActionService, ChatMessageService {
         var data = Data(), resp: URLResponse = URLResponse()
         for attempt in 1...attempts {
             do {
+                if cookie == nil && signingOut { throw URLError(.cancelled) }
                 (data, resp) = try await (cookie == nil ? session : progressSession).data(for: req)
             } catch {
                 guard attempt < attempts, Self.isTransient(error), !Task.isCancelled else { throw APIError.transport(error) }
