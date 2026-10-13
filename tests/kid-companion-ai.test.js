@@ -7,6 +7,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 
+fs.mkdirSync(path.join(__dirname, "../.dev-data"), { recursive: true });
 process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(__dirname, "../.dev-data/kid-companion-ai-"));
 process.env.DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
 process.env.ANTHROPIC_API_KEY = "fake-key-no-live-calls";

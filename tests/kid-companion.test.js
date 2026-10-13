@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
+fs.mkdirSync(path.join(__dirname, "../.dev-data"), { recursive: true });
 process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(__dirname, "../.dev-data/kid-companion-domain-"));
 process.env.DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
 const db = require("../lib/db");
