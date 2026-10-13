@@ -36,7 +36,7 @@ protocol ChatMessageService {
 /// Typed async client for the Fam ETC JSON API. Shares `HTTPCookieStorage.shared`
 /// with `AuthService` and the WKWebView, so once the user signs in (passkey) every
 /// native request carries `fam_sess` and stays in lockstep with any hybrid web tab.
-final class APIClient: FamilyActionService, ChatMessageService {
+final class APIClient: FamilyActionService, ChatMessageService, KidCompanionService {
     static let shared = APIClient()
 
     private let base = Config.baseURL
@@ -134,6 +134,22 @@ final class APIClient: FamilyActionService, ChatMessageService {
     /// `PUT /api/hermes/settings` (parent, full plan): partial update; only the keys sent change.
     func updateHermesSettings(_ changes: [String: Bool]) async throws -> HermesSettings {
         try await request("/api/hermes/settings", method: "PUT", body: ["helpsWith": changes])
+    }
+    func kidCompanion() async throws -> KidCompanionProfile {
+        let response: KidCompanionResponse = try await request("/api/hermes/companion")
+        return response.profile
+    }
+    func updateKidCompanion(_ customization: KidCompanionCustomization) async throws -> KidCompanionProfile {
+        let response: KidCompanionResponse = try await request("/api/hermes/companion", method: "PUT", body: customization.body)
+        return response.profile
+    }
+    func kidCompanions() async throws -> [KidCompanionEntry] {
+        let response: KidCompanionsResponse = try await request("/api/hermes/companions")
+        return response.companions
+    }
+    func updateKidCompanionPolicy(kidID: String, enabled: Bool, ageBand: CompanionAgeBand) async throws -> KidCompanionProfile {
+        let response: KidCompanionResponse = try await request("/api/hermes/companions/\(pathComponent(kidID))", method: "PUT", body: ["enabled": enabled, "ageBand": ageBand.rawValue])
+        return response.profile
     }
     func joinFamily(code: String) async throws -> Family {
         let r: FamilyResponse = try await request("/api/family/join", method: "POST", body: ["code": code])

@@ -44,6 +44,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
     @State private var buzzAlert: BuzzAlert?
     @State private var isSendingBuzz = false
     @State private var composerFocused = false
+    @State private var companion = KidCompanionStore()
+    @State private var showCompanion = false
 
     private enum BuzzAlert: Identifiable {
         case confirmation
@@ -64,6 +66,11 @@ struct ChatScreen<HeaderAccessory: View>: View {
     private var isFamilyRoom: Bool { roomId == familyRoomId }
     /// The private per-user Hermes thread (docs/HERMES-THREADS-CONTRACT.md §1) — text only, no Buzz/GIF/attachments.
     private var isHermesRoom: Bool { roomId == "hermes" }
+    private var isKidHermesRoom: Bool { isHermesRoom && store.me?.role == "kid" }
+    private var accountCompanionScope: KidCompanionScope? { KidCompanionScope.current(in: store) }
+    private var companionScope: KidCompanionScope? { isHermesRoom ? accountCompanionScope : nil }
+    private var companionProfile: KidCompanionProfile? { companion.scope == companionScope ? companion.profile : nil }
+    private var helperName: String { isKidHermesRoom ? (companionProfile?.name ?? "Your AI helper") : "Hermes" }
     private var currentMessages: [ChatMessage] { store.messagesByRoom[roomId] ?? [] }
     private var draft: String {
         get { drafts[roomId, default: ""] }
@@ -105,6 +112,21 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // started the fetch before navigation. Consume that in-flight result
         // immediately instead of waiting for the chat loop's first request.
         .task(id: roomId) { await store.consumeNotificationChatPrefetch(roomId: roomId) }
+        .task(id: companionScope) {
+            guard !Task.isCancelled else { return }
+            companion.clear()
+            guard let scope = companionScope, !scope.isParent else { return }
+            await companion.load(for: scope, isCurrent: { companionScope == scope })
+        }
+        .onChange(of: companionScope) { _, _ in showCompanion = false; companion.clear() }
+        .onChange(of: accountCompanionScope) { _, _ in
+            drafts["hermes"] = nil; sendingRooms.remove("hermes"); failedRooms.remove("hermes")
+        }
+        .onChange(of: companionProfile?.name) { _, name in
+            if isKidHermesRoom, let name, let index = store.chatRooms.firstIndex(where: { $0.roomId == "hermes" }) {
+                store.chatRooms[index].title = name
+            }
+        }
         .onChange(of: roomId) { _, newValue in
             composerFocused = false
             displayedRoomID = newValue
@@ -131,6 +153,12 @@ struct ChatScreen<HeaderAccessory: View>: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             store.chatWillEnterForeground()
+            if let scope = companionScope, !scope.isParent {
+                Task { await companion.load(for: scope, isCurrent: { companionScope == scope }) }
+            }
+        }
+        .sheet(isPresented: $showCompanion) {
+            if let scope = companionScope { KidCompanionView(model: companion, scope: scope).environment(store) }
         }
         .sheet(isPresented: $showGifPicker) {
             GifPickerSheet { gif in Task { await store.sendGif(gif, roomId: roomId) } }
@@ -173,12 +201,36 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            VStack(alignment: .leading, spacing: 2) {
-                MicroLabel(text: isFamilyRoom ? "Family chat" : (isHermesRoom ? "Private thread" : "Trip chat"))
-                Text(title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : (isHermesRoom ? "Hermes" : "Trip")))
-                    .font(Typography.cardTitle).foregroundStyle(Palette.text)
+            HStack(spacing: Space.sm) {
+                if isKidHermesRoom, let profile = companionProfile {
+                    KidCompanionAvatarView(avatar: profile.avatar, color: profile.color, size: 42)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    MicroLabel(text: isFamilyRoom ? "Family chat" : (isHermesRoom ? (isKidHermesRoom ? "Private · AI helper" : "Private thread") : "Trip chat"))
+                    Text(isKidHermesRoom ? helperName : (title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : (isHermesRoom ? "Hermes" : "Trip"))))
+                        .font(Typography.cardTitle).foregroundStyle(Palette.text)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if companionScope != nil {
+                    Button { composerFocused = false; showCompanion = true } label: {
+                        Image(systemName: isKidHermesRoom ? "paintpalette" : "person.2.badge.gearshape")
+                            .font(.title3).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                        .accessibilityLabel(isKidHermesRoom ? "Customize companion" : "Kids’ AI companion settings")
+                        .accessibilityIdentifier("companion.open")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if isKidHermesRoom && companionProfile?.enabled != true {
+                HStack(alignment: .top, spacing: Space.sm) {
+                    Text(companion.loading ? "Loading your AI helper…" : companionProfile != nil ? "Chat is paused. A parent can enable your AI helper." : "Couldn't load your companion settings.")
+                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !companion.loading && companionProfile == nil, let scope = companionScope {
+                        Button("Retry") { Task { await companion.load(for: scope, isCurrent: { companionScope == scope }) } }
+                            .font(Typography.label).frame(minHeight: 44).accessibilityIdentifier("companion.headerRetry")
+                    }
+                }.accessibilityIdentifier("companion.chatStatus")
+            }
             headerAccessory()
         }
         .padding(.horizontal, Space.lg).padding(.top, Space.md).padding(.bottom, Space.sm)
@@ -211,7 +263,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                     }
                     ChatMessageRow(message: m,
                                    isMine: store.isMine(m),
-                                   senderName: store.senderName(for: m),
+                                   senderName: isKidHermesRoom && m.senderType == "agent" ? helperName : store.senderName(for: m),
                                    onTapCard: handleCardTap,
                                    roomId: roomId,
                                    canAddToCalendar: isFamilyRoom,
@@ -222,7 +274,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    canImportMealPlan: canImportMealPlan(m),
                                    onImportMealPlan: handleMealPlanImport,
                                    canImportTripItinerary: canImportTripItinerary(m),
-                                   onImportTripItinerary: handleTripItineraryImport)
+                                   onImportTripItinerary: handleTripItineraryImport,
+                                   companionProfile: isKidHermesRoom && m.senderType == "agent" ? companionProfile : nil)
                         .equatable()
                         .id(m.id)
                 }
@@ -282,7 +335,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
             else if isFamilyRoom {
                 emptyState(icon: "bubble.left.and.bubble.right", title: "No messages yet", detail: "Say hi to the family! 👋")
             } else if isHermesRoom {
-                emptyState(icon: "sparkles", title: "Your private thread", detail: "Ask Hermes anything — just the two of you.")
+                emptyState(icon: "sparkles", title: isKidHermesRoom ? "Meet your AI helper" : "Your private thread", detail: isKidHermesRoom ? "Explore ideas, ask questions and work through homework with hints. AI can make mistakes." : "Ask Hermes anything — just the two of you.")
             } else {
                 emptyState(icon: "airplane", title: "No messages yet", detail: "Say hi to the crew! ✈️")
             }
@@ -378,7 +431,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     // MARK: Composer (+ menu + wide input + circular send)
 
-    private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !sendingRooms.contains(roomId) && !isSendingBuzz }
+    private var canSend: Bool { !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !sendingRooms.contains(roomId) && !isSendingBuzz && (!isKidHermesRoom || companionProfile?.enabled == true) }
     private var canBuzz: Bool { canSend && !isSendingBuzz && !isHermesRoom }
 
     private var composer: some View {
@@ -386,7 +439,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
             text: Binding(get: { draft }, set: { draft = $0 }),
             isFocused: $composerFocused,
             keyboardDocked: $keyboardVisible,
-            placeholder: isHermesRoom ? "Message Hermes…" : (isFamilyRoom ? "Message the family…" : "Message the trip…"),
+            placeholder: isHermesRoom ? "Message \(helperName)…" : (isFamilyRoom ? "Message the family…" : "Message the trip…"),
             canBuzz: canBuzz,
             canSend: canSend,
             sendingMessage: sendingRooms.contains(roomId),
@@ -406,6 +459,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
                 try await store.sendCompressedAttachment(picked, roomId: roomId)
             }
         )
+        .disabled(isKidHermesRoom && companionProfile?.enabled != true)
     }
 
     private func requestBuzz() {
@@ -447,12 +501,13 @@ struct ChatScreen<HeaderAccessory: View>: View {
         guard !text.isEmpty else { return }
         let targetRoom = roomId
         let accountID = store.me?.id
+        let helperScope = accountCompanionScope
         sendingRooms.insert(targetRoom)
         failedRooms.remove(targetRoom)
         Haptics.selection()
         Task {
             let sent = await store.send(text: text, roomId: targetRoom)
-            guard store.me?.id == accountID else { return }
+            guard store.me?.id == accountID, targetRoom != "hermes" || accountCompanionScope == helperScope else { return }
             sendingRooms.remove(targetRoom)
             if sent {
                 if drafts[targetRoom]?.trimmingCharacters(in: .whitespacesAndNewlines) == text {
@@ -1865,6 +1920,7 @@ struct ChatMessageRow: View, Equatable {
     var onImportMealPlan: (ChatMessage) -> Void = { _ in }
     var canImportTripItinerary: Bool = false
     var onImportTripItinerary: (ChatMessage) -> Void = { _ in }
+    var companionProfile: KidCompanionProfile? = nil
     /// hermes-nudge action ids currently in flight (docs/HERMES-THREADS-CONTRACT.md
     /// §3) — disables that button until the server replies. Keyed by action id,
     /// not message id, since a card can carry more than one action.
@@ -1882,15 +1938,16 @@ struct ChatMessageRow: View, Equatable {
             && lhs.canAddToShopping == rhs.canAddToShopping
             && lhs.canImportMealPlan == rhs.canImportMealPlan
             && lhs.canImportTripItinerary == rhs.canImportTripItinerary
+            && lhs.companionProfile == rhs.companionProfile
     }
 
     private var senderKid: Kid? {
         message.senderType == "kid" ? store.kids.first { $0.id == message.senderId } : nil
     }
     private var senderColor: Color {
-        senderKid?.profileColor ?? famChatSenderColor(id: message.senderId, name: senderName, isMine: isMine)
+        companionProfile?.color.tint ?? senderKid?.profileColor ?? famChatSenderColor(id: message.senderId, name: senderName, isMine: isMine)
     }
-    private var senderTextColor: Color { senderKid == nil ? senderColor : Palette.text }
+    private var senderTextColor: Color { senderKid == nil && companionProfile == nil ? senderColor : Palette.text }
 
     var body: some View {
         if message.isBuzz {
@@ -1975,7 +2032,9 @@ struct ChatMessageRow: View, Equatable {
     }
 
     @ViewBuilder private var avatar: some View {
-        if let kid = senderKid {
+        if let profile = companionProfile {
+            KidCompanionAvatarView(avatar: profile.avatar, color: profile.color, size: 38)
+        } else if let kid = senderKid {
             KidProfileAvatar(kid: kid, size: 38)
         } else {
             Group {

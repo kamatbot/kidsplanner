@@ -1,6 +1,6 @@
 # Hermes private threads and nudges: client/server contract
 
-**Status:** v1, 2026-09-26. This is the source of truth for the web, iOS and Mac-plugin work.
+**Status:** kid-companion revision, 2026-10-13. This is the source of truth for the web, iOS and Mac-plugin transport. Child execution, controls and standalone Watch support are defined in [HERMES-KID-COMPANIONS.md](HERMES-KID-COMPANIONS.md).
 **Plan:** [HERMES-PROACTIVE-PLAN.md](HERMES-PROACTIVE-PLAN.md).
 
 **Owner decisions**
@@ -13,7 +13,7 @@
 | Where | Room id | Scope key (server storage) | Who can read or write |
 |---|---|---|---|
 | User clients (web, iOS) | `"hermes"` | `hermes:<userId>` | Only that signed-in user, plus Hermes |
-| Mac bridge | `"hermes:<userId>"` | `hermes:<userId>` | The family's Hermes connection |
+| Mac bridge | `"hermes:<userId>"` | `hermes:<userId>` | The family's Hermes connection, parent threads only |
 
 `GET /api/chat/rooms` adds `{ "roomId": "hermes", "title": "Hermes", "kind": "assistant" }` for every signed-in user who has a family, whether parent or kid.
 - Existing rooms are unchanged. They gain `kind: "family"` or `kind: "trip"`.
@@ -31,7 +31,7 @@ The request/response shapes mirror the family chat routes.
 - Body: `{ "text": string, "clientMessageId"?: string }`.
 - Returns `{ "message": ChatMessage }`.
 - It is text only. A `card`, `media` or `buzz` field returns 400.
-- It sends no push. Hermes replies from the Mac.
+- It sends no push. Parent replies come from the Mac. Enabled child companions use isolated server inference and may return an additional `messages` array containing the screened reply; polling remains compatible.
 
 **`POST /api/hermes/thread/messages/:messageId/actions`**
 - Body: `{ "action": string }`.
@@ -110,18 +110,18 @@ Only the thread owner is notified.
 ## 5. Mac bridge endpoints (Hermes bearer token)
 
 **`GET /api/hermes/rooms`**
-- Adds `{ roomId: "hermes:<userId>", title: "Hermes · <name>", kind: "assistant" }` for each parent and each kid user.
+- Adds `{ roomId: "hermes:<userId>", title: "Hermes · <name>", kind: "assistant" }` for each parent. Child private rooms are excluded and guessed/cached child room IDs return 403.
 
 **`GET /api/hermes/rooms/hermes:<userId>/messages`**
 - Returns every human message, with no `@Hermes` needed.
-- Each message carries `actor` and `actorToken` for the thread owner.
+- Each parent-thread message carries `actor` and `actorToken` for the thread owner. Child turns are not forwarded to this bridge, including shared-room mentions.
 - Each message also carries `recentHermes`: the last five Hermes messages in the thread (including nudges), so a reply is read against the nudge it answers.
 
 **`GET /api/hermes/rooms/hermes:<userId>/context`**
-- Returns a family snapshot scoped to the **thread owner**. Kids get the kid ceiling.
+- Returns a family snapshot scoped to the **parent thread owner**. Child contexts are built only inside the isolated responder; the bridge cannot request them.
 
 **`POST /api/hermes/rooms/hermes:<userId>/messages`**
-- Hermes replies into the owner's thread and pushes to the owner only.
+- Hermes replies into the parent owner's thread and pushes to the owner only. Child replies must use the isolated, screened responder.
 
 **`GET /api/hermes/proactive/state`**
 - Returns the facts for the planner (§6).
@@ -202,3 +202,7 @@ When Hermes requests an Operator approval (MCP `fametc_approvals_request`), the 
 - **Deep link:** `/app?chat=hermes` opens the tab.
 - **Chat dock:** it keeps its Family | Hermes switch.
 - **iOS:** Hermes is the "Hermes" room in the Chat tab. There's no Today strip and no extra tab bar entry.
+
+## 9. Child reminder safety and Watch
+
+Child reminders replace gateway-authored text, titles, lines and labels with fixed server-owned copy; require enabled/reminders; observe family-local 20:30–07:00 quiet hours and four per day. Standalone child Watches receive `hermes_thread` APNs directly without the family-chat inline-reply category. Their scoped bearer can access only their own companion profile and thread, not parent settings or bridge authority. Native iPhone/iPad remains the primary companion UI.

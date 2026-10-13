@@ -70,7 +70,7 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient, WatchCompanionChatClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
@@ -131,6 +131,34 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         try await request("/api/chat/messages", method: "POST",
                           body: ["text": text, "clientMessageId": clientMessageId],
                           response: ChatMessageResponse.self).message
+    }
+
+    func fetchCompanion(identity: WatchCompanionIdentity) async throws -> WatchCompanionProfile {
+        try await request("/api/hermes/companion", response: WatchCompanionProfileResponse.self, companionIdentity: identity).profile
+    }
+    func updateCompanion(_ profile: WatchCompanionProfile, identity: WatchCompanionIdentity) async throws -> WatchCompanionProfile {
+        guard profile.validCustomization else { throw WatchAPIError.http(400, "Choose a name of 1–24 letters, spaces, hyphens or apostrophes.") }
+        return try await request("/api/hermes/companion", method: "PUT", body: profile.cosmeticBody,
+                                 response: WatchCompanionProfileResponse.self, companionIdentity: identity).profile
+    }
+    func fetchCompanionMessages(afterID: String?, wait: Bool, identity: WatchCompanionIdentity) async throws -> [WatchCompanionMessage] {
+        var path = "/api/hermes/thread/messages?limit=40"
+        if wait {
+            path += "&wait=1"
+            if let afterID { path += "&afterId=\(companionComponent(afterID))" }
+        }
+        return try await request(path, response: WatchCompanionMessagesResponse.self, longPoll: wait, companionIdentity: identity).messages
+    }
+    func sendCompanionMessage(text: String, clientMessageID: String, identity: WatchCompanionIdentity) async throws -> WatchCompanionSendResponse {
+        try await request("/api/hermes/thread/messages", method: "POST", body: ["text": text, "clientMessageId": clientMessageID],
+                          response: WatchCompanionSendResponse.self, longPoll: true, companionIdentity: identity)
+    }
+    func companionAction(messageID: String, action: String, identity: WatchCompanionIdentity) async throws -> WatchCompanionSendResponse {
+        try await request("/api/hermes/thread/messages/\(companionComponent(messageID))/actions", method: "POST", body: ["action": action],
+                          response: WatchCompanionSendResponse.self, companionIdentity: identity)
+    }
+    private func companionComponent(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""
     }
 
     func fetchContext() async throws -> WatchContext {
@@ -251,8 +279,9 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
                                                body: [String: Any]? = nil,
                                                response: Response.Type,
                                                requiresCredential: Bool = true,
-                                               longPoll: Bool = false) async throws -> Response {
-        let data = try await send(path, method: method, body: body, requiresCredential: requiresCredential, longPoll: longPoll)
+                                               longPoll: Bool = false,
+                                               companionIdentity: WatchCompanionIdentity? = nil) async throws -> Response {
+        let data = try await send(path, method: method, body: body, requiresCredential: requiresCredential, longPoll: longPoll, companionIdentity: companionIdentity)
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
@@ -264,7 +293,8 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
                       method: String,
                       body: [String: Any]?,
                       requiresCredential: Bool = true,
-                      longPoll: Bool = false) async throws -> Data {
+                      longPoll: Bool = false,
+                      companionIdentity: WatchCompanionIdentity? = nil) async throws -> Data {
         guard let url = URL(string: baseURL.absoluteString + path) else {
             throw WatchAPIError.badURL
         }
@@ -278,6 +308,12 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
             }
             guard let credential, !credential.value.isEmpty else {
                 throw WatchAPIError.disconnected
+            }
+            // Check the exact credential used below, so an account change
+            // cannot send a retained child's draft under another bearer.
+            if let identity = companionIdentity {
+                guard credential.kind == .bearerToken, credential.role == "kid",
+                      credential.userId == identity.userID, credential.familyId == identity.familyID else { throw WatchAPIError.forbidden }
             }
         } else {
             credential = nil

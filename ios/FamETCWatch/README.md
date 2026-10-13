@@ -2,7 +2,15 @@
 
 The shared watchOS 11 source presents Now, Day, and More, with direct HTTPS reads and mutations, durable local work, and locally scheduled reminders. The visual system is recorded in [DESIGN.md](DESIGN.md).
 
-**Family chat is the root screen** (`WatchChatView`): newest messages at the bottom, one-tap 👍, the system reply field (dictation, Scribble, emoji), and a quick-reply sheet. Sends go through the same durable outbox as check-offs (`WatchMutationKind.chatMessage`, server retry key = client message id). While chat is on screen and the wrist is raised, the watch long-polls `GET /api/chat/messages?wait=1`; leaving the screen or dropping the wrist cancels it. Watch tokens may only `GET`/`POST /api/chat/messages` (family room; no trips, Hermes, attachments, buzz, flag, or delete). Kids' standalone watches receive their own chat alert with an inline reply (`FAM_CHAT` category); parent watches rely on the mirrored iPhone alert. Now/Day/More sit behind the bottom-bar button.
+**Family chat is the root screen** (`WatchChatView`): newest messages at the bottom, one-tap 👍, the system reply field (dictation, Scribble, emoji), and a quick-reply sheet. Sends go through the same durable outbox as check-offs (`WatchMutationKind.chatMessage`, server retry key = client message id). While chat is on screen and the wrist is raised, the watch long-polls `GET /api/chat/messages?wait=1`; leaving the screen or dropping the wrist cancels it. Family chat tokens permit only `GET`/`POST /api/chat/messages`; trips, attachments, buzz, flag, and delete remain unavailable. Kids' standalone watches receive their own chat alert with an inline reply (`FAM_CHAT` category); parent watches rely on the mirrored iPhone alert. Now/Day/More sit behind the bottom-bar button.
+
+## Child AI companion
+
+The sparkle button in a child's family chat opens `WatchCompanionChatView`. It reads the child's private companion profile and thread directly over HTTPS using the Watch's scoped bearer, without an iPhone relay. The child can chat using the system text input, change the name, mascot, colour and personality, and opt out of companion reminders. A parent enables access and sets the age group on iPhone, iPad or web. Parent Watch credentials cannot enter a child's companion or change its policy.
+
+Private chat is online-only and remains outside the durable family-chat outbox. Unconfirmed sends keep the same message ID for retry; leaving this screen discards its ephemeral state. Identity changes hide and clear the private transcript and draft. The raised-wrist screen long-polls for screened replies; backgrounding, navigation and wrist drop cancel its work. Existing reminder cards support snooze/dismiss and opening My Next; goal navigation asks the child to use iPhone or iPad because Watch has no goal-detail destination.
+
+Companion notifications use the standalone Watch APNs topic and open the private companion. They carry generic lock-screen copy and omit the family-chat inline-reply category. Even an older payload with that category cannot send a private reply into family chat. Companion quiet hours and daily limits are enforced by the server and are separate from local planner reminders below. See [the companion contract](../../docs/HERMES-KID-COMPANIONS.md) for content review, privacy boundaries and provider limitations.
 
 ## App identities and setup
 

@@ -167,6 +167,7 @@ test('renderHermesPage is a no-op while the tab is inactive, and shows the empty
   const store = { 'tab-hermes': panel, 'hermes-pending': pending, 'hermes-pending-list': pendingList, 'hermes-page-messages': messagesEl };
   const c = {
     hermesMessages: [], hermesLoaded: true, hermesAvailable: true,
+    isKidSession: () => false,
     document: { getElementById: (id) => store[id] || null },
   };
   vm.createContext(c);

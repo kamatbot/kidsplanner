@@ -9,6 +9,10 @@ Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
+## Child companions (2026-10-13)
+
+Child chat now uses the isolated server responder in [HERMES-KID-COMPANIONS.md](../../../docs/HERMES-KID-COMPANIONS.md), not this adult gateway. The bridge lists parent private rooms only and rejects child-room reads/writes; child-origin shared-room mentions are not forwarded. The proactive planner is still used for child reminder timing, while FamETC replaces all child-visible nudge text with approved templates and enforces parent enablement, opt-out, quiet hours and daily limits. The older v1 description below is superseded for child conversational routing.
+
 ## What changed in v1.6
 
 Hermes now speaks first. Every family member (parents, and kids signed in on

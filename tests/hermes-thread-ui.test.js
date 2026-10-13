@@ -129,6 +129,8 @@ test('a non-open hermes-nudge action POSTs to the actions endpoint, replaces the
   let pageRenders = 0;
   const c = {
     hermesMessages: [original, followUp], // followUp already shown — must not be duplicated
+    ensureCompanionState: () => ({ scope: 'test-session' }),
+    companionStateIsCurrent: () => true,
     fetch: async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 200, json: async () => ({ message: updated, messages: [followUp] }) }; },
     renderHermesMessages: () => renders++,
     updateHermesBadge: () => badgeUpdates++, // nav badge (contract §8) picks up the resolved card
@@ -157,6 +159,8 @@ test('a failed hermes-nudge action re-enables the button and surfaces the error'
   let toasted = null;
   const c = {
     hermesMessages: [{ id: 'm1', card: { type: 'hermes-nudge' } }],
+    ensureCompanionState: () => ({ scope: 'test-session' }),
+    companionStateIsCurrent: () => true,
     fetch: async () => ({ ok: false, status: 403, json: async () => ({ error: 'Not allowed' }) }),
     renderHermesMessages: () => assert.fail('should not re-render on failure'),
     toast: (msg) => { toasted = msg; },
@@ -228,6 +232,8 @@ test('switchChatRoom(\'hermes\') (still used by the chat dock\'s Family|Hermes c
     chatActiveRoom: 'family',
     chatRoomDot: { family: false, hermes: true },
     hermesLoaded: false,
+    isKidSession: () => false,
+    updateCompanionIdentity: () => {},
     document: { getElementById: (id) => store.get(id) || null },
     closeChatPickers: () => {},
     renderChatMessages: () => assert.fail('family should not re-render when switching to Hermes'),

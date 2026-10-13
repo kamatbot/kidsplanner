@@ -12,11 +12,14 @@ struct WatchChatView: View {
     @State private var draft = ""
     @State private var showHub = false
     @State private var showQuickReplies = false
+    @State private var showCompanion = false
+    @ObservedObject private var companionRoute = WatchCompanionRoute.shared
     var onDisconnect: () -> Void = {}
 
     static let quickReplies = ["❤️", "OK", "On my way", "Be there soon", "Can you call me?", "Love you", "Thanks!"]
 
     private var messages: [WatchChatMessage] { store.snapshot.chat ?? [] }
+    private var companionIdentity: WatchCompanionIdentity? { WatchCompanionIdentity(store.snapshot.context?.profile) }
 
     var body: some View {
         NavigationStack {
@@ -45,6 +48,12 @@ struct WatchChatView: View {
             .navigationTitle("Family")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if companionIdentity != nil {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button { showCompanion = true } label: { Image(systemName: "sparkles").foregroundStyle(chatAccent) }
+                            .accessibilityLabel("Your AI companion").accessibilityIdentifier("watch.companion.open")
+                    }
+                }
                 ToolbarItem(placement: .bottomBar) {
                     Button { showHub = true } label: {
                         Image(systemName: store.focusSession == nil ? "list.bullet" : "timer")
@@ -54,15 +63,26 @@ struct WatchChatView: View {
                 }
             }
             .navigationDestination(isPresented: $showHub) { MyNextView(onDisconnect: onDisconnect) }
+            .navigationDestination(isPresented: $showCompanion) {
+                if let identity = companionIdentity { WatchCompanionChatView(identity: identity).id(identity) }
+            }
+            .onChange(of: companionIdentity) { _, _ in showCompanion = false; consumeCompanionRoute() }
+            .onChange(of: companionRoute.requested) { _, _ in consumeCompanionRoute() }
+            .onAppear { consumeCompanionRoute() }
             // Live only while this screen is on a raised wrist; dropping the
             // wrist or opening the hub cancels the parked request.
-            .task(id: scenePhase == .active && !showHub) {
-                guard scenePhase == .active, !showHub else { return }
+            .task(id: scenePhase == .active && !showHub && !showCompanion) {
+                guard scenePhase == .active, !showHub, !showCompanion else { return }
                 await store.listenForChat()
             }
         }
         .fontDesign(.rounded)
         .tint(chatAccent)
+    }
+
+    private func consumeCompanionRoute() {
+        guard companionRoute.requested, companionIdentity != nil else { return }
+        companionRoute.requested = false; showHub = false; showCompanion = true
     }
 
     private var replyControls: some View {

@@ -24,6 +24,8 @@ const meals = require("../lib/meals");
 const childInsights = require("../lib/child-insights");
 const hermesThreads = require("../lib/hermes-threads");
 const hermesProactive = require("../lib/hermes-proactive");
+const companion = require("../lib/kid-companion");
+const companionAI = require("../lib/kid-companion-ai");
 const hermesRoutes = require("../lib/routes/hermes");
 const threadRoutes = require("../lib/routes/hermes-threads");
 const chatRoutes = require("../lib/routes/chat");
@@ -52,6 +54,8 @@ function setup(label = "Rings") {
   const arya = family.addKid(fam.id, parent.id, { name: "Arya" }).kid;
   const ryshiUser = store.findOrCreateKidUser(fam.id, ryshi.id, "Ryshi");
   const aryaUser = store.findOrCreateKidUser(fam.id, arya.id, "Arya");
+  // This family explicitly enabled companions and dinner help.
+  for (const kid of [ryshi, arya]) companion.updateProfile(family.getFamily(fam.id), kid.id, { enabled: true }, { isParent: true });
   // These tests describe a family that opted into dinner help (off by default).
   hermesThreads.setHelpsWith(family.getFamily(fam.id), { dinner: true });
   return { parent, fam: family.getFamily(fam.id), ryshi, arya, ryshiUser, aryaUser };
@@ -108,7 +112,8 @@ function connect(fam) {
   return { authorization: `Bearer ${token}` };
 }
 
-test("every family login gets a private Hermes room; nobody else can read it", async () => {
+test("every family login gets a private Hermes room; nobody else can read it", async (t) => {
+  t.mock.method(companionAI, "replyForKid", async () => ({ text: "Let us check your homework.", mode: "chat" }));
   const { parent, fam, ryshiUser, aryaUser } = setup("Rooms");
   const routes = harness();
 
@@ -123,7 +128,7 @@ test("every family login gets a private Hermes room; nobody else can read it", a
   assert.equal(sent.body.message.roomId, "hermes");
 
   const own = await invoke(routes["GET /api/hermes/thread/messages"], { user: ryshiUser });
-  assert.deepEqual(own.body.messages.map((m) => m.text), ["Is maths due tomorrow?"]);
+  assert.deepEqual(own.body.messages.filter((m) => m.senderType === "kid").map((m) => m.text), ["Is maths due tomorrow?"]);
   const sibling = await invoke(routes["GET /api/hermes/thread/messages"], { user: aryaUser });
   assert.deepEqual(sibling.body.messages, []);
   const parentView = await invoke(routes["GET /api/hermes/thread/messages"], { user: parent });
@@ -137,39 +142,27 @@ test("every family login gets a private Hermes room; nobody else can read it", a
   assert.equal(outsider.statusCode, 404);
 });
 
-test("the Mac bridge hears every private-thread message, scoped to its owner", async () => {
-  const { parent, fam, ryshi, arya, ryshiUser } = setup("Bridge");
-  homework.addHomework(fam.id, { kidId: ryshi.id, title: "Ryshi maths", dueDate: TOMORROW });
-  homework.addHomework(fam.id, { kidId: arya.id, title: "Arya secret project", dueDate: TOMORROW });
-  const routes = harness();
-  const auth = connect(fam);
-  const roomId = `hermes:${ryshiUser.id}`;
-
+test("the Mac bridge hears only adult private threads and keeps replies owner-only", async () => {
+  const { parent, fam, ryshiUser } = setup("Bridge");
+  const routes = harness(), auth = connect(fam);
+  const roomId = `hermes:${parent.id}`;
   const rooms = await invoke(routes["GET /api/hermes/rooms"], { headers: auth });
-  assert.ok(rooms.body.rooms.some((r) => r.roomId === roomId && r.kind === "assistant" && r.title === "Hermes · Ryshi"));
-  assert.ok(rooms.body.rooms.some((r) => r.roomId === `hermes:${parent.id}`));
-
+  assert.ok(!rooms.body.rooms.some((r) => r.roomId === `hermes:${ryshiUser.id}`));
+  assert.ok(rooms.body.rooms.some((r) => r.roomId === roomId));
   const first = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], { headers: auth, params: { roomId } });
-  await invoke(routes["POST /api/hermes/thread/messages"], { user: ryshiUser, body: { text: "what's due tomorrow" } });
+  await invoke(routes["POST /api/hermes/thread/messages"], { user: parent, body: { text: "what's due tomorrow" } });
   const inbound = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], { headers: auth, params: { roomId }, query: { afterId: first.body.cursor || "__hermes_empty__" } });
   const message = inbound.body.messages.find((m) => m.text === "what's due tomorrow");
-  assert.ok(message, "no @Hermes mention needed in a private thread");
-  assert.equal(message.actor.type, "kid");
+  assert.ok(message);
+  assert.equal(message.actor.type, "parent");
   assert.match(message.actorToken, /^opact1\./);
   assert.ok(Array.isArray(message.recentHermes));
-
-  const context = await invoke(routes["GET /api/hermes/rooms/:roomId/context"], { headers: auth, params: { roomId } });
-  assert.equal(context.statusCode, 200);
-  assert.ok(!context.body.sections.preferences, "kid ceiling applies");
-  const titles = context.body.sections.homework.items.map((h) => h.title);
-  assert.ok(titles.includes("Ryshi maths"));
-  assert.ok(!titles.includes("Arya secret project"), "siblings' rows are removed");
-
   pushes.length = 0;
   const reply = await invoke(routes["POST /api/hermes/rooms/:roomId/messages"], { headers: auth, params: { roomId }, body: { text: "Maths is due tomorrow." } });
   assert.equal(reply.statusCode, 200);
-  assert.deepEqual(pushes.map((p) => [p.kind, p.userId]), [["hermes-reply", ryshiUser.id]], "only the owner is notified");
-
+  assert.deepEqual(pushes.map((p) => [p.kind, p.userId]), [["hermes-reply", parent.id]]);
+  const child = await invoke(routes["GET /api/hermes/rooms/:roomId/context"], { headers: auth, params: { roomId: `hermes:${ryshiUser.id}` } });
+  assert.equal(child.statusCode, 403);
   const foreign = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], { headers: auth, params: { roomId: `hermes:${freshUser("Stranger").id}` } });
   assert.equal(foreign.statusCode, 403);
 });
@@ -234,7 +227,8 @@ test("buttons: later snoozes, dismiss resolves, open-* stays client-side, kids c
   assert.equal((await act(parent, offer.id, "unknown")).statusCode, 400);
 });
 
-test("a parent's nudge reaches the kid once an hour, naming what's due", async () => {
+test("a parent's nudge reaches the kid once an hour with child-safe template text", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: NOW.getTime() });
   const { parent, fam, ryshi, arya, ryshiUser } = setup("NudgeKid");
   homework.addHomework(fam.id, { kidId: ryshi.id, title: "Maths worksheet", dueDate: hermesProactive.addDays(hermesProactive.dateKey(new Date(), "Asia/Bangkok"), 1) });
   const routes = harness();
@@ -250,7 +244,8 @@ test("a parent's nudge reaches the kid once an hour, naming what's due", async (
   assert.equal(first.body.message.card.state.status, "open", "the other buttons stay live");
   const kidThread = chat.listMessages(hermesThreads.scopeFor(ryshiUser.id));
   assert.equal(kidThread.length, 1);
-  assert.match(kidThread[0].text, /asked me to remind you: Maths worksheet is due tomorrow\./);
+  assert.match(kidThread[0].text, /A parent asked me to remind you to check your homework/);
+  assert.ok(!kidThread[0].text.includes("Maths worksheet"));
   assert.equal(kidThread[0].card.kind, "kid-reminder");
 
   // A second evening card within the hour doesn't re-send.

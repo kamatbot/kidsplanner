@@ -159,3 +159,28 @@ test("trip Buzz scopes recipients and destination, while ordinary family chat st
   assert.ok(apnsRequests.every((request) => request.payload.messageId === "m_ordinary_1"));
   assert.ok(webRequests.every((request) => request.payload.data.messageId === "m_ordinary_1"));
 });
+
+test("private companion reminders reach the standalone child Watch without family-chat reply routing", async () => {
+  const store = require("../lib/store"), family = require("../lib/family"), watchAuth = require("../lib/watch-auth");
+  const parent = store.createUser("companion-watch-parent@example.com", "Parent");
+  const fam = family.createFamily(parent.id, "Watch companions");
+  const kid = family.addKid(fam.id, parent.id, { name: "Child" }).kid;
+  const child = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
+  const pairing = watchAuth.createPairing({ familyId: fam.id, targetUserId: child.id, targetType: "kid", targetKidId: kid.id, targetName: kid.name, createdBy: parent.id });
+  const device = watchAuth.claimPairing(pairing.pairing.code, "Standalone child watch").device;
+  notifications.registerToken(child.id, "companion-child-watch", { kind: "watch", topic: "com.fametc.watch", watchDeviceId: device.id });
+  notifications.registerToken(parent.id, "companion-parent-watch", { kind: "watch", topic: "com.fametc.app.watch" });
+  apnsRequests.length = 0;
+  await notifications.notifyHermesThread({ userId: child.id, familyId: fam.id, text: "Your companion has a reminder.", messageId: "m_companion" });
+  assert.equal(apnsRequests.length, 1);
+  assert.equal(apnsRequests[0].deviceToken, "companion-child-watch");
+  assert.equal(apnsRequests[0].topic, "com.fametc.watch");
+  assert.equal(apnsRequests[0].payload.famType, "hermes_thread");
+  assert.equal(apnsRequests[0].payload.aps.category, undefined, "must not submit a companion answer to family chat");
+  apnsRequests.length = 0;
+  await notifications.notifyHermesThread({ userId: parent.id, familyId: fam.id, text: "Parent answer", messageId: "m_parent" });
+  assert.equal(apnsRequests.length, 0, "parent watches retain mirrored-phone behavior");
+  watchAuth.revokeDevice(fam.id, device.id);
+  await notifications.notifyHermesThread({ userId: child.id, familyId: fam.id, text: "No longer authorized", messageId: "m_revoked" });
+  assert.equal(apnsRequests.length, 0);
+});

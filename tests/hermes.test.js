@@ -341,6 +341,20 @@ test("Hermes rooms are family-scoped and agent replies preserve the Hermes sende
   ]);
   assert.deepEqual(notifyCalls[1].args.slice(1), [null, "Hermes", "Trip answer"]);
 
+  // The wire format may carry a large JSON block; only visible text is 4k.
+  const paddedTrip = await invoke(routes["POST /api/hermes/rooms/:roomId/messages"], {
+    headers, params: { roomId: `trip:${associatedTrip.id}` }, body: {
+      text: "Trip options\n```fametc_travel\n" + " ".repeat(4500) + JSON.stringify({
+        schemaVersion: 1, type: "hermes-travel-results", id: "hermes-travel-results-v1", kind: "activity",
+        query: "Museum", searchedAt: "2026-10-13T00:00:00Z",
+        results: [{ title: "Museum", url: "https://example.com/museum", sourceName: "Museum" }],
+      }) + "\n```",
+    },
+  });
+  assert.equal(paddedTrip.statusCode, 200);
+  assert.equal(paddedTrip.body.message.text, "Trip options");
+  assert.equal(paddedTrip.body.message.card.type, "hermes-travel-results");
+
   const unavailable = await invoke(routes["GET /api/hermes/rooms/:roomId/messages"], {
     headers, params: { roomId: `trip:${unrelatedTrip.id}` },
   });

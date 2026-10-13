@@ -142,9 +142,15 @@ final class FamETCWatchExtensionDelegate: NSObject, WKApplicationDelegate {
 extension FamETCWatchExtensionDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let reply = (response as? UNTextInputNotificationResponse)?.userText
+        let companion = WatchCompanionRoute.isCompanion(response.notification.request.content.userInfo)
         Task { @MainActor in
-            if let reply { await WatchStore.shared.sendChat(reply) }
+            // A private helper alert must never write an inline reply to the
+            // family room, even if an old payload carries the FAM_CHAT category.
+            if !companion, let reply { await WatchStore.shared.sendChat(reply) }
             await WatchStore.shared.refresh()
+            if companion, WatchStore.shared.snapshot.context?.profile.role == "kid" {
+                WatchCompanionRoute.shared.requested = true
+            }
             completionHandler()
         }
     }

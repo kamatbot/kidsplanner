@@ -157,6 +157,8 @@ let hermesPollAbort = null;
 let hermesSending   = false;
 let hermesLoaded    = false;
 let hermesAvailable = true; // sticky false once the thread endpoints fail (e.g. 404 pre-launch)
+// In-memory only: never carry a child's companion or private thread across accounts.
+let companionState = null;
 
 /* Parent-only Hermes meal-plan draft review. The dialog is created lazily so
    the existing shell HTML stays unchanged, then reused for every draft. */
@@ -543,11 +545,16 @@ async function handlePinChatMessage(id) {
    SESSION / FAMILY BOOTSTRAP (backend-sourced)
 ============================================================ */
 async function bootstrapSession() {
+  sessionUser = null;
+  currentFamily = null;
+  resetCompanionSession();
+  const sessionState = companionState;
   window.famMoodCheckIn?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
   const me = await window.auth.getMe();
+  if (companionState !== sessionState) return false;
   if (!me || !me.user) {
     window.location.href = '/login';
     return false;
@@ -558,8 +565,10 @@ async function bootstrapSession() {
 
   try {
     const families = await window.auth.getFamilies();
+    if (companionState !== sessionState) return false;
     currentFamily = families[0] || null;
   } catch (e) {
+    if (companionState !== sessionState) return false;
     currentFamily = null;
   }
   save('fam_family', currentFamily);
@@ -1305,6 +1314,7 @@ function showDashboard() {
   loadChatMessages();
   startChatPolling();
   loadHermesMessages();
+  if (isKidSession()) loadCompanionSettings();
   startHermesPolling();
 }
 
@@ -4030,6 +4040,255 @@ function setupChatRealtimeNudges() {
    merge/send shape above with its own state, so family chat is never
    touched by anything here. Contract: docs/HERMES-THREADS-CONTRACT.md.
 ============================================================ */
+function companionSessionKey() {
+  return sessionUser?.id && currentFamily?.id
+    ? JSON.stringify([sessionUser.id, currentFamily.id, sessionUser.role || 'parent', sessionUser.kidId || '']) : '';
+}
+
+function resetCompanionSession() {
+  stopHermesPolling();
+  hermesMessages = [];
+  hermesLastId = null;
+  hermesLoaded = false;
+  hermesAvailable = true;
+  hermesSending = false;
+  chatRoomDot.hermes = false;
+  companionState = { scope: companionSessionKey(), status: 'idle', profile: null, companions: [], pending: 0 };
+  document.getElementById('kid-companion-card')?.remove();
+  ['hermes-page-messages', 'hermes-pending-list'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.replaceChildren();
+  });
+  const pending = document.getElementById('hermes-pending');
+  if (pending) pending.hidden = true;
+  if (chatActiveRoom === 'hermes') document.getElementById('chat-messages')?.replaceChildren();
+  ['hermes-page-input', ...(chatActiveRoom === 'hermes' ? ['chat-input'] : [])].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  updateCompanionIdentity();
+  renderChatRoomTabs();
+  updateHermesBadge();
+}
+
+function ensureCompanionState() {
+  if (!companionState || companionState.scope !== companionSessionKey()) resetCompanionSession();
+  return companionState;
+}
+
+function companionStateIsCurrent(state) {
+  return state === companionState && state.scope === companionSessionKey();
+}
+
+function ownCompanionProfile() {
+  return isKidSession() && companionState?.scope === companionSessionKey() && companionState.status === 'ready'
+    ? companionState.profile : null;
+}
+
+function validateCompanionProfile(profile) {
+  if (!profile || typeof profile.name !== 'string' || !profile.name.trim() || [...profile.name].length > 24
+      || !['comet', 'robot', 'fox', 'owl', 'axolotl'].includes(profile.avatar)
+      || !['violet', 'mint', 'orange', 'blue'].includes(profile.color)
+      || !['playful', 'calm', 'curious'].includes(profile.personality)
+      || !['6-8', '9-12', '13-17'].includes(profile.ageBand)
+      || typeof profile.enabled !== 'boolean' || typeof profile.reminders !== 'boolean') {
+    throw new Error('The companion settings could not be read. Please try again.');
+  }
+  return { ...profile };
+}
+
+// Five small, local vector characters. Only approved keys select artwork/colors.
+function companionAvatar(avatar, color) {
+  const shapes = {
+    comet: '<path class="companion-tail" d="M47 64 8 71l18-25L14 24l37 6z"/><path class="companion-body" d="m57 17 11 18 20 6-11 19 1 22-23-5-20 8-4-23-14-17 22-9z"/>',
+    robot: '<path class="companion-line" d="M50 28V17"/><circle class="companion-detail" cx="50" cy="13" r="6"/><rect class="companion-detail" x="14" y="43" width="12" height="26" rx="6"/><rect class="companion-detail" x="74" y="43" width="12" height="26" rx="6"/><rect class="companion-body" x="23" y="27" width="54" height="55" rx="17"/><rect class="companion-face" x="30" y="37" width="40" height="29" rx="10"/><path class="companion-line" d="M43 74h14"/>',
+    fox: '<path class="companion-body" d="m21 49-4-34 29 18h8l29-18-4 34q6 25-29 37Q15 74 21 49Z"/><path class="companion-detail" d="m24 25 4 20 11-10zm52 0-4 20-11-10z"/><path class="companion-face" d="M24 52q13-4 26 15 13-19 26-15-4 20-26 28-22-8-26-28"/><path class="companion-nose" d="m45 64 5 5 5-5z"/>',
+    owl: '<path class="companion-body" d="m23 39-1-22 21 11h14l21-11-1 22q17 44-27 46-44-2-27-46"/><path class="companion-detail" d="M23 45q-12 16 2 31l6-8zm54 0q12 16-2 31l-6-8z"/><path class="companion-face" d="M50 43q-5-13-18-5-13 15 5 25 10 2 13-4 3 6 13 4 18-10 5-25-13-8-18 5"/><path class="companion-detail" d="m45 62 5 9 5-9z"/>',
+    axolotl: '<path class="companion-tail" d="M27 41 10 29l4 19-10 8 16 6-5 18 19-9m39-30 17-12-4 19 10 8-16 6 5 18-19-9"/><path class="companion-line" d="m12 34 14 15M9 56l15 1m-5 16 10-9m59-30L74 49m17 7-15 1m5 16L71 64"/><path class="companion-body" d="M24 50q-1-24 26-24t26 24v14Q72 84 50 84T24 64z"/>',
+  };
+  const safeAvatar = Object.hasOwn(shapes, avatar) ? avatar : 'comet';
+  const safeColor = ['violet', 'mint', 'orange', 'blue'].includes(color) ? color : 'violet';
+  return `<svg class="companion-avatar companion-color-${safeColor}" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><ellipse class="companion-shadow" cx="50" cy="90" rx="25" ry="4"/>${shapes[safeAvatar]}<g class="companion-eyes"><ellipse cx="39" cy="52" rx="3" ry="4"/><ellipse cx="61" cy="52" rx="3" ry="4"/></g><path class="companion-smile" d="M44 65q6 6 12 0"/><g class="companion-cheeks"><ellipse cx="31" cy="61" rx="5" ry="2.5"/><ellipse cx="69" cy="61" rx="5" ry="2.5"/></g></svg>`;
+}
+
+function updateCompanionIdentity() {
+  const kid = isKidSession();
+  const profile = ownCompanionProfile();
+  const name = kid ? (profile?.name || 'Your companion') : 'Hermes';
+  const header = document.querySelector('#tab-hermes .hermes-page-header');
+  if (header) {
+    header.querySelector('.page-title').textContent = name;
+    header.querySelector('.hermes-page-meta').textContent = kid
+      ? 'AI helper · your private chat' : 'Your private assistant · only you see this thread';
+  }
+  const roomTab = document.getElementById('chat-room-tab-hermes');
+  if (roomTab?.firstChild) roomTab.firstChild.textContent = kid ? (profile?.name || 'Companion') : 'Hermes';
+  const disabled = kid && !profile?.enabled;
+  ['hermes-page-input', ...(chatActiveRoom === 'hermes' ? ['chat-input'] : [])].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.disabled = disabled;
+    input.placeholder = disabled ? (profile ? 'A parent can turn chat on' : (companionState?.status === 'error' ? 'Companion settings unavailable' : 'Loading companion settings…')) : `Message ${name}…`;
+    input.setAttribute('aria-label', `Message ${name}`);
+    const send = input.form?.querySelector('button[type="submit"]');
+    if (send) send.disabled = disabled || hermesSending;
+  });
+  if (chatActiveRoom === 'family') {
+    const input = document.getElementById('chat-input');
+    if (input) {
+      input.disabled = false;
+      input.placeholder = 'Message the family…';
+      input.setAttribute('aria-label', 'Message the family');
+      const send = input.form?.querySelector('button[type="submit"]');
+      if (send) send.disabled = false;
+    }
+  }
+}
+
+function companionEditor(profile, key, parent) {
+  const labels = { comet: 'Comet', robot: 'Robot', fox: 'Fox', owl: 'Owl', axolotl: 'Axolotl' };
+  return `<form class="companion-form" data-companion-key="${esc(key)}">
+    <fieldset class="companion-fields"><legend class="sr-only">${parent ? 'Companion settings' : 'Make it yours'}</legend>
+      ${parent ? `<div class="companion-policy">
+        <label class="companion-toggle"><input type="checkbox" name="enabled"${profile.enabled ? ' checked' : ''}><span>Enable AI companion<small>Allow this child to chat and receive selected reminders.</small></span></label>
+        <label class="companion-field">Age band<select name="ageBand">${['6-8', '9-12', '13-17'].map(age => `<option value="${age}"${age === profile.ageBand ? ' selected' : ''}>${age.replace('-', '–')} years</option>`).join('')}</select><small>Choose the child’s current age range before enabling.</small></label>
+      </div>` : ''}
+      <label class="companion-field">Companion name<input name="name" type="text" value="${esc(profile.name)}" required maxlength="48" autocomplete="off" aria-describedby="${esc(key)}-name-hint"><small id="${esc(key)}-name-hint">Up to 24 letters, spaces, hyphens or apostrophes.</small></label>
+      <fieldset class="companion-choice-field"><legend>Choose a character</legend><div class="companion-avatar-options">${Object.entries(labels).map(([avatar, label]) => `<label class="companion-choice"><input type="radio" name="avatar" value="${avatar}"${profile.avatar === avatar ? ' checked' : ''}><span>${companionAvatar(avatar, profile.color)}<span>${label}</span></span></label>`).join('')}</div></fieldset>
+      <fieldset class="companion-choice-field"><legend>Favorite color</legend><div class="companion-color-options">${['violet', 'mint', 'orange', 'blue'].map(color => `<label class="companion-choice"><input type="radio" name="color" value="${color}"${profile.color === color ? ' checked' : ''}><span><i class="companion-swatch companion-color-${color}" aria-hidden="true"></i>${color[0].toUpperCase() + color.slice(1)}</span></label>`).join('')}</div></fieldset>
+      <label class="companion-field">Personality<select name="personality">${[['playful', 'Playful · bright & encouraging'], ['calm', 'Calm · one step at a time'], ['curious', 'Curious · questions & discoveries']].map(([value, label]) => `<option value="${value}"${profile.personality === value ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+      <label class="companion-toggle"><input type="checkbox" name="reminders"${profile.reminders ? ' checked' : ''}><span>Helpful reminders<small>Homework and goals, when chat is enabled. Device notification settings still apply.</small></span></label>
+      <div class="companion-save-row"><button type="submit" class="btn-primary">Save ${parent ? 'settings' : 'my companion'}</button><span class="companion-save-status" role="status" aria-live="polite"></span></div>
+    </fieldset>
+  </form>`;
+}
+
+function renderCompanionSettings() {
+  const panel = document.getElementById('tab-hermes');
+  if (!panel || !companionState?.scope) return;
+  let card = document.getElementById('kid-companion-card');
+  if (!card) {
+    card = document.createElement('section');
+    card.id = 'kid-companion-card';
+    card.className = 'companion-card';
+    card.setAttribute('aria-label', isKidSession() ? 'Your AI companion' : 'Kids’ AI companion controls');
+    panel.querySelector('.hermes-page-header').after(card);
+  }
+  card.setAttribute('aria-busy', String(companionState.status === 'loading'));
+  if (companionState.status === 'loading' || companionState.status === 'idle') {
+    card.innerHTML = '<p class="companion-notice" role="status">Loading companion settings…</p>';
+    return;
+  }
+  if (companionState.status === 'error') {
+    card.innerHTML = '<div class="companion-notice"><p role="alert">Could not load companion settings. Please try again.</p><button type="button" class="btn-secondary" data-companion-retry>Try again</button></div>';
+    card.querySelector('[data-companion-retry]').addEventListener('click', () => loadCompanionSettings(true));
+    return;
+  }
+  if (isKidSession()) {
+    const profile = companionState.profile;
+    card.innerHTML = `<div class="companion-hero"><div class="companion-portrait" data-companion-preview>${companionAvatar(profile.avatar, profile.color)}</div><div class="companion-hello"><span class="companion-eyebrow">YOUR AI HELPER</span><h2 data-companion-name>${esc(profile.name)}</h2><p>Big questions. Small steps.<br>Let’s figure things out together.</p><span class="companion-state" data-companion-enabled>${profile.enabled ? 'Ready to chat' : 'Chat is off · ask a parent to enable it'}</span></div></div>
+      <details class="companion-customizer"><summary>Make it yours<span aria-hidden="true">＋</span></summary>${companionEditor(profile, 'companion-self', false)}</details>
+      <div class="companion-guidance"><p><strong>Hints, then your own thinking.</strong> For homework, your helper guides you through the steps and asks what you’ve tried.</p><p>This is AI, and it can make mistakes. Keep passwords and personal details out of chat. If something feels wrong, talk to a trusted grown-up.</p></div>`;
+  } else {
+    card.innerHTML = `<div class="companion-parent-intro"><span class="companion-eyebrow">PARENT CONTROLS</span><h2>Kids’ AI companions</h2><p>Choose an age band and explicitly enable a companion for each child. They can then choose its name, look, personality and reminders.</p><p>Messages and relevant homework or goals context are processed by our AI provider, Anthropic. Each child’s thread is private to that child; these controls do not show their conversations.</p><details class="companion-privacy"><summary>Homework help and limitations</summary><p>Requests to copy homework get a gentle reminder in the child’s chat, then hints. No cheating alerts are sent to parents. AI can make mistakes, and filters may miss things.</p></details></div>
+      <div class="companion-parent-list">${companionState.companions.map((entry, index) => `<details class="companion-kid" data-companion-kid="${esc(entry.kidId)}"><summary><span class="companion-mini" data-companion-preview>${companionAvatar(entry.profile.avatar, entry.profile.color)}</span><span class="companion-kid-label"><strong>${esc(entry.kidName)}</strong><span data-companion-name>${esc(entry.profile.name)}</span></span><span class="companion-state" data-companion-enabled>${entry.profile.enabled ? 'Enabled' : 'Off'}</span><span class="companion-expand" aria-hidden="true">＋</span></summary>${companionEditor(entry.profile, `companion-kid-${index}`, true)}</details>`).join('') || '<p class="companion-notice">Add a child in Settings to set up their companion.</p>'}</div>`;
+  }
+  card.querySelectorAll('.companion-form').forEach(form => {
+    form.addEventListener('submit', handleSaveCompanion);
+    form.addEventListener('input', () => {
+      form.elements.namedItem('name').setCustomValidity('');
+      const container = form.closest('.companion-kid') || card;
+      const name = form.elements.namedItem('name').value.trim();
+      container.querySelector('[data-companion-name]').textContent = name || 'Your companion';
+      container.querySelector('[data-companion-preview]').innerHTML = companionAvatar(form.elements.namedItem('avatar').value, form.elements.namedItem('color').value);
+      form.querySelectorAll('.companion-avatar-options .companion-avatar').forEach(avatar => {
+        avatar.setAttribute('class', `companion-avatar companion-color-${form.elements.namedItem('color').value}`);
+      });
+      form.querySelector('.companion-save-status').textContent = 'Unsaved changes';
+    });
+  });
+}
+
+async function loadCompanionSettings(refresh = false) {
+  const state = ensureCompanionState();
+  if (!state.scope || state.status === 'loading' || state.pending || (!refresh && state.status === 'ready')) return;
+  state.status = 'loading';
+  updateCompanionIdentity();
+  renderCompanionSettings();
+  try {
+    const data = await hermesApi(isKidSession() ? '/api/hermes/companion' : '/api/hermes/companions');
+    if (!companionStateIsCurrent(state)) return;
+    if (isKidSession()) state.profile = validateCompanionProfile(data?.profile);
+    else {
+      if (!Array.isArray(data?.companions)) throw new Error('Missing companion settings');
+      state.companions = data.companions.filter(entry => currentFamily.kids?.some(kid => kid.id === entry.kidId))
+        .map(entry => ({ kidId: entry.kidId, kidName: entry.kidName, profile: validateCompanionProfile(entry.profile) }));
+    }
+    state.status = 'ready';
+  } catch (err) {
+    if (!companionStateIsCurrent(state)) return;
+    state.status = 'error';
+  }
+  renderCompanionSettings();
+  updateCompanionIdentity();
+  renderHermesPage();
+  if (chatActiveRoom === 'hermes') renderHermesMessages();
+}
+
+async function handleSaveCompanion(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const state = companionState;
+  if (!state || !companionStateIsCurrent(state) || form.dataset.saving === 'true') return;
+  const nameInput = form.elements.namedItem('name');
+  const name = nameInput.value.normalize('NFC').trim();
+  if ([...name].length > 24 || !/\p{L}/u.test(name) || !/^[\p{L}\p{M} '\u2019-]+$/u.test(name)) {
+    nameInput.setCustomValidity('Use 1–24 letters, spaces, hyphens or apostrophes.');
+    nameInput.reportValidity();
+    return;
+  }
+  const kidId = form.closest('[data-companion-kid]')?.dataset.companionKid;
+  const entry = kidId && state.companions.find(item => item.kidId === kidId);
+  if ((!isKidSession() && !entry) || (isKidSession() && kidId)) return;
+  const patch = { name, avatar: form.elements.namedItem('avatar').value, color: form.elements.namedItem('color').value,
+    personality: form.elements.namedItem('personality').value, reminders: form.elements.namedItem('reminders').checked };
+  if (!isKidSession()) {
+    patch.enabled = form.elements.namedItem('enabled').checked;
+    patch.ageBand = form.elements.namedItem('ageBand').value;
+  }
+  const status = form.querySelector('.companion-save-status');
+  const fields = form.querySelector('.companion-fields');
+  const focusedControl = form.contains?.(document.activeElement) ? document.activeElement : null;
+  form.dataset.saving = 'true';
+  fields.disabled = true;
+  state.pending++;
+  status.textContent = 'Saving…';
+  try {
+    const data = await hermesApi(kidId ? `/api/hermes/companions/${encodeURIComponent(kidId)}` : '/api/hermes/companion', { method: 'PUT', body: JSON.stringify(patch) });
+    if (!companionStateIsCurrent(state)) return;
+    const profile = validateCompanionProfile(data?.profile);
+    if (entry) entry.profile = profile;
+    else state.profile = profile;
+    nameInput.value = profile.name;
+    const container = form.closest('.companion-kid') || document.getElementById('kid-companion-card');
+    container.querySelector('[data-companion-name]').textContent = profile.name;
+    container.querySelector('[data-companion-enabled]').textContent = entry ? (profile.enabled ? 'Enabled' : 'Off') : (profile.enabled ? 'Ready to chat' : 'Chat is off · ask a parent to enable it');
+    status.textContent = 'Saved';
+    updateCompanionIdentity();
+    renderHermesPage();
+    if (chatActiveRoom === 'hermes') renderHermesMessages();
+  } catch (err) {
+    if (companionStateIsCurrent(state)) status.textContent = `Could not save. ${err.message || 'Please try again.'}`;
+  } finally {
+    state.pending--;
+    if (companionStateIsCurrent(state)) {
+      fields.disabled = false;
+      form.dataset.saving = 'false';
+      if (focusedControl?.isConnected && document.activeElement === document.body) focusedControl.focus({ preventScroll: true });
+    }
+  }
+}
+
 async function hermesApi(path, opts) {
   const res = await fetch(path, Object.assign({
     method: 'GET',
@@ -4052,15 +4311,19 @@ function renderHermesUnavailableNotice() {
 }
 
 async function loadHermesMessages() {
+  const state = ensureCompanionState();
+  if (!state.scope) return;
   if (!hermesAvailable) { if (chatActiveRoom === 'hermes') renderHermesUnavailableNotice(); renderHermesPage(); return; }
   try {
     const data = await hermesApi('/api/hermes/thread/messages?limit=50');
+    if (!companionStateIsCurrent(state)) return;
     const first = !hermesLoaded;
     hermesLoaded = true;
     // History on first load isn't news: no unread dot for it.
     mergeHermesMessages((data && data.messages) || [], { quiet: first });
     if (chatActiveRoom === 'hermes') renderHermesMessages();
   } catch (err) {
+    if (!companionStateIsCurrent(state)) return;
     // 404 = this account has no Hermes thread; anything else is transient and
     // the next navigation or poll retries.
     if (err.status === 404) hermesAvailable = false;
@@ -4098,6 +4361,7 @@ async function hermesLongPollFetch(afterId = hermesLastId) {
 }
 
 async function hermesLongPollLoop(lifetime) {
+  const state = ensureCompanionState();
   let cursor = hermesLastId; // sends may update the display, never the receive cursor
   let failures = 0;
   while (hermesPollTimer === lifetime && !lifetime.signal.aborted) {
@@ -4106,7 +4370,7 @@ async function hermesLongPollLoop(lifetime) {
     const previousId = cursor;
     try {
       const msgs = await hermesLongPollFetch(cursor);
-      if (hermesPollTimer !== lifetime || lifetime.signal.aborted) break;
+      if (hermesPollTimer !== lifetime || lifetime.signal.aborted || !companionStateIsCurrent(state)) break;
       mergeHermesMessages(msgs);
       failures = 0;
       cursor = msgs.length ? msgs[msgs.length - 1].id : cursor;
@@ -4114,7 +4378,7 @@ async function hermesLongPollLoop(lifetime) {
         await chatReceivePause(lifetime.signal, 1000 - (Date.now() - started));
       }
     } catch (err) {
-      if (hermesPollTimer !== lifetime || lifetime.signal.aborted) break;
+      if (hermesPollTimer !== lifetime || lifetime.signal.aborted || !companionStateIsCurrent(state)) break;
       if (err.name === 'AbortError') continue;
       if (err.status === 404) {
         hermesAvailable = false;
@@ -4128,6 +4392,7 @@ async function hermesLongPollLoop(lifetime) {
 }
 
 function startHermesPolling() {
+  if (!ensureCompanionState().scope) return;
   if (hermesPollTimer || !hermesAvailable) return; // navigation must not multiply active listeners
   hermesPollTimer = new AbortController();
   hermesLongPollLoop(hermesPollTimer);
@@ -4144,24 +4409,32 @@ function stopHermesPolling() {
 // way, just told which input element to read/clear/scroll for.
 async function handleSendHermesMessage(e, inputEl) {
   e.preventDefault();
+  const state = ensureCompanionState();
+  if (!state.scope || (isKidSession() && !ownCompanionProfile()?.enabled)) return;
   const input = inputEl || document.getElementById('chat-input');
   const text = input ? input.value.trim() : '';
   if (!text || hermesSending) return;
   hermesSending = true;
+  updateCompanionIdentity();
   const sentDraft = input.value;
-  const sendingUser = sessionUser?.id;
   try {
     const data = await hermesApi('/api/hermes/thread/messages', { method: 'POST', body: JSON.stringify({ text }) });
-    if (sessionUser?.id !== sendingUser) return;
+    if (!companionStateIsCurrent(state)) return;
     if (input && input.value === sentDraft) input.value = '';
-    if (data && data.message) mergeHermesMessages([data.message]);
+    mergeHermesMessages([...(data?.message ? [data.message] : []), ...(Array.isArray(data?.messages) ? data.messages : [])]);
     // Your own message: always jump to the bottom of whichever pane sent it.
     const scrollEl = document.getElementById(input && input.id === 'hermes-page-input' ? 'hermes-page-messages' : 'chat-messages');
     if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
   } catch (err) {
-    toast(`❌ ${err.message}`);
+    if (companionStateIsCurrent(state)) {
+      toast(`❌ ${err.message}`);
+      if (isKidSession() && err.status === 403) loadCompanionSettings(true);
+    }
   } finally {
-    hermesSending = false;
+    if (companionStateIsCurrent(state)) {
+      hermesSending = false;
+      updateCompanionIdentity();
+    }
   }
 }
 
@@ -4179,6 +4452,8 @@ function handleHermesNudgeOpen(target) {
 // flight, then replace that message by id and append any follow-ups not
 // already shown (contract §3).
 async function handleHermesNudgeAction(messageId, actionId, btn) {
+  const state = ensureCompanionState();
+  if (!state.scope) return;
   if (btn) btn.disabled = true;
   try {
     const data = await hermesApi(`/api/hermes/thread/messages/${encodeURIComponent(messageId)}/actions`, {
@@ -4186,6 +4461,7 @@ async function handleHermesNudgeAction(messageId, actionId, btn) {
       body: JSON.stringify({ action: actionId }),
     });
     const idx = hermesMessages.findIndex((m) => m.id === messageId);
+    if (!companionStateIsCurrent(state)) return;
     if (data && data.message) {
       if (idx !== -1) hermesMessages[idx] = data.message;
       else hermesMessages.push(data.message);
@@ -4198,6 +4474,7 @@ async function handleHermesNudgeAction(messageId, actionId, btn) {
     updateHermesBadge();
     renderHermesPage();
   } catch (err) {
+    if (!companionStateIsCurrent(state)) return;
     if (btn) btn.disabled = false;
     toast(`❌ ${err.message}`);
   }
@@ -4241,11 +4518,12 @@ function renderHermesMessage(m) {
     return `<div data-chat-id="${esc(m.id)}" class="chat-msg chat-msg-deleted"><span class="chat-msg-deleted-text">Message deleted</span></div>`;
   }
   const own = isOwnMessage(m);
+  const profile = m.senderType === 'agent' ? ownCompanionProfile() : null;
   const color = chatSenderColor(m);
   const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
   return `<div data-chat-id="${esc(m.id)}" class="chat-msg ${own ? 'chat-msg-own' : 'chat-msg-other'}">
-    ${!own ? `<span class="chat-person-avatar" style="--avatar-color:${color}" aria-hidden="true">✦</span>` : ''}
-    ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(chatSenderName(m))}${m.senderType === 'agent' ? ' <span class="fr-helper-tag">HELPER</span>' : ''}</div>` : ''}
+    ${!own ? `<span class="chat-person-avatar${profile ? ' companion-chat-avatar' : ''}" style="--avatar-color:${color}" aria-hidden="true">${profile ? companionAvatar(profile.avatar, profile.color) : '✦'}</span>` : ''}
+    ${!own ? `<div class="chat-msg-sender" style="color:${color}">${esc(profile ? profile.name : chatSenderName(m))}${m.senderType === 'agent' ? ' <span class="fr-helper-tag">AI HELPER</span>' : ''}</div>` : ''}
     <div class="chat-msg-bubble" style="--sender-color:${color}">
       ${m.text ? `<div class="chat-msg-text">${linkifyChatText(m.text)}</div>` : ''}
       ${renderHermesNudgeCard(m)}
@@ -4261,7 +4539,7 @@ function renderHermesMessages() {
   if (!el) return;
   const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   if (!hermesMessages.length) {
-    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? 'Ask Hermes anything about your family’s day.' : 'Loading…'}</p>`;
+    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? (isKidSession() ? 'Ask a question, explore an idea or work through a homework hint together.' : 'Ask Hermes anything about your family’s day.') : 'Loading…'}</p>`;
     return;
   }
   el.innerHTML = hermesMessages.map((m) => renderHermesMessage(m)).join('');
@@ -4293,11 +4571,13 @@ function switchChatRoom(room) {
   const input = document.getElementById('chat-input');
   if (input) input.placeholder = hide ? 'Message Hermes…' : 'Message the family…';
   if (hide) {
+    if (isKidSession()) loadCompanionSettings(true);
     renderHermesMessages();
     if (!hermesLoaded) loadHermesMessages();
   } else {
     renderChatMessages();
   }
+  updateCompanionIdentity();
   scrollChatToBottom();
 }
 
@@ -4369,7 +4649,7 @@ function renderHermesPage() {
   if (!el) return;
   if (!hermesAvailable) { el.innerHTML = '<p class="text-muted chat-empty">Hermes isn’t available right now.</p>'; return; }
   if (!hermesMessages.length) {
-    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? 'Hermes checks in here when a kid’s day ends, homework is due or dinner isn’t planned. You can also ask it anything.' : 'Loading…'}</p>`;
+    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? (isKidSession() ? 'Ask a question, explore an idea or work through a homework hint together.' : 'Hermes checks in here when a kid’s day ends, homework is due or dinner isn’t planned. You can also ask it anything.') : 'Loading…'}</p>`;
     return;
   }
   // Auto-scroll to bottom when the tab is freshly opened (scrollHeight/
@@ -6911,7 +7191,7 @@ function switchNavTab(tab) {
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
   if (tab === 'activities') { loadActivities().then(() => renderActivitiesHub()); }
   if (tab === 'notes') { loadNotes(); }
-  if (tab === 'hermes') { renderHermesPage(); }
+  if (tab === 'hermes') { loadCompanionSettings(true); renderHermesPage(); }
 
   // Chat is docked/collapsed (not hidden) on every tab except Notes/Settings —
   // keep it live and polling on all of those, stop only where it's hidden.
@@ -6966,6 +7246,9 @@ function toast(msg) {
    LOGOUT
 ============================================================ */
 async function handleLogout() {
+  sessionUser = null;
+  currentFamily = null;
+  resetCompanionSession();
   window.famMoodCheckIn?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();

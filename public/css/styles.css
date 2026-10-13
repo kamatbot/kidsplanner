@@ -499,6 +499,108 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 }
 .hermes-page-send-btn:hover { background: var(--fr-you-ink); }
 .hermes-page-send-btn:focus-visible { outline: 2px solid var(--fr-you); outline-offset: 2px; }
+.hermes-page-send-btn:disabled { opacity: .45; cursor: default; }
+
+/* Child companions belong to the private Hermes room. The character palette
+   is cosmetic; Family Rings metric colors and the surrounding shell stay intact. */
+.companion-card { border-radius: 20px; background: var(--fr-card); box-shadow: var(--fr-shadow); color: var(--fr-ink); }
+.companion-card h2 { margin: 3px 0 8px; font-size: 22px; letter-spacing: -.04em; line-height: 1.15; overflow-wrap: anywhere; }
+.companion-card p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--fr-ink-2); }
+.companion-card p + p { margin-top: 8px; }
+.companion-eyebrow { font-size: 10px; font-weight: 750; letter-spacing: .12em; color: var(--fr-you-ink); }
+.companion-hero { display: grid; grid-template-columns: 136px minmax(0, 1fr); align-items: center; gap: 22px; padding: 24px 28px; }
+.companion-hello h2 { font-size: 30px; }
+.companion-portrait { position: relative; aspect-ratio: 1; display: grid; place-items: center; border-radius: 40%; background: var(--fr-you-soft); }
+.companion-portrait::before, .companion-portrait::after { content: '✦'; position: absolute; color: var(--fr-you-ink); font-size: 16px; }
+.companion-portrait::before { top: 4px; right: 5px; transform: rotate(12deg); }
+.companion-portrait::after { bottom: 5px; left: 4px; font-size: 10px; }
+.companion-portrait .companion-avatar { width: 120px; height: 120px; transform: rotate(-5deg); }
+.companion-avatar { display: block; width: 100%; height: 100%; overflow: visible; }
+.companion-color-violet { --companion-fill: #bea1ff; --companion-detail: #8560cb; --companion-tail: #dfceff; }
+.companion-color-mint { --companion-fill: #72d6be; --companion-detail: #248b79; --companion-tail: #b3f0dd; }
+.companion-color-orange { --companion-fill: #ffbd7b; --companion-detail: #c47635; --companion-tail: #ffddae; }
+.companion-color-blue { --companion-fill: #8fc7f4; --companion-detail: #497faa; --companion-tail: #c4e5ff; }
+.companion-body { fill: var(--companion-fill); stroke: var(--companion-detail); stroke-width: 2; stroke-linejoin: round; }
+.companion-detail { fill: var(--companion-detail); }
+.companion-tail { fill: var(--companion-tail); stroke: var(--companion-detail); stroke-width: 1.5; stroke-linejoin: round; }
+.companion-face { fill: #fff6e7; }
+.companion-eyes, .companion-nose { fill: #343044; }
+.companion-line, .companion-smile { fill: none; stroke: #343044; stroke-width: 2.4; stroke-linecap: round; }
+.companion-line { stroke: var(--companion-detail); }
+.companion-cheeks { fill: #ee7991; opacity: .6; }
+.companion-shadow { fill: var(--companion-detail); opacity: .15; }
+.companion-state { display: inline-block; margin-top: 10px; color: var(--fr-you-ink); background: var(--fr-you-soft); border-radius: 8px; padding: 5px 8px; font-size: 11px; line-height: 1.5; font-weight: 650; }
+.companion-customizer { border-top: 1px solid var(--fr-rule); }
+.companion-customizer > summary { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 14px 24px; cursor: pointer; list-style: none; color: var(--fr-you-ink); font-size: 13px; font-weight: 650; }
+.companion-customizer > summary::-webkit-details-marker, .companion-kid > summary::-webkit-details-marker { display: none; }
+.companion-customizer[open] > summary > span, .companion-kid[open] > summary > .companion-expand { transform: rotate(45deg); }
+.companion-guidance { border-top: 1px solid var(--fr-rule); padding: 16px 24px; }
+.companion-guidance p { font-size: 12px; }
+.companion-guidance strong { color: var(--fr-ink); font-weight: 650; }
+.companion-fields { display: flex; flex-direction: column; min-width: 0; gap: 20px; border: 0; padding: 8px 24px 24px; margin: 0; }
+.companion-fields > legend { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.companion-field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 650; }
+.companion-field input, .companion-field select { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; background: var(--fr-card-2); color: var(--fr-ink); border: 1px solid var(--fr-rule); border-radius: 10px; font-family: inherit; font-size: 14px; font-weight: 400; line-height: 1.4; }
+.companion-field small, .companion-toggle small { display: block; color: var(--fr-ink-2); font-size: 11px; line-height: 1.6; font-weight: 400; }
+.companion-choice-field { border: 0; margin: 0; padding: 0; min-width: 0; }
+.companion-choice-field legend { padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 650; }
+.companion-avatar-options { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+.companion-color-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.companion-choice { position: relative; min-width: 0; cursor: pointer; }
+.companion-choice > input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.companion-choice > span { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 44px; border: 1px solid var(--fr-rule); border-radius: 12px; padding: 7px 2px; background: var(--fr-card); font-size: 11px; color: var(--fr-ink-2); text-align: center; overflow-wrap: anywhere; }
+.companion-choice .companion-avatar { width: 54px; height: 54px; max-width: 100%; }
+.companion-choice > input:checked + span { border-color: var(--fr-you); box-shadow: inset 0 0 0 1px var(--fr-you); background: var(--fr-you-soft); color: var(--fr-you-ink); font-weight: 650; }
+.companion-choice > input:focus-visible + span, .companion-card :is(summary, button, select, input):focus-visible { outline: 2px solid var(--fr-you-ink); outline-offset: 3px; }
+.companion-swatch { width: 19px; height: 19px; border-radius: 50%; background: var(--companion-fill); border: 1px solid var(--companion-detail); }
+.companion-color-options .companion-choice > span { flex-direction: row; gap: 7px; }
+.companion-toggle { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; cursor: pointer; font-size: 13px; font-weight: 650; }
+.companion-toggle input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--fr-you); }
+.companion-save-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.companion-save-row button { min-height: 44px; padding: 11px 16px; font-size: 13px; }
+.companion-save-status { flex: 1; min-width: 90px; font-size: 12px; line-height: 1.5; color: var(--fr-ink-2); overflow-wrap: anywhere; }
+.companion-fields:disabled { opacity: .65; }
+.companion-fields:disabled label { cursor: default; }
+.companion-parent-intro { padding: 24px 24px 18px; }
+.companion-parent-intro h2 { margin-top: 7px; }
+.companion-privacy { margin-top: 14px; font-size: 12px; }
+.companion-privacy > summary { cursor: pointer; color: var(--fr-you-ink); font-weight: 600; min-height: 32px; }
+.companion-privacy p { font-size: 12px; margin-top: 6px; }
+.companion-kid { border-top: 1px solid var(--fr-rule); }
+.companion-kid > summary { display: flex; align-items: center; gap: 12px; min-height: 78px; padding: 12px 24px; cursor: pointer; list-style: none; }
+.companion-mini { flex: none; width: 46px; height: 46px; }
+.companion-kid-label { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.companion-kid-label > span { margin-top: 3px; color: var(--fr-ink-2); font-size: 12px; }
+.companion-kid .companion-state { margin: 0; }
+.companion-expand { flex: none; font-size: 16px; color: var(--fr-ink-2); }
+.companion-policy { display: grid; gap: 16px; background: var(--fr-card-2); border-radius: 12px; padding: 16px; }
+.companion-notice { padding: 24px; }
+.companion-notice button { margin-top: 12px; min-height: 44px; }
+.companion-chat-avatar { padding: 0; background: transparent !important; }
+.companion-chat-avatar .companion-avatar { width: 32px; height: 32px; }
+#chat-room-tab-hermes { max-width: 180px; overflow-wrap: anywhere; }
+
+@media (max-width: 480px) {
+  .companion-hero { grid-template-columns: 92px minmax(0, 1fr); gap: 15px; padding: 20px 18px; }
+  .companion-portrait .companion-avatar { width: 86px; height: 86px; }
+  .companion-hello h2 { font-size: 26px; }
+  .companion-hello p { font-size: 12px; }
+  .companion-fields { padding: 6px 16px 20px; }
+  .companion-field input, .companion-field select { font-size: 16px; }
+  .companion-guidance, .companion-customizer > summary, .companion-parent-intro { padding-left: 18px; padding-right: 18px; }
+  .companion-kid > summary { padding-left: 16px; padding-right: 16px; gap: 8px; }
+  .companion-avatar-options, .companion-color-options { gap: 5px; }
+  .companion-choice > span { font-size: 10px; }
+  .companion-color-options .companion-choice > span { flex-direction: column; gap: 4px; }
+  .companion-swatch { width: 16px; height: 16px; }
+}
+@media (max-width: 360px) {
+  .companion-hero { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .companion-portrait { width: 92px; }
+  .companion-avatar-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .companion-color-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .companion-color-options .companion-choice > span { flex-direction: row; }
+}
 
 @media (max-width: 700px) {
   /* Leave room under the composer for the floating family-chat button. */

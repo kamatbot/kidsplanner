@@ -231,3 +231,17 @@ test("watch disconnect revokes only its authenticated device and rejects session
   assert.equal(watchAuth.resolveToken(first.token),null);
   assert.ok(watchAuth.resolveToken(second.token));
 });
+
+test("standalone watches get only the private companion surface, never parent policy or gateway authority", () => {
+  for (const [method, pathName] of [
+    ["GET", "/api/hermes/companion"], ["PUT", "/api/hermes/companion"],
+    ["GET", "/api/hermes/thread/messages"], ["POST", "/api/hermes/thread/messages"],
+    ["POST", "/api/hermes/thread/messages/m_1/actions"],
+  ]) assert.equal(watchAuth.allowedRequest(method, pathName), true, `${method} ${pathName}`);
+  for (const [method, pathName] of [
+    ["GET", "/api/hermes/companions"], ["PUT", "/api/hermes/companions/k_1"],
+    ["GET", "/api/hermes/rooms"], ["GET", "/api/hermes/settings"],
+    ["POST", "/api/hermes/mcp"], ["POST", "/api/hermes/proactive/nudges"],
+    ["GET", "/api/hermes/rooms/hermes:u_1/messages"],
+  ]) assert.equal(watchAuth.allowedRequest(method, pathName), false, `${method} ${pathName}`);
+});
