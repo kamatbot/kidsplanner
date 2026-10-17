@@ -12,6 +12,9 @@ struct WeekCalendarView: View {
     var showKidLabels = false
     var compactLandscape = false
     var onAdd: ((Date, String?) -> Void)?
+    /// Today's week strip: show the week containing this yyyy-MM-dd day once,
+    /// then clear it.
+    var focusDayKey: Binding<String?> = .constant(nil)
 
     @State private var weekStart = WeekCalendarMath.monday(containing: Date())
     @State private var eventDetailRef: WeekEventRef?
@@ -54,6 +57,14 @@ struct WeekCalendarView: View {
         .sheet(item: $eventDetailRef) { ref in
             EventDetailSheet(eventId: ref.eventId, occurrenceDate: ref.occurrenceDate)
         }
+        .onAppear { focusPendingDay() }
+        .onChange(of: focusDayKey.wrappedValue) { _, _ in focusPendingDay() }
+    }
+
+    private func focusPendingDay() {
+        guard let key = focusDayKey.wrappedValue, let date = DateFmt.ymd.date(from: key) else { return }
+        focusDayKey.wrappedValue = nil
+        weekStart = WeekCalendarMath.monday(containing: date)
     }
 
     private var header: some View {

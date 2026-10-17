@@ -15,6 +15,9 @@ struct CalendarScreen: View {
     /// iPhone-portrait Month's selected day; Today's week strip sets it through
     /// `AppStore.pendingCalendarDayKey`.
     @State private var selectedDayKey = Agenda.todayKey()
+    /// The same week-strip day for the iPad and landscape grids, which move to
+    /// it once and clear it.
+    @State private var gridFocusDayKey: String?
 
     private var displayData: CalendarDisplayData {
         CalendarDisplayData.resolve(
@@ -97,7 +100,8 @@ struct CalendarScreen: View {
                             homework: displayData.homework,
                             showKidLabels: isTimetable,
                             compactLandscape: isLandscape,
-                            onAdd: isTimetable ? nil : { presentAddEvent(date: Date()) }
+                            onAdd: isTimetable ? nil : { presentAddEvent(date: Date()) },
+                            focusDayKey: $gridFocusDayKey
                         )
                     } else if useGrid && displayedMode == .week {
                         WeekCalendarView(
@@ -106,7 +110,8 @@ struct CalendarScreen: View {
                             homework: displayData.homework,
                             showKidLabels: isTimetable,
                             compactLandscape: isLandscape,
-                            onAdd: isTimetable ? nil : presentAddEvent(date:time:)
+                            onAdd: isTimetable ? nil : presentAddEvent(date:time:),
+                            focusDayKey: $gridFocusDayKey
                         )
                     } else if displayedMode == .month {
                         CompactMonthCalendar(
@@ -149,12 +154,15 @@ struct CalendarScreen: View {
         .onChange(of: store.pendingCalendarDayKey) { _, _ in consumePendingDay() }
     }
 
-    /// Today's week strip handed over a day: show it in Month.
+    /// Today's week strip handed over a day. iPhone portrait shows it in the
+    /// compact Month; a regular-width Calendar keeps the chosen Week or Month
+    /// and its grid moves to the day.
     private func consumePendingDay() {
         guard let key = store.pendingCalendarDayKey else { return }
         store.pendingCalendarDayKey = nil
         selectedDayKey = key
-        mode = .month
+        gridFocusDayKey = key
+        if hSize != .regular { mode = .month }
     }
 
     private var compactAccessory: AnyView {

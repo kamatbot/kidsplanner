@@ -14,6 +14,9 @@ struct MonthCalendarView: View {
     var showKidLabels = false
     var compactLandscape = false
     var onAdd: (() -> Void)?
+    /// Today's week strip: show this yyyy-MM-dd day's month and open its
+    /// agenda once, then clear it.
+    var focusDayKey: Binding<String?> = .constant(nil)
     @State private var monthAnchor = MonthCalendarView.firstOfMonth(Date())
     @State private var dayAgendaRef: DayAgendaRef?
 
@@ -75,6 +78,15 @@ struct MonthCalendarView: View {
             // audience-scoped inputs as the grid after an edit or refresh.
             DayAgendaSheet(date: ref.date, items: itemsByDay[ref.id] ?? [])
         }
+        .onAppear { focusPendingDay() }
+        .onChange(of: focusDayKey.wrappedValue) { _, _ in focusPendingDay() }
+    }
+
+    private func focusPendingDay() {
+        guard let key = focusDayKey.wrappedValue, let date = DateFmt.ymd.date(from: key) else { return }
+        focusDayKey.wrappedValue = nil
+        monthAnchor = Self.firstOfMonth(date)
+        dayAgendaRef = DayAgendaRef(id: key, date: date)
     }
 
     private func cellHeight(availableHeight: CGFloat, weekCount: Int) -> CGFloat {
