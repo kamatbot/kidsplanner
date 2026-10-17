@@ -38,7 +38,7 @@ accessibility.
 
 | Role | Face | Where |
 |---|---|---|
-| Display | Playfair Display, variable 400–900 (`Resources/Fonts/PlayfairDisplay.ttf`, PostScript `PlayfairDisplay-Regular`) | Greeting, screen titles, section headings, event card titles, child names |
+| Display | Playfair Display, variable 400–900 (`Resources/Fonts/PlayfairDisplay.ttf`; `Theme.displayFontName` resolves `PlayfairDisplay-Regular` or the instance name `PlayfairDisplayRoman-Regular`) | Greeting, screen titles, section headings, event card titles, child names |
 | Text | Geist (unchanged) | Body, labels, buttons, chips, messages |
 | Numerals | Geist, tabular | Counts, dates, times, ring numbers, calendar days |
 

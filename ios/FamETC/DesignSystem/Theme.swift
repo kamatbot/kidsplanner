@@ -113,7 +113,15 @@ enum Palette {
 // Numerals stay in Geist (docs/design/soft-rings/IOS-BRIEF.md §1).
 enum Theme {
     static let fontName = "Geist-Regular"
-    static let displayFontName = "PlayfairDisplay-Regular"
+    /// Playfair's nameID 6 is "PlayfairDisplay-Regular" but its named
+    /// instances are "PlayfairDisplayRoman-*" (Geist uses one name for both),
+    /// so take whichever name this system registered.
+    static let displayFontName: String = {
+        let candidates = ["PlayfairDisplay-Regular", "PlayfairDisplayRoman-Regular"]
+        if let name = candidates.first(where: { UIFont(name: $0, size: 17) != nil }) { return name }
+        let family = UIFont.fontNames(forFamilyName: "Playfair Display")
+        return family.first { $0.hasSuffix("-Regular") } ?? family.first ?? candidates[0]
+    }()
     static func display(
         _ size: CGFloat,
         weight: Font.Weight = .bold,
