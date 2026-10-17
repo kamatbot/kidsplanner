@@ -118,11 +118,15 @@ serif day headings, rows in white cards. Parent and child permissions are
 unchanged.
 
 ### Chat
-Serif title → room tabs as pills with unread badges → messages: others' in
-white bubbles with avatars, yours in violet with white text → composer: rounded
-field and a violet circle send button. The Hermes room shows the HELPER tag, the
-line "Only you and Hermes can see this thread", and approval cards with
-Approve (violet) and Reject (outlined red). The Hermes composer stays text-only.
+Serif room title with a sentence-case caption → room tabs as pills with
+unread badges → messages → composer (the existing rounded field and violet
+circle send button). **Bubbles keep their per-sender identity colours**: the
+brief's Palette row keeps chat colours as they are, so the soft layout changes
+only shape, type and surfaces here. A parent's Hermes room is captioned
+"Private thread · only you and Hermes can see it" (contract §1; children's
+helper threads keep "Private · AI helper"). Hermes cards take a serif title
+and a soft shadow; an approval's Reject is outlined in `frDanger`, Approve
+stays violet. The Hermes composer stays text-only.
 
 ### Planning
 Pill Trips | Meals. Meals and Trips inherit the shared tokens.

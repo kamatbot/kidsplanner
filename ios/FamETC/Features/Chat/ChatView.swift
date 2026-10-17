@@ -79,7 +79,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     var body: some View {
         ZStack {
-            ScreenBackground()
+            ScreenBackground(glow: true)
             VStack(spacing: 0) {
                 header
                 Divider().overlay(Palette.border)
@@ -199,6 +199,16 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     // MARK: Header
 
+    /// Sentence-case room caption under the serif title. A parent's Hermes
+    /// thread is readable only by that user and Hermes
+    /// (docs/HERMES-THREADS-CONTRACT.md §1).
+    private var roomCaption: String {
+        if isFamilyRoom { return "Family chat" }
+        if isKidHermesRoom { return "Private · AI helper" }
+        if isHermesRoom { return "Private thread · only you and Hermes can see it" }
+        return "Trip chat"
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
             HStack(spacing: Space.sm) {
@@ -206,9 +216,12 @@ struct ChatScreen<HeaderAccessory: View>: View {
                     KidCompanionAvatarView(avatar: profile.avatar, color: profile.color, size: 42)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    MicroLabel(text: isFamilyRoom ? "Family chat" : (isHermesRoom ? (isKidHermesRoom ? "Private · AI helper" : "Private thread") : "Trip chat"))
                     Text(isKidHermesRoom ? helperName : (title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : (isHermesRoom ? "Hermes" : "Trip"))))
-                        .font(Typography.cardTitle).foregroundStyle(Palette.text)
+                        .font(Theme.display(22, weight: .bold, relativeTo: .title2)).foregroundStyle(Palette.text)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(roomCaption)
+                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if companionScope != nil {
                     Button { composerFocused = false; showCompanion = true } label: {
@@ -653,12 +666,13 @@ struct ChatRoomSwitcher: View {
                         .background(Palette.accent, in: Capsule())
                 }
             }
-            .font(Typography.label.weight(selected ? .semibold : .regular))
+            .font(Typography.label.weight(.semibold))
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .padding(.horizontal, 14).padding(.vertical, 8)
             .frame(minHeight: 44)
-            .foregroundStyle(selected ? Palette.accent : Palette.textSecond)
-            .background(selected ? Palette.accentSoft : Palette.panel, in: Capsule())
+            .foregroundStyle(selected ? Palette.frYouInk : Palette.frInk2)
+            .background(selected ? Palette.frYouSoft : Palette.frCard, in: Capsule())
+            .overlay(Capsule().strokeBorder(selected ? Palette.frYou : Palette.frRule, lineWidth: selected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -2140,7 +2154,7 @@ struct ChatMessageRow: View, Equatable {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let title = card.title, !title.isEmpty {
-                    Text(title).font(Typography.body.weight(.bold)).foregroundStyle(Palette.text)
+                    Text(title).font(Theme.display(18, weight: .bold, relativeTo: .headline)).foregroundStyle(Palette.text)
                 }
                 // Up to 7 one-line rows with tail truncation (contract §3 step 3 —
                 // a dinner week-draft card lists all seven nights).
@@ -2169,6 +2183,7 @@ struct ChatMessageRow: View, Equatable {
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(bubbleShape.fill(AnyShapeStyle(Palette.panel)))
         .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
+        .cardShadow()
     }
 
     /// Tries the buttons side by side first; wraps to one per line when they
@@ -2185,6 +2200,9 @@ struct ChatMessageRow: View, Equatable {
         let isDone = action.done == true
         let isPending = pendingNudgeActionIds.contains(action.id)
         let isPrimary = action.style == "primary"
+        // An approval's reject (docs/HERMES-THREADS-CONTRACT.md §7) reads as
+        // destructive: danger ink and outline instead of violet.
+        let isReject = action.id == "reject" && !isPrimary
         let doneText = (action.doneLabel?.isEmpty == false) ? action.doneLabel! : action.label + " ✓"
         Button {
             performNudgeAction(action)
@@ -2199,12 +2217,12 @@ struct ChatMessageRow: View, Equatable {
             }
             .frame(minHeight: 44)
             .padding(.horizontal, Space.lg)
-            .foregroundStyle(isDone ? Palette.textSecond : (isPrimary ? Palette.onAccent : Palette.accent))
+            .foregroundStyle(isDone ? Palette.textSecond : (isPrimary ? Palette.onAccent : (isReject ? Palette.frDanger : Palette.accent)))
             .background {
                 Capsule().fill(isDone ? AnyShapeStyle(Palette.panel2) : (isPrimary ? AnyShapeStyle(Palette.accent) : AnyShapeStyle(Color.clear)))
             }
             .overlay {
-                Capsule().strokeBorder(isDone ? Palette.border : (isPrimary ? Color.clear : Palette.accent), lineWidth: isPrimary ? 0 : 1.5)
+                Capsule().strokeBorder(isDone ? Palette.border : (isPrimary ? Color.clear : (isReject ? Palette.frDanger : Palette.accent)), lineWidth: isPrimary ? 0 : 1.5)
             }
         }
         .buttonStyle(.plain)
