@@ -70,12 +70,10 @@ struct TodayDailyFivePreview: View {
         Card(padding: Space.md) {
             VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        if !dense { MicroLabel(text: isKid ? "Your day" : "Today") }
-                        Text("Daily 4")
-                            .font(Typography.cardTitle)
-                            .foregroundStyle(Palette.frInk)
-                    }
+                    Text("Daily 4")
+                        .font(Typography.sectionTitle)
+                        .foregroundStyle(Palette.frInk)
+                        .accessibilityAddTraits(.isHeader)
                     Spacer()
                     Text("Small steps today")
                         .font(Typography.label)
@@ -148,7 +146,7 @@ private struct DailyThreeTile: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: minHeight)
             .padding(.vertical, Space.sm)
-            .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle(scale: 0.98))

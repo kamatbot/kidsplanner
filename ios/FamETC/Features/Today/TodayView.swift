@@ -8,10 +8,14 @@ struct TodayScreen: View {
     @State private var showNotes = false
     let onOpenHomework: () -> Void
     let onOpenMeals: () -> Void
+    /// Week strip: open the Calendar tab on a yyyy-MM-dd day.
+    let onOpenCalendar: (String) -> Void
 
-    init(onOpenHomework: @escaping () -> Void = {}, onOpenMeals: @escaping () -> Void = {}) {
+    init(onOpenHomework: @escaping () -> Void = {}, onOpenMeals: @escaping () -> Void = {},
+         onOpenCalendar: @escaping (String) -> Void = { _ in }) {
         self.onOpenHomework = onOpenHomework
         self.onOpenMeals = onOpenMeals
+        self.onOpenCalendar = onOpenCalendar
     }
     private var scope: String { "\(store.me?.id ?? "")|\(store.family?.id ?? "")" }
     var body: some View {
@@ -20,12 +24,14 @@ struct TodayScreen: View {
                 TimelineView(.periodic(from: .now, by: 300)) { _ in
                     VStack(alignment: .leading, spacing: sizeClass == .regular ? 20 : 14) {
                         if store.isParent {
-                            TodayParentHeader(greeting: greeting, dateLabel: dateLabel,
+                            TodayParentHeader(greetingLead: greetingLead, name: firstName, dateLabel: dateLabel,
                                               onAddEvent: { showAddEvent = true }, onMore: { showNotes = true })
+                            WeekStrip(days: weekDays(kidID: nil), onSelect: onOpenCalendar)
                             ParentTodayStack(onOpenHomework: onOpenHomework, onOpenMeals: onOpenMeals,
                                              onDaily3: { scrollToDaily3(proxy) })
                         } else {
                             TodayChildHeader(dateLabel: dateLabel, onMore: { showNotes = true })
+                            WeekStrip(days: weekDays(kidID: store.me?.kidId), onSelect: onOpenCalendar)
                             StudentSupportEntry()
                             KidTodayStack(onOpenHomework: onOpenHomework, onDaily3: { scrollToDaily3(proxy) })
                         }
@@ -38,7 +44,7 @@ struct TodayScreen: View {
             }
             .id(scope)
         }
-        .background(ScreenBackground())
+        .background(ScreenBackground(glow: true))
         .scrollDismissesKeyboard(.interactively)
         .refreshable { await store.refreshDashboard() }
         .sheet(isPresented: $showAddEvent) { AddEventSheet() }
@@ -47,12 +53,15 @@ struct TodayScreen: View {
     private func scrollToDaily3(_ proxy: ScrollViewProxy) {
         withAnimation(Motion.maybe(Motion.snappy, reduceMotion: reduceMotion)) { proxy.scrollTo("daily3", anchor: .top) }
     }
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-        let name = store.ownName.split(separator: " ").first.map(String.init) ?? ""
-        return name.isEmpty ? part : "\(part), \(name)"
+    private func weekDays(kidID: String?) -> [WeekStripDay] {
+        WeekStripData.days(events: store.visibleEvents, familyEvents: store.visibleFamilyEvents,
+                           kids: store.kids, kidID: kidID)
     }
+    private var greetingLead: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+    }
+    private var firstName: String { store.ownName.split(separator: " ").first.map(String.init) ?? "" }
     private var dateLabel: String { Date().formatted(.dateTime.weekday(.wide).day().month(.wide)) }
 }
 
@@ -72,7 +81,8 @@ private struct ParentTodayStack: View {
             ScreenTimePromoCard()
             FamilyRingsHero(onSeeAll: { showActions = true })
             FamilyRingsKidGrid(onOpenHomework: onOpenHomework, onDaily3: onDaily3)
-            FamilyRingsDayStrip(onOpenMeals: onOpenMeals)
+            TodayUpNext(onAddEvent: { showAddEvent = true })
+            TodayTonightCard(onOpenMeals: onOpenMeals)
             DailyFiveCard().id("daily3")
             if let user = store.me, !store.needsAuth {
                 StudyPalCard(userID: user.id, onOpenStudy: { showStudy = true })
@@ -486,7 +496,7 @@ private struct KidTodayStack: View {
                             .id("\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(kidID)|\(Agenda.todayKey())")
                     }
                     DailyFiveCard(isKid: true).id("daily3")
-                    FamilyRingsDayStrip(kidID: store.me?.kidId)
+                    TodayUpNext(kidID: store.me?.kidId)
                     StudyStartCard()
                     studyPal
                     KidHomeworkCard(onOpenHomework: onOpenHomework)
@@ -523,7 +533,7 @@ private struct KidTodayStack: View {
             DailyFiveCard(isKid: true, dense: true).id("daily3")
             HStack(alignment: .top, spacing: 20) {
                 VStack(alignment: .leading, spacing: 20) {
-                    FamilyRingsDayStrip(kidID: store.me?.kidId)
+                    TodayUpNext(kidID: store.me?.kidId)
                     StudyStartCard()
                 }
                 VStack(alignment: .leading, spacing: 20) {

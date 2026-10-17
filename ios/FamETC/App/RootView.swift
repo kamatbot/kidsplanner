@@ -278,6 +278,9 @@ struct RootView: View {
             TodayScreen(onOpenHomework: { selection = .homework }, onOpenMeals: {
                 planningSelection = .meals
                 selection = .planning
+            }, onOpenCalendar: { day in
+                store.pendingCalendarDayKey = day
+                selection = .calendar
             })
                 .accessibilityIdentifier("screen-today")
                 .tabItem { Label("Today", systemImage: Tab.today.icon) }

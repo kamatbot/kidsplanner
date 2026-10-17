@@ -1,8 +1,12 @@
 import SwiftUI
 import UIKit
 
+/// Soft layout header: the account menu avatar, a serif greeting ("Good
+/// afternoon," in medium, the name in bold), the date with the overdue and
+/// events line, and a white add-event circle.
 struct TodayParentHeader: View {
-    let greeting: String
+    let greetingLead: String
+    let name: String
     let dateLabel: String
     let onAddEvent: () -> Void
     let onMore: () -> Void
@@ -30,42 +34,30 @@ struct TodayParentHeader: View {
             .filter { $0.kind != .homework }.count
     }
 
-    var body: some View {
-        HStack(alignment: isCompactPhone ? .top : .center, spacing: isCompactPhone ? Space.sm : Space.md) {
-            headerCopy
-            Spacer(minLength: Space.sm)
-            HStack(spacing: isCompactPhone ? Space.xs : Space.md) {
-                Button {
-                    Haptics.impact(.light)
-                    onAddEvent()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Palette.onAccent)
-                        .frame(width: 44, height: 44)
-                        .background(Palette.accent, in: Circle())
-                }
-                .buttonStyle(PressableStyle(scale: 0.94))
-                .accessibilityLabel("Add event")
-                .accessibilityHint("Create a family event")
+    private var spokenGreeting: String { name.isEmpty ? greetingLead : "\(greetingLead), \(name)" }
 
-                Menu {
-                    Button(action: onMore) { Label("Notes", systemImage: "note.text") }
-                    Button {
-                        nameDraft = store.ownName
-                        editingName = true
-                    } label: { Label("Your name", systemImage: "person.text.rectangle") }
-                } label: {
-                    TodayInitialAvatar(
-                        text: store.me?.name?.first.map(String.init) ?? "F",
-                        color: Palette.accentSoft
-                    )
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                }
-                .accessibilityLabel("More")
-                .accessibilityHint("Open Notes and other family tools")
+    var body: some View {
+        HStack(alignment: isCompactPhone ? .top : .center, spacing: isCompactPhone ? Space.sm + 2 : Space.md) {
+            Menu {
+                Button(action: onMore) { Label("Notes", systemImage: "note.text") }
+                Button {
+                    nameDraft = store.ownName
+                    editingName = true
+                } label: { Label("Your name", systemImage: "person.text.rectangle") }
+            } label: {
+                TodayInitialAvatar(
+                    text: store.me?.name?.first.map(String.init) ?? "F",
+                    color: Palette.frCard
+                )
+                .frame(width: isCompactPhone ? 44 : 52, height: isCompactPhone ? 44 : 52)
+                .contentShape(Circle())
             }
+            .accessibilityLabel("More")
+            .accessibilityHint("Open Notes and other family tools")
+
+            headerCopy
+            Spacer(minLength: Space.xs)
+            CircleIconButton(systemImage: "plus", label: "Add event", hint: "Create a family event", action: onAddEvent)
         }
         .alert("Your name", isPresented: $editingName) {
             TextField("First and last name", text: $nameDraft)
@@ -82,17 +74,33 @@ struct TodayParentHeader: View {
         }
     }
 
+    /// The lead words in the medium weight and the name in bold, as one Text so
+    /// it wraps naturally.
+    private var greetingText: Text {
+        let leadFont: Font
+        let nameFont: Font
+        if isCompactPhone {
+            leadFont = Theme.display(23, weight: .medium, relativeTo: .title2)
+            nameFont = Theme.display(23, weight: .bold, relativeTo: .title2)
+        } else if sizeClass == .regular {
+            leadFont = Typography.greetingLeadRegular
+            nameFont = Typography.greetingRegular
+        } else {
+            leadFont = Typography.greetingLead
+            nameFont = Typography.greeting
+        }
+        guard !name.isEmpty else { return Text(greetingLead).font(nameFont) }
+        return Text("\(greetingLead), ").font(leadFont) + Text(name).font(nameFont)
+    }
+
     @ViewBuilder private var headerCopy: some View {
         VStack(alignment: .leading, spacing: isCompactPhone ? 2 : 3) {
-            Text(greeting)
-                .font(isCompactPhone
-                    ? Theme.font(22, weight: .bold, relativeTo: .title2)
-                    : (sizeClass == .regular ? Typography.greetingRegular : Typography.greeting))
-                .tracking(-0.5)
+            greetingText
+                .tracking(-0.3)
                 .foregroundStyle(Palette.text)
                 .lineLimit(isCompactPhone ? 2 : nil)
                 .minimumScaleFactor(isCompactPhone ? 0.9 : 1)
-                .accessibilityLabel(greeting)
+                .accessibilityLabel(spokenGreeting)
 
             if isCompactPhone {
                 Text(dateLabel)
@@ -149,7 +157,7 @@ struct TodayChildHeader: View {
             }
             VStack(alignment: .leading, spacing: isCompactPhone ? 2 : 3) {
                 Text("Hi \(kidName)")
-                    .font(isCompactPhone ? Theme.font(22, weight: .bold, relativeTo: .title2) : Typography.greeting)
+                    .font(isCompactPhone ? Theme.display(23, weight: .bold, relativeTo: .title2) : Typography.greeting)
                     .foregroundStyle(Palette.text)
                     .lineLimit(isCompactPhone ? 2 : nil)
                     .minimumScaleFactor(isCompactPhone ? 0.9 : 1)
@@ -164,10 +172,12 @@ struct TodayChildHeader: View {
             Menu {
                 Button(action: onMore) { Label("Notes", systemImage: "note.text") }
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Palette.text)
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Palette.frInk)
                     .frame(width: 44, height: 44)
+                    .background(Palette.frCard, in: Circle())
+                    .overlay(Circle().strokeBorder(Palette.frRule, lineWidth: 1))
             }
             .accessibilityLabel("More")
             .accessibilityHint("Open Notes and other family tools")
@@ -184,11 +194,12 @@ private struct TodayInitialAvatar: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(Typography.cardTitle)
-            .foregroundStyle(Palette.accent)
+            .font(Theme.display(20, weight: .bold, relativeTo: .title3))
+            .foregroundStyle(Palette.frYouInk)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(color, in: Circle())
-            .overlay(Circle().strokeBorder(Palette.accent.opacity(0.3), lineWidth: 1))
+            .overlay(Circle().strokeBorder(Palette.frRule, lineWidth: 1))
+            .shadow(color: Color.adaptive(Color(hex: 0x101828, alpha: 0.08), .black.opacity(0.35)), radius: 8, y: 4)
             .accessibilityHidden(true)
     }
 }
@@ -258,11 +269,12 @@ struct TodayUtilitiesRow: View {
                     .foregroundStyle(Palette.textSecond)
             }
             .padding(.horizontal, Space.md)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(Palette.frCard, in: Capsule())
             .overlay(
-                Capsule().strokeBorder(Palette.frYou, lineWidth: 1)
+                Capsule().strokeBorder(Palette.frRule, lineWidth: 1)
             )
+            .cardShadow()
         }
         .buttonStyle(PressableStyle())
         .accessibilityIdentifier(identifier)
@@ -322,11 +334,8 @@ struct TodaySecondaryDisclosure: View {
             }
             .padding(Space.lg)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-            .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                    .strokeBorder(Palette.border, lineWidth: 1)
-            )
+            .background(Palette.frCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+            .cardShadow()
         }
         .tint(Palette.accent)
         .accessibilityIdentifier("today.secondary.toggle")

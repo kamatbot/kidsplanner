@@ -32,7 +32,7 @@ struct FamilyRingsHero: View {
     private var summaryHeader: Bool { compact || (dense && !textSize.isAccessibilitySize) }
 
     var body: some View {
-        Card(padding: compact ? 14 : dense ? 20 : 28) {
+        Card(padding: compact ? 18 : dense ? 20 : 28) {
             Group {
                 if store.me == nil || store.family == nil || (store.isLoadingActions && viewerItems.isEmpty) {
                     VStack(spacing: 16) {
@@ -93,7 +93,12 @@ struct FamilyRingsHero: View {
             .frame(maxHeight: dense ? .infinity : nil, alignment: .top)
         }
     }
-    private var heading: some View { MicroLabel(text: store.isParent ? "NEEDS YOU" : "YOUR DAY") }
+    private var heading: some View {
+        Text(store.isParent ? "Needs you" : "Your day")
+            .font(Typography.sectionTitle)
+            .foregroundStyle(Palette.frInk)
+            .accessibilityAddTraits(.isHeader)
+    }
     private var allLink: some View {
         Button("See all \(progress.open)", action: onSeeAll)
             .font(Typography.body.weight(.semibold)).foregroundStyle(Palette.frYouInk)
@@ -385,7 +390,7 @@ struct FamilyRingsKidCard: View {
     }
     private func name(_ kid: Kid) -> some View {
         Button(action: openBrief) {
-            HStack(spacing: 10) { KidProfileAvatar(kid: kid, size: compact ? 28 : 34); Text(kid.name).font(compact ? Theme.font(18, weight: .bold, relativeTo: .title3) : Typography.kidName).foregroundStyle(Palette.frInk) }
+            HStack(spacing: 10) { KidProfileAvatar(kid: kid, size: compact ? 28 : 34); Text(kid.name).font(compact ? Theme.display(19, weight: .bold, relativeTo: .title3) : Typography.kidName).foregroundStyle(Palette.frInk) }
                 .frame(minHeight: 44)
         }.buttonStyle(.plain).disabled(!interactive)
     }
