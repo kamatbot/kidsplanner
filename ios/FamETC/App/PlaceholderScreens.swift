@@ -53,7 +53,7 @@ struct HomeworkScreen: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                ScreenBackground()
+                ScreenBackground(glow: true)
                 if canUseRegularWorkspace(availableWidth: proxy.size.width) {
                     regularWorkspace
                 } else {
@@ -116,22 +116,31 @@ struct HomeworkScreen: View {
                         )
                     }
                 } else {
-                    LazyVStack(spacing: Space.sm) {
-                        ForEach(orderedHomework) { item in
-                            HomeworkCompactRow(
-                                item: item,
-                                kidName: kidName(for: item),
-                                canMutate: !store.isParent,
-                                isMutating: store.homeworkMutationIDs.contains(item.id),
-                                onOpen: {
-                                    Haptics.selection()
-                                    compactHomeworkSelection = HomeworkSheetSelection(
-                                        id: item.id,
-                                        kidName: kidName(for: item)
-                                    )
-                                },
-                                onToggle: store.isParent ? nil : { setCompletion(for: item) }
-                            )
+                    // Grouped by due date under serif day headings (soft layout).
+                    let sections = compactSections
+                    LazyVStack(alignment: .leading, spacing: Space.sm) {
+                        ForEach(sections, id: \.key) { section in
+                            Text(section.title)
+                                .font(Theme.display(19, weight: .bold, relativeTo: .title3))
+                                .foregroundStyle(section.key == "overdue" ? Palette.frDanger : Palette.frInk)
+                                .padding(.top, section.key == sections.first?.key ? 0 : Space.sm)
+                                .accessibilityAddTraits(.isHeader)
+                            ForEach(section.items) { item in
+                                HomeworkCompactRow(
+                                    item: item,
+                                    kidName: kidName(for: item),
+                                    canMutate: !store.isParent,
+                                    isMutating: store.homeworkMutationIDs.contains(item.id),
+                                    onOpen: {
+                                        Haptics.selection()
+                                        compactHomeworkSelection = HomeworkSheetSelection(
+                                            id: item.id,
+                                            kidName: kidName(for: item)
+                                        )
+                                    },
+                                    onToggle: store.isParent ? nil : { setCompletion(for: item) }
+                                )
+                            }
                         }
                     }
                 }
@@ -219,8 +228,8 @@ struct HomeworkScreen: View {
     private var header: some View {
         HStack(alignment: .top, spacing: Space.md) {
             VStack(alignment: .leading, spacing: Space.xs) {
-                MicroLabel(text: store.isParent ? "Family homework" : "Your homework")
                 Text("Homework").font(Typography.largeTitle).foregroundStyle(Palette.text)
+                    .accessibilityAddTraits(.isHeader)
                 Text(store.isParent
                      ? "See what is due and monitor progress."
                      : "Start with the smallest useful step, then keep moving.")
@@ -231,11 +240,41 @@ struct HomeworkScreen: View {
             .layoutPriority(1)
             Spacer(minLength: Space.sm)
             Image(systemName: "book.closed.fill")
-                .font(.system(size: 21, weight: .semibold))
-                .foregroundStyle(Palette.accent)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(Palette.frYouInk)
                 .frame(width: 48, height: 48)
-                .background(Palette.accentSoft, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                .background(Palette.frCard, in: Circle())
+                .overlay(Circle().strokeBorder(Palette.frRule, lineWidth: 1))
+                .cardShadow()
                 .accessibilityHidden(true)
+        }
+    }
+
+    private struct HomeworkSection {
+        let key: String
+        let title: String
+        let items: [HomeworkItem]
+    }
+
+    /// `orderedHomework` already puts open work first by due date and done work
+    /// last, so sections come out as Overdue, Today, Tomorrow, later days, Done.
+    private var compactSections: [HomeworkSection] {
+        let today = Agenda.todayKey()
+        var order: [String] = []
+        var groups: [String: [HomeworkItem]] = [:]
+        for item in orderedHomework {
+            let key = item.isDone ? "done" : (item.dueDate < today ? "overdue" : item.dueDate)
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(item)
+        }
+        return order.map { key in
+            let title: String
+            switch key {
+            case "done": title = "Done"
+            case "overdue": title = "Overdue"
+            default: title = Agenda.dayLabel(key)
+            }
+            return HomeworkSection(key: key, title: title, items: groups[key] ?? [])
         }
     }
 
@@ -245,7 +284,10 @@ struct HomeworkScreen: View {
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: Space.sm))
         return layout {
             VStack(alignment: .leading, spacing: Space.xs) {
-                MicroLabel(text: store.isParent ? "Assignments" : "Your list")
+                Text(store.isParent ? "Assignments" : "Your list")
+                    .font(Typography.sectionTitle)
+                    .foregroundStyle(Palette.frInk)
+                    .accessibilityAddTraits(.isHeader)
                 Text("\(orderedHomework.filter { !$0.isDone }.count) open")
                     .font(Typography.caption)
                     .foregroundStyle(Palette.textSecond)
@@ -402,7 +444,6 @@ private struct HomeworkKidFilter: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            MicroLabel(text: "Filter by child")
             ScrollView(.horizontal) {
                 HStack(spacing: Space.sm) {
                     HomeworkFilterChip(title: "All kids", isSelected: selectedKidID == nil) { selectedKidID = nil }
@@ -417,6 +458,7 @@ private struct HomeworkKidFilter: View {
             .scrollIndicators(.hidden)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityLabel("Filter by child")
     }
 }
 
@@ -434,11 +476,11 @@ private struct HomeworkFilterChip: View {
                 Text(title).lineLimit(1)
             }
             .font(Typography.label.weight(.semibold))
-            .foregroundStyle(isSelected ? Palette.onAccent : Palette.textSecond)
+            .foregroundStyle(isSelected ? Palette.frYouInk : Palette.frInk2)
             .padding(.horizontal, Space.md)
             .frame(minHeight: 44)
-            .background(isSelected ? Palette.accent : Palette.panel2, in: Capsule())
-            .overlay { if !isSelected { Capsule().strokeBorder(Palette.border, lineWidth: 1) } }
+            .background(isSelected ? Palette.frYouSoft : Palette.frCard, in: Capsule())
+            .overlay(Capsule().strokeBorder(isSelected ? Palette.frYou : Palette.frRule, lineWidth: isSelected ? 1.5 : 1))
         }
         .buttonStyle(PressableStyle(scale: 0.98))
         .accessibilityLabel("Show homework for \(title)")
