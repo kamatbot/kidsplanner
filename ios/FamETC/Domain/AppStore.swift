@@ -99,6 +99,9 @@ final class AppStore {
     var goalMutationIDs: Set<String> = []
     private var goalsLoadGeneration = 0
     var pendingHomeworkKidID: String?
+    /// Set by the Today week strip: the yyyy-MM-dd day the Calendar tab opens
+    /// on next. Calendar consumes and clears it.
+    var pendingCalendarDayKey: String?
     /// Parent composite Meals state, or the family shopping projection for a
     /// kid session. Kids never receive pantry/menu/prefs/household state.
     var meals: MealsState?
@@ -393,6 +396,7 @@ final class AppStore {
         kidRequests = []
         pendingChatRoomId = nil
         pendingHermesOpen = nil
+        pendingCalendarDayKey = nil
     }
 
     func signedOut() {

@@ -121,10 +121,26 @@ struct KPICard: View {
 
 // MARK: - Screen background
 
-/// Standard screen background fill, edge to edge.
+/// Standard screen background fill, edge to edge. `glow` adds the soft
+/// layout's fixed violet wash across the top of a hero screen (Today,
+/// Calendar, Homework, Chat); it stays behind scrolling content.
 struct ScreenBackground: View {
+    var glow = false
+
     var body: some View {
-        Palette.bg.ignoresSafeArea()
+        ZStack(alignment: .top) {
+            Palette.bg
+            if glow {
+                LinearGradient(
+                    colors: [Palette.frYou.opacity(0.16), Palette.frYou.opacity(0.06), Palette.frYou.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 340)
+                .accessibilityHidden(true)
+            }
+        }
+        .ignoresSafeArea()
     }
 }
 

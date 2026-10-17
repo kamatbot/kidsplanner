@@ -106,8 +106,21 @@ enum Palette {
 // MARK: - Fonts
 //
 // Geist variable font, bundled as `Geist.ttf` (Geist[wght].ttf, v1.5.1).
+// Playfair Display variable font (wght 400–900), bundled unmodified as
+// `PlayfairDisplay.ttf` (google/fonts PlayfairDisplay[wght].ttf, SIL OFL 1.1
+// with Reserved Font Name; licence in `PlayfairDisplay-OFL.txt`). It is the
+// soft layout's display face: greetings, titles and section headings only.
+// Numerals stay in Geist (docs/design/soft-rings/IOS-BRIEF.md §1).
 enum Theme {
     static let fontName = "Geist-Regular"
+    static let displayFontName = "PlayfairDisplay-Regular"
+    static func display(
+        _ size: CGFloat,
+        weight: Font.Weight = .bold,
+        relativeTo textStyle: Font.TextStyle = .title2
+    ) -> Font {
+        .custom(displayFontName, size: size, relativeTo: textStyle).weight(weight)
+    }
     static func font(
         _ size: CGFloat,
         weight: Font.Weight = .regular,
@@ -126,7 +139,9 @@ enum Theme {
 
 // MARK: - Typography
 //
-// Semantic roles routed through Geist so existing screens inherit the visual system.
+// Semantic roles so existing screens inherit the visual system. Titles,
+// greetings, section headings and child names use the Playfair Display face;
+// every other role, including all numerals, uses Geist.
 
 enum Typography {
     static func display(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
@@ -136,15 +151,21 @@ enum Typography {
         Theme.mono(size, weight: weight)
     }
 
-    static let largeTitle = Theme.font(28, weight: .bold, relativeTo: .largeTitle)
-    static let title      = Theme.font(22, weight: .bold, relativeTo: .title2)
-    static let greeting = Theme.font(26, weight: .bold, relativeTo: .largeTitle)
-    static let greetingRegular = Theme.font(30, weight: .bold, relativeTo: .largeTitle)
+    static let largeTitle = Theme.display(30, weight: .bold, relativeTo: .largeTitle)
+    static let screenTitle = largeTitle
+    static let title      = Theme.display(22, weight: .bold, relativeTo: .title2)
+    static let sectionTitle = Theme.display(22, weight: .bold, relativeTo: .title2)
+    static let eventTitle = Theme.display(22, weight: .bold, relativeTo: .title2)
+    /// The greeting's first words ("Good afternoon,"); the name uses `greeting`.
+    static let greetingLead = Theme.display(26, weight: .medium, relativeTo: .largeTitle)
+    static let greetingLeadRegular = Theme.display(30, weight: .medium, relativeTo: .largeTitle)
+    static let greeting = Theme.display(26, weight: .bold, relativeTo: .largeTitle)
+    static let greetingRegular = Theme.display(30, weight: .bold, relativeTo: .largeTitle)
     static let heroNumeral = Theme.font(52, weight: .heavy, relativeTo: .largeTitle)
     static let heroNumeralRegular = Theme.font(64, weight: .heavy, relativeTo: .largeTitle)
     static let statNumeral = Theme.font(26, weight: .heavy, relativeTo: .title)
     static let statNumeralRegular = Theme.font(30, weight: .heavy, relativeTo: .title)
-    static let kidName = Theme.font(20, weight: .bold, relativeTo: .title3)
+    static let kidName = Theme.display(20, weight: .bold, relativeTo: .title3)
     static let itemTitle = Theme.font(17, weight: .semibold, relativeTo: .headline)
     static let cardTitle  = Theme.font(17, weight: .semibold, relativeTo: .headline)
     static let body       = Theme.font(15, relativeTo: .body)
@@ -169,8 +190,8 @@ enum Space {
 }
 
 enum Radius {
-    static let card: CGFloat = 20
-    static let cardLarge: CGFloat = 24
+    static let card: CGFloat = 24
+    static let cardLarge: CGFloat = 28
     static let field: CGFloat = 12
     static let pill: CGFloat = 11
     static let chip: CGFloat = 9
