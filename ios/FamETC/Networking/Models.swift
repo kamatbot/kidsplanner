@@ -534,8 +534,32 @@ struct BrainTeaserQ: Codable, Identifiable {
     var answerIndex: Int
     var exp: String? = nil
     var resurfaced: Bool? = nil
+    var visual: BrainTeaserVisual? = nil
+    var category: String? = nil
+    var difficulty: String? = nil
 
     var id: String { qid }
+}
+
+struct BrainTeaserVisual: Codable {
+    var kind: String
+    var alt: String
+    var items: [String]
+    var columns: Int? = nil
+
+    /// An invalid optional diagram must never hide the complete text question.
+    var isRenderable: Bool {
+        guard ["sequence", "balance", "path", "rotation"].contains(kind),
+              !alt.isEmpty, alt.count <= 600, (2...25).contains(items.count),
+              items.allSatisfy({ !$0.isEmpty && $0.count <= 48 }) else { return false }
+        if let columns { return (2...5).contains(columns) && items.count % columns == 0 }
+        return true
+    }
+}
+
+struct BrainTeaserPracticeResponse: Codable {
+    var count: Int
+    var questions: [BrainTeaserQ]
 }
 
 struct BrainTeaserTodayResponse: Codable {

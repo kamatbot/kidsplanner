@@ -389,18 +389,35 @@ final class WatchStore: ObservableObject {
     /// Live chat while the chat screen is visible and the watch is active. The
     /// caller's task owns the lifetime: cancelling it ends the parked request.
     /// Without a cursor the server answers with the recent window.
-    func listenForChat() async {
+    func listenForChat(reconciliationInterval: TimeInterval = 60) async {
         guard let client = api as? WatchChatClient else { return }
         let epoch = connectionEpoch
+        var lastReconciliation = Date()
         while !Task.isCancelled, epoch == connectionEpoch, !chatUnavailable, credentialIsAvailable() {
             let afterId = snapshot.chat?.last(where: { $0.pending != true })?.id
             do {
+                let started = Date()
                 let messages = try await client.fetchChat(afterId: afterId, wait: true)
                 guard epoch == connectionEpoch, !Task.isCancelled else { return }
                 if !messages.isEmpty {
                     mergeChat(messages)
                     saveState()
                 }
+                // Insertion cursors cannot announce moderation of an existing
+                // message. Reconcile the recent window within the active poll
+                // loop, preserving older cached history and pending sends.
+                if Date().timeIntervalSince(lastReconciliation) >= reconciliationInterval {
+                    lastReconciliation = Date()
+                    let recent = try await client.fetchChat(afterId: nil, wait: false)
+                    guard epoch == connectionEpoch, !Task.isCancelled else { return }
+                    if !recent.isEmpty {
+                        mergeChat(recent)
+                        saveState()
+                    }
+                }
+                let nextId = snapshot.chat?.last(where: { $0.pending != true })?.id
+                let delay = WatchChatPollDelay.seconds(elapsed: Date().timeIntervalSince(started), madeProgress: nextId != afterId)
+                if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
             } catch is CancellationError {
                 return
             } catch {

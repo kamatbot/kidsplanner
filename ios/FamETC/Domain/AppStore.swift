@@ -194,6 +194,9 @@ final class AppStore {
     private let api = APIClient.shared
     private let actionService: FamilyActionService
     private let chatService: ChatMessageService
+    private let chatMutationService: ChatMutationService
+    private let chatNow: () -> Date
+    private var pendingChatSends: [String: (session: Int, payload: Data, id: String)] = [:]
     private let cache = DiskCache()
     private var chatLoopTask: Task<Void, Never>?      // near-live loop for the on-screen room
     private var familyPollTask: Task<Void, Never>?    // always-on 8s background poll, family room only
@@ -205,9 +208,11 @@ final class AppStore {
     private var refreshGeneration = 0
     private var actionLoadGeneration = 0
 
-    init(actionService: FamilyActionService = APIClient.shared, chatService: ChatMessageService = APIClient.shared) {
+    init(actionService: FamilyActionService = APIClient.shared, chatService: ChatMessageService = APIClient.shared, chatMutationService: ChatMutationService = APIClient.shared, chatNow: @escaping () -> Date = Date.init) {
         self.actionService = actionService
         self.chatService = chatService
+        self.chatMutationService = chatMutationService
+        self.chatNow = chatNow
     }
 
     // MARK: Lifecycle
@@ -387,6 +392,7 @@ final class AppStore {
         homeworkMutationRevision &+= 1
         homeworkLoadGeneration &+= 1
         messagesByRoom = [:]
+        pendingChatSends = [:]
         lastSeenChatIdByRoom = [:]
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
         activeRoomId = nil
@@ -563,6 +569,7 @@ final class AppStore {
         let session = sessionGeneration
         var first = true
         var cursor: String?
+        var lastReconciled = chatNow()
         while !Task.isCancelled, session == sessionGeneration, !needsAuth {
             if roomId == familyRoomId, family == nil {
                 try? await Task.sleep(for: .seconds(2))
@@ -572,6 +579,16 @@ final class AppStore {
             let previousIDs = Set((messagesByRoom[roomId] ?? []).map(\.id))
             var rearmImmediately = false
             do {
+                // Insertion cursors never revisit edits. Reconcile the latest
+                // window at most once a minute without moving the receive cursor
+                // or discarding older loaded history.
+                if !first, roomId != "hermes", chatNow().timeIntervalSince(lastReconciled) >= 60 {
+                    lastReconciled = chatNow()
+                    let before = messagesByRoom[roomId] ?? []
+                    let snapshot = try await chatService.chatMessages(roomId: roomId, since: nil, limit: 200, afterId: nil, wait: false)
+                    guard !Task.isCancelled, session == sessionGeneration else { return }
+                    reconcileRoomSnapshot(snapshot, roomId: roomId, before: before)
+                }
                 let fresh = try await chatService.chatMessages(
                     roomId: roomId, since: nil, limit: first ? 50 : nil,
                     afterId: first ? nil : cursor, wait: !first)
@@ -1074,13 +1091,17 @@ final class AppStore {
     /// if the requested room is no longer available.
     @discardableResult
     func refreshChatRooms() async -> Bool {
+        let session = sessionGeneration
         do {
-            chatRooms = Self.sortedChatRooms(try await api.chatRooms())
+            let rooms = try await chatService.chatRooms()
+            guard !Task.isCancelled, session == sessionGeneration else { return false }
+            chatRooms = Self.sortedChatRooms(rooms)
             for room in chatRooms where lastSeenChatIdByRoom[room.roomId] == nil {
                 lastSeenChatIdByRoom[room.roomId] = loadLastSeen(room.roomId)
             }
             return true
         } catch {
+            guard !Task.isCancelled, session == sessionGeneration else { return false }
             _ = requireAuthentication(for: error)
             return false
         }
@@ -1605,8 +1626,10 @@ final class AppStore {
         let accountID = me?.id
         let familyID = family?.id
         do {
-            let msg = try await api.sendChatMessage(text: text, card: card, senderType: senderType, senderId: senderId, roomId: roomId)
+            let requestID = try chatSendRequestID(roomId: roomId, text: text, card: card, media: nil, senderType: senderType, senderId: senderId)
+            let msg = try await chatMutationService.sendChatMessage(text: text, card: card, media: nil, senderType: senderType, senderId: senderId, roomId: roomId, clientMessageId: requestID, expectedContext: nil)
             guard session == sessionGeneration, me?.id == accountID, family?.id == familyID else { return false }
+            if pendingChatSends[roomId]?.id == requestID { pendingChatSends[roomId] = nil }
             mergeIncoming([msg], roomId: roomId)   // NEVER append: the long-poll may already have delivered this id
             persist()
             return true
@@ -1648,12 +1671,34 @@ final class AppStore {
             "width": gif.width ?? 0, "height": gif.height ?? 0,
         ]
         do {
-            let msg = try await api.sendChatMessage(text: "", card: nil, media: media, senderType: sType, senderId: sId, roomId: roomId)
+            let requestID = try chatSendRequestID(roomId: roomId, text: "", card: nil, media: media, senderType: sType, senderId: sId)
+            let msg = try await chatMutationService.sendChatMessage(text: "", card: nil, media: media, senderType: sType, senderId: sId, roomId: roomId, clientMessageId: requestID, expectedContext: nil)
             guard session == sessionGeneration else { return }
+            if pendingChatSends[roomId]?.id == requestID { pendingChatSends[roomId] = nil }
             mergeIncoming([msg], roomId: roomId)   // NEVER append: the long-poll may already have delivered this id
             persist()
         } catch {
             if session == sessionGeneration { handle(error) }
+        }
+    }
+
+    private func chatSendRequestID(roomId: String, text: String, card: [String: Any]?, media: [String: Any]?, senderType: String, senderId: String) throws -> String {
+        let payload = try JSONSerialization.data(withJSONObject: ["text": text, "card": card ?? [:], "media": media ?? [:], "senderType": senderType, "senderId": senderId], options: [.sortedKeys])
+        if let pending = pendingChatSends[roomId], pending.session == sessionGeneration, pending.payload == payload { return pending.id }
+        let id = UUID().uuidString
+        pendingChatSends[roomId] = (sessionGeneration, payload, id)
+        return id
+    }
+
+    /// Snapshot reads cannot overwrite moderation confirmed during the request.
+    func reconcileRoomSnapshot(_ fresh: [ChatMessage], roomId: String, before: [ChatMessage]) {
+        let previous = Dictionary(Self.dedupe(before).map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
+        let existing = messagesByRoom[roomId] ?? []
+        let current = Dictionary(Self.dedupe(existing).map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
+        let normalized = Self.dedupe(existing + fresh.filter { current[$0.id] == nil || current[$0.id] == previous[$0.id] })
+        if existing != normalized {
+            messagesByRoom[roomId] = normalized
+            persist()
         }
     }
 
@@ -1741,24 +1786,28 @@ final class AppStore {
         if activeRoomId == roomId || lastSeenChatIdByRoom[roomId] == nil { markChatRead(roomId) }
     }
     func deleteMessage(_ id: String, roomId: String = familyRoomId) async {
+        let session = sessionGeneration
         do {
-            let updated = try await api.deleteChatMessage(id, roomId: roomId)
+            let updated = try await chatMutationService.deleteChatMessage(id, roomId: roomId)
+            guard session == sessionGeneration else { return }
             if var msgs = messagesByRoom[roomId], let idx = msgs.firstIndex(where: { $0.id == id }) {
                 msgs[idx] = updated
                 messagesByRoom[roomId] = msgs
             }
             persist()
-        } catch { handle(error) }
+        } catch { if session == sessionGeneration { handle(error) } }
     }
     func flagMessage(_ id: String, reason: String, roomId: String = familyRoomId) async {
+        let session = sessionGeneration
         do {
-            let updated = try await api.flagChatMessage(id, reason: reason, roomId: roomId)
+            let updated = try await chatMutationService.flagChatMessage(id, reason: reason, roomId: roomId)
+            guard session == sessionGeneration else { return }
             if var msgs = messagesByRoom[roomId], let idx = msgs.firstIndex(where: { $0.id == id }) {
                 msgs[idx] = updated
                 messagesByRoom[roomId] = msgs
             }
             persist()
-        } catch { handle(error) }
+        } catch { if session == sessionGeneration { handle(error) } }
     }
 
     /// Runs a `hermes-nudge` card's button action (docs/HERMES-THREADS-CONTRACT.md
@@ -1766,15 +1815,17 @@ final class AppStore {
     /// and appends any new Hermes follow-ups not already in the thread. `open`
     /// actions never call this — those are client navigation only.
     func performHermesNudgeAction(_ id: String, action: String, roomId: String = "hermes") async {
+        let session = sessionGeneration
         do {
-            let result = try await api.performHermesNudgeAction(messageId: id, action: action)
+            let result = try await chatMutationService.performHermesNudgeAction(messageId: id, action: action)
+            guard session == sessionGeneration else { return }
             if var msgs = messagesByRoom[roomId], let idx = msgs.firstIndex(where: { $0.id == id }) {
                 msgs[idx] = result.message
                 messagesByRoom[roomId] = msgs
             }
             mergeIncoming(result.followUps, roomId: roomId)
             persist()
-        } catch { handle(error) }
+        } catch { if session == sessionGeneration { handle(error) } }
     }
 
     // MARK: Persistence / errors

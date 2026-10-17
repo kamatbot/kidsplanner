@@ -14,6 +14,7 @@ private final class TestCredentials: WatchCredentialStore {
 private final class TestPersistence: WatchPersistence {
     var state: WatchPersistedState?
     var events: [String] = []
+    var onSave: (() -> Void)?
 
     func load() -> WatchPersistedState? {
         events.append("load")
@@ -23,6 +24,7 @@ private final class TestPersistence: WatchPersistence {
     func save(_ state: WatchPersistedState) {
         events.append("save")
         self.state = state
+        onSave?()
     }
 
     func clear() {
@@ -502,12 +504,55 @@ extension WatchStoreTests {
         XCTAssertEqual(store.snapshot.chat ?? [], [])
         XCTAssertEqual(store.chatSendError, "Not sent: Message is empty.")
     }
+
+    func testImmediateEmptyChatPollWaitsAndCancels() async throws {
+        let api = ChatTestAPI()
+        api.pollMessages = []
+        let started = expectation(description: "First poll")
+        api.onFirstPoll = { started.fulfill() }
+        let store = WatchStore(api: api, credentials: TestCredentials(), persistence: TestPersistence())
+        let task = Task { await store.listenForChat() }
+        await fulfillment(of: [started], timeout: 2)
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+        await task.value
+        XCTAssertEqual(api.pollCalls, 1)
+        XCTAssertEqual(api.snapshotCalls, 0)
+    }
+
+    func testActiveChatReconciliationUpdatesTombstoneAndPreservesOlderHistory() async {
+        let api = ChatTestAPI()
+        var deleted = api.server[0]
+        deleted.deleted = true
+        api.server = [deleted]
+        api.pollMessages = []
+        let reconciled = expectation(description: "Recent window merged and saved")
+        let persistence = TestPersistence()
+        persistence.onSave = { reconciled.fulfill() }
+        var snapshot = WatchSnapshot()
+        let older = WatchChatMessage(id: "older", senderType: "parent", senderId: "p", text: "Keep history", createdAt: "2026-10-11T09:00:00Z")
+        var original = deleted
+        original.deleted = false
+        snapshot.chat = [older, original]
+        let store = WatchStore(api: api, credentials: TestCredentials(), persistence: persistence, initialState: WatchPersistedState(snapshot: snapshot))
+        let task = Task { await store.listenForChat(reconciliationInterval: 0) }
+        await fulfillment(of: [reconciled], timeout: 2)
+        task.cancel()
+        await task.value
+        XCTAssertEqual(store.snapshot.chat?.map(\.id), ["older", "m1"])
+        XCTAssertEqual(store.snapshot.chat?.last?.deleted, true)
+        XCTAssertEqual(api.snapshotCalls, 1)
+    }
 }
 
 private final class ChatTestAPI: WatchAPIClient, WatchChatClient {
     var server: [WatchChatMessage] = [WatchChatMessage(id: "m1", senderType: "parent", senderId: "p", senderName: "Mum", text: "Dinner at 6", createdAt: "2026-10-12T09:00:00Z")]
     var sendError: Error?
     var sent: [String] = []
+    var pollMessages: [WatchChatMessage]?
+    var pollCalls = 0
+    var snapshotCalls = 0
+    var onFirstPoll: (() -> Void)?
 
     func fetchActions() async throws -> [WatchAction] { [] }
     func fetchHomework() async throws -> [WatchHomework] { [] }
@@ -517,7 +562,15 @@ private final class ChatTestAPI: WatchAPIClient, WatchChatClient {
     func updateHomeworkChecklistStep(_ id: String, index: Int, done: Bool) async throws -> WatchHomework { throw WatchAPIError.forbidden }
     func updateShoppingDone(_ id: String, done: Bool) async throws -> WatchShoppingItem { throw WatchAPIError.forbidden }
 
-    func fetchChat(afterId: String?, wait: Bool) async throws -> [WatchChatMessage] { server }
+    func fetchChat(afterId: String?, wait: Bool) async throws -> [WatchChatMessage] {
+        if wait {
+            pollCalls += 1
+            if pollCalls == 1 { onFirstPoll?() }
+            return pollMessages ?? server
+        }
+        snapshotCalls += 1
+        return server
+    }
     func sendChat(text: String, clientMessageId: String) async throws -> WatchChatMessage {
         if let sendError { throw sendError }
         sent.append(text)

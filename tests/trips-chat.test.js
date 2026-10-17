@@ -227,6 +227,20 @@ test("POST trip chat message: a member can post; response carries roomId + sende
   assert.equal(notifyCalls[0][4], res.body.message.id);
 });
 
+test("POST trip text retry returns original message; changed payload cannot reuse the key", async () => {
+  const routes = buildTripsHarness();
+  const { owner, trip } = makeTrip("Retry");
+  const command = { user: owner, params: { tripId: trip.id }, body: { text: "Retry draft", clientMessageId: crypto.randomUUID() } };
+  const first = await call(routes["POST /api/trips/:tripId/chat/messages"], command);
+  const retry = await call(routes["POST /api/trips/:tripId/chat/messages"], command);
+  assert.equal(first.statusCode, 200);
+  assert.equal(retry.statusCode, 200);
+  assert.equal(retry.body.message.id, first.body.message.id);
+  assert.equal(chat.listMessages("trip:" + trip.id).length, 1);
+  const conflict = await call(routes["POST /api/trips/:tripId/chat/messages"], { ...command, body: { ...command.body, text: "Changed" } });
+  assert.equal(conflict.statusCode, 409);
+});
+
 test("GET trip chat messages: kid-read access is rejected (chat is members-only)", async () => {
   const routes = buildTripsHarness();
   const { trip, fam } = makeTrip("R2");

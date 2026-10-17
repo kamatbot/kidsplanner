@@ -124,6 +124,7 @@ protocol WatchCompanionChatClient {
     private var pendingText: String?
     private var generation = 0
     private let client: any WatchCompanionChatClient
+    var isMutating: Bool { sending || saving || acting }
 
     init(client: any WatchCompanionChatClient = URLSessionWatchAPIClient()) { self.client = client }
     func clear() {
@@ -148,20 +149,26 @@ protocol WatchCompanionChatClient {
             let initial = try await client.fetchCompanionMessages(afterID: nil, wait: false, identity: scope)
             guard current(scope, version, isCurrent) else { return }
             merge(initial); loading = false
+            // The server's cursor follows insertion order, independently of
+            // presentation sorting and concurrent send/action responses.
+            var afterID = initial.last?.id
             while current(scope, version, isCurrent) {
                 let started = Date()
-                let incoming = try await client.fetchCompanionMessages(afterID: messages.last?.id, wait: true, identity: scope)
+                let incoming = try await client.fetchCompanionMessages(afterID: afterID, wait: true, identity: scope)
                 guard current(scope, version, isCurrent) else { return }
                 merge(incoming)
-                // Older servers may answer immediately; don't spin on an empty window.
-                if Date().timeIntervalSince(started) < 1 { try await Task.sleep(for: .seconds(1)) }
+                let nextID = incoming.last?.id ?? afterID
+                let delay = WatchChatPollDelay.seconds(elapsed: Date().timeIntervalSince(started),
+                                                      madeProgress: nextID != afterID, emptyThread: nextID == nil)
+                afterID = nextID
+                if delay > 0 { try await Task.sleep(for: .seconds(delay)) }
             }
         } catch {
             if current(scope, version, isCurrent) { self.error = "Couldn’t refresh. Connect to Wi-Fi or cellular and try again." }
         }
     }
     func send(for scope: WatchCompanionIdentity, isCurrent: () -> Bool) async {
-        guard identity == scope, isCurrent(), !Task.isCancelled, profile?.enabled == true, !sending else { return }
+        guard identity == scope, isCurrent(), !Task.isCancelled, profile?.enabled == true, !isMutating else { return }
         let text = pendingText ?? draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let id = pendingID ?? UUID().uuidString.lowercased()
@@ -198,7 +205,7 @@ protocol WatchCompanionChatClient {
         }
     }
     func save(_ draft: WatchCompanionProfile, for scope: WatchCompanionIdentity, isCurrent: () -> Bool) async -> Bool {
-        guard identity == scope, isCurrent(), !Task.isCancelled, draft.validCustomization, !saving else { return false }
+        guard identity == scope, isCurrent(), !Task.isCancelled, draft.validCustomization, !isMutating else { return false }
         let version = generation
         saving = true; settingsError = nil
         defer { if generation == version { saving = false } }
@@ -212,7 +219,7 @@ protocol WatchCompanionChatClient {
         }
     }
     func act(messageID: String, action: String, for scope: WatchCompanionIdentity, isCurrent: () -> Bool) async {
-        guard identity == scope, isCurrent(), !Task.isCancelled, profile?.enabled == true, !acting else { return }
+        guard identity == scope, isCurrent(), !Task.isCancelled, profile?.enabled == true, !isMutating else { return }
         let version = generation
         acting = true; error = nil
         defer { if generation == version { acting = false } }
@@ -275,7 +282,7 @@ struct WatchCompanionChatView: View {
                     Text(error).font(.caption).foregroundStyle(.orange)
                 }
                 if model.error != nil || model.profile == nil && !model.loading {
-                    Button("Refresh chat") { retry += 1 }.disabled(model.sending)
+                    Button("Refresh chat") { retry += 1 }.disabled(mutation != nil || model.isMutating)
                 }
                 if model.profile?.enabled == true { composer }
                 // ponytail: v1 keeps private drafts only in this screen; add a separate encrypted,
@@ -290,7 +297,7 @@ struct WatchCompanionChatView: View {
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
                 Button { showCustomizer = true } label: { Image(systemName: "paintpalette") }
-                    .accessibilityLabel("Customize companion").disabled(model.profile == nil || model.sending)
+                    .accessibilityLabel("Customize companion").disabled(model.profile == nil || mutation != nil || model.isMutating)
             }
         }
         .navigationDestination(isPresented: $showCustomizer) {
@@ -311,17 +318,26 @@ struct WatchCompanionChatView: View {
     private var composer: some View {
         VStack(spacing: 6) {
             TextField("Message…", text: $model.draft).submitLabel(.send).onSubmit(send)
-                .disabled(model.sending || model.pendingID != nil).accessibilityIdentifier("watch.companion.draft")
+                .disabled(mutation != nil || model.isMutating || model.pendingID != nil).accessibilityIdentifier("watch.companion.draft")
             Button(action: send) {
                 if model.sending { ProgressView("Sending…") }
                 else { Text(model.pendingID == nil ? "Send" : "Retry same message") }
-            }.disabled(model.sending || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }.disabled(mutation != nil || model.isMutating || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("watch.companion.send")
             if model.pendingID != nil && !model.sending { Text("Delivery not yet confirmed.").font(.caption2).foregroundStyle(.orange) }
         }
     }
     private func send() {
-        mutation = Task { await model.send(for: identity, isCurrent: { isCurrent }) }
+        performMutation { await model.send(for: identity, isCurrent: { isCurrent }) }
+    }
+    private func performMutation(_ operation: @escaping () async -> Void) {
+        // Claim the handle synchronously, before the task starts updating the
+        // model, so a second tap cannot replace the task we need to cancel.
+        guard mutation == nil, !model.isMutating else { return }
+        mutation = Task {
+            defer { mutation = nil }
+            await operation()
+        }
     }
     private func messageRow(_ message: WatchCompanionMessage) -> some View {
         let mine = message.senderType == "kid" && message.senderId == identity.kidID
@@ -343,8 +359,8 @@ struct WatchCompanionChatView: View {
                             Text("Open goals on iPhone or iPad").font(.caption2).foregroundStyle(.secondary)
                         } else if action.open == nil {
                             Button(action.label) {
-                                mutation = Task { await model.act(messageID: message.id, action: action.id, for: identity, isCurrent: { isCurrent }) }
-                            }.disabled(model.acting || model.profile?.enabled != true)
+                                performMutation { await model.act(messageID: message.id, action: action.id, for: identity, isCurrent: { isCurrent }) }
+                            }.disabled(mutation != nil || model.isMutating || model.profile?.enabled != true)
                         }
                     }
                 }
@@ -379,13 +395,15 @@ private struct WatchCompanionCustomizer: View {
             if let error = model.settingsError { Text(error).font(.caption).foregroundStyle(.orange) }
             if saved && draft == model.profile { Label("Saved", systemImage: "checkmark.circle") }
             Button(model.saving ? "Saving…" : "Save companion") {
+                guard mutation == nil, !model.isMutating else { return }
                 mutation = Task {
+                    defer { mutation = nil }
                     if await model.save(draft, for: identity, isCurrent: isCurrent), let profile = model.profile { draft = profile; saved = true }
                 }
-            }.disabled(model.saving || !draft.validCustomization || draft == model.profile || !isCurrent())
+            }.disabled(mutation != nil || model.isMutating || !draft.validCustomization || draft == model.profile || !isCurrent())
             Text("An AI helper can make mistakes. Tell a trusted adult if a reply worries you.").font(.caption2).foregroundStyle(.secondary)
         }
-        .disabled(model.saving)
+        .disabled(mutation != nil || model.isMutating)
         .navigationTitle("Make it yours")
         .onChange(of: scenePhase) { _, phase in if phase != .active { mutation?.cancel() } }
         .onDisappear { mutation?.cancel() }

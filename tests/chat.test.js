@@ -375,6 +375,22 @@ test("GET /api/chat/messages: afterId+wait=1 returns immediately when a newer me
   assert.deepEqual(res.body.messages.map((m) => m.id), [m2.id]);
 });
 
+test("plain chat snapshot exposes deletion/report updates insertion cursors cannot revisit", async () => {
+  const routes = buildChatRouteHarness();
+  const { p1, fam } = makeFamily();
+  const first = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "Moderate me" }).message;
+  const latest = chat.sendMessage(fam.id, { senderType: "parent", senderId: p1.id, text: "Latest" }).message;
+  chat.flagMessage(fam.id, p1.id, first.id, "Report");
+  chat.deleteMessage(fam.id, p1.id, first.id);
+  assert.deepEqual(chat.listMessagesAfterId(fam.id, latest.id), []);
+  const response = await callChatRoute(routes["GET /api/chat/messages"], { familyId: fam.id, query: { limit: "200" } });
+  const updated = response.body.messages.find(m => m.id === first.id);
+  assert.equal(updated.deleted, true);
+  assert.equal(updated.flagged, true);
+  assert.equal(updated.text, "");
+  assert.equal(response.body.messages.at(-1).id, latest.id);
+});
+
 test("GET /api/chat/messages: afterId+wait=1 wakes as soon as a message is sent (well under 25s)", async () => {
   const routes = buildChatRouteHarness();
   const { p1, fam } = makeFamily();

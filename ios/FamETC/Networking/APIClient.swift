@@ -31,12 +31,21 @@ protocol FamilyActionService {
 /// The receive boundary used by the room loop, including empty-room long polls.
 protocol ChatMessageService {
     func chatMessages(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> [ChatMessage]
+    func chatRooms() async throws -> [ChatRoom]
+}
+
+/// Mutations share the receive loop's account-switch boundary.
+protocol ChatMutationService {
+    func sendChatMessage(text: String, card: [String: Any]?, media: [String: Any]?, senderType: String, senderId: String, roomId: String, clientMessageId: String?, expectedContext: [String: String]?) async throws -> ChatMessage
+    func deleteChatMessage(_ id: String, roomId: String) async throws -> ChatMessage
+    func flagChatMessage(_ id: String, reason: String, roomId: String) async throws -> ChatMessage
+    func performHermesNudgeAction(messageId: String, action: String) async throws -> (message: ChatMessage, followUps: [ChatMessage])
 }
 
 /// Typed async client for the Fam ETC JSON API. Shares `HTTPCookieStorage.shared`
 /// with `AuthService` and the WKWebView, so once the user signs in (passkey) every
 /// native request carries `fam_sess` and stays in lockstep with any hybrid web tab.
-final class APIClient: FamilyActionService, ChatMessageService, KidCompanionService {
+final class APIClient: FamilyActionService, ChatMessageService, ChatMutationService, KidCompanionService {
     static let shared = APIClient()
 
     private let base = Config.baseURL
@@ -523,6 +532,9 @@ final class APIClient: FamilyActionService, ChatMessageService, KidCompanionServ
 
     func brainTeaserToday() async throws -> BrainTeaserTodayResponse {
         try await request("/api/brainteaser/today")
+    }
+    func getBrainTeaserPractice(count: Int = 6) async throws -> BrainTeaserPracticeResponse {
+        try await request("/api/brainteaser/practice?count=\(max(1, min(12, count)))")
     }
     func brainTeaserAnswer(qid: String, correct: Bool) async throws {
         let _: OKResponse = try await request("/api/brainteaser/answer", method: "POST", body: ["qid": qid, "correct": correct])

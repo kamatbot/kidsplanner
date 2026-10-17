@@ -259,3 +259,57 @@ test("kid-scope: each kid has an independent brainteaser state", () => {
   // kid2's state is untouched by kid1's wrong answer.
   assert.equal(mon2.questions.length, 1);
 });
+
+test("visual metadata survives option shuffles and stable daily snapshots", () => {
+  const { kid } = makeFamilyWithKid("visual");
+  const source = ACTIVE_QUESTIONS.find((q) => q.visual);
+  brainteaser.answer(kid.id, { qid: source.qid, correct: false });
+  const first = brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon);
+  const served = first.questions[0];
+  assert.equal(served.qid, source.qid);
+  assert.equal(served.options[served.answerIndex], source.options[source.answerIndex]);
+  assert.deepEqual(served.visual, source.visual);
+  assert.notEqual(served.visual.items, source.visual.items);
+  assert.equal(served.category, source.category);
+  assert.equal(served.difficulty, source.difficulty);
+  assert.deepEqual(brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon), first);
+});
+
+test("existing version-2 text-only daily snapshots remain unchanged after adding visuals", () => {
+  const { kid } = makeFamilyWithKid("textsnapshot");
+  const old = ACTIVE_QUESTIONS.find((q) => !q.visual);
+  const snapshot = { ...old, resurfaced: false };
+  const state = db.load().brainteaser[kid.id] = {
+    answered: {}, servedDate: "2026-06-15", servedIds: [old.qid],
+    seenIds: [old.qid], served: [snapshot], servedBankVersion: 2,
+  };
+  const before = JSON.stringify(state);
+  assert.deepEqual(brainteaser.getToday(kid.id, WEEKDAY_DATES.Mon).questions, [snapshot]);
+  assert.equal(JSON.stringify(state), before);
+});
+
+test("practice returns bounded shuffled questions without reading or writing player state", () => {
+  const before = JSON.stringify(db.load());
+  const originalLoad = db.load, originalPersist = db.persist;
+  db.load = () => { throw new Error("practice must not read persisted state"); };
+  db.persist = () => { throw new Error("practice must not write persisted state"); };
+  try {
+    for (const [requested, expected] of [[undefined, 6], [0, 1], [-2, 1], [2, 2], [99, 12], [NaN, 6], ["3", 6]]) {
+      const result = brainteaser.getPractice(requested);
+      assert.equal(result.count, expected);
+      assert.equal(result.questions.length, expected);
+      assert.equal(new Set(result.questions.map((q) => q.qid)).size, expected);
+      for (const served of result.questions) {
+        const source = ACTIVE_QUESTIONS.find((q) => q.qid === served.qid);
+        assert.ok(source);
+        assert.equal(served.resurfaced, false);
+        assert.equal(served.options[served.answerIndex], source.options[source.answerIndex]);
+        if (source.visual) assert.deepEqual(served.visual, source.visual);
+      }
+    }
+  } finally {
+    db.load = originalLoad;
+    db.persist = originalPersist;
+  }
+  assert.equal(JSON.stringify(db.load()), before);
+});

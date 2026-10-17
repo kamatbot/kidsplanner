@@ -234,12 +234,42 @@ function renderChatMedia(media) {
 function load(key)        { try { return JSON.parse(localStorage.getItem(key)) || null; } catch { return null; } }
 function save(key, val)   { localStorage.setItem(key, JSON.stringify(val)); }
 
-/* Manual family events live on the server (/api/calendar/events — shared with
-   iOS; see loadFamilyEvents() in app.js). getEvents() reads the in-memory copy
-   synchronously; localStorage 'fam_events' is the offline mirror and, for
-   events without the server's 'ev_' id prefix, the pending-upload queue. */
-let famEventsCache = null; // null until loadFamilyEvents() resolves
-function getEvents()   { return famEventsCache || load('fam_events') || []; }
-function saveEvents(e) { famEventsCache = e; save('fam_events', e); }
+/* The event mirror and pending queue belong to this account and family.
+   Leave the old unscoped fam_events value recoverable, but never display or
+   upload data whose owner cannot be established on a shared browser. */
+let famEventsCache = null;
+let famEventsCacheKey = null;
+let famEventsGeneration = 0;
+function familyEventStorageKey() {
+  if (typeof sessionUser === 'undefined' || typeof currentFamily === 'undefined'
+      || !sessionUser?.id || !currentFamily?.id) return '';
+  return 'fam_events_' + encodeURIComponent(JSON.stringify([sessionUser.id, currentFamily.id, sessionUser.role || 'parent', sessionUser.kidId || '']));
+}
+function familyEventScope() {
+  const key = familyEventStorageKey();
+  return key ? `${famEventsGeneration}:${key}` : '';
+}
+function resetFamilyEventCache() {
+  famEventsGeneration++;
+  famEventsCache = null;
+  famEventsCacheKey = null;
+}
+function getEvents() {
+  const key = familyEventStorageKey();
+  if (!key) return [];
+  if (famEventsCacheKey !== key) {
+    famEventsCacheKey = key;
+    const stored = load(key);
+    famEventsCache = Array.isArray(stored) ? stored : [];
+  }
+  return famEventsCache;
+}
+function saveEvents(events) {
+  const key = familyEventStorageKey();
+  if (!key) return;
+  famEventsCacheKey = key;
+  famEventsCache = events;
+  save(key, events);
+}
 function getSchedules(){ return load('fam_schedules')|| []; }
 function saveSched(s)  { save('fam_schedules', s); }

@@ -1,0 +1,142 @@
+'use strict';
+// Synthetic account, real app shell and puzzle content; installed Chrome only.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const { chromium } = require(process.env.FAM_PLAYWRIGHT_MODULE || 'playwright');
+const { makeCircuit, ports } = require('../public/js/puzzle-studio');
+const { VISUAL_QUESTIONS } = require('../lib/visual-puzzles');
+const dailyPuzzles = require('../lib/daily-puzzles');
+const root = path.resolve(__dirname, '../public');
+const evidence = path.resolve(__dirname, '../.dev-data/playful-learning-web');
+fs.mkdirSync(evidence, { recursive: true });
+const server = http.createServer((req, res) => {
+  const pathname = new URL(req.url, 'http://localhost').pathname;
+  const file = path.resolve(root, '.' + (pathname === '/app' ? '/index.html' : pathname));
+  if (!file.startsWith(root + path.sep)) return res.writeHead(403).end();
+  fs.readFile(file, (err, data) => {
+    if (err) return res.writeHead(404).end();
+    const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
+    res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' }).end(data);
+  });
+});
+(async () => {
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+  const writes = [], errors = []; let failPractice = false;
+  let role = 'kid', failHelp = false, failFamily = false;
+  const helpsWith = { schoolDay: true, homework: false, dinner: false };
+  const family = { id: 'family-test', name: 'Family', plan: 'full', kids: [{ id: 'kid-test', name: 'Ari', grade: '5', color: '#7B4DFF' }], parents: [{ id: 'parent-test', name: 'Alex' }], parentIds: ['parent-test'] };
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== base) return route.abort();
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    const json = body => route.fulfill({ json: body });
+    if (route.request().method() !== 'GET') writes.push(url.pathname);
+    if (url.pathname === '/api/me') return json({ user: role === 'kid' ? { id: 'user-test', role, kidId: 'kid-test', name: 'Ari' } : { id: 'parent-test', role, name: 'Alex' } });
+    if (url.pathname === '/api/family') return failFamily ? route.fulfill({ status: 503, json: { error: 'Temporary test outage' } }) : json({ families: [family] });
+    if (url.pathname === '/api/chat/messages') return json({ messages: [] });
+    if (url.pathname === '/api/news/recent') return json({ items: [], unavailable: true });
+    if (url.pathname === '/api/brainteaser/practice') return failPractice ? route.fulfill({ status: 503, json: { error: 'Unavailable' } }) : json({ count: 6, questions: VISUAL_QUESTIONS.slice(-6) });
+    if (url.pathname === '/api/brainteaser/today') return json({ questions: VISUAL_QUESTIONS.slice(0, 3), count: 3 });
+    if (url.pathname === '/api/enrichment/puzzle/today') return json(dailyPuzzles.getDailyPuzzle('2026-10-18'));
+    if (url.pathname === '/api/hermes/settings') {
+      if (failHelp) return route.fulfill({ status: 503, json: { error: 'Could not save preferences. Try again.' } });
+      if (route.request().method() === 'PUT') Object.assign(helpsWith, route.request().postDataJSON().helpsWith);
+      return json({ helpsWith });
+    }
+    return json({});
+  });
+  const page = await context.newPage(); page.setDefaultTimeout(8000);
+  page.on('pageerror', e => errors.push(e.message));
+  try {
+    await page.goto(base + '/app');
+    await page.locator('#dashboard-screen').waitFor();
+    const clue = page.locator('.crossword-clue').first();
+    await clue.click();
+    assert.ok(await page.locator('.crossword-cell input.in-active-word').count() > 1);
+    await page.keyboard.type('A');
+    assert.equal(await page.locator('.crossword-cell input').evaluateAll(inputs => inputs.some(input => input.value === 'A')), true);
+    await page.locator('#widget-puzzle').screenshot({ path: path.join(evidence, 'crossword-desktop.png') });
+    const beforePractice = writes.length;
+    const studio = page.locator('#puzzle-studio');
+    await studio.locator('summary').click();
+    await studio.locator('[data-tile="0"]').waitFor();
+    assert.equal(await studio.locator('[data-tile="0"] .circuit-terminal').innerText(), 'IN');
+    assert.equal(await studio.locator('[data-tile="0"] .circuit-terminal').isVisible(), true);
+    await studio.scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: path.join(evidence, 'circuit-desktop.png') });
+    await studio.screenshot({ path: path.join(evidence, 'circuit-detail.png') });
+    const board = makeCircuit(1);
+    for (const index of board.path) {
+      const tile = board.tiles[index];
+      while (ports(tile).slice().sort().join() !== ports(tile, tile.solution).slice().sort().join()) {
+        await studio.locator(`[data-tile="${index}"]`).click(); tile.turn++;
+      }
+    }
+    assert.match(await studio.locator('.practice-status').innerText(), /Connected!/);
+    await studio.getByRole('button', { name: 'Start over' }).click();
+    assert.match(await studio.locator('.practice-status').innerText(), /^0 turns/);
+    await studio.getByRole('button', { name: 'New circuit' }).click();
+    assert.equal(await studio.locator('[data-tile="0"]').evaluate(el => el === document.activeElement), true);
+    await studio.getByRole('button', { name: 'Show a hint' }).focus(); await page.keyboard.press('Enter');
+    assert.equal(await studio.locator('.is-hint').count(), 1);
+    await studio.getByRole('button', { name: 'Visual reasoning', exact: true }).click();
+    await studio.locator('[data-choice="0"]').waitFor();
+    await studio.locator('[data-choice="0"]').click();
+    assert.match(await studio.locator('.practice-feedback').innerText(), /You spotted it/);
+    await studio.getByRole('button', { name: 'Next idea' }).click();
+    assert.equal(await studio.locator('.practice-question').evaluate(el => el === document.activeElement), true);
+    await studio.locator('[data-choice="0"]').click();
+    await studio.getByRole('button', { name: 'Next idea' }).click();
+    assert.equal(await studio.locator('.reasoning-piece').count(), 25);
+    assert.equal(await studio.locator('.reasoning-items').evaluate(el => getComputedStyle(el).display), 'grid');
+    await page.screenshot({ path: path.join(evidence, 'reasoning-desktop.png') });
+    await studio.screenshot({ path: path.join(evidence, 'reasoning-detail.png') });
+    failPractice = true;
+    await studio.getByRole('button', { name: 'Visual reasoning', exact: true }).click();
+    await studio.getByRole('button', { name: 'Try again' }).waitFor();
+    failPractice = false;
+    await studio.getByRole('button', { name: 'Try again' }).click();
+    await studio.locator('[data-choice="0"]').waitFor();
+    assert.equal(await studio.locator('.practice-question').evaluate(el => el === document.activeElement), true);
+    await studio.getByRole('button', { name: 'Circuit trail', exact: true }).click();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await studio.locator('.circuit-tile svg').first().evaluate(el => getComputedStyle(el).transitionDuration), '0s');
+    await page.evaluate(() => window.famPuzzleStudio.setScope('another-account'));
+    assert.equal(await studio.evaluate(el => el.open), false);
+    assert.equal(await studio.locator('.puzzle-studio-content').innerHTML(), '');
+    assert.equal(writes.slice(beforePractice).some(p => /brainteaser\/answer|fams|daily.*progress/.test(p)), false, 'practice never persists progress/rewards');
+    role = 'parent'; await page.reload();
+    await page.locator('#dashboard-screen').waitFor();
+    await page.locator('.app-sidebar [data-tab="settings"]').click();
+    await page.locator('[data-settings-nav="connections"]').click();
+    const preferences = page.locator('#hermes-help-settings');
+    await page.waitForFunction(() => document.querySelector('[data-hermes-topic="schoolDay"]')?.disabled === false);
+    assert.equal(await preferences.getByLabel('School day updates').isChecked(), true);
+    await preferences.getByLabel('Homework check-ins').check();
+    await preferences.getByRole('status').filter({ hasText: 'Preferences saved.' }).waitFor();
+    assert.equal(helpsWith.homework, true);
+    failHelp = true;
+    await preferences.getByLabel('School day updates').click();
+    await preferences.getByRole('status').filter({ hasText: 'Could not save' }).waitFor();
+    assert.equal(await preferences.getByLabel('School day updates').isChecked(), true);
+    failHelp = false;
+    await preferences.getByRole('button', { name: 'Try again' }).click();
+    await page.waitForFunction(() => document.querySelector('[data-hermes-topic="schoolDay"]')?.disabled === false);
+    await preferences.screenshot({ path: path.join(evidence, 'hermes-settings-desktop.png') });
+    failFamily = true; await page.reload();
+    const recovery = page.locator('#family-load-error-panel');
+    await recovery.waitFor({ state: 'visible' });
+    assert.equal(await recovery.getByRole('button', { name: 'Sign out' }).isEnabled(), true);
+    assert.equal(await page.locator('#first-run-panel').isVisible(), false);
+    failFamily = false; await recovery.getByRole('button', { name: 'Try again' }).click();
+    await page.waitForFunction(() => !document.querySelector('#family-load-error-panel').classList.contains('open'));
+    assert.deepEqual(errors, []);
+    console.log('PASS desktop1440x900: crossword highlight/typing; circuit solve/reset/hint/keyboard; 25-cell reasoning; failure/retry; reduced motion; account reset; no practice reward writes; parent help settings save/error/retry');
+  } finally { await context.close(); await browser.close(); server.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; server.close(); });

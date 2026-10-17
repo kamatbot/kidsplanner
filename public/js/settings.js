@@ -12,6 +12,121 @@ function showSettingsSection(section) {
   if (parent) parent.hidden = isKidSession();
   const notice = document.getElementById('kid-connections-notice');
   if (notice) notice.hidden = !isKidSession();
+  if (section === 'connections') renderHermesHelpSettings();
+}
+
+// The server owns defaults. Never imply that an unloaded preference is off.
+let hermesHelpState = null;
+const hermesHelpTopics = [
+  ['schoolDay', 'School day updates', 'When lessons and activities end, so you know who’s coming home.'],
+  ['homework', 'Homework check-ins', 'Evening nudges for kids, and a homework summary for parents.'],
+  ['dinner', 'Dinner & meal planning', 'Offers to plan tonight’s dinner and draft next week’s meals.'],
+];
+
+function hermesHelpScope() {
+  return !isKidSession() && sessionUser?.id && currentFamily?.id
+    ? JSON.stringify([sessionUser.id, currentFamily.id]) : '';
+}
+
+function hermesHelpIsCurrent(state) {
+  return hermesHelpState === state && state.scope === hermesHelpScope();
+}
+
+async function requestHermesHelpSettings(helpsWith) {
+  const response = await fetch('/api/hermes/settings', {
+    method: helpsWith ? 'PUT' : 'GET', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...(helpsWith ? { body: JSON.stringify({ helpsWith }) } : {}),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Could not update Hermes preferences. Try again.');
+  if (!hermesHelpTopics.every(([key]) => typeof data.helpsWith?.[key] === 'boolean')) {
+    throw new Error('Could not load Hermes preferences. Try again.');
+  }
+  return data.helpsWith;
+}
+
+function renderHermesHelpSettings() {
+  const scope = hermesHelpScope();
+  const parent = document.getElementById('connections-parent-only');
+  let card = document.getElementById('hermes-help-settings');
+  if (!scope || !parent) {
+    hermesHelpState = null;
+    card?.remove();
+    return;
+  }
+  if (!card) {
+    card = document.createElement('section');
+    card.id = 'hermes-help-settings';
+    card.className = 'settings-subcard';
+    parent.appendChild(card);
+  }
+  if (hermesHelpState?.scope !== scope) {
+    hermesHelpState = { scope, topics: null, loading: true, saving: false, error: '', saved: false };
+    loadHermesHelpSettings();
+  }
+  const state = hermesHelpState;
+  const topics = state.preview || state.topics;
+  card.innerHTML = `<h3>Hermes helps with</h3>
+    <p class="text-muted">Choose what Hermes helps with for your whole family. Requests that need a parent’s approval always stay on.</p>
+    ${hermesHelpTopics.map(([key, title, detail]) => `<label class="hermes-help-option">
+      <span><strong>${title}</strong><span class="text-muted">${detail}</span></span>
+      <input type="checkbox" data-hermes-topic="${key}" aria-label="${title}"${topics?.[key] ? ' checked' : ''}${!state.topics || state.loading || state.saving ? ' disabled' : ''}>
+    </label>`).join('')}
+    <p class="hermes-help-status${state.error ? ' error-msg' : ' text-muted'}" role="status" aria-live="polite">${esc(state.error || (state.loading ? 'Loading preferences…' : state.saving ? 'Saving preferences…' : state.saved ? 'Preferences saved.' : 'Changes save immediately.'))}</p>
+    ${state.error ? '<button type="button" class="btn-secondary" data-hermes-help-retry>Try again</button>' : ''}`;
+  card.querySelectorAll('[data-hermes-topic]').forEach((input) => {
+    input.addEventListener('change', () => saveHermesHelpSetting(input.dataset.hermesTopic, input.checked));
+  });
+  card.querySelector('[data-hermes-help-retry]')?.addEventListener('click', loadHermesHelpSettings);
+}
+
+async function loadHermesHelpSettings() {
+  const state = hermesHelpState;
+  if (!state || !hermesHelpIsCurrent(state) || state.saving) return;
+  state.loading = true;
+  state.error = '';
+  renderHermesHelpSettings();
+  try {
+    const topics = await requestHermesHelpSettings();
+    if (!hermesHelpIsCurrent(state)) return;
+    state.topics = topics;
+  } catch (error) {
+    if (!hermesHelpIsCurrent(state)) return;
+    state.error = error.message || 'Could not load preferences. Try again.';
+  } finally {
+    if (hermesHelpIsCurrent(state)) {
+      state.loading = false;
+      renderHermesHelpSettings();
+    }
+  }
+}
+
+async function saveHermesHelpSetting(key, value) {
+  const state = hermesHelpState;
+  if (!state || !hermesHelpIsCurrent(state) || !state.topics || state.loading || state.saving
+      || !hermesHelpTopics.some(([topic]) => topic === key)) return;
+  state.saving = true;
+  state.saved = false;
+  state.error = '';
+  state.preview = { ...state.topics, [key]: value };
+  renderHermesHelpSettings();
+  try {
+    const topics = await requestHermesHelpSettings({ [key]: value });
+    if (!hermesHelpIsCurrent(state)) return;
+    state.topics = topics;
+    state.saved = true;
+  } catch (error) {
+    if (!hermesHelpIsCurrent(state)) return;
+    state.error = error.message || 'Could not save preferences. Try again.';
+  } finally {
+    if (hermesHelpIsCurrent(state)) {
+      state.preview = null;
+      state.saving = false;
+      renderHermesHelpSettings();
+      document.querySelector(`[data-hermes-topic="${key}"]`)?.focus();
+    }
+  }
 }
 
 function kidAvatarMarkup(id) {

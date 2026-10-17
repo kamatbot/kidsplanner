@@ -47,6 +47,13 @@
 .chat-msg-kid .chat-msg-attachment-open { color: var(--accent); }
 .settings-layout :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .settings-layout button:disabled { opacity: 0.55; cursor: wait; }
+.hermes-help-option { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 64px; padding-block: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.hermes-help-option > span { display: grid; gap: 4px; min-width: 0; }
+.hermes-help-option .text-muted { font-size: 0.875rem; line-height: 1.5; }
+.settings-content .hermes-help-option input { width: 20px; height: 20px; flex: 0 0 20px; padding: 0; accent-color: var(--accent); cursor: pointer; }
+.settings-content .hermes-help-option input:disabled { cursor: wait; }
+.hermes-help-status { min-height: 1.5em; margin: 12px 0; }
+#hermes-help-settings .text-muted { color: var(--text); }
 @media (max-width: 700px) {
   .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .settings-nav { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }

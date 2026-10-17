@@ -900,8 +900,9 @@
     return (data && data.messages) || [];
   }
 
-  async function sendTripChatMessage(tripId, text, media) {
+  async function sendTripChatMessage(tripId, text, media, clientMessageId) {
     const body = { text: text || "" };
+    if (clientMessageId) body.clientMessageId = clientMessageId;
     if (media) body.media = media;
     return api("/api/trips/" + encodeURIComponent(tripId) + "/chat/messages", {
       method: "POST",
