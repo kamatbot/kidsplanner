@@ -198,7 +198,10 @@ test("nudges are validated, idempotent and notify only their recipient", async (
   assert.equal(unauth.statusCode, 401);
 });
 
-test("buttons: later snoozes, dismiss resolves, open-* stays client-side, kids can't press parent buttons", async () => {
+test("buttons: later snoozes, dismiss resolves, open-* stays client-side, kids can't press parent buttons", async (t) => {
+  // Exercise buttons in daytime; real wall time can suppress the child card
+  // during quiet hours before this test reaches the behavior it is checking.
+  t.mock.timers.enable({ apis: ["Date"], now: NOW.getTime() });
   const { parent, fam, ryshi, ryshiUser } = setup("Buttons");
   homework.addHomework(fam.id, { kidId: ryshi.id, title: "Maths worksheet", dueDate: TOMORROW });
   const routes = harness();
