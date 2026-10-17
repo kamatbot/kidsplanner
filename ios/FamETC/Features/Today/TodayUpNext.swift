@@ -173,10 +173,8 @@ struct TodayTonightCard: View {
     }
 
     var body: some View {
-        Button {
-            Haptics.selection()
-            onOpenMeals()
-        } label: {
+        // Opening Meals switches tabs, which plays RootView's selection haptic.
+        Button(action: onOpenMeals) {
             HStack(spacing: Space.md) {
                 Image(systemName: "fork.knife")
                     .font(.system(size: 22, weight: .semibold))

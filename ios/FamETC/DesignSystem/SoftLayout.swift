@@ -233,8 +233,8 @@ struct WeekStrip: View {
         let selected = day.key == selectedKey
         let isToday = day.key == Agenda.todayKey()
         let events = day.eventCount == 0 ? "no events" : "\(day.eventCount) event\(day.eventCount == 1 ? "" : "s")"
+        // No haptic here: opening the Calendar tab plays RootView's selection haptic.
         return Button {
-            Haptics.selection()
             onSelect(day.key)
         } label: {
             VStack(spacing: 4) {
