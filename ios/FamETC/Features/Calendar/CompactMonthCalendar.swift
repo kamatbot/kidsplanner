@@ -62,7 +62,8 @@ struct CompactMonthCalendar: View {
     var body: some View {
         let byDay = Agenda.itemsByDay(events: events, familyEvents: familyEvents, homework: homework)
         let selectedItems = byDay[selectedDayKey] ?? []
-        SurfaceScaffold(title: "Calendar", trailing: { addButton }) {
+        // CalendarScreen draws the glow behind every layout.
+        SurfaceScaffold(title: "Calendar", showsBackground: false, trailing: { addButton }) {
             if let accessory { accessory }
             monthHeader
             weekdayRow

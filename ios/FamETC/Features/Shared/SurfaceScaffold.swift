@@ -6,12 +6,17 @@ import SwiftUI
 struct SurfaceScaffold<Content: View, Trailing: View>: View {
     let title: String
     var subtitle: String? = nil
+    /// False when the host screen draws the background, so a notice above the
+    /// scaffold doesn't restart the glow below it (Calendar).
+    var showsBackground = true
     @ViewBuilder var trailing: () -> Trailing
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         ZStack {
-            ScreenBackground(glow: true)
+            if showsBackground {
+                ScreenBackground(glow: true)
+            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Space.lg) {
                     if !title.isEmpty || subtitle != nil {

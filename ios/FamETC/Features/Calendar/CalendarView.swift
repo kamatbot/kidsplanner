@@ -610,7 +610,8 @@ private struct CalendarAgendaList: View {
     private var monthLabel: String { Date().formatted(.dateTime.month(.wide).year()) }
 
     var body: some View {
-        SurfaceScaffold(title: "Calendar", subtitle: monthLabel, trailing: {
+        // CalendarScreen draws the glow behind every layout.
+        SurfaceScaffold(title: "Calendar", subtitle: monthLabel, showsBackground: false, trailing: {
             if let onAdd {
                 CircleIconButton(systemImage: "plus", label: "New event", action: onAdd)
             }

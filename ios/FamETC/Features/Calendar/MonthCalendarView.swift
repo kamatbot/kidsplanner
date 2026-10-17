@@ -71,7 +71,6 @@ struct MonthCalendarView: View {
             .padding(.horizontal, compactLandscape ? Space.md : Space.lg)
             .padding(.vertical, compactLandscape ? Space.xs : Space.lg)
         }
-        .background(ScreenBackground())
         .refreshable { await store.refreshDashboard() }
         .sheet(item: $dayAgendaRef) { ref in
             // Keep the selected date, but derive its rows from the same live,

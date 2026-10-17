@@ -52,7 +52,6 @@ struct WeekCalendarView: View {
             .padding(.horizontal, Space.md)
             .padding(.top, compactLandscape ? 0 : Space.sm)
         }
-        .background(ScreenBackground())
         .refreshable { await store.refreshDashboard() }
         .sheet(item: $eventDetailRef) { ref in
             EventDetailSheet(eventId: ref.eventId, occurrenceDate: ref.occurrenceDate)
