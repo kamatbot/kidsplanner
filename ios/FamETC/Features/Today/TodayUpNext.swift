@@ -128,11 +128,11 @@ struct TodayUpNext: View {
     private func timeRange(_ item: AgendaItem) -> String {
         guard let start = item.time else { return "All day" }
         if let end = item.familyEvent?.endTime, let date = Self.time24.date(from: end) {
-            return "\(start)–\(date.formatted(date: .omitted, time: .shortened))"
+            return "\(start)–\(Agenda.displayTime(date))"
         }
         if let source = store.visibleEvents.first(where: { "ev-\($0.id)" == item.id }),
            let raw = source.end, let end = Agenda.parseISO(raw), DateFmt.ymd.string(from: end) == item.dayKey {
-            return "\(start)–\(end.formatted(date: .omitted, time: .shortened))"
+            return "\(start)–\(Agenda.displayTime(end))"
         }
         return start
     }

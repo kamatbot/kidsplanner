@@ -54,6 +54,10 @@ enum Agenda {
         return key
     }
 
+    /// A clock time in the agenda's display format ("h:mm a"), so an end time
+    /// matches `AgendaItem.time`.
+    static func displayTime(_ date: Date) -> String { time12.string(from: date) }
+
     /// Convert a stored "HH:mm" to a display "h:mm a" (falls back to the raw value).
     private static func display(hhmm: String) -> String {
         if let d = time24.date(from: hhmm) { return time12.string(from: d) }
