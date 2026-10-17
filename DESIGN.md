@@ -62,10 +62,14 @@ The native implementation follows the same Family Rings contract below. The publ
 
 ## Native Family Rings
 
-The native contract is [IOS-BRIEF.md](docs/design/family-rings/IOS-BRIEF.md). `Theme.swift` aliases existing native color names to the exact adaptive `fr*` palette and bundles Geist (OFL). Borderless cards, tabular numerals and the shared `FamilyRing` keep native screens aligned with the web. Empty tracks are dashed, zero progress has no cap dot, missing data is omitted, and Reduce Motion removes fill animation, sparks and glow.
+The native contract is [IOS-BRIEF.md](docs/design/family-rings/IOS-BRIEF.md); since 2026-10-17 its layout and type sections are superseded by the soft layout below, while its colours, rings, data and roles still apply. `Theme.swift` aliases existing native color names to the exact adaptive `fr*` palette and bundles Geist (OFL). Borderless cards, tabular numerals and the shared `FamilyRing` keep native screens aligned with the web. Empty tracks are dashed, zero progress has no cap dot, missing data is omitted, and Reduce Motion removes fill animation, sparks and glow.
 
 Today retains the five native tabs. Parents get Needs You, up to three review/action rows, child cards, Tonight and Daily 3. Children get only their own work, their own ring card and their study space. Counts come from `FamilyRingsMath.swift`; cleared actions require a recorded `completedAt`. Goals are loaded as native models and habit changes refresh after the Goals sheet closes. Calendar event lanes use recorded start/end times; compact day strips scroll internally.
 
 Koko is a child-only entry to a study panel: the next open homework task, an energy check-in and My Corner. Energy stays local until the child explicitly sends the preview to family chat. My Corner stores a private note and a small sticker collection under the child account, with conflict handling and encrypted storage. Account changes dismiss private sheets and sign-out clears native state before waiting for server revocation.
 
 Widgets/watch remain on their existing design pending owner device approval. Native release still needs owner device checks and real-family web parity; native archive/upload remains owner-controlled and separate from the authorized web release.
+
+## Native soft layout (2026-10-17)
+
+The native app follows [soft-rings/IOS-BRIEF.md](docs/design/soft-rings/IOS-BRIEF.md), approved by the owner on 2026-10-17. The Family Rings colours are unchanged and identical to the web. What changes is layout and type: Playfair Display (bundled unmodified, OFL) for greetings, titles and section headings over Geist text and tabular numerals; rounder borderless cards; a violet `frYouSoft` header glow; 44pt circle icon buttons and pill segmented controls; and a Monday–Sunday week strip on Today. On Today, an "Up next" event card (child-colour wash, activity symbol, optional `EventArt-<key>` illustration) replaces the 7 AM–9 PM timeline, and Tonight becomes its own card. Calendar, Homework and Chat take the same surfaces. Data, ring maths, permissions and Hermes placement are unchanged, and the web keeps Family Rings.
