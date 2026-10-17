@@ -83,10 +83,10 @@ struct EventArtCard: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var tint: Color { kid?.profileColor ?? Palette.frYou }
-    private var illustrated: Bool { EventArt.hasIllustration(activity) }
     private var radius: CGFloat { sizeClass == .regular ? Radius.cardLarge : Radius.card }
 
     var body: some View {
+        let illustrated = EventArt.hasIllustration(activity)
         VStack(alignment: .leading, spacing: 0) {
             EventOwnerChip(kid: kid)
             Spacer(minLength: Space.md)
@@ -105,13 +105,15 @@ struct EventArtCard: View {
         }
         .padding(Space.lg)
         .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
-        .background { art }
+        .background { art(illustrated: illustrated) }
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        // A filled illustration overflows its frame; keep taps inside the card.
+        .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .shadow(color: Color.adaptive(Color(hex: 0x101828, alpha: 0.06), .black.opacity(0.4)), radius: 12, y: 8)
         .accessibilityElement(children: .combine)
     }
 
-    @ViewBuilder private var art: some View {
+    @ViewBuilder private func art(illustrated: Bool) -> some View {
         if illustrated {
             Image(EventArt.assetName(for: activity))
                 .resizable()
