@@ -87,6 +87,8 @@ struct PillSegmentedControl<Value: Hashable>: View {
     let options: [Value]
     let title: (Value) -> String
     var systemImage: (Value) -> String? = { _ in nil }
+    /// UI tests find the control by this identifier, then its segments by title.
+    var identifier: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var pill
@@ -103,6 +105,7 @@ struct PillSegmentedControl<Value: Hashable>: View {
         .shadow(color: Color.adaptive(Color(hex: 0x101828, alpha: 0.05), .black.opacity(0.3)), radius: 10, y: 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier ?? "pill.\(label)")
     }
 
     private func segment(_ option: Value) -> some View {

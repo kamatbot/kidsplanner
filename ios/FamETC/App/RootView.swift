@@ -331,14 +331,13 @@ struct RootView: View {
                 .accessibilityHidden(planningSelection != .meals)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            Picker("Planning destination", selection: $planningSelection) {
-                ForEach(PlanningDestination.allCases) { destination in
-                    Label(destination.label, systemImage: destination.icon).tag(destination)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(Space.md)
-            .background(Palette.sidebar)
+            PillSegmentedControl(label: "Planning destination", selection: $planningSelection,
+                                 options: PlanningDestination.allCases,
+                                 title: { $0.label }, systemImage: { $0.icon },
+                                 identifier: "planning.destination")
+                .padding(.horizontal, Space.lg)
+                .padding(.vertical, Space.sm)
+                .background(Palette.bg)
         }
     }
 

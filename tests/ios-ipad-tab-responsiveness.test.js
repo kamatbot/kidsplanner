@@ -25,7 +25,7 @@ test("all display sizes share one native adaptive navigation tree", () => {
     assert.ok(rootView.includes(`.accessibilityIdentifier("screen-${screen}")`));
   }
   assert.match(rootView, /\.badge\(store.unreadChatCount\)/);
-  assert.match(rootView, /Picker\("Planning destination", selection: \$planningSelection\)/);
+  assert.match(rootView, /PillSegmentedControl\(label: "Planning destination", selection: \$planningSelection,/);
 });
 
 test("homework loading starts alongside independent calendar requests", () => {

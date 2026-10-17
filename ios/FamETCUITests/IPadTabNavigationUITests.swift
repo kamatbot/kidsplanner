@@ -19,7 +19,9 @@ final class IPadTabNavigationUITests: XCTestCase {
         defer { XCUIDevice.shared.orientation = .portrait }
         XCTAssertTrue(app.descendants(matching: .any)["screen-chat"].waitForExistence(timeout: 3))
         assertOneTap(app, tab: "Planning", screen: "planning")
-        let picker = app.segmentedControls.firstMatch
+        // Planning's Trips | Meals switch is the soft layout's pill control:
+        // a container of buttons that carry the selected trait.
+        let picker = app.descendants(matching: .any)["planning.destination"]
         XCTAssertTrue(picker.waitForExistence(timeout: 2))
         picker.buttons["Meals"].tap()
         XCUIDevice.shared.orientation = .portrait
