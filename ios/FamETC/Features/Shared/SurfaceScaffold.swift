@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Shared chrome for a native surface: themed background, large title, scrollable
-/// content column with consistent gutters. Keeps every screen visually aligned.
+/// Shared chrome for a native surface: themed background with the soft-layout
+/// header glow, serif large title, scrollable content column with consistent
+/// gutters. Keeps every screen visually aligned.
 struct SurfaceScaffold<Content: View, Trailing: View>: View {
     let title: String
     var subtitle: String? = nil
@@ -10,7 +11,7 @@ struct SurfaceScaffold<Content: View, Trailing: View>: View {
 
     var body: some View {
         ZStack {
-            ScreenBackground()
+            ScreenBackground(glow: true)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Space.lg) {
                     if !title.isEmpty || subtitle != nil {

@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Calendar tab. Portrait iPad offers the full Month grid or timed Week view;
 /// landscape uses the timed Week view directly so events stay legible at their
-/// actual times. iPhone portrait keeps the compact agenda list.
+/// actual times. iPhone portrait offers the soft-layout compact Month (day
+/// cells plus the selected day) or a seven-day agenda list for Week.
 struct CalendarScreen: View {
     @Environment(AppStore.self) private var store
     @Environment(\.horizontalSizeClass) private var hSize
@@ -11,10 +12,10 @@ struct CalendarScreen: View {
     @State private var addEventTime: String?
     @State private var mode: CalendarMode = .month
     @State private var audience: CalendarAudience = .parents
+    /// iPhone-portrait Month's selected day; Today's week strip sets it through
+    /// `AppStore.pendingCalendarDayKey`.
+    @State private var selectedDayKey = Agenda.todayKey()
 
-    /// Only offer the Week|Month toggle where there's room to show it above
-    /// either surface without crowding the iPhone-portrait agenda list.
-    private var canToggleMode: Bool { hSize == .regular }
     private var displayData: CalendarDisplayData {
         CalendarDisplayData.resolve(
             audience: audience,
@@ -34,17 +35,21 @@ struct CalendarScreen: View {
             let useGrid = hSize == .regular || isLandscape
 
             VStack(spacing: 0) {
-                if store.isParent {
-                    if isLandscape {
-                        CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
-                            .padding(.horizontal, Space.md)
-                            .padding(.vertical, Space.xs)
-                    } else {
-                        CalendarAudienceBar(selection: $audience, kids: store.kids)
+                // iPhone portrait scrolls the audience chips and the Week | Month
+                // pill with its content (`compactAccessory`); grids keep them fixed.
+                if useGrid {
+                    if store.isParent {
+                        if isLandscape {
+                            CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                                .padding(.horizontal, Space.md)
+                                .padding(.vertical, Space.xs)
+                        } else {
+                            CalendarAudienceBar(selection: $audience, kids: store.kids)
+                        }
                     }
-                }
-                if canToggleMode && !isLandscape {
-                    modeBar
+                    if !isLandscape {
+                        modeBar
+                    }
                 }
                 if store.isLoadingCalendar && store.events.isEmpty && store.familyEvents.isEmpty {
                     ProgressView("Loading your calendar…")
@@ -103,6 +108,16 @@ struct CalendarScreen: View {
                             compactLandscape: isLandscape,
                             onAdd: isTimetable ? nil : presentAddEvent(date:time:)
                         )
+                    } else if displayedMode == .month {
+                        CompactMonthCalendar(
+                            events: displayData.events,
+                            familyEvents: displayData.familyEvents,
+                            homework: displayData.homework,
+                            showKidLabels: isTimetable,
+                            selectedDayKey: $selectedDayKey,
+                            onAdd: isTimetable ? nil : { presentAddEvent(date: $0) },
+                            accessory: compactAccessory
+                        )
                     } else {
                         CalendarAgendaList(
                             events: displayData.events,
@@ -115,13 +130,14 @@ struct CalendarScreen: View {
                                 ? "Imported lessons for your children will appear here after their school timetables sync."
                                 : "School events and homework show up here. Subscribe to your school's calendar and add homework from Settings, then pull to refresh.",
                             onAdd: isTimetable ? nil : { presentAddEvent(date: Date()) },
-                            days: displayedMode == .week ? 7 : 45
+                            days: 7,
+                            accessory: compactAccessory
                         )
                     }
                 }
             }
         }
-        .background(ScreenBackground())
+        .background(ScreenBackground(glow: true))
         .sheet(isPresented: $showAddEvent) {
             AddEventSheet(initialDate: addEventDate, initialTime: addEventTime)
         }
@@ -129,6 +145,27 @@ struct CalendarScreen: View {
             guard case let .kid(id) = audience, !kidIDs.contains(id) else { return }
             audience = .parents
         }
+        .onAppear { consumePendingDay() }
+        .onChange(of: store.pendingCalendarDayKey) { _, _ in consumePendingDay() }
+    }
+
+    /// Today's week strip handed over a day: show it in Month.
+    private func consumePendingDay() {
+        guard let key = store.pendingCalendarDayKey else { return }
+        store.pendingCalendarDayKey = nil
+        selectedDayKey = key
+        mode = .month
+    }
+
+    private var compactAccessory: AnyView {
+        AnyView(
+            VStack(alignment: .leading, spacing: Space.md) {
+                if store.isParent {
+                    CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                }
+                modePill
+            }
+        )
     }
 
     private func presentAddEvent(date: Date, time: String? = nil) {
@@ -140,21 +177,16 @@ struct CalendarScreen: View {
     private var modeBar: some View {
         HStack {
             Spacer()
-            modePicker
-                .frame(width: 180)
-                .frame(minHeight: 44)
+            modePill
+                .frame(width: 260)
         }
         .padding(.horizontal, Space.lg)
         .padding(.top, Space.md)
     }
 
-    private var modePicker: some View {
-        Picker("Calendar view", selection: $mode) {
-            ForEach(CalendarMode.allCases) { Text($0.label).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .tint(Palette.accent)
-        .accessibilityLabel("Calendar view")
+    private var modePill: some View {
+        PillSegmentedControl(label: "Calendar view", selection: $mode, options: CalendarMode.allCases,
+                             title: { $0.label })
     }
 }
 
@@ -508,18 +540,17 @@ private struct CalendarAudienceBar: View {
                     Circle()
                         .fill(color)
                         .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(selected ? Palette.onAccent.opacity(0.7) : Color.clear, lineWidth: 1))
                         .accessibilityHidden(true)
                 }
                 Text(label)
                     .font(Typography.body.weight(.semibold))
                     .lineLimit(1)
             }
-            .foregroundStyle(selected ? Palette.onAccent : Palette.textSecond)
+            .foregroundStyle(selected ? Palette.frYouInk : Palette.frInk2)
             .padding(.horizontal, Space.lg)
             .frame(minHeight: 44)
-            .background(selected ? Palette.accent : Palette.panel, in: Capsule())
-            .overlay(Capsule().strokeBorder(selected ? Color.clear : Palette.border, lineWidth: 1))
+            .background(selected ? Palette.frYouSoft : Palette.frCard, in: Capsule())
+            .overlay(Capsule().strokeBorder(selected ? Palette.frYou : Palette.frRule, lineWidth: selected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Show \(label) calendar")
@@ -554,6 +585,8 @@ private struct CalendarAgendaList: View {
     var emptyDetail = "School events and homework show up here. Subscribe to your school's calendar and add homework from Settings, then pull to refresh."
     var onAdd: (() -> Void)?
     var days: Int = 45
+    /// iPhone portrait: the audience chips and Week | Month pill.
+    var accessory: AnyView? = nil
     @State private var eventDetailRef: CalEventRef?
 
     private var sections: [(day: String, items: [AgendaItem])] {
@@ -571,23 +604,20 @@ private struct CalendarAgendaList: View {
     var body: some View {
         SurfaceScaffold(title: "Calendar", subtitle: monthLabel, trailing: {
             if let onAdd {
-                Button(action: onAdd) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .bold)).foregroundStyle(Palette.onAccent)
-                        .frame(width: 44, height: 44).background(Palette.accent, in: Circle())
-                }
-                .accessibilityLabel("New event")
+                CircleIconButton(systemImage: "plus", label: "New event", action: onAdd)
             }
         }) {
+            if let accessory { accessory }
             if sections.isEmpty {
                 emptyState
             } else {
                 ForEach(sections, id: \.day) { s in
                     VStack(alignment: .leading, spacing: Space.sm) {
                         Text(Agenda.dayLabel(s.day))
-                            .font(Typography.cardTitle)
+                            .font(Theme.display(19, weight: .bold, relativeTo: .title3))
                             .foregroundStyle(Palette.text)
                             .padding(.horizontal, Space.xs)
+                            .accessibilityAddTraits(.isHeader)
                         Card {
                             VStack(spacing: 0) {
                                 ForEach(s.items) { item in
