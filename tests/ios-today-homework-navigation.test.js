@@ -29,7 +29,7 @@ test("iPhone and iPad Today tabs route to the native Homework tab", () => {
 
 test("Today passes the homework route through both role stacks and cards", () => {
   assert.match(today, /let onOpenHomework: \(\) -> Void/);
-  assert.match(today, /init\(onOpenHomework: @escaping \(\) -> Void = \{\}, onOpenMeals: @escaping \(\) -> Void = \{\}\)/);
+  assert.match(today, /init\(onOpenHomework: @escaping \(\) -> Void = \{\}, onOpenMeals: @escaping \(\) -> Void = \{\},\s+onOpenCalendar: @escaping \(String\) -> Void = \{ _ in \}\)/);
   assert.match(today, /ParentTodayStack\(onOpenHomework: onOpenHomework, onOpenMeals:/);
   assert.match(today, /KidTodayStack\(onOpenHomework: onOpenHomework, onDaily3:/);
 
@@ -44,6 +44,12 @@ test("Today passes the homework route through both role stacks and cards", () =>
   assert.match(kidCard, /let onOpenHomework: \(\) -> Void/);
   assert.match(parentCard, /HomeworkOpenButton\(action: onOpenHomework\)/);
   assert.match(kidCard, /HomeworkOpenButton\(action: onOpenHomework\)/);
+});
+
+test("Today's week strip opens the Calendar tab on the tapped day", () => {
+  assert.match(rootView, /onOpenCalendar: \{ day in\s+store\.pendingCalendarDayKey = day\s+selection = \.calendar\s+\}/);
+  const strips = today.match(/WeekStrip\(days: weekDays\(kidID: [^)]*\), onSelect: onOpenCalendar\)/g) ?? [];
+  assert.equal(strips.length, 2, "parent and child Today both show the week strip");
 });
 
 test("parent Today homework stays read-only while kid completion remains separate", () => {
