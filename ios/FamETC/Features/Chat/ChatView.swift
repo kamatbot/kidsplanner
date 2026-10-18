@@ -203,7 +203,6 @@ struct ChatScreen<HeaderAccessory: View>: View {
     /// thread is readable only by that user and Hermes
     /// (docs/HERMES-THREADS-CONTRACT.md §1).
     private var roomCaption: String {
-        if isFamilyRoom { return "Family chat" }
         if isKidHermesRoom { return "Private · AI helper" }
         if isHermesRoom { return "Private thread · only you and Hermes can see it" }
         return "Trip chat"
@@ -211,28 +210,31 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            HStack(spacing: Space.sm) {
-                if isKidHermesRoom, let profile = companionProfile {
-                    KidCompanionAvatarView(avatar: profile.avatar, color: profile.color, size: 42)
+            // Family needs no title row: the room pills already say "Family".
+            if !isFamilyRoom {
+                HStack(spacing: Space.sm) {
+                    if isKidHermesRoom, let profile = companionProfile {
+                        KidCompanionAvatarView(avatar: profile.avatar, color: profile.color, size: 42)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(isKidHermesRoom ? helperName : (title ?? (isHermesRoom ? "Hermes" : "Trip")))
+                            .font(Theme.display(22, weight: .bold, relativeTo: .title2)).foregroundStyle(Palette.text)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(roomCaption)
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    if companionScope != nil {
+                        Button { composerFocused = false; showCompanion = true } label: {
+                            Image(systemName: isKidHermesRoom ? "paintpalette" : "person.2.badge.gearshape")
+                                .font(.title3).frame(width: 44, height: 44)
+                        }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                            .accessibilityLabel(isKidHermesRoom ? "Customize companion" : "Kids’ AI companion settings")
+                            .accessibilityIdentifier("companion.open")
+                    }
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(isKidHermesRoom ? helperName : (title ?? (isFamilyRoom ? (store.family?.name ?? "Chat") : (isHermesRoom ? "Hermes" : "Trip"))))
-                        .font(Theme.display(22, weight: .bold, relativeTo: .title2)).foregroundStyle(Palette.text)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(roomCaption)
-                        .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-                if companionScope != nil {
-                    Button { composerFocused = false; showCompanion = true } label: {
-                        Image(systemName: isKidHermesRoom ? "paintpalette" : "person.2.badge.gearshape")
-                            .font(.title3).frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).foregroundStyle(Palette.accent)
-                        .accessibilityLabel(isKidHermesRoom ? "Customize companion" : "Kids’ AI companion settings")
-                        .accessibilityIdentifier("companion.open")
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             if isKidHermesRoom && companionProfile?.enabled != true {
                 HStack(alignment: .top, spacing: Space.sm) {
                     Text(companion.loading ? "Loading your AI helper…" : companionProfile != nil ? "Chat is paused. A parent can enable your AI helper." : "Couldn't load your companion settings.")
@@ -246,7 +248,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
             }
             headerAccessory()
         }
-        .padding(.horizontal, Space.lg).padding(.top, Space.md).padding(.bottom, Space.sm)
+        .padding(.horizontal, Space.lg).padding(.top, isFamilyRoom ? Space.sm : Space.md).padding(.bottom, Space.sm)
     }
 
     // MARK: Messages
