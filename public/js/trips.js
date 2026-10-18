@@ -69,8 +69,11 @@ let tripPasteResult = null;   // { flights: [...], lodging: [...] } — each ite
 // Trip chat long-poll state (mirrors app.js's chat* globals, trip-scoped).
 let tripChatMessages = [];
 let tripChatLastId = null;
-let tripChatPollTimer = false;
+let tripChatPollTimer = null;
 let tripChatPollAbort = null;
+let tripChatScope = null;
+let tripChatPendingSend = null;
+let tripChatSending = false;
 let tripChatNudgeReady = false;
 const TRIP_CHAT_BACKOFF_MS = [2000, 5000, 10000];
 
@@ -2441,30 +2444,42 @@ function tripScrollChatToBottom() {
 }
 
 async function tripLoadChat() {
+  const tripId = currentTripId;
+  const userId = currentUserId;
+  const scope = JSON.stringify([userId, tripId]);
+  if (tripChatScope !== scope) {
+    tripChatScope = scope;
+    tripChatMessages = [];
+    tripChatLastId = null;
+  }
   try {
-    const msgs = await window.auth.getTripChatMessages(currentTripId, {});
-    tripChatMessages = msgs;
-    tripChatLastId = msgs.length ? msgs[msgs.length - 1].id : null;
-    renderTripChatMessages();
+    const msgs = await window.auth.getTripChatMessages(tripId, {});
+    if (currentTripId !== tripId || currentUserId !== userId) return;
+    tripMergeChatMessages(msgs);
+    if (!msgs.length) renderTripChatMessages();
     tripScrollChatToBottom();
   } catch (err) {
-    toast('❌ ' + err.message);
+    if (currentTripId === tripId && currentUserId === userId) toast('❌ ' + err.message);
   }
 }
 
 function tripMergeChatMessages(msgs) {
   if (!msgs.length) return;
   const byId = new Map(tripChatMessages.map((m) => [m.id, m]));
-  for (const m of msgs) byId.set(m.id, m);
-  tripChatMessages = Array.from(byId.values()).sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  let changed = false;
+  for (const m of msgs) {
+    if (JSON.stringify(byId.get(m.id)) !== JSON.stringify(m)) { byId.set(m.id, m); changed = true; }
+  }
+  if (!changed) return;
+  tripChatMessages = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   tripChatLastId = tripChatMessages[tripChatMessages.length - 1].id;
   renderTripChatMessages();
 }
 
-async function tripChatLongPollFetch() {
-  const qs = `?afterId=${encodeURIComponent(tripChatLastId || '')}&wait=1`;
+async function tripChatLongPollFetch(tripId, cursor) {
+  const qs = `?afterId=${encodeURIComponent(cursor || '')}&wait=1`;
   tripChatPollAbort = new AbortController();
-  const res = await fetch('/api/trips/' + encodeURIComponent(currentTripId) + '/chat/messages' + qs, {
+  const res = await fetch('/api/trips/' + encodeURIComponent(tripId) + '/chat/messages' + qs, {
     credentials: 'same-origin',
     signal: tripChatPollAbort.signal,
   });
@@ -2473,43 +2488,67 @@ async function tripChatLongPollFetch() {
   return (data && data.messages) || [];
 }
 
-function tripChatWaitForVisible() {
+function tripChatReceivePause(signal, milliseconds) {
   return new Promise((resolve) => {
-    const onVis = () => {
-      if (document.hidden) return;
+    let timer;
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', finish);
       document.removeEventListener('visibilitychange', onVis);
       resolve();
     };
-    document.addEventListener('visibilitychange', onVis);
+    const onVis = () => { if (!document.hidden) finish(); };
+    if (signal.aborted) return resolve();
+    signal.addEventListener('abort', finish, { once: true });
+    if (milliseconds !== undefined) timer = setTimeout(finish, milliseconds);
+    else { document.addEventListener('visibilitychange', onVis); onVis(); }
   });
 }
 
-async function tripChatLongPollLoop() {
+async function tripChatLongPollLoop(lifetime) {
+  const tripId = currentTripId;
+  const userId = currentUserId;
+  const isCurrent = () => tripChatPollTimer === lifetime && !lifetime.signal.aborted && currentTripId === tripId && currentUserId === userId;
   let backoffIdx = 0;
-  while (tripChatPollTimer) {
-    if (document.hidden) { await tripChatWaitForVisible(); continue; }
+  let cursor = tripChatLastId;
+  let reconciledAt = Date.now();
+  while (isCurrent()) {
+    if (document.hidden) { await tripChatReceivePause(lifetime.signal); continue; }
+    const started = Date.now();
+    const previousId = cursor;
     try {
-      const msgs = await tripChatLongPollFetch();
-      if (!tripChatPollTimer) break;
+      if (Date.now() - reconciledAt >= 60000) {
+        reconciledAt = Date.now();
+        const before = new Map(tripChatMessages.map(m => [m.id, m]));
+        const snapshot = await window.auth.getTripChatMessages(tripId, { limit: 200 });
+        if (!isCurrent()) break;
+        const current = new Map(tripChatMessages.map(m => [m.id, m]));
+        tripMergeChatMessages(snapshot.filter(m => !current.has(m.id) || current.get(m.id) === before.get(m.id)));
+      }
+      const msgs = await tripChatLongPollFetch(tripId, cursor);
+      if (!isCurrent()) break;
       tripMergeChatMessages(msgs);
+      cursor = msgs.length ? msgs[msgs.length - 1].id : cursor;
       backoffIdx = 0;
+      if (cursor === previousId && Date.now() - started < 1000) await tripChatReceivePause(lifetime.signal, 1000 - (Date.now() - started));
     } catch (err) {
-      if (!tripChatPollTimer || err.name === 'AbortError') continue; // stopped, or nudged early — retry now, no backoff
-      await new Promise((r) => setTimeout(r, TRIP_CHAT_BACKOFF_MS[Math.min(backoffIdx, TRIP_CHAT_BACKOFF_MS.length - 1)]));
-      backoffIdx++;
+      if (!isCurrent()) break;
+      if (err.name === 'AbortError') continue;
+      await tripChatReceivePause(lifetime.signal, TRIP_CHAT_BACKOFF_MS[Math.min(backoffIdx++, TRIP_CHAT_BACKOFF_MS.length - 1)]);
     }
   }
 }
 
 function tripStartChatPolling() {
   tripStopChatPolling();
-  tripChatPollTimer = true;
-  tripChatLongPollLoop();
+  tripChatPollTimer = new AbortController();
+  tripChatLongPollLoop(tripChatPollTimer);
   tripSetupChatRealtimeNudge();
 }
 
 function tripStopChatPolling() {
-  tripChatPollTimer = false;
+  if (tripChatPollTimer) tripChatPollTimer.abort();
+  tripChatPollTimer = null;
   if (tripChatPollAbort) { tripChatPollAbort.abort(); tripChatPollAbort = null; }
 }
 
@@ -2525,10 +2564,20 @@ async function tripSendChatMessage(e) {
   e.preventDefault();
   const input = document.getElementById('trip-chat-input');
   const text = input ? input.value.trim() : '';
-  if (!text) return;
+  if (!text || tripChatSending) return;
+  const tripId = currentTripId;
+  const userId = currentUserId;
+  const sentDraft = input.value;
+  tripChatSending = true;
   try {
-    const res = await window.auth.sendTripChatMessage(currentTripId, text);
-    if (input) input.value = '';
+    const payload = JSON.stringify([userId, tripId, text]);
+    if (!tripChatPendingSend || tripChatPendingSend.payload !== payload) tripChatPendingSend = { payload, id: crypto.randomUUID() };
+    const pending = tripChatPendingSend;
+    const res = await window.auth.sendTripChatMessage(tripId, text, null, pending.id);
+    if (currentTripId !== tripId || currentUserId !== userId) return;
+    if (!res?.message) throw new Error("Couldn't confirm delivery. Please retry.");
+    if (tripChatPendingSend === pending) tripChatPendingSend = null;
+    if (input.value === sentDraft) input.value = '';
     // MUST go through the id-deduping merge, never a raw push: the server
     // emits to long-poll waiters BEFORE the POST response returns, so the
     // in-flight poll usually delivers this same message first — a raw push
@@ -2536,7 +2585,9 @@ async function tripSendChatMessage(e) {
     if (res && res.message) tripMergeChatMessages([res.message]);
     tripScrollChatToBottom();
   } catch (err) {
-    toast('❌ ' + err.message);
+    if (currentTripId === tripId && currentUserId === userId) toast('❌ ' + err.message);
+  } finally {
+    tripChatSending = false;
   }
 }
 

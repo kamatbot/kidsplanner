@@ -22,6 +22,7 @@
     <p class="auth-subtitle" id="auth-subtitle">Who's signing in?</p>
   </div>
   <div class="auth-card">
+    <p id="notification-cleanup-notice" class="error-msg" role="status" hidden>You’re signed out, but notification cleanup couldn’t finish. Check Fam ETC notification permissions in your browser settings before sharing this browser.</p>
 
     <!-- Step 0: choose Parent or Kid -->
     <div id="role-choice">
@@ -90,6 +91,13 @@
 
 <script src="/js/auth.js"></script>
 <script>
+function showNotificationCleanupNotice() {
+  if (new URLSearchParams(window.location.search).get('notifications') === 'cleanup-failed') {
+    document.getElementById('notification-cleanup-notice').hidden = false;
+  }
+}
+showNotificationCleanupNotice();
+
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;

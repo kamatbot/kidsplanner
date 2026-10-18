@@ -46,3 +46,17 @@ test('request receipts are encrypted at rest with the chat body key',()=>{
  const hash=crypto.createHash('sha256').update(JSON.stringify([cmd.text,null,null,false])).digest('hex');
  assert.ok(!raw.includes(Buffer.from(hash)));assert.ok(!raw.includes(Buffer.from(cmd.text)));
 });
+
+for (const media of [null, {type:'gif',url:'https://media.giphy.com/media/test/giphy.gif',previewUrl:'https://media.giphy.com/media/test/giphy.gif',width:80,height:80}]) {
+ test(`${media ? 'GIF' : 'text'} retry after accepted send returns one original row`,()=>{
+  const cmd=command({text:media?'':'Uncertain delivery',media});
+  const first=chat.sendMessage(fam.id,cmd);
+  assert.ok(first.message);
+  const retry=chat.sendMessage(fam.id,cmd);
+  assert.equal(retry.existing,true);
+  assert.equal(retry.message.id,first.message.id);
+  assert.equal(chat.listMessages(fam.id).filter(m=>m.id===first.message.id).length,1);
+  const next=chat.sendMessage(fam.id,{...cmd,clientMessageId:crypto.randomUUID()});
+  assert.notEqual(next.message.id,first.message.id);
+ });
+}

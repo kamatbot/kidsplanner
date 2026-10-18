@@ -314,3 +314,15 @@ test("an iOS token moves to the account that registers it last (shared iPad)", (
   assert.deepEqual(notifications.tokensForUser("shared-parent"), []);
   assert.deepEqual(notifications.tokensForUser("shared-kid"), ["shared-ipad-token"]);
 });
+
+test("a shared browser subscription moves exclusively to the current account without affecting other devices", () => {
+  const shared = { endpoint: 'https://push/shared-browser', keys: { p256dh: 'public', auth: 'auth' } };
+  const other = { endpoint: 'https://push/other-browser', keys: { p256dh: 'other-public', auth: 'other-auth' } };
+  notifications.addWebSubscription('previous-browser-owner', shared);
+  notifications.addWebSubscription('previous-browser-owner', other);
+  notifications.addWebSubscription('current-browser-owner', shared);
+  assert.deepEqual(notifications.listWebSubscriptions('previous-browser-owner'), [other]);
+  assert.deepEqual(notifications.listWebSubscriptions('current-browser-owner'), [shared]);
+  notifications.addWebSubscription('current-browser-owner', shared);
+  assert.deepEqual(notifications.listWebSubscriptions('current-browser-owner'), [shared]);
+});

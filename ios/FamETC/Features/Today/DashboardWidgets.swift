@@ -136,6 +136,7 @@ struct DailyFiveCard: View {
     }
 
     @State private var activeSheet: DailySheet?
+    @State private var showingPractice = false
     @State private var puzzle: DailyPuzzleResponse?
     @State private var newsChoices: [DailyNewsChoice] = []
     @State private var vocabulary: DailyVocabularyResponse?
@@ -149,16 +150,34 @@ struct DailyFiveCard: View {
     @State private var dailyFiveProgress: DailyFiveProgressPayload?
     @State private var dailyFiveProgressLoading = false
 
+    private var practiceAccountScope: String {
+        "\(store.me?.id ?? "")|\(store.me?.role ?? "")|\(store.me?.kidId ?? "")|\(store.family?.id ?? "")|\(store.needsAuth)"
+    }
+
     var body: some View {
-        TodayDailyFivePreview(
-            isKid: isKid,
-            statuses: activityStatuses,
-            challengeStatus: challengeStatus,
-            challengeDetail: challengeDetail,
-            onOpen: openActivity,
-            onOpenChallenge: openChallenge,
-            dense: dense
-        )
+        VStack(alignment: .leading, spacing: Space.sm) {
+            TodayDailyFivePreview(
+                isKid: isKid,
+                statuses: activityStatuses,
+                challengeStatus: challengeStatus,
+                challengeDetail: challengeDetail,
+                onOpen: openActivity,
+                onOpenChallenge: openChallenge,
+                dense: dense
+            )
+            Button { showingPractice = true } label: {
+                Label("Puzzle practice · play anytime", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("daily.practice")
+            .accessibilityHint("Opens optional circuit trails and reasoning puzzles, separate from Daily 4")
+        }
+        .sheet(isPresented: $showingPractice) { PuzzlePracticeView() }
+        .onChange(of: practiceAccountScope) { _, _ in showingPractice = false }
         // Also reloads once a failed launch sync recovers, so the cards don't sit on "Loading".
         .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())|\(store.syncError == nil)") { await loadDailyExtras() }
         .onReceive(NotificationCenter.default.publisher(for: .famsRewardsChanged)) { _ in
@@ -989,6 +1008,10 @@ private struct DailyPuzzleView: View {
     @ViewBuilder
     private func selectedClue(_ crossword: CrosswordPuzzle) -> some View {
         if let entry = selectedCrosswordEntry(in: crossword) {
+            let cells = crosswordCells(for: entry)
+            let letters = cells.map { answers[crosswordCellKey(row: $0.row, col: $0.col)] ?? "" }
+            let filled = letters.filter { !$0.isEmpty }.count
+            VStack(alignment: .leading, spacing: Space.sm) {
             HStack(alignment: .center, spacing: Space.sm) {
                 Button { moveSelectedClue(by: -1, in: crossword) } label: {
                     Image(systemName: "chevron.left").frame(minWidth: 44, minHeight: 44)
@@ -996,7 +1019,7 @@ private struct DailyPuzzleView: View {
                 .buttonStyle(.bordered)
                 .accessibilityIdentifier("puzzle.clue.previous")
                 .accessibilityLabel("Previous clue")
-                Text("\(entry.number). \(entry.clue)")
+                Text("\(entry.number) \(entry.direction.capitalized) · \(entry.answer.count) letters")
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1009,8 +1032,20 @@ private struct DailyPuzzleView: View {
                 .accessibilityIdentifier("puzzle.clue.next")
                 .accessibilityLabel("Next clue")
             }
+                Text(entry.clue)
+                    .font(Typography.cardTitle).foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(letters.map { $0.isEmpty ? "_" : $0.uppercased() }.joined(separator: " "))
+                    .font(Typography.body.monospaced().weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Your letters: \(letters.map { $0.isEmpty ? "blank" : $0 }.joined(separator: ", "))")
+                Text("\(filled) of \(entry.answer.count) letters filled")
+                    .font(Typography.caption).foregroundStyle(Palette.textSecond)
+            }
             .padding(Space.md)
             .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: activeCrosswordEntryID)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Selected clue, \(entry.number), \(entry.direction), \(entry.clue)")
         }

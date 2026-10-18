@@ -8,6 +8,7 @@ import SwiftUI
 /// this view only renders + reports what `/api/brainteaser/today` returns.
 struct BrainTeaserView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var progressScope: Daily5Reporter.Scope?
     private enum LoadState {
         case loading
@@ -24,6 +25,10 @@ struct BrainTeaserView: View {
     @State private var answerError: String? = nil
     @AppStorage private var teaserDoneStamp: String
 
+    private var accountScope: String {
+        "\(store.me?.id ?? "")|\(store.me?.role ?? "")|\(store.me?.kidId ?? "")|\(store.family?.id ?? "")|\(store.needsAuth)"
+    }
+
     /// Scoped per account (device-shared iPads); the old unscoped key is never read.
     init(userID: String) {
         _teaserDoneStamp = AppStorage(wrappedValue: "", "\(Daily5Done.teaserKey):\(userID)")
@@ -33,7 +38,7 @@ struct BrainTeaserView: View {
         // The enclosing WordWidget/QuizWidget provides the DashCard chrome, so
         // this view renders just its content.
         content
-            .task(id: "\(store.me?.id ?? "")|\(Agenda.todayKey())") {
+            .task(id: "\(accountScope)|\(Agenda.todayKey())") {
                 await load()
             }
     }
@@ -98,6 +103,8 @@ struct BrainTeaserView: View {
                 .accessibilityLabel("Question progress")
                 .accessibilityValue("\(answeredCount) of \(total) answered")
 
+            if let visual = q.visual { VisualPuzzleView(visual: visual) }
+
             Text(q.q)
                 .font(Typography.cardTitle)
                 .foregroundStyle(Palette.text)
@@ -125,10 +132,11 @@ struct BrainTeaserView: View {
                 }
             } else if let picked {
                 LearningFeedback(
-                    title: picked == q.answerIndex ? "Correct." : "Not quite — the right answer is highlighted above.",
+                    title: picked == q.answerIndex ? "That fits. Here's why." : "Let's follow the reasoning.",
                     message: q.exp?.trimmingCharacters(in: .whitespacesAndNewlines),
                     kind: picked == q.answerIndex ? .success : .retry
                 )
+                .transition(.opacity)
 
                 nextButton(total: total)
             } else if let failedAnswer, let answerError {
@@ -146,6 +154,7 @@ struct BrainTeaserView: View {
                 .accessibilityIdentifier("brain.retrySave")
             }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: picked)
     }
 
     private func optionState(_ q: BrainTeaserQ, _ i: Int) -> LearningOption.State {
@@ -158,7 +167,7 @@ struct BrainTeaserView: View {
     private func nextButton(total: Int) -> some View {
         Button {
             Haptics.selection()
-            answeredCount += 1
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { answeredCount += 1 }
             index += 1
             picked = nil
             failedAnswer = nil
@@ -207,6 +216,7 @@ struct BrainTeaserView: View {
     // MARK: Networking
 
     private func load() async {
+        let scope = accountScope
         let userID = store.me?.id
         let day = Agenda.todayKey()
         progressScope = Daily5Reporter.capture(store)
@@ -217,9 +227,10 @@ struct BrainTeaserView: View {
         isSavingAnswer = false
         failedAnswer = nil
         answerError = nil
+        guard !store.needsAuth, userID != nil else { return }
         do {
             let response = try await APIClient.shared.brainTeaserToday()
-            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            guard !Task.isCancelled, accountScope == scope, Agenda.todayKey() == day else { return }
             guard response.date == day,
                   response.count == response.questions.count,
                   response.questions.allSatisfy({ question in
@@ -233,24 +244,24 @@ struct BrainTeaserView: View {
                 Daily5Reporter.report("bt", "started", store: store, scope: progressScope)
             }
         } catch {
-            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            guard !Task.isCancelled, accountScope == scope, Agenda.todayKey() == day else { return }
             state = .error(error.localizedDescription)
         }
     }
 
     private func report(qid: String, answer: Int, correct: Bool) async {
-        let userID = store.me?.id
+        let scope = accountScope
         let day = Agenda.todayKey()
         do {
             try await APIClient.shared.brainTeaserAnswer(qid: qid, correct: correct)
-            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            guard !Task.isCancelled, accountScope == scope, Agenda.todayKey() == day else { return }
             picked = answer
         } catch {
-            guard !Task.isCancelled, store.me?.id == userID, Agenda.todayKey() == day else { return }
+            guard !Task.isCancelled, accountScope == scope, Agenda.todayKey() == day else { return }
             failedAnswer = answer
             answerError = error.localizedDescription
         }
-        guard store.me?.id == userID, Agenda.todayKey() == day else { return }
+        guard accountScope == scope, Agenda.todayKey() == day else { return }
         isSavingAnswer = false
     }
 }

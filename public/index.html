@@ -35,6 +35,7 @@
   <link rel="stylesheet" href="/css/today-home.css">
   <link rel="stylesheet" href="/css/mood-check-in.css">
   <link rel="stylesheet" href="/css/today-learning.css">
+  <link rel="stylesheet" href="/css/puzzle-studio.css">
   <link rel="stylesheet" href="/css/child-view.css">
   <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
 </head>
@@ -82,6 +83,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </form>
 
     <div id="first-run-error" class="error-msg" style="margin-top:12px"></div>
+    <button type="button" class="btn-secondary full-width" onclick="handleLogout()">Sign out</button>
+  </div>
+</div>
+
+<div id="family-load-error-panel" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="family-load-error-heading" aria-describedby="family-load-error-description">
+  <div class="modal-card">
+    <h3 id="family-load-error-heading">Your family couldn’t load</h3>
+    <p id="family-load-error-description">Check your connection and try again. You can also sign out to use another account.</p>
+    <div class="form-row">
+      <button type="button" class="btn-primary" onclick="window.location.reload()">Try again</button>
+      <button type="button" class="btn-secondary" onclick="handleLogout()">Sign out</button>
+    </div>
   </div>
 </div>
 
@@ -469,9 +482,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   <div class="bt-head">
                     <span class="fam-bt-progress" id="bt-progress"></span>
                   </div>
+                  <div id="quiz-visual"></div>
                   <div class="quiz-question" id="quiz-question"></div>
                   <div class="quiz-options" id="quiz-options"></div>
-                  <div class="quiz-feedback" id="quiz-feedback"></div>
+                  <div class="quiz-feedback" id="quiz-feedback" role="status" aria-live="polite"></div>
                   <button class="btn-primary" id="btn-next-q" onclick="nextQuestion()" hidden>Next question →</button>
                 </div>
                 <p id="daily5-quiz-done" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Brain teaser complete for today. Come back tomorrow for a new challenge.</p>
@@ -496,7 +510,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
                   </div>
                 </div>
                 </section>
-
+                <details class="puzzle-studio" id="puzzle-studio">
+                  <summary><strong>A little more play</strong><span>Optional practice · no points</span></summary>
+                  <div class="puzzle-studio-content"></div>
+                </details>
               </section>
           </div>
         </div>
@@ -1582,6 +1599,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <script src="/js/child-progress.js"></script>
 <script src="/js/child-view.js"></script>
 <script src="/js/mood-check-in.js"></script>
+<script src="/js/puzzle-studio.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

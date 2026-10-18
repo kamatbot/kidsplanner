@@ -3,17 +3,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../public/js/app.js'), 'utf8');
 function fn(name) {
   const re = new RegExp(`(?:async )?function ${name}\\(`);
   const start = source.search(re);
   assert.ok(start >= 0, name);
-  const next = source.slice(start + 1).search(/\n(?:async )?function \w+\(/);
-  return source.slice(start, next < 0 ? undefined : start + 1 + next) + '\n';
+  return source.slice(start, source.indexOf('\n}', start) + 2) + '\n';
 }
 function context(extra = {}) {
-  const sandbox = { AbortController, Date, Map, Set, URL, setTimeout, clearTimeout,
+  const sandbox = { AbortController, Date, Map, Set, URL, crypto, setTimeout, clearTimeout,
+    chatPendingSend: null,
     chatMessages: [], chatLastId: null, chatLastAt: null, chatPollTimer: null, chatPollAbort: null,
+    sessionUser: { id: 'user' }, currentFamily: { id: 'family' },
     CHAT_BACKOFF_MS: [2000], document: { hidden: false }, renderChatMessages() {}, ...extra };
   return vm.createContext(sandbox);
 }
@@ -119,7 +121,7 @@ test('send lock releases after success and failure and preserves a newer draft',
       input.value = 'New draft';
       return { message: message('sent-' + sends, text) };
     } } } });
-  vm.runInContext(fn('mergeChatMessages') + fn('handleSendChatMessage'), c);
+  vm.runInContext(fn('mergeChatMessages') + fn('chatSendRequest') + fn('handleSendChatMessage'), c);
   await c.handleSendChatMessage({ preventDefault() {} });
   assert.equal(c.chatSending, false);
   assert.equal(input.value, 'New draft');
@@ -132,4 +134,102 @@ test('send lock releases after success and failure and preserves a newer draft',
   fail = false;
   await c.handleSendChatMessage({ preventDefault() {} });
   assert.equal(sends, 4);
+});
+
+for (const boundary of ['account', 'family']) {
+  test(`late fallback poll cannot enter another ${boundary}`, async () => {
+    let deliver;
+    const c = context({ window: { auth: { getMessages: () => new Promise(resolve => { deliver = resolve; }) } } });
+    vm.runInContext(fn('mergeChatMessages') + fn('pollChatMessages'), c);
+    const pending = c.pollChatMessages();
+    if (boundary === 'account') c.sessionUser = { id: 'next-user' };
+    else c.currentFamily = { id: 'next-family' };
+    deliver([message('private')]);
+    await pending;
+    assert.equal(c.chatMessages.length, 0);
+  });
+
+  test(`late send cannot change another ${boundary}'s draft or messages`, async () => {
+    let deliver;
+    const input = { value: 'Keep this draft' };
+    const c = context({ chatSending: false,
+      document: { getElementById: () => input }, toast: assert.fail, scrollChatToBottom: assert.fail,
+      window: { auth: { sendChatMessage: () => new Promise(resolve => { deliver = resolve; }) } } });
+    vm.runInContext(fn('mergeChatMessages') + fn('chatSendRequest') + fn('handleSendChatMessage'), c);
+    const pending = c.handleSendChatMessage({ preventDefault() {} });
+    if (boundary === 'account') c.sessionUser = { id: 'next-user' };
+    else c.currentFamily = { id: 'next-family' };
+    deliver({ message: message('private') });
+    await pending;
+    assert.equal(c.chatMessages.length, 0);
+    assert.equal(input.value, 'Keep this draft');
+    assert.equal(c.chatSending, false);
+  });
+}
+
+test('periodic snapshot applies moderation without dropping history or advancing receive cursor', async () => {
+  const lifetime = new AbortController();
+  let now = 0, snapshots = 0;
+  const cursors = [];
+  const c = context({ chatPollTimer: lifetime, chatLastId: 'latest',
+    chatMessages: [message('old'), message('latest')], Date: { now: () => now },
+    window: { auth: { getMessages: async () => { snapshots++; return [{ ...message('latest', ''), deleted: true, flagged: true }]; } } },
+    chatReceivePause: async () => {},
+    chatLongPollFetch: async cursor => {
+      cursors.push(cursor);
+      if (cursors.length === 1) { now = 59000; return [message('new1')]; }
+      if (cursors.length === 2) { assert.equal(snapshots, 0); now = 61000; return [message('new2')]; }
+      lifetime.abort(); return [];
+    } });
+  vm.runInContext(fn('mergeChatMessages') + fn('reconcileChatSnapshot') + fn('chatLongPollLoop'), c);
+  await c.chatLongPollLoop(lifetime);
+  assert.equal(snapshots, 1);
+  assert.deepEqual(cursors, ['latest', 'new1', 'new2']);
+  assert.deepEqual(Array.from(c.chatMessages, m => m.id), ['old', 'latest', 'new1', 'new2']);
+  assert.equal(c.chatMessages[1].deleted, true);
+  assert.equal(c.chatMessages[1].flagged, true);
+});
+
+test('snapshot cannot undo a deletion confirmed while its read was in flight', async () => {
+  const lifetime = new AbortController();
+  let deliver;
+  const original = message('latest');
+  const c = context({ chatPollTimer: lifetime, chatMessages: [original],
+    window: { auth: { getMessages: () => new Promise(resolve => { deliver = resolve; }) } } });
+  vm.runInContext(fn('mergeChatMessages') + fn('reconcileChatSnapshot'), c);
+  const pending = c.reconcileChatSnapshot(lifetime);
+  c.mergeChatMessages([{ ...original, deleted: true, text: '' }]);
+  deliver([original]); await pending;
+  assert.equal(c.chatMessages[0].deleted, true);
+});
+
+for (const kind of ['text', 'gif']) {
+  test(`${kind} retry keeps its id after lost response; confirmed send ends retry identity`, async () => {
+    const ids = [];
+    let fail = true;
+    const input = { value: 'Draft' };
+    const c = context({ chatSending: false, document: { getElementById: () => input }, toast() {}, closeChatPickers() {}, scrollChatToBottom() {},
+      window: { auth: { sendChatMessage: async (text, media, id) => {
+        ids.push(id);
+        if (fail) throw new Error('Response lost');
+        return { message: message('confirmed', text) };
+      } } } });
+    vm.runInContext(fn('mergeChatMessages') + fn('chatSendRequest') + fn('handleSendChatMessage') + fn('handleSendGif'), c);
+    const send = () => kind === 'text' ? c.handleSendChatMessage({ preventDefault() {} }) : c.handleSendGif('https://media.giphy.com/x.gif', '', 80, 80);
+    await send(); assert.equal(input.value, 'Draft');
+    fail = false; await send();
+    assert.equal(ids[0], ids[1]);
+    input.value = 'Draft'; await send();
+    assert.notEqual(ids[1], ids[2]);
+  });
+}
+
+test('retry keys change with draft, family, account and GIF selection', () => {
+  const c = context();
+  vm.runInContext(fn('chatSendRequest'), c);
+  const keys = [c.chatSendRequest('one').id, c.chatSendRequest('two').id];
+  c.currentFamily = { id: 'other' }; keys.push(c.chatSendRequest('two').id);
+  c.sessionUser = { id: 'other' }; keys.push(c.chatSendRequest('two').id);
+  keys.push(c.chatSendRequest('', { url: 'first.gif' }).id, c.chatSendRequest('', { url: 'second.gif' }).id);
+  assert.equal(new Set(keys).size, keys.length);
 });

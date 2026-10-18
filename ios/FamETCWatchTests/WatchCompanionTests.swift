@@ -98,6 +98,58 @@ private let child = WatchProfile(role: "kid", userId: "u1", familyId: "f1", kidI
         XCTAssertFalse(WatchCompanionRoute.isCompanion(["type": "chat_message", "roomId": "family"]))
     }
 
+    func testPollCursorUsesServerOrderWhenTimestampsTie() async throws {
+        let api = CompanionWatchTestClient()
+        func message(_ id: String) -> WatchCompanionMessage {
+            WatchCompanionMessage(id: id, senderType: "agent", senderId: "hermes", text: id, createdAt: "2026-10-13T00:00:00Z")
+        }
+        api.initialMessages = [message("m_z"), message("m_a")]
+        api.pollResponses = [[message("m_0")]]
+        let model = WatchCompanionChatStore(client: api)
+        await model.listen(for: try XCTUnwrap(WatchCompanionIdentity(child)), isCurrent: { true })
+        XCTAssertEqual(api.pollCursors, ["m_a", "m_0"])
+        XCTAssertEqual(model.messages.map(\.id), ["m_0", "m_a", "m_z"])
+    }
+
+    func testSendExcludesReminderActionsAndSettingsUntilCancellationCompletes() async throws {
+        let api = CompanionWatchTestClient()
+        let model = WatchCompanionChatStore(client: api)
+        let scope = try XCTUnwrap(WatchCompanionIdentity(child))
+        await model.listen(for: scope, isCurrent: { true })
+        let started = expectation(description: "Send started")
+        api.holdSend = { started.fulfill() }
+        model.draft = "A question"
+        let task = Task { await model.send(for: scope, isCurrent: { true }) }
+        await fulfillment(of: [started], timeout: 2)
+        await model.act(messageID: "nudge", action: "dismiss", for: scope, isCurrent: { true })
+        let saved = await model.save(companionProfile, for: scope, isCurrent: { true })
+        XCTAssertFalse(saved)
+        XCTAssertEqual(api.actionCalls, 0)
+        XCTAssertEqual(api.saveCalls, 0)
+        task.cancel(); api.release(); await task.value
+        XCTAssertFalse(model.isMutating)
+        XCTAssertNotNil(model.pendingID)
+    }
+
+    func testReminderActionExcludesSendAndSettings() async throws {
+        let api = CompanionWatchTestClient()
+        let model = WatchCompanionChatStore(client: api)
+        let scope = try XCTUnwrap(WatchCompanionIdentity(child))
+        await model.listen(for: scope, isCurrent: { true })
+        let started = expectation(description: "Action started")
+        api.holdAction = { started.fulfill() }
+        let task = Task { await model.act(messageID: "nudge", action: "dismiss", for: scope, isCurrent: { true }) }
+        await fulfillment(of: [started], timeout: 2)
+        model.draft = "A question"
+        await model.send(for: scope, isCurrent: { true })
+        let saved = await model.save(companionProfile, for: scope, isCurrent: { true })
+        XCTAssertFalse(saved)
+        XCTAssertTrue(api.sentIDs.isEmpty)
+        XCTAssertEqual(api.saveCalls, 0)
+        task.cancel(); api.release(); await task.value
+        XCTAssertFalse(model.isMutating)
+    }
+
     func testAPIRoutesPrivateBearerAndBoundedReplyTimeout() async throws {
         let recorder = CompanionWatchRequestRecorder()
         let response = #"{"message":{"id":"m1","senderType":"kid","senderId":"k1","text":"Hi","createdAt":"2026-10-13T00:00:00Z"},"messages":[]}"#
@@ -139,13 +191,26 @@ private let child = WatchProfile(role: "kid", userId: "u1", familyId: "f1", kidI
     var rejectSend: WatchAPIError?
     var sentIDs: [String] = []
     var holdSend: (() -> Void)?
+    var holdAction: (() -> Void)?
+    var initialMessages: [WatchCompanionMessage] = []
+    var pollResponses: [[WatchCompanionMessage]] = []
+    var pollCursors: [String?] = []
+    var actionCalls = 0
+    var saveCalls = 0
     private var continuation: CheckedContinuation<Void, Never>?
     func release() { continuation?.resume(); continuation = nil }
     func fetchCompanion(identity: WatchCompanionIdentity) async throws -> WatchCompanionProfile { companionProfile }
-    func updateCompanion(_ profile: WatchCompanionProfile, identity: WatchCompanionIdentity) async throws -> WatchCompanionProfile { profile }
+    func updateCompanion(_ profile: WatchCompanionProfile, identity: WatchCompanionIdentity) async throws -> WatchCompanionProfile {
+        saveCalls += 1
+        return profile
+    }
     func fetchCompanionMessages(afterID: String?, wait: Bool, identity: WatchCompanionIdentity) async throws -> [WatchCompanionMessage] {
-        if wait { throw WatchAPIError.disconnected }
-        return []
+        if wait {
+            pollCursors.append(afterID)
+            guard !pollResponses.isEmpty else { throw WatchAPIError.disconnected }
+            return pollResponses.removeFirst()
+        }
+        return initialMessages
     }
     func sendCompanionMessage(text: String, clientMessageID: String, identity: WatchCompanionIdentity) async throws -> WatchCompanionSendResponse {
         sentIDs.append(clientMessageID)
@@ -156,7 +221,11 @@ private let child = WatchProfile(role: "kid", userId: "u1", familyId: "f1", kidI
         let reply = WatchCompanionMessage(id: "m2", senderType: "agent", senderId: "hermes", text: "What have you tried?", createdAt: "2026-10-13T00:00:01Z")
         return WatchCompanionSendResponse(message: message, messages: [reply])
     }
-    func companionAction(messageID: String, action: String, identity: WatchCompanionIdentity) async throws -> WatchCompanionSendResponse { throw WatchAPIError.disconnected }
+    func companionAction(messageID: String, action: String, identity: WatchCompanionIdentity) async throws -> WatchCompanionSendResponse {
+        actionCalls += 1
+        if let holdAction { await withCheckedContinuation { continuation = $0; holdAction() } }
+        throw WatchAPIError.disconnected
+    }
 }
 private struct CompanionWatchCredentials: WatchCredentialStore {
     var userID = "u1"

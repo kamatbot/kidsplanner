@@ -140,6 +140,7 @@ let chatLastAt      = null;   // createdAt cursor (used for the one-shot ?since=
 let chatLastId      = null;   // id cursor for the long-poll ?afterId=
 let chatPollTimer   = null;   // AbortController owning exactly one receive loop
 let chatSending     = false;
+let chatPendingSend = null; // one uncertain send; scoped to account, family and payload
 let chatPollAbort   = null;   // AbortController for the in-flight long-poll fetch, if any
 const CHAT_LONGPOLL_WAIT_S = 25; // must match LONG_POLL_MS in lib/routes/chat.js
 const CHAT_BACKOFF_MS = [2000, 5000, 10000]; // retry backoff on poll errors, capped
@@ -547,6 +548,10 @@ async function handlePinChatMessage(id) {
 async function bootstrapSession() {
   sessionUser = null;
   currentFamily = null;
+  resetFamilyEventCache();
+  famEventsSync = null;
+  clearReminderTimers();
+  window.famPuzzleStudio?.setScope('');
   resetCompanionSession();
   const sessionState = companionState;
   window.famMoodCheckIn?.clear();
@@ -563,6 +568,7 @@ async function bootstrapSession() {
   save('fam_user', sessionUser);
   applyRoleScopingToUI();
 
+  let familyLoadFailed = false;
   try {
     const families = await window.auth.getFamilies();
     if (companionState !== sessionState) return false;
@@ -570,8 +576,18 @@ async function bootstrapSession() {
   } catch (e) {
     if (companionState !== sessionState) return false;
     currentFamily = null;
+    familyLoadFailed = true;
   }
   save('fam_family', currentFamily);
+
+  if (familyLoadFailed) {
+    hideFirstRunPanel();
+    const panel = document.getElementById('family-load-error-panel');
+    panel?.classList.add('open');
+    panel?.querySelector('button')?.focus();
+    return false;
+  }
+  document.getElementById('family-load-error-panel')?.classList.remove('open');
 
   if (!currentFamily) {
     // A kid session should never reach first-run (their family already
@@ -1275,7 +1291,7 @@ function showDashboard() {
 
   // Manual events (server-synced with iOS): fetch once up front — until it
   // resolves the calendar renders the localStorage mirror. Also uploads any
-  // legacy/offline-queued local events (one-time migration off fam_events).
+  // this account's offline-queued local events.
   loadFamilyEvents();
 
   // Homework (Phase 3): load once up front so calendar "due" chips render on
@@ -1988,10 +2004,12 @@ function onEventRepeatChange() {
 /* Manual events are server-synced family data (/api/calendar/events — the same
    store the iOS app reads/writes), so an event added here shows up on every
    device. The server posts the family-chat announcement on POST, so the web no
-   longer sends its own (that would double-post). localStorage 'fam_events' is
-   only the offline mirror + pending-upload queue — see loadFamilyEvents(). */
+   longer sends its own (that would double-post). Account/family-scoped local
+   storage is the offline mirror + pending-upload queue — see loadFamilyEvents(). */
 async function saveEvent(e) {
   e.preventDefault();
+  const scope = familyEventScope();
+  if (!scope) return;
   const chatSource = chatEventComposerSource;
   const audience = document.getElementById('event-audience').value;
   const payload = {
@@ -2018,6 +2036,7 @@ async function saveEvent(e) {
     } else {
       try {
         updated = (await window.auth.updateCalendarEvent(id, payload)).event;
+        if (familyEventScope() !== scope) return;
       } catch (err) {
         // 403 (not permitted) / 400 (validation) — surface and keep the modal open.
         toast(`❌ ${err.message || 'Could not update that event.'}`);
@@ -2040,6 +2059,7 @@ async function saveEvent(e) {
     ev = result.event;
     toast(result.existing ? 'That message is already on the calendar.' : 'Event added! 🎯');
   } catch (err) {
+    if (familyEventScope() !== scope) return;
     if (chatSource || (err && err.status)) { // chat conversions stay server-idempotent; don't queue them offline
       toast(`❌ ${err.message || 'Could not save that event.'}`);
       return;
@@ -2049,6 +2069,7 @@ async function saveEvent(e) {
     ev = { id: uid(), ...payload };
     toast('Saved on this device — will sync when back online. 📴');
   }
+  if (familyEventScope() !== scope) return;
   const localEvents = getEvents();
   const existingIndex = localEvents.findIndex((item) => item && item.id === ev.id);
   saveEvents(existingIndex >= 0
@@ -2059,24 +2080,28 @@ async function saveEvent(e) {
   scheduleReminders();
 }
 
-/* Fetch the family's server events, then upload anything still sitting in
-   localStorage without a server id ('ev_' prefix): legacy pre-migration events
-   (one-time migration) and offline-queued adds. Uploads are silent — no chat
+/* Fetch the family's server events, then upload its own account-scoped
+   offline-queued adds without a server id ('ev_' prefix). Uploads are silent — no chat
    flood — and dedup by date|time|title|kid so a re-run never duplicates.
    Queued back-to-back (bulk imports call this too) so runs never interleave. */
 let famEventsSync = null;
 function loadFamilyEvents() {
+  const scope = familyEventScope();
+  if (!scope) return Promise.resolve();
   const run = async () => {
+    if (familyEventScope() !== scope) return;
     let serverEvents;
     try {
       serverEvents = await window.auth.getCalendarEvents();
     } catch (e) {
       return; // offline — keep rendering the localStorage mirror
     }
+    if (familyEventScope() !== scope) return;
     const evKey = (ev) => `${ev.date}|${ev.time || ''}|${String(ev.title || '').trim().toLowerCase()}|${ev.kidId || ''}`;
     const seen = new Set(serverEvents.map(evKey));
     const pending = [];
     for (const ev of getEvents()) {
+      if (familyEventScope() !== scope) return;
       if (String(ev.id).startsWith('ev_') || seen.has(evKey(ev))) continue;
       try {
         const res = await window.auth.addCalendarEvent({
@@ -2084,9 +2109,11 @@ function loadFamilyEvents() {
           notes: ev.notes || '', category: ev.category, kidId: ev.kidId || null, silent: true,
           sourceType: ev.sourceType || undefined, sourceId: ev.sourceId || undefined,
         });
+        if (familyEventScope() !== scope) return;
         serverEvents.push(res.event);
         seen.add(evKey(res.event));
       } catch (e) {
+        if (familyEventScope() !== scope) return;
         if (e && e.status) continue; // server rejected it (e.g. bad legacy date) — drop, don't retry forever
         pending.push(ev); // network hiccup — keep locally, retried next load
       }
@@ -2191,12 +2218,15 @@ function showDetail(id, occDate) {
 
 async function deleteCurrentEvent() {
   if (!activeEventId) return;
+  const scope = familyEventScope();
+  const deletingId = activeEventId;
   if (String(activeEventId).startsWith('school-')) {
     if (isKidSession()) return;
     const ev = visibleEvents().find(e => e.id === activeEventId);
     if (!ev) return;
     try {
       await window.auth.hideSchoolEvent(ev.subscriptionId, ev.uid);
+      if (familyEventScope() !== scope) return;
       schoolEvents = schoolEvents.filter(e => !(e.subscriptionId === ev.subscriptionId && e.uid === ev.uid));
       closeModal('event-detail-modal');
       renderCalendar();
@@ -2217,12 +2247,13 @@ async function deleteCurrentEvent() {
   if (String(activeEventId).startsWith('ev_')) {
     try {
       await window.auth.deleteCalendarEvent(activeEventId);
+      if (familyEventScope() !== scope) return;
     } catch (err) {
       toast(`❌ ${err.message || 'Could not delete that event.'}`);
       return;
     }
   }
-  saveEvents(getEvents().filter(e => e.id !== activeEventId));
+  saveEvents(getEvents().filter(e => e.id !== deletingId));
   closeModal('event-detail-modal');
   renderCalendar();
   toast('Event deleted.');
@@ -2746,6 +2777,7 @@ function wireCrosswordTyping(crossword, grid, clues) {
   };
   const selectEntry = (entry, focusFirstBlank = false) => {
     activeEntry = entry;
+    inputs.forEach((input) => input.classList.toggle('in-active-word', !!entry && contains(entry, Number(input.dataset.row), Number(input.dataset.col))));
     clues.querySelectorAll('.crossword-clue').forEach((button) => {
       const selected = button.dataset.entryId === entry?.id;
       button.classList.toggle('selected', selected);
@@ -2886,6 +2918,8 @@ async function loadBrainTeaser() {
 
 function renderBrainTeaser() {
   const progressEl = document.getElementById('bt-progress');
+  const visualEl = document.getElementById('quiz-visual');
+  if (visualEl) visualEl.innerHTML = '';
   const total = brainTeaserQuestions.length;
   if (!total) {
     document.getElementById('quiz-question').textContent = 'No brain teasers to show right now — check back tomorrow!';
@@ -2897,6 +2931,7 @@ function renderBrainTeaser() {
   }
   brainTeaserAnswered = false;
   const q = brainTeaserQuestions[brainTeaserIndex];
+  if (visualEl) visualEl.innerHTML = window.famPuzzleStudio?.visualMarkup(q.visual) || '';
   if (progressEl) progressEl.textContent = `${brainTeaserIndex + 1}/${total}`;
   document.getElementById('quiz-question').innerHTML =
     (q.resurfaced ? '<span class="fam-bt-hint">Seen before</span> ' : '') + esc(q.q);
@@ -3934,8 +3969,12 @@ function mergeChatMessages(msgs) {
 // receiving new messages continuously should rely on the long-poll loop
 // (startChatPolling), not repeated calls to this.
 async function pollChatMessages() {
+  const userId = sessionUser?.id;
+  const familyId = currentFamily?.id;
   try {
-    mergeChatMessages(await window.auth.getMessages(chatLastAt));
+    const msgs = await window.auth.getMessages(chatLastAt);
+    if (sessionUser?.id !== userId || currentFamily?.id !== familyId) return;
+    mergeChatMessages(msgs);
   } catch (err) { /* transient poll failures shouldn't spam toasts */ }
 }
 
@@ -3976,11 +4015,17 @@ function chatReceivePause(signal, milliseconds) {
 async function chatLongPollLoop(lifetime) {
   let backoffIdx = 0;
   let cursor = chatLastId; // sends may update the display, never the receive cursor
+  let reconciledAt = Date.now();
   while (chatPollTimer === lifetime && !lifetime.signal.aborted) {
     if (document.hidden) { await chatReceivePause(lifetime.signal); continue; }
     const started = Date.now();
     const previousId = cursor;
     try {
+      if (Date.now() - reconciledAt >= 60000) {
+        reconciledAt = Date.now();
+        await reconcileChatSnapshot(lifetime);
+        if (chatPollTimer !== lifetime || lifetime.signal.aborted) break;
+      }
       const msgs = await chatLongPollFetch(cursor);
       if (chatPollTimer !== lifetime || lifetime.signal.aborted) break;
       mergeChatMessages(msgs);
@@ -3997,6 +4042,18 @@ async function chatLongPollLoop(lifetime) {
       await chatReceivePause(lifetime.signal, CHAT_BACKOFF_MS[Math.min(backoffIdx++, CHAT_BACKOFF_MS.length - 1)]);
     }
   }
+}
+
+async function reconcileChatSnapshot(lifetime) {
+  const userId = sessionUser?.id;
+  const familyId = currentFamily?.id;
+  const before = new Map(chatMessages.map(m => [m.id, m]));
+  const msgs = await window.auth.getMessages();
+  if (chatPollTimer !== lifetime || lifetime.signal.aborted || sessionUser?.id !== userId || currentFamily?.id !== familyId) return;
+  const current = new Map(chatMessages.map(m => [m.id, m]));
+  // Keep history outside the rolling window and any locally confirmed mutation
+  // that completed while this snapshot was in flight.
+  mergeChatMessages(msgs.filter(m => !current.has(m.id) || current.get(m.id) === before.get(m.id)));
 }
 
 function startChatPolling() {
@@ -4649,7 +4706,7 @@ function renderHermesPage() {
   if (!el) return;
   if (!hermesAvailable) { el.innerHTML = '<p class="text-muted chat-empty">Hermes isn’t available right now.</p>'; return; }
   if (!hermesMessages.length) {
-    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? (isKidSession() ? 'Ask a question, explore an idea or work through a homework hint together.' : 'Hermes checks in here when a kid’s day ends, homework is due or dinner isn’t planned. You can also ask it anything.') : 'Loading…'}</p>`;
+    el.innerHTML = `<p class="text-muted chat-empty">${hermesLoaded ? (isKidSession() ? 'Ask a question, explore an idea or work through a homework hint together.' : 'Hermes checks in here about the topics your family chooses in Settings → Connections. You can also ask it anything.') : 'Loading…'}</p>`;
     return;
   }
   // Auto-scroll to bottom when the tab is freshly opened (scrollHeight/
@@ -4934,6 +4991,14 @@ function setupKidRequestNudges() {
   window.addEventListener('focus', nudge);
 }
 
+function chatSendRequest(text, media = null) {
+  const payload = JSON.stringify([sessionUser?.id, currentFamily?.id, text, media]);
+  if (!chatPendingSend || chatPendingSend.payload !== payload) {
+    chatPendingSend = { payload, id: crypto.randomUUID() };
+  }
+  return chatPendingSend;
+}
+
 async function handleSendChatMessage(e) {
   if (typeof chatActiveRoom !== 'undefined' && chatActiveRoom === 'hermes') return handleSendHermesMessage(e, document.getElementById('chat-input'));
   e.preventDefault();
@@ -4943,21 +5008,21 @@ async function handleSendChatMessage(e) {
   chatSending = true;
   const sentDraft = input.value;
   const sendingUser = sessionUser?.id;
+  const sendingFamily = currentFamily?.id;
   try {
-    const res = await window.auth.sendChatMessage(text);
-    if (sessionUser?.id !== sendingUser) return;
+    const pending = chatSendRequest(text);
+    const res = await window.auth.sendChatMessage(text, null, pending.id);
+    if (sessionUser?.id !== sendingUser || currentFamily?.id !== sendingFamily) return;
+    if (!res?.message) throw new Error("Couldn't confirm delivery. Please retry.");
+    if (chatPendingSend === pending) chatPendingSend = null;
     if (input && input.value === sentDraft) input.value = '';
     // Merge (id-dedupe), never raw-push: the server emits to long-poll
     // waiters before this POST returns, so the in-flight poll can deliver
     // the same message first and a push would render it twice.
-    if (res && res.message) {
-      mergeChatMessages([res.message]);
-    } else {
-      await pollChatMessages();
-    }
+    mergeChatMessages([res.message]);
     scrollChatToBottom(); // your own message: always jump to the bottom
   } catch (err) {
-    toast(`❌ ${err.message}`);
+    if (sessionUser?.id === sendingUser && currentFamily?.id === sendingFamily) toast(`❌ ${err.message}`);
   } finally {
     chatSending = false;
   }
@@ -5112,18 +5177,25 @@ function handleGifSearchInput() {
 }
 
 async function handleSendGif(url, previewUrl, width, height) {
+  if (chatSending) return;
+  chatSending = true;
+  const sendingUser = sessionUser?.id;
+  const sendingFamily = currentFamily?.id;
   closeChatPickers();
   try {
-    const res = await window.auth.sendChatMessage('', { type: 'gif', url, previewUrl, width, height });
+    const media = { type: 'gif', url, previewUrl, width, height };
+    const pending = chatSendRequest('', media);
+    const res = await window.auth.sendChatMessage('', media, pending.id);
+    if (sessionUser?.id !== sendingUser || currentFamily?.id !== sendingFamily) return;
+    if (!res?.message) throw new Error("Couldn't confirm delivery. Please retry.");
+    if (chatPendingSend === pending) chatPendingSend = null;
     // Merge, never raw-push — same long-poll race as handleSendChatMessage.
-    if (res && res.message) {
-      mergeChatMessages([res.message]);
-    } else {
-      await pollChatMessages();
-    }
+    mergeChatMessages([res.message]);
     scrollChatToBottom(); // your own GIF: always jump to the bottom
   } catch (err) {
-    toast(`❌ ${err.message}`);
+    if (sessionUser?.id === sendingUser && currentFamily?.id === sendingFamily) toast(`❌ ${err.message}`);
+  } finally {
+    chatSending = false;
   }
 }
 
@@ -6156,6 +6228,7 @@ async function retryTodayProgress() {
 }
 
 function renderTodayScreen() {
+  window.famPuzzleStudio?.setScope(sessionUser && currentFamily ? `${sessionUser.id}:${currentFamily.id}` : '');
   window.famMoodCheckIn?.mount(() => ["kid", "parent"].includes(sessionUser?.role) && currentFamily ? `${sessionUser.id}:${currentFamily.id}:${sessionUser.role}` : "");
   if (!sessionUser) return;
   const mobileAvatar = document.getElementById('mobile-user-avatar');
@@ -7246,15 +7319,36 @@ function toast(msg) {
    LOGOUT
 ============================================================ */
 async function handleLogout() {
+  if (handleLogout.pending) return;
+  handleLogout.pending = true;
+  let notificationCleanupFailed = false;
+  // Try the old account's notification detach while its session is valid,
+  // but keep optional browser APIs independent from session revocation.
+  try {
+    await detachBrowserPush();
+  } catch (_) {
+    notificationCleanupFailed = true;
+  }
+  try {
+    await window.auth.signOut();
+  } catch (error) {
+    toast(error.message || 'Could not sign out. Please try again.');
+    return;
+  } finally {
+    handleLogout.pending = false;
+  }
   sessionUser = null;
   currentFamily = null;
+  resetFamilyEventCache();
+  famEventsSync = null;
+  clearReminderTimers();
+  window.famPuzzleStudio?.setScope('');
   resetCompanionSession();
   window.famMoodCheckIn?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
-  try { await window.auth.signOut(); } catch (e) { /* proceed regardless */ }
-  window.location.href = '/login';
+  window.location.href = notificationCleanupFailed ? '/login?notifications=cleanup-failed' : '/login';
 }
 
 /* ============================================================
@@ -7447,6 +7541,41 @@ async function handleSettingsRemovePasskey(id) {
    installed PWA, not a regular browser tab.
 ============================================================ */
 let swRegistration = null;
+let webPushSessionTask = Promise.resolve();
+
+function syncBrowserPush(registration) {
+  const account = sessionUser;
+  const run = async () => {
+    if (!account || sessionUser !== account || handleLogout.pending) return;
+    const subscription = await registration.pushManager?.getSubscription();
+    if (!subscription || sessionUser !== account || handleLogout.pending) return;
+    try {
+      await window.auth.subscribeWebPush(subscription.toJSON ? subscription.toJSON() : subscription);
+    } catch (error) {
+      // An existing subscription may still belong to the previous login.
+      // Stop delivery if we cannot establish its new owner.
+      await subscription.unsubscribe();
+      throw error;
+    }
+  };
+  webPushSessionTask = webPushSessionTask.catch(() => {}).then(run);
+  return webPushSessionTask;
+}
+
+async function detachBrowserPush() {
+  await webPushSessionTask.catch(() => {});
+  if (!('serviceWorker' in navigator)) return;
+  const registration = swRegistration || await navigator.serviceWorker.getRegistration('/');
+  const subscription = await registration?.pushManager?.getSubscription();
+  if (subscription) {
+    // Still authenticated here. Unsubscribe locally too so a failed server
+    // detach cannot keep delivering the old account's notifications.
+    try { await window.auth.unsubscribeWebPush(subscription.endpoint); } catch (_) { /* local removal below */ }
+    if (!await subscription.unsubscribe()) throw new Error('Could not turn off notifications on this browser. Please try signing out again.');
+  }
+  const notifications = await registration?.getNotifications?.() || [];
+  notifications.forEach((notification) => notification.close());
+}
 
 function pushSupported() {
   return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
@@ -7467,6 +7596,7 @@ async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return null;
   try {
     swRegistration = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
+    await syncBrowserPush(swRegistration);
     return swRegistration;
   } catch (e) {
     console.error('Service worker registration failed:', e);
@@ -8528,6 +8658,7 @@ async function init() {
   migrateLegacyStorage();
   const ok = await bootstrapSession();
   if (!ok) return; // redirected to /login
+  window.famPuzzleStudio?.mount(document.getElementById('puzzle-studio'), () => sessionUser && currentFamily ? `${sessionUser.id}:${currentFamily.id}` : '');
   showDashboard();
   // Standalone feature pages link back into the shared shell with a tab query
   // so the persistent navigation lands on the requested surface directly.

@@ -116,8 +116,69 @@ final class ChatMergeTests: XCTestCase {
 
     private final class ChatService: ChatMessageService {
         var receive: (String?, Bool) async throws -> [ChatMessage] = { _, _ in [] }
+        var rooms: () async throws -> [ChatRoom] = { [] }
+        func chatRooms() async throws -> [ChatRoom] { try await rooms() }
         func chatMessages(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> [ChatMessage] {
             try await receive(afterId, wait)
+        }
+    }
+
+    func testPeriodicSnapshotKeepsHistoryAndReceiveCursorWhileApplyingModeration() async {
+        let service = ChatService()
+        var now = Date(timeIntervalSince1970: 0)
+        let store = AppStore(chatService: service, chatNow: { now })
+        let complete = expectation(description: "Snapshot reconciled")
+        let old = msg("old", at: "2025-01-01T00:00:00Z")
+        let latest = msg("latest")
+        var deleted = latest
+        deleted.deleted = true
+        deleted.text = ""
+        deleted.flagged = true
+        var calls = 0
+        service.receive = { cursor, wait in
+            calls += 1
+            if calls == 1 { return [old, latest] }
+            if calls == 2 { XCTAssertTrue(wait); now = now.addingTimeInterval(61); return [self.msg("newer", at: "2026-01-02T00:00:00Z")] }
+            if calls == 3 { XCTAssertFalse(wait); XCTAssertNil(cursor); return [deleted] }
+            XCTAssertTrue(wait)
+            XCTAssertEqual(cursor, "newer", "Snapshot must not rewind or advance insertion cursor")
+            complete.fulfill()
+            try await Task.sleep(for: .seconds(60))
+            return []
+        }
+        let loop = Task { await store.runActiveRoomLoop("trip:test") }
+        defer { loop.cancel() }
+        await fulfillment(of: [complete], timeout: 0.75)
+        XCTAssertEqual(store.messagesByRoom["trip:test"]?.map(\.id), ["old", "latest", "newer"])
+        XCTAssertTrue(store.messagesByRoom["trip:test"]?[1].deleted == true)
+        XCTAssertTrue(store.messagesByRoom["trip:test"]?[1].flagged == true)
+    }
+
+    func testSnapshotCannotRestoreMessageDeletedWhileRequestWasInFlight() {
+        let store = AppStore()
+        let original = msg("m1")
+        var deleted = original
+        deleted.deleted = true
+        deleted.text = ""
+        store.messages = [deleted]
+        store.reconcileRoomSnapshot([original], roomId: familyRoomId, before: [original])
+        XCTAssertTrue(store.messages[0].deleted)
+    }
+
+    func testOldRoomDirectoryCannotEnterNewAccountOrExpireItsSession() async {
+        for fails in [false, true] {
+            let service = ChatService()
+            let store = AppStore(chatService: service)
+            store.me = User(id: "before", email: "a@example.com", name: "Before", role: "parent")
+            service.rooms = {
+                store.me = User(id: "after", email: "b@example.com", name: "After", role: "parent")
+                if fails { throw APIError.unauthenticated }
+                return [ChatRoom(roomId: "trip:private", title: "Private")]
+            }
+            let refreshed = await store.refreshChatRooms()
+            XCTAssertFalse(refreshed)
+            XCTAssertFalse(store.chatRooms.contains { $0.roomId == "trip:private" })
+            XCTAssertFalse(store.needsAuth)
         }
     }
 

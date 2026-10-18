@@ -1,5 +1,14 @@
 import Foundation
 
+/// Bound successful polls that return without advancing; parked requests and
+/// new messages keep their normal latency. Empty private threads cannot park.
+enum WatchChatPollDelay {
+    static func seconds(elapsed: TimeInterval, madeProgress: Bool, emptyThread: Bool = false) -> TimeInterval {
+        guard !madeProgress else { return 0 }
+        return max(0, (emptyThread ? 5 : 1) - elapsed)
+    }
+}
+
 protocol WatchAPIClient {
     func fetchActions() async throws -> [WatchAction]
     func fetchHomework() async throws -> [WatchHomework]
