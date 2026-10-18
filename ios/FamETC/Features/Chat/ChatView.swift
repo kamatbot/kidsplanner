@@ -11,15 +11,14 @@ import SwiftUI
 //
 // Trips (docs/TRIPS-PLAN.md) generalized this from a single family thread to
 // one screen per ROOM ("family" or "trip:<tripId>", see `familyRoomId`) —
-// `roomId`/`title` default to the family room, so every pre-Trips call site
+// `roomId` defaults to the family room, so every pre-Trips call site
 // (`ChatScreen()`) renders exactly as before.
 //
 // The system keyboard and attachment panel share one measured input area.
 // The panel fills only the space not already reserved by keyboard avoidance.
 struct ChatScreen<HeaderAccessory: View>: View {
     var roomId: String = familyRoomId
-    var title: String? = nil
-    /// Room controls below the title. Same generic-with-default-EmptyView shape as
+    /// Room controls (the room pills). Same generic-with-default-EmptyView shape as
     /// `SurfaceScaffold`'s `Trailing`.
     @ViewBuilder var headerAccessory: () -> HeaderAccessory
 
@@ -199,41 +198,20 @@ struct ChatScreen<HeaderAccessory: View>: View {
 
     // MARK: Header
 
-    /// Sentence-case room caption under the serif title. A parent's Hermes
-    /// thread is readable only by that user and Hermes
-    /// (docs/HERMES-THREADS-CONTRACT.md §1).
-    private var roomCaption: String {
-        if isKidHermesRoom { return "Private · AI helper" }
-        if isHermesRoom { return "Private thread · only you and Hermes can see it" }
-        return "Trip chat"
-    }
-
+    /// No title rows: the room pills already name each room, and every
+    /// room's empty state says whose thread it is.
     private var header: some View {
         VStack(alignment: .leading, spacing: Space.sm) {
-            // Family needs no title row: the room pills already say "Family".
-            if !isFamilyRoom {
-                HStack(spacing: Space.sm) {
-                    if isKidHermesRoom, let profile = companionProfile {
-                        KidCompanionAvatarView(avatar: profile.avatar, color: profile.color, size: 42)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(isKidHermesRoom ? helperName : (title ?? (isHermesRoom ? "Hermes" : "Trip")))
-                            .font(Theme.display(22, weight: .bold, relativeTo: .title2)).foregroundStyle(Palette.text)
-                            .accessibilityAddTraits(.isHeader)
-                        Text(roomCaption)
-                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                    if companionScope != nil {
-                        Button { composerFocused = false; showCompanion = true } label: {
-                            Image(systemName: isKidHermesRoom ? "paintpalette" : "person.2.badge.gearshape")
-                                .font(.title3).frame(width: 44, height: 44)
-                        }.buttonStyle(.plain).foregroundStyle(Palette.accent)
-                            .accessibilityLabel(isKidHermesRoom ? "Customize companion" : "Kids’ AI companion settings")
-                            .accessibilityIdentifier("companion.open")
-                    }
+            HStack(spacing: Space.sm) {
+                headerAccessory().frame(maxWidth: .infinity, alignment: .leading)
+                if companionScope != nil {
+                    Button { composerFocused = false; showCompanion = true } label: {
+                        Image(systemName: isKidHermesRoom ? "paintpalette" : "person.2.badge.gearshape")
+                            .font(.title3).frame(width: 44, height: 44)
+                    }.buttonStyle(.plain).foregroundStyle(Palette.accent)
+                        .accessibilityLabel(isKidHermesRoom ? "Customize companion" : "Kids’ AI companion settings")
+                        .accessibilityIdentifier("companion.open")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             if isKidHermesRoom && companionProfile?.enabled != true {
                 HStack(alignment: .top, spacing: Space.sm) {
@@ -246,9 +224,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
                     }
                 }.accessibilityIdentifier("companion.chatStatus")
             }
-            headerAccessory()
         }
-        .padding(.horizontal, Space.lg).padding(.top, isFamilyRoom ? Space.sm : Space.md).padding(.bottom, Space.sm)
+        .padding(.horizontal, Space.lg).padding(.top, Space.sm).padding(.bottom, Space.sm)
     }
 
     // MARK: Messages
@@ -548,8 +525,8 @@ struct ChatScreen<HeaderAccessory: View>: View {
 /// Convenience: no header accessory. Mirrors `SurfaceScaffold`'s
 /// `Trailing == EmptyView` extension.
 extension ChatScreen where HeaderAccessory == EmptyView {
-    init(roomId: String = familyRoomId, title: String? = nil) {
-        self.init(roomId: roomId, title: title, headerAccessory: { EmptyView() })
+    init(roomId: String = familyRoomId) {
+        self.init(roomId: roomId, headerAccessory: { EmptyView() })
     }
 }
 
@@ -563,7 +540,7 @@ struct ChatTabHost: View {
     @State private var isResolvingPendingRoom = false
 
     var body: some View {
-        ChatScreen(roomId: selectedRoomId, title: selectedRoomTitle) {
+        ChatScreen(roomId: selectedRoomId) {
             if store.chatRooms.count > 1 {
                 ChatRoomSwitcher(rooms: store.chatRooms, selection: $selectedRoomId)
             }
@@ -580,11 +557,6 @@ struct ChatTabHost: View {
             consumePendingRoom()
         }
         .onChange(of: store.pendingChatRoomId) { _, _ in consumePendingRoom() }
-    }
-
-    private var selectedRoomTitle: String? {
-        guard selectedRoomId != familyRoomId else { return nil }
-        return store.chatRooms.first { $0.roomId == selectedRoomId }?.title
     }
 
     private func consumePendingRoom() {
