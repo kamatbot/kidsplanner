@@ -1,7 +1,12 @@
 package com.fametc.portal
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -22,6 +27,37 @@ class PortalActivity : ComponentActivity() {
     private val model by lazy { ViewModelProvider(this)[PortalViewModel::class.java] }
     private var foreground by mutableStateOf(false)
     private var brightUntilElapsed by mutableStateOf(0L)
+
+    // FLAG_KEEP_SCREEN_ON alone has let the Portal's screensaver start. While the
+    // board should stay lit we also hold a screen wake lock, and if a screensaver
+    // (an Android dream) starts anyway, a wake-up lock ends it straight away.
+    private var holdScreen = false
+    private val power by lazy { getSystemService(Context.POWER_SERVICE) as PowerManager }
+    @Suppress("DEPRECATION")
+    private val screenLock by lazy {
+        power.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "fametc:board").apply { setReferenceCounted(false) }
+    }
+    private val dreamReceiver = object : BroadcastReceiver() {
+        @Suppress("DEPRECATION")
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!holdScreen) return
+            power.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                "fametc:wake",
+            ).acquire(5_000)
+        }
+    }
+
+    private fun holdScreen(hold: Boolean) {
+        holdScreen = hold
+        if (hold) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (!screenLock.isHeld) screenLock.acquire()
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (screenLock.isHeld) screenLock.release()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,8 +90,7 @@ class PortalActivity : ComponentActivity() {
                     ScreenMode.SCHEDULED -> !quiet || temporarilyBright
                     ScreenMode.NORMAL -> false
                 }
-                if (hold) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                holdScreen(hold)
                 val brightness = if (active && quiet && !temporarilyBright) 0.05f else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                 if (window.attributes.screenBrightness != brightness) {
                     window.attributes = window.attributes.apply { screenBrightness = brightness }
@@ -81,13 +116,15 @@ class PortalActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         foreground = true
+        registerReceiver(dreamReceiver, IntentFilter(Intent.ACTION_DREAMING_STARTED))
         model.onForeground()
     }
 
     override fun onStop() {
         foreground = false
+        unregisterReceiver(dreamReceiver)
         model.onBackground()
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        holdScreen(false)
         window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
         super.onStop()
     }
