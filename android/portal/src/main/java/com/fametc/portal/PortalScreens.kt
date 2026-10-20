@@ -77,7 +77,9 @@ fun PortalRoot(
             when {
                 state.loading -> LoadingView()
                 state.context != null -> FamilyDashboard(
-                    state, state.context, photos, quiet, onRefresh, { settingsOpen = true }, onLeaveDemo, { fullBleed = it }
+                    state, state.context, photos, quiet, onRefresh, { settingsOpen = true }, onLeaveDemo, { fullBleed = it },
+                    preferences.nextCardX to preferences.nextCardY,
+                    { x, y -> onPreferences(preferences.copy(nextCardX = x, nextCardY = y)) },
                 )
                 state.paired -> WaitingForFamily(state, onRefresh, { settingsOpen = true })
                 else -> PairingView(state, onPair, onDemo, { settingsOpen = true })
@@ -228,6 +230,8 @@ private fun FamilyDashboard(
     onSettings: () -> Unit,
     onLeaveDemo: () -> Unit,
     onFullBleed: (Boolean) -> Unit,
+    nextCard: Pair<Float, Float>,
+    onMoveNextCard: (Float, Float) -> Unit,
 ) {
     var showWeek by rememberSaveable(context.device.id) { mutableStateOf(false) }
     val localTime = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone)).toLocalTime()
@@ -245,7 +249,7 @@ private fun FamilyDashboard(
             if (!showNight == scheduledNight) { manualNight = null; manualSetDuringNight = null }
             else { manualNight = !showNight; manualSetDuringNight = scheduledNight }
         }
-        if (showNight) NightBoard(state, context, photos, onSettings, onWeek, onToggleMode, onFullBleed)
+        if (showNight) NightBoard(state, context, photos, onSettings, onWeek, onToggleMode, onFullBleed, nextCard, onMoveNextCard)
         else DayBoard(state, context, onRefresh, onSettings, onLeaveDemo, onWeek, onToggleMode)
         return
     }

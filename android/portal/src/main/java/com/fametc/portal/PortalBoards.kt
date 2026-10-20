@@ -1,5 +1,14 @@
 package com.fametc.portal
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -394,6 +403,7 @@ private fun EventCard(event: DisplayEvent, past: Boolean, marker: String?, mark:
 internal fun NightBoard(
     state: PortalState, context: DisplayContext, photos: List<PortalPhoto>,
     onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit, onFullBleed: (Boolean) -> Unit,
+    nextCard: Pair<Float, Float> = 1f to 1f, onMoveNextCard: (Float, Float) -> Unit = { _, _ -> },
 ) {
     val now = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone))
     val today = now.toLocalDate().toString()
@@ -404,7 +414,7 @@ internal fun NightBoard(
     val later = laterAll.take(3)
     if (photos.isNotEmpty()) {
         DisposableEffect(Unit) { onFullBleed(true); onDispose { onFullBleed(false) } }
-        NightFrame(state, context, photos, today, next, onSettings, onWeek, onToggleMode)
+        NightFrame(state, context, photos, today, next, onSettings, onWeek, onToggleMode, nextCard, onMoveNextCard)
         return
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(NightGround)) {
@@ -473,20 +483,58 @@ private fun NightClock(modifier: Modifier, state: PortalState, context: DisplayC
     }
 }
 
-/** Full-screen photo frame: slideshow edge to edge, icons and the next event laid over it. */
+/** Next card position in px inside the free space, from its saved fraction (and back). */
+internal fun cardOffset(fraction: Float, free: Float): Float = fraction.coerceIn(0f, 1f) * free.coerceAtLeast(0f)
+internal fun cardFraction(offset: Float, free: Float): Float = if (free <= 0f) 1f else (offset / free).coerceIn(0f, 1f)
+
+/** Full-screen photo frame: slideshow edge to edge, icons and a movable Next card laid over it. */
 @Composable
 private fun NightFrame(
     state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, today: String, next: DisplayEvent?,
     onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit,
+    nextCard: Pair<Float, Float>, onMoveNextCard: (Float, Float) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().background(NightGround)) {
         val wide = maxWidth >= 900.dp
+        val margin = with(LocalDensity.current) { 32.dp.toPx() }
+        var cardSize by remember { mutableStateOf(IntSize.Zero) }
+        val freeW = constraints.maxWidth - cardSize.width - 2 * margin
+        val freeH = constraints.maxHeight - cardSize.height - 2 * margin
+        // While dragging, the live position; otherwise the saved fraction of the free space.
+        var dragging by remember { mutableStateOf<Offset?>(null) }
+        val saved by rememberUpdatedState(nextCard)
+        val position = dragging ?: Offset(cardOffset(saved.first, freeW), cardOffset(saved.second, freeH))
         NightPhoto(Modifier.fillMaxSize(), state, context, photos, wide)
         Box(
             Modifier.align(Alignment.TopCenter).fillMaxWidth().height(PortalTopInset + 96.dp)
                 .background(Brush.verticalGradient(listOf(NightGround.copy(alpha = .6f), Color.Transparent)))
         )
-        // Below the strip Portal's own status overlay uses, so the icons stay tappable.
+        NightPip(
+            Modifier
+                .offset { IntOffset((margin + position.x).roundToInt(), (margin + position.y).roundToInt()) }
+                .width(if (wide) 442.dp else 360.dp)
+                .onSizeChanged { cardSize = it }
+                .pointerInput(freeW, freeH) {
+                    // Drag anywhere on the card to move it; the spot is saved when you let go.
+                    detectDragGestures(
+                        onDragStart = { dragging = Offset(cardOffset(saved.first, freeW), cardOffset(saved.second, freeH)) },
+                        onDragEnd = {
+                            dragging?.let { onMoveNextCard(cardFraction(it.x, freeW), cardFraction(it.y, freeH)) }
+                            dragging = null
+                        },
+                        onDragCancel = { dragging = null },
+                    ) { change, amount ->
+                        change.consume()
+                        val from = dragging ?: return@detectDragGestures
+                        dragging = Offset(
+                            (from.x + amount.x).coerceIn(0f, freeW.coerceAtLeast(0f)),
+                            (from.y + amount.y).coerceIn(0f, freeH.coerceAtLeast(0f)),
+                        )
+                    }
+                },
+            context, today, next, state.nowMillis,
+        )
+        // Drawn last so the icons stay on top and tappable wherever the card is.
         Row(Modifier.align(Alignment.TopEnd).padding(top = PortalTopInset, end = 16.dp)) {
             CompositionLocalProvider(LocalContentColor provides Color.White) {
                 ActionIcon(Icons.Outlined.LightMode, "Day mode", onToggleMode)
@@ -494,7 +542,6 @@ private fun NightFrame(
                 ActionIcon(Icons.Outlined.Settings, "Display settings", onSettings)
             }
         }
-        NightPip(Modifier.align(Alignment.BottomEnd).padding(32.dp).width(if (wide) 368.dp else 300.dp), context, today, next, state.nowMillis)
     }
 }
 
@@ -581,25 +628,25 @@ private fun nextWhen(context: DisplayContext, today: String, next: DisplayEvent,
 @Composable
 private fun NightPip(modifier: Modifier, context: DisplayContext, today: String, next: DisplayEvent?, nowMillis: Long) {
     if (next == null) {
-        Column(modifier.card(NightCard.copy(alpha = .92f), 23.dp).padding(21.dp)) {
-            Text("All clear", color = NightText, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
-            Text("Nothing else this week.", color = NightSoft, fontSize = 17.sp)
+        Column(modifier.card(NightCard.copy(alpha = .92f), 28.dp).padding(25.dp)) {
+            Text("All clear", color = NightText, fontSize = 34.sp, fontWeight = FontWeight.SemiBold)
+            Text("Nothing else this week.", color = NightSoft, fontSize = 20.sp)
         }
         return
     }
     val color = eventColor(context, next)
     val ink = inkOn(color)
     val owner = eventOwner(context, next)
-    Column(modifier.card(color, 23.dp).padding(21.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+    Column(modifier.card(color, 28.dp).padding(25.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(nextLabel(today, next), color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+            Text(nextLabel(today, next), color = ink, fontSize = 17.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.7.sp)
             Spacer(Modifier.weight(1f))
             Pill(nextWhen(context, today, next, nowMillis), ink.copy(alpha = .18f), ink)
         }
-        Text(next.title, color = ink, fontSize = 30.sp, lineHeight = 35.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            Avatar(if (next.memberId == null) context.family.name.take(1).uppercase().ifEmpty { "F" } else owner.take(1).uppercase(), ink, color, 30.dp)
-            Text("$owner · ${clockTime(next)}", color = ink, fontSize = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(next.title, color = ink, fontSize = 36.sp, lineHeight = 42.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+            Avatar(if (next.memberId == null) context.family.name.take(1).uppercase().ifEmpty { "F" } else owner.take(1).uppercase(), ink, color, 36.dp)
+            Text("$owner · ${clockTime(next)}", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

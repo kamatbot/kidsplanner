@@ -28,4 +28,16 @@ class PortalBoardsTest {
         assertEquals(ink, inkOn(Color(0xFF65CBB5)))
         assertEquals(Color.White, inkOn(Color(0xFF7B4DFF)))
     }
+
+    @Test fun nextCardPositionRoundTripsAndStaysOnScreen() {
+        assertEquals(800f, cardOffset(1f, 800f), 0f)
+        assertEquals(0f, cardOffset(0f, 800f), 0f)
+        assertEquals(400f, cardOffset(.5f, 800f), 0f)
+        assertEquals(0f, cardOffset(1f, -20f), 0f)
+        assertEquals(0.25f, cardFraction(200f, 800f), 0f)
+        assertEquals(1f, cardFraction(900f, 800f), 0f)
+        assertEquals(0f, cardFraction(-5f, 800f), 0f)
+        assertEquals(1f, cardFraction(10f, 0f), 0f)
+        assertEquals(0.3f, cardFraction(cardOffset(.3f, 1234f), 1234f), 1e-6f)
+    }
 }
