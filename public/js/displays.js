@@ -7,6 +7,7 @@
     authorized: false, busy: false, loading: false, disposed: false,
     epoch: 0, loadRevision: 0, devices: [], editId: null, pairing: null,
     requests: new Set(), lastAttempt: 0,
+    photos: [], photoMax: 12, photosLoaded: false,
   };
 
   class DisplayApiError extends Error {
@@ -48,6 +49,11 @@
     document.querySelectorAll("[data-device-action]").forEach((button) => { button.disabled = blocked; });
     byId("copy-code").disabled = !state.pairing || blocked;
     byId("hide-code").disabled = !state.pairing;
+    const photoOff = blocked || !state.photosLoaded || state.photos.length >= state.photoMax;
+    byId("photo-input").disabled = photoOff;
+    byId("photo-add").classList.toggle("is-disabled", photoOff);
+    byId("photo-grid").setAttribute("aria-busy", String(!state.photosLoaded));
+    document.querySelectorAll("[data-photo-action]").forEach((button) => { button.disabled = blocked; });
   }
 
   function clearPairing() {
@@ -73,6 +79,12 @@
     byId("device-list").replaceChildren();
     byId("device-count").textContent = "";
     byId("device-count").hidden = true;
+    state.photos = [];
+    state.photosLoaded = false;
+    byId("photos-section").hidden = true;
+    byId("photo-grid").replaceChildren();
+    byId("photo-count").hidden = true;
+    status("photos-status", "");
   }
 
   function accessDenied(error) {
@@ -101,12 +113,13 @@
     const controller = new AbortController();
     state.requests.add(controller);
     let timedOut = false;
-    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, options.timeout || 20000);
+    const upload = options.body instanceof FormData; // the browser sets the multipart boundary
     try {
       const response = await fetch(path, {
         method: options.method || "GET", credentials: "same-origin", cache: "no-store",
-        headers: { Accept: "application/json", ...(options.body ? { "Content-Type": "application/json" } : {}) },
-        ...(options.body ? { body: JSON.stringify(options.body) } : {}), signal: controller.signal,
+        headers: { Accept: "application/json", ...(options.body && !upload ? { "Content-Type": "application/json" } : {}) },
+        ...(options.body ? { body: upload ? options.body : JSON.stringify(options.body) } : {}), signal: controller.signal,
       });
       let data;
       try { data = await response.json(); } catch (_) { data = {}; }
@@ -233,6 +246,8 @@
         pageMessage("That display is no longer connected. Pair it again to change its settings.");
       }
       renderDevices();
+      byId("photos-section").hidden = false;
+      loadPhotos();
     } catch (error) {
       if (error.name !== "AbortError" && error.status !== 401 && error.status !== 403
         && epoch === state.epoch && revision === state.loadRevision) {
@@ -406,7 +421,145 @@
     }
   }
 
+  // ---- Night photos -------------------------------------------------------
+  const PHOTO_LONG_EDGE = 2048;
+
+  function renderPhotos() {
+    const grid = byId("photo-grid");
+    grid.replaceChildren();
+    const count = byId("photo-count");
+    count.textContent = `${state.photos.length} of ${state.photoMax}`;
+    count.setAttribute("aria-label", `${state.photos.length} of ${state.photoMax} photos`);
+    count.hidden = false;
+    if (!state.photos.length) {
+      const empty = el("li", "photo-empty", "No photos yet. Add a favourite family photo for the night screen.");
+      grid.append(empty);
+    }
+    state.photos.forEach((photo, index) => {
+      const item = el("li", "photo-item");
+      const img = el("img", "photo-thumb");
+      img.src = `/api/displays/photos/${encodeURIComponent(photo.id)}`;
+      img.alt = `Night photo ${index + 1}`;
+      img.loading = "lazy";
+      img.decoding = "async";
+      const remove = el("button", "button button-danger photo-remove", "Remove");
+      remove.type = "button";
+      remove.dataset.photoAction = "remove";
+      remove.setAttribute("aria-label", "Remove photo");
+      remove.addEventListener("click", () => removePhoto(photo));
+      item.append(img, remove);
+      grid.append(item);
+    });
+    controls();
+  }
+
+  async function loadPhotos() {
+    const epoch = state.epoch;
+    try {
+      const data = await api("/api/displays/photos");
+      if (epoch !== state.epoch || state.disposed) return;
+      if (!Array.isArray(data.photos)) throw new DisplayApiError("Photos could not be read. Refresh to try again.");
+      state.photos = data.photos.filter((p) => p && typeof p.id === "string" && p.id);
+      if (Number.isInteger(data.max) && data.max > 0) state.photoMax = data.max;
+      state.photosLoaded = true;
+      renderPhotos();
+    } catch (error) {
+      if (error.name !== "AbortError" && error.status !== 401 && error.status !== 403 && epoch === state.epoch) {
+        status("photos-status", error.message, "error");
+      }
+    }
+  }
+
+  async function decodeImage(file) {
+    if (window.createImageBitmap) {
+      try { return await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (_) { /* option or format unsupported */ }
+      try { return await createImageBitmap(file); } catch (_) { /* fall through to <img> */ }
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      return img;
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  // Re-drawing onto a canvas drops EXIF/GPS metadata and shrinks the upload.
+  async function reencodePhoto(file) {
+    let source;
+    try { source = await decodeImage(file); } catch (_) { throw new DisplayApiError("That file isn't a photo we can use."); }
+    const width = source.naturalWidth || source.width;
+    const height = source.naturalHeight || source.height;
+    const scale = Math.min(1, PHOTO_LONG_EDGE / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#FFFFFF"; // JPEG has no transparency
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    if (source.close) source.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+    if (!blob) throw new DisplayApiError("That photo could not be prepared. Try a different one.");
+    return blob;
+  }
+
+  async function addPhotos() {
+    const input = byId("photo-input");
+    const files = Array.from(input.files || []);
+    input.value = "";
+    if (!files.length || !beginMutation()) return;
+    const epoch = state.epoch;
+    const room = Math.max(0, state.photoMax - state.photos.length);
+    const queue = files.slice(0, room);
+    let added = 0;
+    let failure = files.length > room ? `A display can show up to ${state.photoMax} photos. Remove one first.` : "";
+    try {
+      for (let i = 0; i < queue.length; i += 1) {
+        status("photos-status", `Adding ${i + 1} of ${queue.length}…`);
+        const form = new FormData();
+        form.append("photo", await reencodePhoto(queue[i]), "photo.jpg");
+        await api("/api/displays/photos", { method: "POST", body: form, timeout: 60000 });
+        if (epoch !== state.epoch || state.disposed) return;
+        added += 1;
+        await loadPhotos();
+      }
+    } catch (error) {
+      if (error.name === "AbortError" || error.status === 401 || error.status === 403 || epoch !== state.epoch) return;
+      failure = error.message;
+    } finally {
+      if (epoch === state.epoch) state.busy = false;
+      controls();
+    }
+    if (epoch !== state.epoch) return;
+    const done = added ? `Added ${added} photo${added === 1 ? "" : "s"}. ` : "";
+    status("photos-status", done + failure, failure ? "error" : "success");
+  }
+
+  async function removePhoto(photo) {
+    if (!state.authorized || state.busy) return;
+    if (!window.confirm("Remove this photo from the night screen?")) return;
+    if (!beginMutation()) return;
+    const epoch = state.epoch;
+    status("photos-status", "Removing photo…");
+    try {
+      const data = await api(`/api/displays/photos/${encodeURIComponent(photo.id)}`, { method: "DELETE" });
+      if (epoch !== state.epoch || state.disposed) return;
+      if (data.ok !== true) throw new DisplayApiError("Removal could not be confirmed. Refresh and check your photos.");
+      state.photos = state.photos.filter((item) => item.id !== photo.id);
+      renderPhotos();
+      status("photos-status", "Photo removed.", "success");
+      byId("photos-title").focus();
+    } catch (error) {
+      if (error.name !== "AbortError" && error.status !== 401 && error.status !== 403 && epoch === state.epoch) status("photos-status", error.message, "error");
+    } finally {
+      if (epoch === state.epoch) state.busy = false;
+      controls();
+    }
+  }
+
   byId("pair-form").addEventListener("submit", createPairing);
+  byId("photo-input").addEventListener("change", addPhotos);
   byId("edit-form").addEventListener("submit", saveDevice);
   byId("refresh-devices").addEventListener("click", () => loadDevices());
   byId("cancel-edit").addEventListener("click", () => { if (!state.busy) closeEditor(); });

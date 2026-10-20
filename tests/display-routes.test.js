@@ -9,7 +9,7 @@ const mount = require("../lib/routes/display");
 function fixture() {
   const routes = new Map();
   const app = {};
-  for (const method of ["get", "post", "patch"]) {
+  for (const method of ["get", "post", "patch", "delete"]) {
     app[method] = (path, ...handlers) => routes.set(`${method.toUpperCase()} ${path}`, handlers);
   }
   const parent = { id: "parent-a", data: { profile: { role: "parent" } } };
@@ -31,6 +31,7 @@ function fixture() {
       resolveToken: (value) => value === token ? { family: fam, device } : null,
     },
     displayContext: { buildContext: ({ family, device: display }) => ({ family: { name: family.name }, device: { id: display.id } }) },
+    displayPhotos: { MAX_BYTES: 1024, MAX_PHOTOS: 12, list: () => [] },
   };
   mount(app, deps);
   function request(method, path, { user = null, body = {}, headers = {}, params = {}, ...attributes } = {}) {
@@ -129,7 +130,7 @@ test("device context accepts only its own scoped bearer and never creates a user
   const otherParent = { id: "foreign-parent", data: { profile: { role: "parent" } } };
   const response = f.request("GET", "/api/display/context", { user: otherParent, headers: { Authorization: `Bearer ${f.token}` } });
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.body, { family: { name: "Our household" }, device: { id: "display-a" } });
+  assert.deepEqual(response.body, { family: { name: "Our household" }, device: { id: "display-a" }, photos: [] });
   assert.equal(response.req.user, undefined);
   assert.equal(response.req.family, undefined);
   assert.equal(response.req.displayParent, undefined);

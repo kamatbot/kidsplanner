@@ -85,6 +85,15 @@
       <p class="devices-footnote">A display updates its settings when it next connects. If it is offline when disconnected, its last approved view can remain visible for up to 12 hours.</p>
     </section>
 
+    <section id="photos-section" class="photos-section" aria-labelledby="photos-title" hidden>
+      <p class="eyebrow">NIGHT SCREEN</p>
+      <h2 id="photos-title" tabindex="-1">Night photos <span id="photo-count" class="count-pill" hidden></span></h2>
+      <p class="supporting">Your Portal shows these as a photo frame from 8:30 pm to 6 am. They're only visible on your family's paired displays.</p>
+      <ul id="photo-grid" class="photo-grid" aria-busy="true"></ul>
+      <p id="photos-status" class="form-status" role="status" aria-live="polite"></p>
+      <label id="photo-add" class="button button-primary photo-add" for="photo-input"><span>Add photos</span><input id="photo-input" class="sr-only" type="file" accept="image/*" multiple disabled></label>
+    </section>
+
     <datalist id="display-timezones"><option value="Asia/Bangkok"></option><option value="Asia/Singapore"></option><option value="Asia/Kolkata"></option><option value="Asia/Dubai"></option><option value="Asia/Tokyo"></option><option value="Europe/Madrid"></option><option value="Europe/London"></option><option value="Europe/Paris"></option><option value="America/New_York"></option><option value="America/Chicago"></option><option value="America/Denver"></option><option value="America/Los_Angeles"></option><option value="Australia/Sydney"></option><option value="Pacific/Auckland"></option><option value="Etc/UTC"></option></datalist>
   </main>
   <footer class="display-footer"><span>Fam ETC</span><a href="/app">Back to your family</a></footer>

@@ -1,5 +1,7 @@
 package com.fametc.portal
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -19,10 +21,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -368,13 +376,14 @@ private fun EventCard(event: DisplayEvent, past: Boolean, marker: String?, mark:
 // ───────────────────────────── Night board ─────────────────────────────
 
 @Composable
-internal fun NightBoard(state: PortalState, context: DisplayContext, onSettings: () -> Unit, onWeek: () -> Unit) {
+internal fun NightBoard(state: PortalState, context: DisplayContext, photos: List<ImageBitmap>, onSettings: () -> Unit, onWeek: () -> Unit) {
     val now = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone))
     val today = now.toLocalDate().toString()
     val upcoming = PortalSchedule.upcoming(context, state.nowMillis, context.timeZone)
     val next = upcoming.firstOrNull()
     val then = upcoming.getOrNull(1)
-    val later = upcoming.drop(2).filter { it.date == today }.take(3)
+    val laterAll = upcoming.drop(2).filter { it.date == today }
+    val later = laterAll.take(3)
     val days = context.days.filter { it.date > today }.take(6)
     BoxWithConstraints(Modifier.fillMaxSize().background(NightGround)) {
         val wide = maxWidth >= 900.dp
@@ -386,14 +395,26 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, onSettings:
                 }
             }
             if (wide) {
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
-                    NightClock(Modifier.weight(1f).fillMaxHeight(), state, context, later, true)
-                    NightNext(Modifier.weight(1.05f).fillMaxHeight(), context, today, next, then, state.nowMillis, true, Modifier.weight(1f))
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    // Drop LATER TODAY rather than squeeze the Up next card on a short screen.
+                    val roomForLater = maxHeight >= 600.dp
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
+                        if (photos.isEmpty()) NightClock(Modifier.weight(1f).fillMaxHeight(), state, context, later, true)
+                        else NightPhoto(Modifier.weight(1f).fillMaxHeight(), state, context, photos, true)
+                        NightNext(
+                            Modifier.weight(1.05f).fillMaxHeight(), context, today, next, then, state.nowMillis, true, Modifier.weight(1f),
+                            if (photos.isNotEmpty() && roomForLater) laterAll.take(2) else emptyList(),
+                        )
+                    }
                 }
             } else {
-                NightClock(Modifier.fillMaxWidth(), state, context, later, false)
+                if (photos.isEmpty()) NightClock(Modifier.fillMaxWidth(), state, context, later, false)
+                else NightPhoto(Modifier.fillMaxWidth().height(360.dp), state, context, photos, false)
                 Spacer(Modifier.height(24.dp))
-                NightNext(Modifier.fillMaxWidth(), context, today, next, then, state.nowMillis, false, Modifier.height(320.dp))
+                NightNext(
+                    Modifier.fillMaxWidth(), context, today, next, then, state.nowMillis, false, Modifier.height(320.dp),
+                    if (photos.isNotEmpty()) laterAll.take(2) else emptyList(),
+                )
             }
             if (days.isNotEmpty()) {
                 Spacer(Modifier.height(24.dp))
@@ -434,6 +455,38 @@ private fun NightClock(modifier: Modifier, state: PortalState, context: DisplayC
 }
 
 @Composable
+private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayContext, photos: List<ImageBitmap>, wide: Boolean) {
+    Box(modifier.clip(RoundedCornerShape(32.dp)).background(NightGround)) {
+        Crossfade(PortalSchedule.photoIndex(state.nowMillis, photos.size), Modifier.fillMaxSize(), label = "photo") { index ->
+            photos.getOrNull(index)?.let {
+                // Dimmed a little: the screen lives in a dark room.
+                Image(
+                    it, "Family photo", Modifier.fillMaxSize().alpha(.85f),
+                    contentScale = ContentScale.Crop, alignment = BiasAlignment(0f, -0.35f),
+                )
+            }
+        }
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.45f)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, NightGround.copy(alpha = .85f))))
+        )
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, end = 28.dp, bottom = 24.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    DisplayTime.clock12(state.nowMillis, context.timeZone), color = Color.White, style = Tabular,
+                    fontSize = if (wide) 120.sp else 96.sp, lineHeight = if (wide) 120.sp else 96.sp, fontWeight = FontWeight.ExtraLight,
+                )
+                Text(DisplayTime.clockMeridiem(state.nowMillis, context.timeZone), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light, modifier = Modifier.padding(start = 8.dp, bottom = 14.dp))
+            }
+            Text(
+                runCatching { Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone)).format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())) }.getOrDefault(""),
+                color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Light,
+            )
+        }
+    }
+}
+
+@Composable
 private fun NightRow(context: DisplayContext, event: DisplayEvent, today: Boolean) {
     val color = eventColor(context, event)
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -456,6 +509,7 @@ private fun NightNext(
     nowMillis: Long,
     wide: Boolean,
     cardModifier: Modifier,
+    laterRows: List<DisplayEvent> = emptyList(),
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (next == null) {
@@ -506,6 +560,13 @@ private fun NightNext(
             Label("THEN", NightMuted)
             Spacer(Modifier.width(16.dp))
             Box(Modifier.weight(1f)) { NightRow(context, then, today = then.date == today) }
+        }
+        if (then != null && laterRows.isNotEmpty()) Column(Modifier.fillMaxWidth().card(NightCard, 24.dp).padding(horizontal = 24.dp, vertical = 12.dp)) {
+            Label("LATER TODAY", NightMuted)
+            laterRows.forEachIndexed { index, event ->
+                if (index > 0) HorizontalDivider(color = NightDivider)
+                NightRow(context, event, today = true)
+            }
         }
     }
 }

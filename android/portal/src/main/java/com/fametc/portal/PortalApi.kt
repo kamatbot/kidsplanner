@@ -14,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSource
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
@@ -29,6 +30,9 @@ class PortalApi {
         const val ORIGIN = "https://www.fametc.com"
         const val SETUP_ADDRESS = "www.fametc.com/displays"
         val json = Json { ignoreUnknownKeys = true }
+        private val PHOTO_ID = Regex("a_[0-9a-f]{36}")
+        private const val MAX_JSON_BYTES = 2L * 1024 * 1024
+        private const val MAX_PHOTO_BYTES = 8L * 1024 * 1024
     }
 
     // No cookie jar, redirects, request logging, Google services or custom host.
@@ -90,8 +94,22 @@ class PortalApi {
         )
     }
 
-    private suspend fun request(request: Request): String = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request.newBuilder().header("Accept", "application/json").build())
+    suspend fun photo(token: String, id: String): ByteArray {
+        if (!PHOTO_ID.matches(id)) throw IOException("Invalid photo id")
+        return call(
+            Request.Builder().url("$ORIGIN/api/display/photos/$id")
+                .header("Authorization", "Bearer $token")
+                .header("Cache-Control", "no-cache")
+                .build(),
+            "image/*", MAX_PHOTO_BYTES,
+        ) { it.readByteArray() }
+    }
+
+    private suspend fun request(request: Request): String =
+        call(request, "application/json", MAX_JSON_BYTES) { it.readUtf8() }
+
+    private suspend fun <T> call(request: Request, accept: String, limit: Long, parse: (BufferedSource) -> T): T = suspendCancellableCoroutine { continuation ->
+        val call = client.newCall(request.newBuilder().header("Accept", accept).build())
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -104,18 +122,19 @@ class PortalApi {
                             throw PortalApiException(response.code, "This display no longer has access.")
                         }
                         val body = response.body ?: throw IOException("Empty response")
-                        // Read at most 2 MiB even when Content-Length is absent.
+                        // Read at most `limit` bytes (2 MiB for error bodies) even when Content-Length is absent.
+                        val max = if (response.isSuccessful) limit else MAX_JSON_BYTES
                         val source = body.source()
-                        source.request(2L * 1024 * 1024 + 1)
-                        if (source.buffer.size > 2L * 1024 * 1024) throw IOException("Response too large")
-                        val raw = source.readUtf8()
+                        source.request(max + 1)
+                        if (source.buffer.size > max) throw IOException("Response too large")
                         if (!response.isSuccessful) {
                             val serverMessage = runCatching {
-                                json.parseToJsonElement(raw).jsonObject["error"]?.jsonPrimitive?.content
+                                json.parseToJsonElement(source.readUtf8()).jsonObject["error"]?.jsonPrimitive?.content
                             }.getOrNull()
                             throw PortalApiException(response.code, serverMessage?.take(180) ?: "Fam ETC is temporarily unavailable.")
                         }
-                        if (continuation.isActive) continuation.resume(raw)
+                        val parsed = parse(source)
+                        if (continuation.isActive) continuation.resume(parsed)
                     } catch (error: Exception) {
                         if (continuation.isActive) continuation.resumeWithException(error)
                     }

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +40,12 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
     val preferences: StateFlow<PortalPreferences> = _preferences.asStateFlow()
     private val _state = MutableStateFlow(PortalState())
     val state: StateFlow<PortalState> = _state.asStateFlow()
+    private val _photos = MutableStateFlow<List<ImageBitmap>>(emptyList())
+    val photos: StateFlow<List<ImageBitmap>> = _photos.asStateFlow()
+    // ponytail: photos live in memory only, so they re-download after an app restart; add a disk cache if Wi-Fi is slow.
+    private val photoCache = HashMap<String, ImageBitmap>()
+    private var photoIds = emptyList<String>()
+    private var photoJob: Job? = null
     private val refreshRequests = Channel<Unit>(Channel.CONFLATED)
     private var saved: SavedDisplay? = null
     private var foreground = false
@@ -150,6 +157,7 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
         val operation = ++generation
         pairingJob?.cancel()
         pairingJob = viewModelScope.launch {
+            _photos.value = emptyList()
             _state.update { it.copy(pairing = true, error = null, demo = false, context = null) }
             try {
                 val response = api.pair(code, "${Build.MANUFACTURER} ${Build.MODEL}")
@@ -213,6 +221,7 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
                     saved = updated
                     failures = 0
                     _state.update { it.copy(context = context, device = updated.device, error = null, offline = false, refreshing = false) }
+                    syncPhotos(record.token, context.photos.map { it.id }.take(12), operation)
                     nextDelay = context.pollAfterSeconds.coerceIn(30, 300).toLong() * 1000
                 } catch (error: CancellationException) {
                     throw error
@@ -243,6 +252,39 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Downloads photos not yet in memory, one at a time; a failure skips that photo until the next refresh. */
+    private fun syncPhotos(token: String, ids: List<String>, operation: Long) {
+        if (photoJob?.isActive == true && ids == photoIds) return
+        photoJob?.cancel()
+        photoIds = ids
+        photoCache.keys.retainAll(ids.toSet())
+        _photos.value = ids.mapNotNull { photoCache[it] }
+        photoJob = viewModelScope.launch {
+            for (id in ids) {
+                if (id in photoCache) continue
+                val bitmap = try {
+                    val bytes = api.photo(token, id)
+                    withContext(Dispatchers.IO) { decodePhoto(bytes) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                } ?: continue
+                if (operation != generation) return@launch
+                photoCache[id] = bitmap
+                _photos.value = ids.mapNotNull { photoCache[it] }
+            }
+        }
+    }
+
+    private fun clearPhotos() {
+        photoJob?.cancel()
+        photoJob = null
+        photoIds = emptyList()
+        photoCache.clear()
+        _photos.value = emptyList()
+    }
+
     fun unpair() = clearSession(null, true)
 
     private fun clearSession(message: String?, revoke: Boolean) {
@@ -253,6 +295,7 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
         pairingJob?.cancel()
         pairingJob = null
         saved = null
+        clearPhotos()
         _state.value = PortalState(loading = true, error = message)
         viewModelScope.launch {
             try {
@@ -275,10 +318,14 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
 
     fun demo() {
         if (_state.value.loading || _state.value.paired || _state.value.pairing) return
+        _photos.value = listOf(demoPhoto())
         _state.update { it.copy(demo = true, context = DemoData.create(System.currentTimeMillis()), error = null, offline = false) }
     }
 
-    fun leaveDemo() { _state.update { it.copy(demo = false, context = null, error = null) } }
+    fun leaveDemo() {
+        _photos.value = emptyList()
+        _state.update { it.copy(demo = false, context = null, error = null) }
+    }
 
     fun setPreferences(value: PortalPreferences) {
         val safe = value.copy(nightStartHour = value.nightStartHour.coerceIn(0, 23), nightEndHour = value.nightEndHour.coerceIn(0, 23))

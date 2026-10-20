@@ -105,6 +105,27 @@ class PortalScheduleTest {
         assertEquals(24 * 60 + 40, PortalSchedule.minutesUntil(alex.copy(date = "2026-10-21"), now, "Asia/Bangkok"))
     }
 
+    @Test fun photoIndexRotatesEveryTenMinutesAndSurvivesEmptyLists() {
+        assertEquals(0, PortalSchedule.photoIndex(now, 0))
+        assertEquals(0, PortalSchedule.photoIndex(now, -1))
+        assertEquals(0, PortalSchedule.photoIndex(599_999L, 3))
+        assertEquals(1, PortalSchedule.photoIndex(600_000L, 3))
+        assertEquals(2, PortalSchedule.photoIndex(1_200_000L, 3))
+        assertEquals(0, PortalSchedule.photoIndex(1_800_000L, 3))
+        assertEquals(0, PortalSchedule.photoIndex(now, 1))
+    }
+
+    @Test fun contextWithoutPhotosDecodesEmptyAndWithPhotosKeepsIds() {
+        val base = """{"schemaVersion":1,"generatedAt":"2026-10-20T09:20:00Z","today":"$day","timeZone":"Asia/Bangkok",
+            "family":{"name":"Test"},"device":{"id":"d1","label":"Kitchen"}"""
+        assertTrue(PortalApi.json.decodeFromString<DisplayContext>("$base}").photos.isEmpty())
+        val id = "a_" + "0123456789abcdef".repeat(3).take(36)
+        val withPhotos = PortalApi.json.decodeFromString<DisplayContext>(
+            "$base,\"photos\":[{\"id\":\"$id\",\"createdAt\":\"2026-10-19T08:00:00Z\"}]}"
+        )
+        assertEquals(listOf(id), withPhotos.photos.map { it.id })
+    }
+
     private fun event(id: String, member: String?, start: String, end: String) = DisplayEvent(
         id = id, title = id, date = day, time = start, endTime = end, memberId = member,
     )

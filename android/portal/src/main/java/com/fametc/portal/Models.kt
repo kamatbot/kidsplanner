@@ -36,8 +36,10 @@ data class DisplayContext(
     val homework: List<DisplayHomework> = emptyList(),
     val meals: List<DisplayMeal> = emptyList(),
     val notices: List<String> = emptyList(),
+    val photos: List<DisplayPhoto> = emptyList(),
 )
 
+@Serializable data class DisplayPhoto(val id: String, val createdAt: String = "")
 @Serializable data class DisplayFamily(val name: String)
 @Serializable data class DisplayIdentity(
     val id: String,

@@ -5,6 +5,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PortalBoardsTest {
+    @Test fun photoSampleSizeKeepsLongestSideWithinLimitWithPowersOfTwo() {
+        assertEquals(1, photoSampleSize(1600, 900))
+        assertEquals(2, photoSampleSize(3200, 1800))
+        assertEquals(4, photoSampleSize(4000, 3000))
+        assertEquals(4, photoSampleSize(2000, 6400))
+        assertEquals(1, photoSampleSize(0, 0))
+        assertEquals(2, photoSampleSize(1601, 10))
+    }
+
     @Test fun textColourFollowsBestContrastOnMemberColours() {
         val ink = Color(0xFF14151C)
         assertEquals(Color.White, inkOn(Color(0xFF6C63FF)))

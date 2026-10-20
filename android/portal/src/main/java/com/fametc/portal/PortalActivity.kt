@@ -33,6 +33,7 @@ class PortalActivity : ComponentActivity() {
         setContent {
             val state by model.state.collectAsState()
             val preferences by model.preferences.collectAsState()
+            val photos by model.photos.collectAsState()
             val zone = state.context?.timeZone ?: state.device?.timeZone
             val localTime = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(zone)).toLocalTime()
             val quiet = preferences.screenMode == ScreenMode.SCHEDULED && DisplayTime.isNight(
@@ -64,6 +65,7 @@ class PortalActivity : ComponentActivity() {
                 PortalRoot(
                     state = state,
                     preferences = preferences,
+                    photos = photos,
                     quiet = quiet && !temporarilyBright,
                     onPair = model::pair,
                     onDemo = model::demo,

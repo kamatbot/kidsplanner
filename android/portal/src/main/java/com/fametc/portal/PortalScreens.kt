@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -55,6 +56,7 @@ import java.util.Locale
 fun PortalRoot(
     state: PortalState,
     preferences: PortalPreferences,
+    photos: List<ImageBitmap>,
     quiet: Boolean,
     onPair: (String) -> Unit,
     onDemo: () -> Unit,
@@ -71,7 +73,7 @@ fun PortalRoot(
             when {
                 state.loading -> LoadingView()
                 state.context != null -> FamilyDashboard(
-                    state, state.context, quiet, onRefresh, { settingsOpen = true }, onLeaveDemo
+                    state, state.context, photos, quiet, onRefresh, { settingsOpen = true }, onLeaveDemo
                 )
                 state.paired -> WaitingForFamily(state, onRefresh, { settingsOpen = true })
                 else -> PairingView(state, onPair, onDemo, { settingsOpen = true })
@@ -216,6 +218,7 @@ private fun WaitingForFamily(state: PortalState, onRefresh: () -> Unit, onSettin
 private fun FamilyDashboard(
     state: PortalState,
     context: DisplayContext,
+    photos: List<ImageBitmap>,
     quiet: Boolean,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
@@ -225,7 +228,7 @@ private fun FamilyDashboard(
     val localTime = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone)).toLocalTime()
     if (!showWeek) {
         val onWeek = { showWeek = true }
-        if (PortalSchedule.isNightBoard(localTime)) NightBoard(state, context, onSettings, onWeek)
+        if (PortalSchedule.isNightBoard(localTime)) NightBoard(state, context, photos, onSettings, onWeek)
         else DayBoard(state, context, onRefresh, onSettings, onLeaveDemo, onWeek)
         return
     }

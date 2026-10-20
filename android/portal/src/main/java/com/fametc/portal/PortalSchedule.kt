@@ -88,5 +88,9 @@ object PortalSchedule {
             .filter { !it.completed && (memberId == null || it.memberId == memberId) }
             .sortedWith(compareBy<DisplayHomework> { it.dueDate.isBlank() }.thenBy { it.dueDate }.thenBy { it.title })
 
+    /** Which photo the Night board shows: rotates every 10 minutes. */
+    fun photoIndex(nowMillis: Long, count: Int): Int =
+        if (count <= 0) 0 else Math.floorMod(nowMillis / 600_000L, count.toLong()).toInt()
+
     private fun parseTime(value: String): LocalTime? = runCatching { LocalTime.parse(value) }.getOrNull()
 }
