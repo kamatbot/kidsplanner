@@ -51,9 +51,6 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Height of Portal's own status overlay along the top edge. */
-internal val PortalTopInset = 64.dp
-
 @Composable
 fun PortalRoot(
     state: PortalState,
@@ -68,16 +65,12 @@ fun PortalRoot(
     onUnpair: () -> Unit,
 ) {
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    // The night photo frame runs edge to edge, under Portal's status overlay too.
-    var fullBleed by remember { mutableStateOf(false) }
     Surface(Modifier.fillMaxSize(), color = PortalColors.Background) {
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
-            // Portal's own status overlay occupies the top edge of a sideloaded app.
-            if (!(fullBleed && state.context != null)) Spacer(Modifier.fillMaxWidth().height(PortalTopInset).background(PortalColors.Background))
             when {
                 state.loading -> LoadingView()
                 state.context != null -> FamilyDashboard(
-                    state, state.context, photos, quiet, onRefresh, { settingsOpen = true }, onLeaveDemo, { fullBleed = it },
+                    state, state.context, photos, quiet, onRefresh, { settingsOpen = true }, onLeaveDemo,
                     preferences.nextCardX to preferences.nextCardY,
                     { x, y -> onPreferences(preferences.copy(nextCardX = x, nextCardY = y)) },
                 )
@@ -229,7 +222,6 @@ private fun FamilyDashboard(
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onLeaveDemo: () -> Unit,
-    onFullBleed: (Boolean) -> Unit,
     nextCard: Pair<Float, Float>,
     onMoveNextCard: (Float, Float) -> Unit,
 ) {
@@ -249,7 +241,7 @@ private fun FamilyDashboard(
             if (!showNight == scheduledNight) { manualNight = null; manualSetDuringNight = null }
             else { manualNight = !showNight; manualSetDuringNight = scheduledNight }
         }
-        if (showNight) NightBoard(state, context, photos, onSettings, onWeek, onToggleMode, onFullBleed, nextCard, onMoveNextCard)
+        if (showNight) NightBoard(state, context, photos, onSettings, onWeek, onToggleMode, nextCard, onMoveNextCard)
         else DayBoard(state, context, onRefresh, onSettings, onLeaveDemo, onWeek, onToggleMode)
         return
     }

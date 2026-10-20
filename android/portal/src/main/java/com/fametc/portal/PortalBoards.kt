@@ -32,7 +32,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -403,7 +402,7 @@ private fun EventCard(event: DisplayEvent, past: Boolean, marker: String?, mark:
 @Composable
 internal fun NightBoard(
     state: PortalState, context: DisplayContext, photos: List<PortalPhoto>,
-    onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit, onFullBleed: (Boolean) -> Unit,
+    onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit,
     nextCard: Pair<Float, Float> = 1f to 1f, onMoveNextCard: (Float, Float) -> Unit = { _, _ -> },
 ) {
     val now = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone))
@@ -414,7 +413,6 @@ internal fun NightBoard(
     val laterAll = upcoming.drop(2).filter { it.date == today }
     val later = laterAll.take(3)
     if (photos.isNotEmpty()) {
-        DisposableEffect(Unit) { onFullBleed(true); onDispose { onFullBleed(false) } }
         NightFrame(state, context, photos, today, next, onSettings, onWeek, onToggleMode, nextCard, onMoveNextCard)
         return
     }
@@ -507,7 +505,7 @@ private fun NightFrame(
         val position = dragging ?: Offset(cardOffset(saved.first, freeW), cardOffset(saved.second, freeH))
         NightPhoto(Modifier.fillMaxSize(), state, context, photos, wide)
         Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(PortalTopInset + 96.dp)
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(140.dp)
                 .background(Brush.verticalGradient(listOf(NightGround.copy(alpha = .6f), Color.Transparent)))
         )
         NightPip(
@@ -536,7 +534,7 @@ private fun NightFrame(
             context, today, next, state.nowMillis,
         )
         // Drawn last so the icons stay on top and tappable wherever the card is.
-        Row(Modifier.align(Alignment.TopEnd).padding(top = PortalTopInset, end = 16.dp)) {
+        Row(Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp)) {
             CompositionLocalProvider(LocalContentColor provides Color.White) {
                 ActionIcon(Icons.Outlined.LightMode, "Day mode", onToggleMode)
                 ActionIcon(Icons.Outlined.CalendarMonth, "Week view", onWeek)
