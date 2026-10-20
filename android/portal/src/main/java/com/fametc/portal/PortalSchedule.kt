@@ -92,6 +92,23 @@ object PortalSchedule {
     fun photoIndex(nowMillis: Long, count: Int): Int =
         if (count <= 0) 0 else Math.floorMod(nowMillis / 10_000L, count.toLong()).toInt()
 
+    /**
+     * Slideshow slides as photo indices: a landscape photo alone, portrait photos paired side by
+     * side (each with the next unpaired portrait), and a leftover portrait alone. Order follows the list.
+     */
+    fun photoSlides(portrait: List<Boolean>): List<List<Int>> {
+        val used = BooleanArray(portrait.size)
+        val slides = mutableListOf<List<Int>>()
+        for (i in portrait.indices) {
+            if (used[i]) continue
+            used[i] = true
+            val partner = if (portrait[i]) (i + 1 until portrait.size).firstOrNull { !used[it] && portrait[it] } else null
+            if (partner != null) used[partner] = true
+            slides += listOfNotNull(i, partner)
+        }
+        return slides
+    }
+
     /** A manual Day/Night choice holds only while the scheduled mode is the one it was made in. */
     fun boardIsNight(scheduledNight: Boolean, manualNight: Boolean?, manualSetDuringNight: Boolean?): Boolean =
         if (manualNight != null && manualSetDuringNight == scheduledNight) manualNight else scheduledNight

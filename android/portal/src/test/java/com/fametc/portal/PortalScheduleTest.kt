@@ -105,6 +105,17 @@ class PortalScheduleTest {
         assertEquals(24 * 60 + 40, PortalSchedule.minutesUntil(alex.copy(date = "2026-10-21"), now, "Asia/Bangkok"))
     }
 
+    @Test fun photoSlidesPairPortraitsAndKeepLandscapesAlone() {
+        assertEquals(emptyList<List<Int>>(), PortalSchedule.photoSlides(emptyList()))
+        assertEquals(listOf(listOf(0), listOf(1)), PortalSchedule.photoSlides(listOf(false, false)))
+        assertEquals(listOf(listOf(0, 1)), PortalSchedule.photoSlides(listOf(true, true)))
+        // Landscape, portrait, landscape, portrait, landscape: the portraits pair on the first portrait's slot.
+        assertEquals(listOf(listOf(0), listOf(1, 3), listOf(2), listOf(4)), PortalSchedule.photoSlides(listOf(false, true, false, true, false)))
+        // An odd portrait out stays alone.
+        assertEquals(listOf(listOf(0, 1), listOf(2)), PortalSchedule.photoSlides(listOf(true, true, true)))
+        assertEquals(listOf(listOf(0)), PortalSchedule.photoSlides(listOf(true)))
+    }
+
     @Test fun photoIndexRotatesEveryTenSecondsAndSurvivesEmptyLists() {
         assertEquals(0, PortalSchedule.photoIndex(now, 0))
         assertEquals(0, PortalSchedule.photoIndex(now, -1))

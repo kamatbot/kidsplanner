@@ -37,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -547,29 +548,49 @@ private fun NightFrame(
 
 @Composable
 private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, wide: Boolean) {
-    val index = PortalSchedule.photoIndex(state.nowMillis, photos.size)
-    val current = photos.getOrNull(index)
-    val next = photos.getOrNull((index + 1) % maxOf(photos.size, 1))
-    // At most three decoded bitmaps live at once: outgoing (shown), current and next.
+    // Portrait or landscape, read from the image header only (cheap, no full decode).
+    val portrait by produceState(emptyMap<String, Boolean>(), photos) {
+        value = withContext(Dispatchers.Default) { photos.associate { it.id to (isPortrait(it.bytes) == true) } }
+    }
+    // A slide is one landscape photo, or two portrait photos side by side.
+    val slides = remember(photos, portrait) {
+        PortalSchedule.photoSlides(photos.map { portrait[it.id] == true }).map { slide -> slide.map { photos[it] } }
+    }
+    val index = PortalSchedule.photoIndex(state.nowMillis, slides.size)
+    val current = slides.getOrNull(index).orEmpty()
+    val next = slides.getOrNull((index + 1) % maxOf(slides.size, 1)).orEmpty()
+    // Decoded bitmaps live only for the outgoing (shown), current and next slides.
     val decoded = remember { mutableStateMapOf<String, ImageBitmap>() }
-    var shown by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(current?.id, next?.id) {
-        val wanted = listOfNotNull(current, next).distinctBy { it.id }
-        val keep = wanted.map { it.id }.toSet() + listOfNotNull(shown)
-        decoded.keys.retainAll(keep)
+    var shown by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(current.map { it.id }, next.map { it.id }) {
+        val wanted = (current + next).distinctBy { it.id }
+        decoded.keys.retainAll(wanted.map { it.id }.toSet() + shown)
         for (photo in wanted) {
             if (photo.id in decoded) continue
             withContext(Dispatchers.Default) { decodePhoto(photo.bytes) }?.let { decoded[photo.id] = it }
         }
-        // Until the current photo has decoded, keep showing the previous one.
-        if (current != null && current.id in decoded) shown = current.id
+        // Until the current slide has decoded, keep showing the previous one.
+        if (current.isNotEmpty() && current.all { it.id in decoded }) shown = current.map { it.id }
     }
     Box(modifier.background(NightGround)) {
-        Crossfade(shown, Modifier.fillMaxSize(), animationSpec = tween(1200), label = "photo") { id ->
-            id?.let { decoded[it] }?.let {
-                // Dimmed a little: the screen lives in a dark room.
-                Image(
-                    it, "Family photo", Modifier.fillMaxSize().alpha(.85f),
+        Crossfade(shown, Modifier.fillMaxSize(), animationSpec = tween(1200), label = "photo") { ids ->
+            val images = ids.mapNotNull { decoded[it] }
+            // Dimmed a little: the screen lives in a dark room.
+            when {
+                images.size >= 2 -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    images.take(2).forEach {
+                        Image(
+                            it, "Family photo", Modifier.weight(1f).fillMaxHeight().alpha(.85f),
+                            contentScale = ContentScale.Crop, alignment = BiasAlignment(0f, -0.4f),
+                        )
+                    }
+                }
+                // A portrait photo without a partner is shown whole rather than cropped to a strip.
+                images.size == 1 && portrait[ids.first()] == true -> Image(
+                    images.first(), "Family photo", Modifier.fillMaxSize().alpha(.85f), contentScale = ContentScale.Fit,
+                )
+                images.size == 1 -> Image(
+                    images.first(), "Family photo", Modifier.fillMaxSize().alpha(.85f),
                     contentScale = ContentScale.Crop, alignment = BiasAlignment(0f, -0.35f),
                 )
             }

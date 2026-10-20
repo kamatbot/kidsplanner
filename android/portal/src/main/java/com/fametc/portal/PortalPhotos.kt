@@ -26,6 +26,14 @@ internal fun decodePhoto(bytes: ByteArray): ImageBitmap? {
     return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
 }
 
+/** True when the image is taller than wide, from its header only; null when the bytes aren't an image. */
+internal fun isPortrait(bytes: ByteArray): Boolean? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    return bounds.outHeight > bounds.outWidth
+}
+
 /** A downloaded photo kept as compressed bytes; identity is the server id only. */
 class PortalPhoto(val id: String, val bytes: ByteArray) {
     override fun equals(other: Any?) = other is PortalPhoto && other.id == id
@@ -46,20 +54,24 @@ internal fun demoPhotos(): List<PortalPhoto> {
         listOf(floatArrayOf(1100f, 480f, 340f), floatArrayOf(380f, 330f, 260f), floatArrayOf(520f, 800f, 320f)),
         listOf(floatArrayOf(800f, 560f, 380f), floatArrayOf(250f, 780f, 250f), floatArrayOf(1350f, 300f, 270f)),
     )
-    return List(3) { n ->
-        val bitmap = Bitmap.createBitmap(1600, 1000, Bitmap.Config.ARGB_8888)
+    // Landscape, portrait, landscape, portrait, landscape: the two portraits pair up on one slide.
+    return List(5) { n ->
+        val tall = n % 2 == 1
+        val style = n / 2
+        val (w, h) = if (tall) 1000 to 1500 else 1600 to 1000
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(grounds[n])
+        canvas.drawColor(grounds[style])
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        discs[n].forEachIndexed { i, (x, y, r) ->
-            paint.color = colors[n][i]
-            canvas.drawCircle(x, y, r, paint)
+        discs[style].forEachIndexed { i, (x, y, r) ->
+            paint.color = colors[style][i]
+            canvas.drawCircle(x * w / 1600f, y * h / 1000f, r * if (tall) .7f else 1f, paint)
         }
         paint.color = Color.WHITE
         paint.textSize = 56f
-        // Centred near the top: the night board crops the sides of wide photos.
+        // Centred near the top: the night board crops the edges of photos.
         paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("Sample family photo ${n + 1}", 800f, 120f, paint)
+        canvas.drawText(if (tall) "Sample portrait ${n / 2 + 1}" else "Sample family photo ${n / 2 + 1}", w / 2f, if (tall) 240f else 140f, paint)
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
         bitmap.recycle()
