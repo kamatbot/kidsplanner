@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
+  <title>Household displays · Fam ETC</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/displays.css">
+  <script src="/js/displays.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to display settings</a>
+  <header class="display-header">
+    <a class="brand" href="/app" aria-label="Fam ETC home"><span class="brand-rings" aria-hidden="true"></span><span>fam<span class="brand-etc">etc</span></span></a>
+    <a class="back-link" href="/app?tab=settings"><span aria-hidden="true">←</span> Family settings</a>
+  </header>
+
+  <main id="main" class="display-main">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">HOUSEHOLD DISPLAYS</p>
+      <h1 id="page-title">Your family, at a glance.</h1>
+      <p class="intro-copy">Put everyone’s plans and extra-curricular activities on a shared calendar. Connect your Portal here, then choose what else your family sees.</p>
+    </section>
+
+    <div id="page-message" class="notice" role="alert" hidden></div>
+    <noscript><p class="notice notice-error">Turn on JavaScript to pair and manage your household displays.</p></noscript>
+
+    <div class="setup-grid">
+      <section class="panel pairing-panel" aria-labelledby="pair-title">
+        <div class="section-heading"><span class="step-number" aria-hidden="true">1</span><div><h2 id="pair-title">Connect a display</h2><p class="supporting">Give it a name, then enter the code in the Fam ETC app on your Portal.</p></div></div>
+        <form id="pair-form">
+          <fieldset id="pair-fields" disabled>
+            <legend class="sr-only">New display settings</legend>
+            <div class="field"><label for="pair-label">Display name</label><input id="pair-label" name="label" type="text" maxlength="60" value="Kitchen Portal" autocomplete="off" required><p class="field-hint">Choose a name you will recognise, such as Kitchen Portal.</p></div>
+            <div class="field"><label for="pair-timezone">Time zone</label><input id="pair-timezone" name="timeZone" type="text" list="display-timezones" maxlength="80" value="Asia/Bangkok" spellcheck="false" autocomplete="off" aria-describedby="timezone-hint" required><p id="timezone-hint" class="field-hint">The calendar and day changes follow this time zone.</p></div>
+            <fieldset class="sharing-options"><legend>Also show on this screen</legend>
+              <label class="sharing-option"><span><strong>Homework due</strong><small>Task titles, subjects and due dates for your children.</small></span><input id="pair-homework" name="showHomework" type="checkbox" checked></label>
+              <label class="sharing-option"><span><strong>Meal plan</strong><small>Your planned meals for the coming week.</small></span><input id="pair-meals" name="showMeals" type="checkbox" checked></label>
+            </fieldset>
+            <p class="sharing-note">The family calendar and extra-curricular activities (ECAs) appear on every paired display. Regular school lessons between 08:00 and 14:00 are left out; other plans stay visible.</p>
+            <button id="create-pairing" class="button button-primary" type="submit">Create pairing code <span aria-hidden="true">→</span></button>
+          </fieldset>
+        </form>
+        <p id="pair-form-status" class="form-status" role="status" aria-live="polite">Checking your family access…</p>
+
+        <section id="pair-code-panel" class="pair-code-panel" aria-labelledby="pair-code-heading" tabindex="-1" hidden>
+          <p class="eyebrow">READY TO CONNECT</p>
+          <h3 id="pair-code-heading">Enter this on your Portal</h3>
+          <p id="pair-code-label" class="supporting"></p>
+          <output id="pair-code" class="pair-code" aria-label="Pairing code"></output>
+          <p id="pair-expiry" class="pair-expiry" aria-live="off"></p>
+          <p class="code-note">This code connects one display and works once. Share it only with someone setting up your family’s screen.</p>
+          <div class="button-row"><button id="copy-code" class="button button-secondary" type="button">Copy code</button><button id="hide-code" class="button button-text" type="button">Hide code</button></div>
+          <p id="pair-code-status" class="form-status" role="status" aria-live="polite"></p>
+        </section>
+      </section>
+
+      <aside class="setup-aside" aria-label="About your shared display">
+        <div class="display-illustration" aria-hidden="true"><div class="illustration-screen"><div class="illustration-heading">THE FAMILY WEEK</div><div class="illustration-days"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div><div class="illustration-content"><div class="illustration-agenda"><i></i><i></i><i></i></div><div class="illustration-tiles"><span></span><span></span></div></div></div><div class="illustration-stand"></div></div>
+        <section class="aside-card"><h2>Everyone’s plans, together.</h2><p>The calendar brings family plans, ECAs and upcoming events into one view. Tap a day or a child to focus the view. Add homework and meals alongside it if they help your family.</p></section>
+        <section class="aside-card"><h2>Your phone stays in charge.</h2><p>Private chats, personal spaces and parent approvals stay off the display. Change its settings or disconnect it here whenever you need to.</p><p class="supporting">Night hours, screen mode and orientation are set on the Portal.</p></section>
+      </aside>
+    </div>
+
+    <section class="devices-section" aria-labelledby="devices-title">
+      <div class="devices-heading"><div><p class="eyebrow">AROUND THE HOUSE</p><h2 id="devices-title" tabindex="-1">Your displays <span id="device-count" class="count-pill" hidden></span></h2></div><button id="refresh-devices" class="button button-secondary" type="button">Refresh</button></div>
+      <p id="devices-status" class="form-status" role="status" aria-live="polite">Loading displays…</p>
+
+      <section id="edit-panel" class="panel edit-panel" aria-labelledby="edit-title" hidden>
+        <h3 id="edit-title" tabindex="-1">Display settings</h3>
+        <form id="edit-form">
+          <fieldset id="edit-fields" disabled><legend class="sr-only">Edit display settings</legend>
+            <div class="edit-field-grid"><div class="field"><label for="edit-label">Display name</label><input id="edit-label" name="label" type="text" maxlength="60" autocomplete="off" required></div><div class="field"><label for="edit-timezone">Time zone</label><input id="edit-timezone" name="timeZone" type="text" list="display-timezones" maxlength="80" spellcheck="false" autocomplete="off" required></div></div>
+            <fieldset class="sharing-options"><legend>Also show on this screen</legend><label class="sharing-option"><span><strong>Homework due</strong><small>Task titles, subjects and due dates.</small></span><input id="edit-homework" type="checkbox"></label><label class="sharing-option"><span><strong>Meal plan</strong><small>Planned meals for the coming week.</small></span><input id="edit-meals" type="checkbox"></label></fieldset>
+            <div class="button-row"><button class="button button-primary" type="submit">Save settings</button><button id="cancel-edit" class="button button-secondary" type="button">Cancel</button></div>
+          </fieldset>
+        </form>
+        <p id="edit-status" class="form-status" role="status" aria-live="polite"></p>
+      </section>
+
+      <div id="device-list" class="device-list" aria-busy="true"></div>
+      <p class="devices-footnote">A display updates its settings when it next connects. If it is offline when disconnected, its last approved view can remain visible for up to 12 hours.</p>
+    </section>
+
+    <datalist id="display-timezones"><option value="Asia/Bangkok"></option><option value="Asia/Singapore"></option><option value="Asia/Kolkata"></option><option value="Asia/Dubai"></option><option value="Asia/Tokyo"></option><option value="Europe/Madrid"></option><option value="Europe/London"></option><option value="Europe/Paris"></option><option value="America/New_York"></option><option value="America/Chicago"></option><option value="America/Denver"></option><option value="America/Los_Angeles"></option><option value="Australia/Sydney"></option><option value="Pacific/Auckland"></option><option value="Etc/UTC"></option></datalist>
+  </main>
+  <footer class="display-footer"><span>Fam ETC</span><a href="/app">Back to your family</a></footer>
+</body>
+</html>

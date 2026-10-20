@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "FamETC"
 include(":app")
+include(":portal")

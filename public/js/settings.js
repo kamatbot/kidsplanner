@@ -12,7 +12,34 @@ function showSettingsSection(section) {
   if (parent) parent.hidden = isKidSession();
   const notice = document.getElementById('kid-connections-notice');
   if (notice) notice.hidden = !isKidSession();
-  if (section === 'connections') renderHermesHelpSettings();
+  if (section === 'connections') {
+    renderHermesHelpSettings();
+    renderDisplaySettingsLink();
+  }
+}
+
+function renderDisplaySettingsLink() {
+  const parent = document.getElementById('connections-parent-only');
+  let card = document.getElementById('family-display-settings');
+  if (!parent || isKidSession() || !currentFamily?.id) {
+    card?.remove();
+    return;
+  }
+  if (card) return;
+  card = document.createElement('section');
+  card.id = 'family-display-settings';
+  card.className = 'settings-subcard';
+  const title = document.createElement('h3');
+  title.textContent = 'Family displays';
+  const detail = document.createElement('p');
+  detail.className = 'text-muted';
+  detail.textContent = 'Pair a Portal to show your family calendar, homework and meals. Choose what it shows and disconnect it here.';
+  const link = document.createElement('a');
+  link.href = '/displays';
+  link.className = 'btn-secondary';
+  link.textContent = 'Manage displays';
+  card.append(title, detail, link);
+  parent.appendChild(card);
 }
 
 // The server owns defaults. Never imply that an unloaded preference is off.

@@ -34,7 +34,13 @@ function seedFamily(label) {
   notifications.registerToken(kidUser.id, "token-kid");
   const pairing = watchAuth.createPairing({ familyId: fam.id, targetUserId: kidUser.id, targetType: "kid", targetKidId: kid.id, targetName: kid.name, createdBy: parent.id });
   const watch = watchAuth.claimPairing(pairing.pairing.code, "Mia's watch");
-  return { parent, fam, kid, kidUser, device, attachment, watch };
+  const root = db.load();
+  if (!root.displayAuth) root.displayAuth = { devices: {}, pairings: {} };
+  const displayId = `display-${label}`;
+  const displayPairingId = `display-pairing-${label}`;
+  root.displayAuth.devices[displayId] = { id: displayId, familyId: fam.id, createdBy: parent.id };
+  root.displayAuth.pairings[displayPairingId] = { id: displayPairingId, familyId: fam.id, createdBy: parent.id };
+  return { parent, fam, kid, kidUser, device, attachment, watch, displayId, displayPairingId };
 }
 
 test("deleting the last parent removes the whole family and everything keyed to it", () => {
@@ -57,6 +63,8 @@ test("deleting the last parent removes the whole family and everything keyed to 
   assert.equal(watchAuth.resolveToken(s.watch.token), null);
   assert.equal(root.deviceTokens[s.parent.id], undefined);
   assert.equal(root.deviceTokens[s.kidUser.id], undefined);
+  assert.equal(root.displayAuth.devices[s.displayId], undefined, "household display credential is removed");
+  assert.equal(root.displayAuth.pairings[s.displayPairingId], undefined, "pending display pairing is removed");
   for (const value of Object.values(root)) {
     if (value && typeof value === "object" && !Array.isArray(value)) {
       assert.equal(Object.hasOwn(value, s.fam.id), false, "no family-keyed record survives");
@@ -70,12 +78,17 @@ test("deleting the last parent removes the whole family and everything keyed to 
   assert.ok(screenTime.resolveDevice(other.device.deviceSecret));
   assert.ok(watchAuth.resolveToken(other.watch.token));
   assert.ok(chatAttachments.read(other.attachment.id));
+  assert.ok(root.displayAuth.devices[other.displayId], "another family's display remains");
+  assert.ok(root.displayAuth.pairings[other.displayPairingId]);
 });
 
 test("a parent with a co-parent leaves; the family, kids and chat stay and the code rotates", () => {
   const s = seedFamily("co-parent");
   const coParent = store.createUser("co-parent-2@example.test", "Tom");
   db.load().families[s.fam.id].parentIds.push(coParent.id);
+  db.load().displayAuth.devices["co-parent-display"] = {
+    id: "co-parent-display", familyId: s.fam.id, createdBy: coParent.id,
+  };
   const oldCode = s.fam.inviteCode;
 
   const result = deleteParentAccount(s.parent.id);
@@ -89,4 +102,7 @@ test("a parent with a co-parent leaves; the family, kids and chat stay and the c
   assert.ok(store.getUser(s.kidUser.id));
   assert.equal(chat.listMessages(s.fam.id).length, 1);
   assert.ok(screenTime.resolveDevice(s.device.deviceSecret));
+  assert.equal(db.load().displayAuth.devices[s.displayId], undefined, "leaving parent's grant is removed");
+  assert.equal(db.load().displayAuth.pairings[s.displayPairingId], undefined);
+  assert.ok(db.load().displayAuth.devices["co-parent-display"], "remaining parent's display remains");
 });

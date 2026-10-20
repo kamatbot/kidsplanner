@@ -258,6 +258,13 @@ app.post("/api/billing/webhook", express.raw({ type: "application/json" }), asyn
 // 12mb: comfortably covers an 8MB-decoded image as base64 (~10.9MB) plus
 // JSON overhead, for POST /api/ai/parse (lib/routes/ai.js re-checks the
 // decoded size itself — this is just the outer transport ceiling).
+// Pairing codes and household snapshots must not be cached, including errors
+// returned by body parsing, the shared limiter, or the plan gate below.
+app.use(["/api/display", "/api/displays"], (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  res.set("Pragma", "no-cache");
+  next();
+});
 app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -688,6 +695,9 @@ require("./lib/routes/student-support")(app, routeDeps);
 require("./lib/routes/my-corner")(app, routeDeps);
 require("./lib/routes/decisions")(app, routeDeps);
 require("./lib/routes/watch")(app, routeDeps);
+// Household displays have their own restricted bearer middleware; they never
+// become a parent or child session in requireAuth/currentUser.
+require("./lib/routes/display")(app, routeDeps);
 require("./lib/routes/goals")(app, routeDeps);
 require("./lib/routes/meals")(app, routeDeps);
 require("./lib/routes/trips")(app, routeDeps);
@@ -819,6 +829,13 @@ app.get("/finance", requireAuth, requireFamily, (req, res) => {
   sendPage(req, res, "finance.html");
 });
 app.get("/security", requireAuth, (req, res) => sendPage(req, res, "security.html"));
+app.get("/displays", requireAuth, (req, res) => {
+  res.set("X-Robots-Tag", "noindex, nofollow");
+  if (isScreenTimeOnlyUser(req.user)) return sendAppOnly(req, res);
+  // The page contains no family data; its APIs enforce interactive-parent
+  // access and return a useful role/setup error to signed-in non-parents.
+  sendPage(req, res, "displays.html");
+});
 app.get("/billing", requireAuth, requireParent, (req, res) => sendPage(req, res, "billing.html"));
 // Trips: a member-scoped hub, not family-scoped — parents, kids (read-only),
 // and guest accounts all pass requireAuth here; the page itself scopes what
