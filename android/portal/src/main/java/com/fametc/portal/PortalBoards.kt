@@ -409,7 +409,14 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, photos: Lis
                     ActionIcon(Icons.Outlined.Settings, "Display settings", onSettings)
                 }
             }
-            if (wide) {
+            if (photos.isNotEmpty()) {
+                // Photo frame: the slideshow fills the board; the next event floats bottom-right.
+                // Portrait scrolls, so it gets a fixed height instead of the remaining space.
+                Box((if (wide) Modifier.weight(1f) else Modifier.height(480.dp)).fillMaxWidth()) {
+                    NightPhoto(Modifier.fillMaxSize(), state, context, photos, wide)
+                    NightPip(Modifier.align(Alignment.BottomEnd).padding(20.dp).width(if (wide) 320.dp else 260.dp), context, today, next, state.nowMillis)
+                }
+            } else if (wide) {
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     // Drop LATER TODAY rather than squeeze the Up next card on a short screen.
                     val roomForLater = maxHeight >= 600.dp
@@ -431,7 +438,7 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, photos: Lis
                     if (photos.isNotEmpty()) laterAll.take(2) else emptyList(),
                 )
             }
-            if (days.isNotEmpty()) {
+            if (days.isNotEmpty() && photos.isEmpty()) {
                 Spacer(Modifier.height(24.dp))
                 DayTiles(days, context, wide)
             }
@@ -531,6 +538,50 @@ private fun NightRow(context: DisplayContext, event: DisplayEvent, today: Boolea
     }
 }
 
+private fun nextLabel(today: String, next: DisplayEvent): String = when {
+    next.date == today -> "UP NEXT"
+    next.date == LocalDate.parse(today).plusDays(1).toString() -> "TOMORROW"
+    else -> dayName(next.date, "EEEE").uppercase()
+}
+
+private fun nextWhen(context: DisplayContext, today: String, next: DisplayEvent, nowMillis: Long): String {
+    val now = Instant.ofEpochMilli(nowMillis).atZone(DisplayTime.zone(context.timeZone)).toLocalTime()
+    if (next.date == today && PortalSchedule.isHappening(next, now)) return "now"
+    val minutes = PortalSchedule.minutesUntil(next, nowMillis, context.timeZone)
+    return when {
+        minutes >= 1440 -> "in ${minutes / 1440} d"
+        minutes >= 60 -> "in ${minutes / 60} h" + if (minutes % 60 > 0) " ${minutes % 60} min" else ""
+        else -> "in $minutes min"
+    }
+}
+
+/** The next event as a small picture-in-picture card over the photo frame. */
+@Composable
+private fun NightPip(modifier: Modifier, context: DisplayContext, today: String, next: DisplayEvent?, nowMillis: Long) {
+    if (next == null) {
+        Column(modifier.card(NightCard.copy(alpha = .92f), 20.dp).padding(18.dp)) {
+            Text("All clear", color = NightText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text("Nothing else this week.", color = NightSoft, fontSize = 15.sp)
+        }
+        return
+    }
+    val color = eventColor(context, next)
+    val ink = inkOn(color)
+    val owner = eventOwner(context, next)
+    Column(modifier.card(color, 20.dp).padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(nextLabel(today, next), color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            Spacer(Modifier.weight(1f))
+            Pill(nextWhen(context, today, next, nowMillis), ink.copy(alpha = .18f), ink)
+        }
+        Text(next.title, color = ink, fontSize = 26.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Avatar(if (next.memberId == null) context.family.name.take(1).uppercase().ifEmpty { "F" } else owner.take(1).uppercase(), ink, color, 26.dp)
+            Text("$owner · ${clockTime(next)}", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 @Composable
 private fun NightNext(
     modifier: Modifier,
@@ -553,28 +604,11 @@ private fun NightNext(
         }
         val color = eventColor(context, next)
         val ink = inkOn(color)
-        val zone = DisplayTime.zone(context.timeZone)
-        val happening = next.date == today && PortalSchedule.isHappening(next, Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalTime())
-        val minutes = PortalSchedule.minutesUntil(next, nowMillis, context.timeZone)
-        val tomorrow = LocalDate.parse(today).plusDays(1).toString()
-        val whenText = when {
-            happening -> "now"
-            minutes >= 1440 -> "in ${minutes / 1440} d"
-            minutes >= 60 -> "in ${minutes / 60} h" + if (minutes % 60 > 0) " ${minutes % 60} min" else ""
-            else -> "in $minutes min"
-        }
         Column(cardModifier.fillMaxWidth().card(color, 32.dp).padding(if (wide) 36.dp else 24.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Label(
-                    when {
-                        next.date == today -> "UP NEXT"
-                        next.date == tomorrow -> "TOMORROW"
-                        else -> dayName(next.date, "EEEE").uppercase()
-                    },
-                    ink,
-                )
+                Label(nextLabel(today, next), ink)
                 Spacer(Modifier.weight(1f))
-                Pill(whenText, ink.copy(alpha = .18f), ink)
+                Pill(nextWhen(context, today, next, nowMillis), ink.copy(alpha = .18f), ink)
             }
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(next.title, color = ink, fontSize = if (wide) 64.sp else 44.sp, lineHeight = if (wide) 70.sp else 50.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
