@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -390,7 +391,10 @@ private fun EventCard(event: DisplayEvent, past: Boolean, marker: String?, mark:
 // ───────────────────────────── Night board ─────────────────────────────
 
 @Composable
-internal fun NightBoard(state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit) {
+internal fun NightBoard(
+    state: PortalState, context: DisplayContext, photos: List<PortalPhoto>,
+    onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit, onFullBleed: (Boolean) -> Unit,
+) {
     val now = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone))
     val today = now.toLocalDate().toString()
     val upcoming = PortalSchedule.upcoming(context, state.nowMillis, context.timeZone)
@@ -398,7 +402,11 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, photos: Lis
     val then = upcoming.getOrNull(1)
     val laterAll = upcoming.drop(2).filter { it.date == today }
     val later = laterAll.take(3)
-    val days = context.days.filter { it.date > today }.take(6)
+    if (photos.isNotEmpty()) {
+        DisposableEffect(Unit) { onFullBleed(true); onDispose { onFullBleed(false) } }
+        NightFrame(state, context, photos, today, next, onSettings, onWeek, onToggleMode)
+        return
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(NightGround)) {
         val wide = maxWidth >= 900.dp
         val body: @Composable ColumnScope.() -> Unit = {
@@ -409,14 +417,7 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, photos: Lis
                     ActionIcon(Icons.Outlined.Settings, "Display settings", onSettings)
                 }
             }
-            if (photos.isNotEmpty()) {
-                // Photo frame: the slideshow fills the board; the next event floats bottom-right.
-                // Portrait scrolls, so it gets a fixed height instead of the remaining space.
-                Box((if (wide) Modifier.weight(1f) else Modifier.height(480.dp)).fillMaxWidth()) {
-                    NightPhoto(Modifier.fillMaxSize(), state, context, photos, wide)
-                    NightPip(Modifier.align(Alignment.BottomEnd).padding(20.dp).width(if (wide) 320.dp else 260.dp), context, today, next, state.nowMillis)
-                }
-            } else if (wide) {
+            if (wide) {
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     // Drop LATER TODAY rather than squeeze the Up next card on a short screen.
                     val roomForLater = maxHeight >= 600.dp
@@ -437,10 +438,6 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, photos: Lis
                     Modifier.fillMaxWidth(), context, today, next, then, state.nowMillis, false, Modifier.height(320.dp),
                     if (photos.isNotEmpty()) laterAll.take(2) else emptyList(),
                 )
-            }
-            if (days.isNotEmpty() && photos.isEmpty()) {
-                Spacer(Modifier.height(24.dp))
-                DayTiles(days, context, wide)
             }
         }
         if (wide) Column(Modifier.fillMaxSize().padding(start = 40.dp, end = 28.dp, bottom = 24.dp), content = body)
@@ -476,6 +473,31 @@ private fun NightClock(modifier: Modifier, state: PortalState, context: DisplayC
     }
 }
 
+/** Full-screen photo frame: slideshow edge to edge, icons and the next event laid over it. */
+@Composable
+private fun NightFrame(
+    state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, today: String, next: DisplayEvent?,
+    onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(NightGround)) {
+        val wide = maxWidth >= 900.dp
+        NightPhoto(Modifier.fillMaxSize(), state, context, photos, wide)
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(PortalTopInset + 96.dp)
+                .background(Brush.verticalGradient(listOf(NightGround.copy(alpha = .6f), Color.Transparent)))
+        )
+        // Below the strip Portal's own status overlay uses, so the icons stay tappable.
+        Row(Modifier.align(Alignment.TopEnd).padding(top = PortalTopInset, end = 16.dp)) {
+            CompositionLocalProvider(LocalContentColor provides Color.White) {
+                ActionIcon(Icons.Outlined.LightMode, "Day mode", onToggleMode)
+                ActionIcon(Icons.Outlined.CalendarMonth, "Week view", onWeek)
+                ActionIcon(Icons.Outlined.Settings, "Display settings", onSettings)
+            }
+        }
+        NightPip(Modifier.align(Alignment.BottomEnd).padding(32.dp).width(if (wide) 368.dp else 300.dp), context, today, next, state.nowMillis)
+    }
+}
+
 @Composable
 private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, wide: Boolean) {
     val index = PortalSchedule.photoIndex(state.nowMillis, photos.size)
@@ -495,7 +517,7 @@ private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayC
         // Until the current photo has decoded, keep showing the previous one.
         if (current != null && current.id in decoded) shown = current.id
     }
-    Box(modifier.clip(RoundedCornerShape(32.dp)).background(NightGround)) {
+    Box(modifier.background(NightGround)) {
         Crossfade(shown, Modifier.fillMaxSize(), animationSpec = tween(1200), label = "photo") { id ->
             id?.let { decoded[it] }?.let {
                 // Dimmed a little: the screen lives in a dark room.
@@ -509,7 +531,7 @@ private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayC
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.45f)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, NightGround.copy(alpha = .85f))))
         )
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 28.dp, end = 28.dp, bottom = 24.dp)) {
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 40.dp, end = 40.dp, bottom = 32.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     DisplayTime.clock12(state.nowMillis, context.timeZone), color = Color.White, style = Tabular,
@@ -559,25 +581,25 @@ private fun nextWhen(context: DisplayContext, today: String, next: DisplayEvent,
 @Composable
 private fun NightPip(modifier: Modifier, context: DisplayContext, today: String, next: DisplayEvent?, nowMillis: Long) {
     if (next == null) {
-        Column(modifier.card(NightCard.copy(alpha = .92f), 20.dp).padding(18.dp)) {
-            Text("All clear", color = NightText, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            Text("Nothing else this week.", color = NightSoft, fontSize = 15.sp)
+        Column(modifier.card(NightCard.copy(alpha = .92f), 23.dp).padding(21.dp)) {
+            Text("All clear", color = NightText, fontSize = 28.sp, fontWeight = FontWeight.SemiBold)
+            Text("Nothing else this week.", color = NightSoft, fontSize = 17.sp)
         }
         return
     }
     val color = eventColor(context, next)
     val ink = inkOn(color)
     val owner = eventOwner(context, next)
-    Column(modifier.card(color, 20.dp).padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.card(color, 23.dp).padding(21.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(nextLabel(today, next), color = ink, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            Text(nextLabel(today, next), color = ink, fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
             Spacer(Modifier.weight(1f))
             Pill(nextWhen(context, today, next, nowMillis), ink.copy(alpha = .18f), ink)
         }
-        Text(next.title, color = ink, fontSize = 26.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Avatar(if (next.memberId == null) context.family.name.take(1).uppercase().ifEmpty { "F" } else owner.take(1).uppercase(), ink, color, 26.dp)
-            Text("$owner · ${clockTime(next)}", color = ink, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(next.title, color = ink, fontSize = 30.sp, lineHeight = 35.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            Avatar(if (next.memberId == null) context.family.name.take(1).uppercase().ifEmpty { "F" } else owner.take(1).uppercase(), ink, color, 30.dp)
+            Text("$owner · ${clockTime(next)}", color = ink, fontSize = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -632,33 +654,6 @@ private fun NightNext(
             laterRows.forEachIndexed { index, event ->
                 if (index > 0) HorizontalDivider(color = NightDivider)
                 NightRow(context, event, today = true)
-            }
-        }
-    }
-}
-
-@Composable
-private fun DayTiles(days: List<DisplayDay>, context: DisplayContext, wide: Boolean) {
-    Row(
-        (if (wide) Modifier else Modifier.horizontalScroll(rememberScrollState())).fillMaxWidth().height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        days.forEach { day ->
-            val events = PortalSchedule.events(context, day.date)
-            val first = events.firstOrNull { !it.allDay && it.time.isNotBlank() } ?: events.firstOrNull()
-            Column(
-                (if (wide) Modifier.weight(1f) else Modifier.width(150.dp)).fillMaxHeight().card(NightCard, 18.dp).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(dayName(day.date, "EEE").uppercase(), color = NightMuted, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    events.take(8).forEach { Box(Modifier.size(10.dp).background(eventColor(context, it), CircleShape)) }
-                }
-                if (first == null) Text("Nothing planned", color = NightMuted, fontSize = 15.sp)
-                else Text(
-                    if (first.memberId == null) first.title else "${eventOwner(context, first)} · ${first.title}",
-                    color = NightSoft, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                )
             }
         }
     }
