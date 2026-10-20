@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -220,6 +221,14 @@ private fun FamilyDashboard(
     onSettings: () -> Unit,
     onLeaveDemo: () -> Unit,
 ) {
+    var showWeek by rememberSaveable(context.device.id) { mutableStateOf(false) }
+    val localTime = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone)).toLocalTime()
+    if (!showWeek) {
+        val onWeek = { showWeek = true }
+        if (PortalSchedule.isNightBoard(localTime)) NightBoard(state, context, onSettings, onWeek)
+        else DayBoard(state, context, onRefresh, onSettings, onLeaveDemo, onWeek)
+        return
+    }
     val today = DisplayTime.today(state.nowMillis, context.timeZone).toString()
     var selectedDate by rememberSaveable(context.device.id) { mutableStateOf(context.today) }
     var previousToday by rememberSaveable(context.device.id) { mutableStateOf(today) }
@@ -244,7 +253,7 @@ private fun FamilyDashboard(
             contentPadding = PaddingValues(horizontal = if (wide) 28.dp else 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            item(key = "header") { DashboardHeader(state, context, wide, onRefresh, onSettings) }
+            item(key = "header") { DashboardHeader(state, context, wide, onRefresh, onSettings) { showWeek = false } }
             if (state.demo) item(key = "demo") {
                 Surface(color = PortalColors.Homework.copy(alpha = .16f), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, PortalColors.Homework.copy(alpha = .4f))) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -308,7 +317,7 @@ private fun FamilyDashboard(
 }
 
 @Composable
-private fun DashboardHeader(state: PortalState, context: DisplayContext, wide: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
+private fun DashboardHeader(state: PortalState, context: DisplayContext, wide: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit, onToday: () -> Unit) {
     val date = DisplayTime.dateLabel(DisplayTime.today(state.nowMillis, context.timeZone).toString())
     val title: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -332,6 +341,7 @@ private fun DashboardHeader(state: PortalState, context: DisplayContext, wide: B
             }
         }
         if (!wide) Spacer(Modifier.weight(1f))
+        ActionIcon(Icons.Outlined.ViewColumn, "Today board", onToday)
         IconButton(onClick = onRefresh, enabled = !state.refreshing, modifier = Modifier.size(56.dp)) {
             if (state.refreshing) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             else Icon(Icons.Outlined.Refresh, "Refresh family view", Modifier.size(26.dp))
@@ -555,7 +565,7 @@ internal fun ActionIcon(icon: ImageVector, description: String, onClick: () -> U
     IconButton(onClick = onClick, modifier = Modifier.size(56.dp)) { Icon(icon, description, Modifier.size(26.dp)) }
 }
 
-private fun memberColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor(value)) }.getOrDefault(PortalColors.Violet)
+internal fun memberColor(value: String): Color = runCatching { Color(android.graphics.Color.parseColor(value)) }.getOrDefault(PortalColors.Violet)
 
 private fun eventTime(event: DisplayEvent): String = when {
     event.allDay -> "All day"
@@ -565,7 +575,7 @@ private fun eventTime(event: DisplayEvent): String = when {
 
 private fun shortDate(value: String): String = runCatching { LocalDate.parse(value).format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.getDefault())) }.getOrDefault(value)
 
-private fun updatedLabel(context: DisplayContext): String = runCatching {
+internal fun updatedLabel(context: DisplayContext): String = runCatching {
     val updated = Instant.parse(context.generatedAt).atZone(DisplayTime.zone(context.timeZone))
     "Updated ${updated.format(DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()))}"
 }.getOrDefault("Saved view")

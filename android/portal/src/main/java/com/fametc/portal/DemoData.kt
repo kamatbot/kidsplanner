@@ -14,12 +14,28 @@ object DemoData {
             val date = today.plusDays(offset)
             DisplayDay(date.toString(), when (offset) {
                 0L -> listOf(
-                    event("demo-1", "School pickup", date, "15:00", "15:30", null, "#B39AFF", "Main gate"),
+                    event("demo-7", "Walk to school", date, "07:15", "07:45", "sam", "#65CBB5"),
+                    event("demo-8", "Maths test", date, "09:30", "10:30", "sam", "#65CBB5", "Room 4"),
                     event("demo-2", "Swimming practice", date, "16:15", "17:00", "sam", "#65CBB5", "Community pool"),
+                    event("demo-9", "Piano practice", date, "19:00", "19:30", "sam", "#65CBB5"),
+                    event("demo-10", "School bus", date, "07:40", "08:00", "alex", "#FFC170"),
+                    event("demo-11", "Art club", date, "11:00", "12:00", "alex", "#FFC170"),
+                    event("demo-12", "Maths tutor", date, "15:45", "16:30", "alex", "#FFC170"),
+                    event("demo-13", "Bath and reading", date, "19:15", "20:00", "alex", "#FFC170"),
+                    event("demo-1", "School pickup", date, "15:00", "15:30", null, "#B39AFF", "Main gate"),
                     event("demo-3", "Family dinner", date, "18:30", "19:15", null, "#B39AFF", "At home"),
                 )
-                1L -> listOf(event("demo-4", "Music lesson", date, "16:00", "16:45", "alex", "#FFC170"))
+                1L -> listOf(
+                    event("demo-4", "Music lesson", date, "16:00", "16:45", "alex", "#FFC170"),
+                    event("demo-14", "Class trip", date, "08:00", "14:00", "sam", "#65CBB5"),
+                    event("demo-15", "Video call with grandparents", date, "19:00", "19:30", null, "#B39AFF"),
+                )
+                2L -> listOf(
+                    event("demo-16", "Football match", date, "10:00", "11:30", "sam", "#65CBB5", "Town field"),
+                    event("demo-17", "Chess club", date, "15:30", "16:30", "alex", "#FFC170"),
+                )
                 3L -> listOf(event("demo-5", "Library afternoon", date, "15:30", "16:30", null, "#B39AFF"))
+                4L -> listOf(event("demo-18", "Dentist", date, "09:00", "09:45", "alex", "#FFC170"))
                 5L -> listOf(event("demo-6", "Park and picnic", date, "10:00", "12:00", null, "#B39AFF"))
                 else -> emptyList()
             })

@@ -1,10 +1,12 @@
 package com.fametc.portal
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalTime
 
 class PortalScheduleTest {
     private val day = "2026-10-20"
@@ -56,6 +58,51 @@ class PortalScheduleTest {
         assertEquals(listOf("overdue", "tomorrow", "undated"), PortalSchedule.homework(data, null, false).map { it.id })
         assertEquals(listOf("overdue", "undated"), PortalSchedule.homework(data, "sam", false).map { it.id })
         assertTrue(PortalSchedule.homework(data, null, true).isEmpty())
+    }
+
+    @Test fun nightBoardWindowEdges() {
+        assertFalse(PortalSchedule.isNightBoard(LocalTime.of(20, 29)))
+        assertTrue(PortalSchedule.isNightBoard(LocalTime.of(20, 30)))
+        assertTrue(PortalSchedule.isNightBoard(LocalTime.of(0, 0)))
+        assertTrue(PortalSchedule.isNightBoard(LocalTime.of(5, 59)))
+        assertFalse(PortalSchedule.isNightBoard(LocalTime.of(6, 0)))
+    }
+
+    @Test fun memberEventsAreExactAndFamilyOnlyForNull() {
+        val context = context(listOf(alex, family, sam))
+        assertEquals(listOf("sam-swim"), PortalSchedule.memberEvents(context, day, "sam").map { it.id })
+        assertEquals(listOf("family"), PortalSchedule.memberEvents(context, day, null).map { it.id })
+        assertTrue(PortalSchedule.memberEvents(context, "2026-10-21", "sam").isEmpty())
+    }
+
+    @Test fun isPastUsesEndTimeThenStartAndNeverFlagsRunningOrUntimed() {
+        val t = LocalTime.of(16, 20)
+        assertTrue(PortalSchedule.isPast(family, t))                       // 15:00-15:30 ended
+        assertFalse(PortalSchedule.isPast(sam, t))                         // 16:15-17:00 happening
+        assertFalse(PortalSchedule.isPast(alex, t))                        // future
+        assertTrue(PortalSchedule.isPast(event("no-end", null, "16:00", ""), t))
+        assertFalse(PortalSchedule.isPast(event("no-end-future", null, "16:30", ""), t))
+        assertFalse(PortalSchedule.isPast(event("same-minute", null, "16:20", ""), LocalTime.of(16, 20, 45)))
+        assertFalse(PortalSchedule.isPast(event("all", null, "", "").copy(allDay = true), t))
+        assertFalse(PortalSchedule.isPast(event("untimed", null, "", ""), t))
+        assertFalse(PortalSchedule.isPast(event("bad", null, "soon", ""), t))
+    }
+
+    @Test fun upcomingSpansTodayAndLaterDaysWithoutPastOrAllDay() {
+        val tomorrow = "2026-10-21"
+        val data = context(listOf(family, sam, alex, event("all", null, "", "").copy(allDay = true), event("untimed", null, "", ""))).copy(
+            days = listOf(
+                DisplayDay(day, listOf(family, sam, alex, event("all", null, "", "").copy(allDay = true), event("untimed", null, "", ""))),
+                DisplayDay(tomorrow, listOf(sam.copy(id = "t-late", date = tomorrow, time = "18:00"), sam.copy(id = "t-early", date = tomorrow, time = "08:00"))),
+            ),
+        )
+        assertEquals(listOf("sam-swim", "alex-music", "t-early", "t-late"), PortalSchedule.upcoming(data, now, "Asia/Bangkok").map { it.id })
+    }
+
+    @Test fun minutesUntilCountsToStartAndIsZeroWhileHappening() {
+        assertEquals(40, PortalSchedule.minutesUntil(alex, now, "Asia/Bangkok"))
+        assertEquals(0, PortalSchedule.minutesUntil(sam, now, "Asia/Bangkok"))
+        assertEquals(24 * 60 + 40, PortalSchedule.minutesUntil(alex.copy(date = "2026-10-21"), now, "Asia/Bangkok"))
     }
 
     private fun event(id: String, member: String?, start: String, end: String) = DisplayEvent(

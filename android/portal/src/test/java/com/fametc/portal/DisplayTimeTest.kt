@@ -15,6 +15,15 @@ class DisplayTimeTest {
     private val boot = 8
     private val session = "test-process-session"
 
+    @Test fun twelveHourTimes() {
+        assertEquals("4:45", DisplayTime.shortTime("16:45"))
+        assertEquals("12:05", DisplayTime.shortTime("00:05"))
+        assertEquals("12:00", DisplayTime.shortTime("12:00"))
+        assertEquals("soon", DisplayTime.shortTime("soon"))
+        assertEquals("pm", DisplayTime.meridiem("16:45"))
+        assertEquals("am", DisplayTime.meridiem("00:05"))
+    }
+
     @Test fun overnightScheduleIncludesStartAndExcludesEnd() {
         val start = LocalTime.of(21, 0)
         val end = LocalTime.of(7, 0)

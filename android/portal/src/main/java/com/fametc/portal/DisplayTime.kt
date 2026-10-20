@@ -39,6 +39,19 @@ object DisplayTime {
     fun clock(nowMillis: Long, timeZone: String?): String = Instant.ofEpochMilli(nowMillis)
         .atZone(zone(timeZone)).format(DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()))
 
+    /** "16:45" -> "4:45"; unparseable input is returned unchanged. */
+    fun shortTime(time: String): String = runCatching { LocalTime.parse(time) }.getOrNull()
+        ?.let { "${(it.hour + 11) % 12 + 1}:${"%02d".format(it.minute)}" } ?: time
+
+    fun meridiem(time: String): String = runCatching { LocalTime.parse(time) }.getOrNull()
+        ?.let { if (it.hour < 12) "am" else "pm" } ?: ""
+
+    fun clock12(nowMillis: Long, timeZone: String?): String =
+        shortTime(clock(nowMillis, timeZone))
+
+    fun clockMeridiem(nowMillis: Long, timeZone: String?): String =
+        meridiem(clock(nowMillis, timeZone))
+
     fun dateLabel(date: String): String = runCatching {
         LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault()))
     }.getOrDefault(date)
