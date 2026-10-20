@@ -7,7 +7,7 @@
     authorized: false, busy: false, loading: false, disposed: false,
     epoch: 0, loadRevision: 0, devices: [], editId: null, pairing: null,
     requests: new Set(), lastAttempt: 0,
-    photos: [], photoMax: 12, photosLoaded: false,
+    photos: [], photoMax: 50, photosLoaded: false,
   };
 
   class DisplayApiError extends Error {

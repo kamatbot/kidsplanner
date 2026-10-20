@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +29,7 @@ import java.util.UUID
 
 class PortalViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
+        const val MAX_PHOTOS = 50
         val processSessionId: String = UUID.randomUUID().toString()
     }
     private val api = PortalApi()
@@ -40,10 +40,10 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
     val preferences: StateFlow<PortalPreferences> = _preferences.asStateFlow()
     private val _state = MutableStateFlow(PortalState())
     val state: StateFlow<PortalState> = _state.asStateFlow()
-    private val _photos = MutableStateFlow<List<ImageBitmap>>(emptyList())
-    val photos: StateFlow<List<ImageBitmap>> = _photos.asStateFlow()
-    // ponytail: photos live in memory only, so they re-download after an app restart; add a disk cache if Wi-Fi is slow.
-    private val photoCache = HashMap<String, ImageBitmap>()
+    private val _photos = MutableStateFlow<List<PortalPhoto>>(emptyList())
+    val photos: StateFlow<List<PortalPhoto>> = _photos.asStateFlow()
+    // ponytail: photos live in memory only (compressed bytes; the Night board decodes lazily), so they re-download after an app restart; add a disk cache if Wi-Fi is slow.
+    private val photoCache = HashMap<String, PortalPhoto>()
     private var photoIds = emptyList<String>()
     private var photoJob: Job? = null
     private val refreshRequests = Channel<Unit>(Channel.CONFLATED)
@@ -221,7 +221,7 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
                     saved = updated
                     failures = 0
                     _state.update { it.copy(context = context, device = updated.device, error = null, offline = false, refreshing = false) }
-                    syncPhotos(record.token, context.photos.map { it.id }.take(12), operation)
+                    syncPhotos(record.token, context.photos.map { it.id }.take(MAX_PHOTOS), operation)
                     nextDelay = context.pollAfterSeconds.coerceIn(30, 300).toLong() * 1000
                 } catch (error: CancellationException) {
                     throw error
@@ -262,16 +262,15 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
         photoJob = viewModelScope.launch {
             for (id in ids) {
                 if (id in photoCache) continue
-                val bitmap = try {
-                    val bytes = api.photo(token, id)
-                    withContext(Dispatchers.IO) { decodePhoto(bytes) }
+                val photo = try {
+                    PortalPhoto(id, api.photo(token, id))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (_: Exception) {
                     null
                 } ?: continue
                 if (operation != generation) return@launch
-                photoCache[id] = bitmap
+                photoCache[id] = photo
                 _photos.value = ids.mapNotNull { photoCache[it] }
             }
         }
@@ -318,7 +317,7 @@ class PortalViewModel(app: Application) : AndroidViewModel(app) {
 
     fun demo() {
         if (_state.value.loading || _state.value.paired || _state.value.pairing) return
-        _photos.value = listOf(demoPhoto())
+        _photos.value = demoPhotos()
         _state.update { it.copy(demo = true, context = DemoData.create(System.currentTimeMillis()), error = null, offline = false) }
     }
 

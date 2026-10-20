@@ -105,14 +105,29 @@ class PortalScheduleTest {
         assertEquals(24 * 60 + 40, PortalSchedule.minutesUntil(alex.copy(date = "2026-10-21"), now, "Asia/Bangkok"))
     }
 
-    @Test fun photoIndexRotatesEveryTenMinutesAndSurvivesEmptyLists() {
+    @Test fun photoIndexRotatesEveryTenSecondsAndSurvivesEmptyLists() {
         assertEquals(0, PortalSchedule.photoIndex(now, 0))
         assertEquals(0, PortalSchedule.photoIndex(now, -1))
-        assertEquals(0, PortalSchedule.photoIndex(599_999L, 3))
-        assertEquals(1, PortalSchedule.photoIndex(600_000L, 3))
-        assertEquals(2, PortalSchedule.photoIndex(1_200_000L, 3))
-        assertEquals(0, PortalSchedule.photoIndex(1_800_000L, 3))
+        assertEquals(0, PortalSchedule.photoIndex(0L, 3))
+        assertEquals(0, PortalSchedule.photoIndex(9_999L, 3))
+        assertEquals(1, PortalSchedule.photoIndex(10_000L, 3))
+        assertEquals(2, PortalSchedule.photoIndex(20_000L, 3))
+        assertEquals(0, PortalSchedule.photoIndex(30_000L, 3))
+        assertEquals(1, PortalSchedule.photoIndex(40_000L, 3))
         assertEquals(0, PortalSchedule.photoIndex(now, 1))
+    }
+
+    @Test fun manualBoardChoiceHoldsWithinOneScheduledPeriodThenExpires() {
+        // No override: the schedule decides.
+        assertFalse(PortalSchedule.boardIsNight(false, null, null))
+        assertTrue(PortalSchedule.boardIsNight(true, null, null))
+        // Chose Night during the scheduled day: holds while the schedule stays Day.
+        assertTrue(PortalSchedule.boardIsNight(false, true, false))
+        // Chose Day during the scheduled night: holds while the schedule stays Night.
+        assertFalse(PortalSchedule.boardIsNight(true, false, true))
+        // The schedule flipped (20:30 / 06:00): the old choice lapses.
+        assertTrue(PortalSchedule.boardIsNight(true, true, false))
+        assertFalse(PortalSchedule.boardIsNight(false, false, true))
     }
 
     @Test fun contextWithoutPhotosDecodesEmptyAndWithPhotosKeepsIds() {

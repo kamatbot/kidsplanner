@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
@@ -56,7 +55,7 @@ import java.util.Locale
 fun PortalRoot(
     state: PortalState,
     preferences: PortalPreferences,
-    photos: List<ImageBitmap>,
+    photos: List<PortalPhoto>,
     quiet: Boolean,
     onPair: (String) -> Unit,
     onDemo: () -> Unit,
@@ -218,7 +217,7 @@ private fun WaitingForFamily(state: PortalState, onRefresh: () -> Unit, onSettin
 private fun FamilyDashboard(
     state: PortalState,
     context: DisplayContext,
-    photos: List<ImageBitmap>,
+    photos: List<PortalPhoto>,
     quiet: Boolean,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
@@ -226,10 +225,22 @@ private fun FamilyDashboard(
 ) {
     var showWeek by rememberSaveable(context.device.id) { mutableStateOf(false) }
     val localTime = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone)).toLocalTime()
+    val scheduledNight = PortalSchedule.isNightBoard(localTime)
+    // Manual Day/Night choice, remembered with the scheduled mode it was made in so it lapses when that changes.
+    var manualNight by rememberSaveable(context.device.id) { mutableStateOf<Boolean?>(null) }
+    var manualSetDuringNight by rememberSaveable(context.device.id) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(scheduledNight) {
+        if (manualSetDuringNight != null && manualSetDuringNight != scheduledNight) { manualNight = null; manualSetDuringNight = null }
+    }
+    val showNight = PortalSchedule.boardIsNight(scheduledNight, manualNight, manualSetDuringNight)
     if (!showWeek) {
         val onWeek = { showWeek = true }
-        if (PortalSchedule.isNightBoard(localTime)) NightBoard(state, context, photos, onSettings, onWeek)
-        else DayBoard(state, context, onRefresh, onSettings, onLeaveDemo, onWeek)
+        val onToggleMode = {
+            if (!showNight == scheduledNight) { manualNight = null; manualSetDuringNight = null }
+            else { manualNight = !showNight; manualSetDuringNight = scheduledNight }
+        }
+        if (showNight) NightBoard(state, context, photos, onSettings, onWeek, onToggleMode)
+        else DayBoard(state, context, onRefresh, onSettings, onLeaveDemo, onWeek, onToggleMode)
         return
     }
     val today = DisplayTime.today(state.nowMillis, context.timeZone).toString()

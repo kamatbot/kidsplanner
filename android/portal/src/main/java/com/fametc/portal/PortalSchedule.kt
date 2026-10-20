@@ -88,9 +88,13 @@ object PortalSchedule {
             .filter { !it.completed && (memberId == null || it.memberId == memberId) }
             .sortedWith(compareBy<DisplayHomework> { it.dueDate.isBlank() }.thenBy { it.dueDate }.thenBy { it.title })
 
-    /** Which photo the Night board shows: rotates every 10 minutes. */
+    /** Which photo the Night board shows: rotates every 10 seconds. */
     fun photoIndex(nowMillis: Long, count: Int): Int =
-        if (count <= 0) 0 else Math.floorMod(nowMillis / 600_000L, count.toLong()).toInt()
+        if (count <= 0) 0 else Math.floorMod(nowMillis / 10_000L, count.toLong()).toInt()
+
+    /** A manual Day/Night choice holds only while the scheduled mode is the one it was made in. */
+    fun boardIsNight(scheduledNight: Boolean, manualNight: Boolean?, manualSetDuringNight: Boolean?): Boolean =
+        if (manualNight != null && manualSetDuringNight == scheduledNight) manualNight else scheduledNight
 
     private fun parseTime(value: String): LocalTime? = runCatching { LocalTime.parse(value) }.getOrNull()
 }

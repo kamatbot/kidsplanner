@@ -1,6 +1,7 @@
 package com.fametc.portal
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,12 +15,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
@@ -44,6 +53,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val Ink = Color(0xFF14151C)
 private val DayGround = Color(0xFF14151C)
@@ -123,6 +134,7 @@ internal fun DayBoard(
     onSettings: () -> Unit,
     onLeaveDemo: () -> Unit,
     onWeek: () -> Unit,
+    onToggleMode: () -> Unit,
 ) {
     val now = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone))
     val today = now.toLocalDate().toString()
@@ -138,7 +150,7 @@ internal fun DayBoard(
     BoxWithConstraints(Modifier.fillMaxSize().background(DayGround)) {
         val wide = maxWidth >= 900.dp
         Column(Modifier.fillMaxSize()) {
-            DayHeader(state, context, wide, onRefresh, onSettings, onLeaveDemo, onWeek)
+            DayHeader(state, context, wide, onRefresh, onSettings, onLeaveDemo, onWeek, onToggleMode)
             if (notices.isNotEmpty()) Column(Modifier.padding(horizontal = 12.dp).padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 notices.forEach { (message, icon) -> Notice(message, icon, PortalColors.Homework) }
             }
@@ -170,6 +182,7 @@ private fun DayHeader(
     onSettings: () -> Unit,
     onLeaveDemo: () -> Unit,
     onWeek: () -> Unit,
+    onToggleMode: () -> Unit,
 ) {
     val date = dayName(DisplayTime.today(state.nowMillis, context.timeZone).toString(), "EEEE d MMM")
     val title: @Composable () -> Unit = {
@@ -195,6 +208,7 @@ private fun DayHeader(
             TextButton(onClick = onLeaveDemo, modifier = Modifier.heightIn(min = 52.dp)) { Text("Leave demo", color = PortalColors.Homework) }
         }
         CompositionLocalProvider(LocalContentColor provides Color.White) {
+            ActionIcon(Icons.Outlined.DarkMode, "Night mode", onToggleMode)
             ActionIcon(Icons.Outlined.CalendarMonth, "Week view", onWeek)
             IconButton(onClick = onRefresh, enabled = !state.refreshing, modifier = Modifier.size(56.dp)) {
                 if (state.refreshing) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -376,7 +390,7 @@ private fun EventCard(event: DisplayEvent, past: Boolean, marker: String?, mark:
 // ───────────────────────────── Night board ─────────────────────────────
 
 @Composable
-internal fun NightBoard(state: PortalState, context: DisplayContext, photos: List<ImageBitmap>, onSettings: () -> Unit, onWeek: () -> Unit) {
+internal fun NightBoard(state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, onSettings: () -> Unit, onWeek: () -> Unit, onToggleMode: () -> Unit) {
     val now = Instant.ofEpochMilli(state.nowMillis).atZone(DisplayTime.zone(context.timeZone))
     val today = now.toLocalDate().toString()
     val upcoming = PortalSchedule.upcoming(context, state.nowMillis, context.timeZone)
@@ -390,6 +404,7 @@ internal fun NightBoard(state: PortalState, context: DisplayContext, photos: Lis
         val body: @Composable ColumnScope.() -> Unit = {
             Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 CompositionLocalProvider(LocalContentColor provides NightMuted) {
+                    ActionIcon(Icons.Outlined.LightMode, "Day mode", onToggleMode)
                     ActionIcon(Icons.Outlined.CalendarMonth, "Week view", onWeek)
                     ActionIcon(Icons.Outlined.Settings, "Display settings", onSettings)
                 }
@@ -455,10 +470,27 @@ private fun NightClock(modifier: Modifier, state: PortalState, context: DisplayC
 }
 
 @Composable
-private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayContext, photos: List<ImageBitmap>, wide: Boolean) {
+private fun NightPhoto(modifier: Modifier, state: PortalState, context: DisplayContext, photos: List<PortalPhoto>, wide: Boolean) {
+    val index = PortalSchedule.photoIndex(state.nowMillis, photos.size)
+    val current = photos.getOrNull(index)
+    val next = photos.getOrNull((index + 1) % maxOf(photos.size, 1))
+    // At most three decoded bitmaps live at once: outgoing (shown), current and next.
+    val decoded = remember { mutableStateMapOf<String, ImageBitmap>() }
+    var shown by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(current?.id, next?.id) {
+        val wanted = listOfNotNull(current, next).distinctBy { it.id }
+        val keep = wanted.map { it.id }.toSet() + listOfNotNull(shown)
+        decoded.keys.retainAll(keep)
+        for (photo in wanted) {
+            if (photo.id in decoded) continue
+            withContext(Dispatchers.Default) { decodePhoto(photo.bytes) }?.let { decoded[photo.id] = it }
+        }
+        // Until the current photo has decoded, keep showing the previous one.
+        if (current != null && current.id in decoded) shown = current.id
+    }
     Box(modifier.clip(RoundedCornerShape(32.dp)).background(NightGround)) {
-        Crossfade(PortalSchedule.photoIndex(state.nowMillis, photos.size), Modifier.fillMaxSize(), label = "photo") { index ->
-            photos.getOrNull(index)?.let {
+        Crossfade(shown, Modifier.fillMaxSize(), animationSpec = tween(1200), label = "photo") { id ->
+            id?.let { decoded[it] }?.let {
                 // Dimmed a little: the screen lives in a dark room.
                 Image(
                     it, "Family photo", Modifier.fillMaxSize().alpha(.85f),
