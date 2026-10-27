@@ -37,7 +37,7 @@ protocol WatchVoiceClient {
     func uploadVoice(_ audio: Data, durationMs: Int) async throws -> WatchChatMessage.Media
     func sendVoice(_ media: WatchChatMessage.Media, clientMessageId: String) async throws -> WatchChatMessage
     func downloadAttachment(_ attachmentId: String) async throws -> Data
-    /// Toggles one of `thumbsup`, `heart`, `laugh`, `fire`, `party`.
+    /// Toggles one of `thumbsup`, `heart`, `laugh`, `wow`, `sad`, `pray`, `fire`, `party`.
     func toggleReaction(messageId: String, reaction: String) async throws -> WatchChatMessage
 }
 

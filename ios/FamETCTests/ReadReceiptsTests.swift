@@ -59,7 +59,7 @@ final class ChatReactionsTests: XCTestCase {
     }
 
     func testFixedFiveReactions() {
-        XCTAssertEqual(ChatReaction.all.map(\.key), ["thumbsup", "heart", "laugh", "fire", "party"])
+        XCTAssertEqual(ChatReaction.all.map(\.key), ["thumbsup", "heart", "laugh", "wow", "sad", "pray", "fire", "party"])
         XCTAssertEqual(ChatReaction.emoji(for: "heart"), "❤️")
         XCTAssertNil(ChatReaction.emoji(for: "poop"))
     }

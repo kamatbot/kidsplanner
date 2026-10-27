@@ -3930,8 +3930,8 @@ function renderChatMessages() {
   updateChatUnreadBadge();
 }
 
-// Reactions: a fixed set of five, stored by key on the server.
-const CHAT_REACTIONS = [['thumbsup', '👍'], ['heart', '❤️'], ['laugh', '😂'], ['fire', '🔥'], ['party', '🎉']];
+// Reactions: a fixed set of eight, stored by key on the server.
+const CHAT_REACTIONS = [['thumbsup', '👍'], ['heart', '❤️'], ['laugh', '😂'], ['wow', '😮'], ['sad', '😢'], ['pray', '🙏'], ['fire', '🔥'], ['party', '🎉']];
 
 function renderChatReactions(m) {
   if (m.deleted || m.senderType === 'agent') return '';

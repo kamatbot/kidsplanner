@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 // MARK: - Chat (native)
 //
@@ -1930,6 +1931,8 @@ struct ChatMessageRow: View, Equatable {
     @State private var showReportDialog = false
     @State private var showDeleteDialog = false
     @State private var showReportedThanks = false
+    @State private var showMessageActions = false
+    @State private var shareItem: ChatShareText?
 
     static func == (lhs: ChatMessageRow, rhs: ChatMessageRow) -> Bool {
         lhs.message == rhs.message
@@ -1984,6 +1987,12 @@ struct ChatMessageRow: View, Equatable {
                     .accessibilityElement(children: .combine)
                 }
                 bubble
+                    .onLongPressGesture(minimumDuration: 0.35) {
+                        if hasMessageActions { presentMessageActions() }
+                    }
+                    .accessibilityAction(named: "Message options") {
+                        if hasMessageActions { presentMessageActions() }
+                    }
                 if canReact, let reactions = message.reactions, !reactions.isEmpty {
                     reactionChips(reactions)
                 }
@@ -2020,6 +2029,131 @@ struct ChatMessageRow: View, Equatable {
         } message: {
             Text("Thanks — a parent can review it.")
         }
+        .fullScreenCover(isPresented: $showMessageActions) {
+            ChatMessageActionsOverlay(canReact: canReact,
+                                      selectedReactions: myReactionKeys,
+                                      alignTrailing: isMine,
+                                      actions: menuActions,
+                                      onReact: { key in
+                                          react(key)
+                                          dismissMessageActions()
+                                      },
+                                      onSelect: { action in dismissMessageActions(then: action.perform) },
+                                      onDismiss: { dismissMessageActions() },
+                                      preview: actionPreview)
+                .presentationBackground(.clear)
+        }
+        .sheet(item: $shareItem) { item in
+            ChatShareSheet(items: [item.text])
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    // MARK: Long-press message menu (ChatMessageActions.swift)
+
+    private var hasMessageActions: Bool {
+        !message.deleted && (canReact || !menuActions.isEmpty)
+    }
+
+    private var myReactionKeys: Set<String> {
+        let me = store.me?.id ?? ""
+        return Set((message.reactions ?? []).filter { $0.userIds.contains(me) }.map(\.key))
+    }
+
+    /// The overlay opens and closes without the cover's slide, so it reads as
+    /// a popover over the chat rather than a new screen.
+    private func presentMessageActions() {
+        Haptics.impact(.medium)
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { showMessageActions = true }
+    }
+
+    /// Dialogs and the share sheet must wait for the cover to go away before
+    /// they can present from this row.
+    private func dismissMessageActions(then work: (() -> Void)? = nil) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { showMessageActions = false }
+        if let work {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { work() }
+        }
+    }
+
+    /// A read-only copy of the message shown between the reaction bar and the
+    /// actions. Media shows its one-line summary.
+    private var actionPreview: some View {
+        Text(message.previewText)
+            .font(.body)
+            .foregroundStyle(senderTextColor)
+            .lineLimit(12)
+            .multilineTextAlignment(.leading)
+            .padding(.horizontal, 16).padding(.vertical, 11)
+            .background(bubbleShape.fill(AnyShapeStyle(bubbleFill)))
+            .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
+    }
+
+    /// The same actions the per-bubble context menus used to offer, minus the
+    /// reactions (now the big bar), plus Copy.
+    private var menuActions: [ChatMessageMenuAction] {
+        guard !message.deleted else { return [] }
+        var items: [ChatMessageMenuAction] = []
+        let hasText = !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isNews = message.card?.type == "news"
+        let isGif = message.media?.type == "gif"
+        let isPlainText = !message.isBuzz && message.media == nil && !isNews
+        let text = message.text
+        if hasText {
+            items.append(ChatMessageMenuAction(id: "copy", title: "Copy", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = text
+            })
+            if !isNews {
+                items.append(ChatMessageMenuAction(id: "share", title: "Share Message", systemImage: "square.and.arrow.up") {
+                    shareItem = ChatShareText(text: text)
+                })
+            }
+        }
+        if isPlainText && canImportMealPlan {
+            items.append(ChatMessageMenuAction(id: "meals", title: "Review & add to Meals", systemImage: "fork.knife") {
+                onImportMealPlan(message)
+            })
+        }
+        if isPlainText && canImportTripItinerary {
+            items.append(ChatMessageMenuAction(id: "itinerary", title: "Review & add to Itinerary", systemImage: "airplane") {
+                onImportTripItinerary(message)
+            })
+        }
+        let canConvert = hasText && ((isPlainText && message.card == nil) || isGif)
+        if canAddToShopping && canConvert {
+            items.append(ChatMessageMenuAction(id: "shopping", title: "Add to Shopping", systemImage: "cart.badge.plus") {
+                onAddToShopping(message)
+            })
+        }
+        if canAddToCalendar && canConvert {
+            items.append(ChatMessageMenuAction(id: "calendar", title: "Add to Calendar", systemImage: "calendar.badge.plus") {
+                onAddToCalendar(message)
+            })
+        }
+        if isPlainText {
+            items.append(ChatMessageMenuAction(id: "pin", title: "Pin to Notes", systemImage: "pin") {
+                onPinToNotes(message)
+            })
+        }
+        if ChatModeration.canReport(message, isMine: isMine, roomId: roomId) {
+            if message.flagged {
+                items.append(ChatMessageMenuAction(id: "reported", title: "Reported", systemImage: "flag.fill", isDisabled: true) {})
+            } else {
+                items.append(ChatMessageMenuAction(id: "report", title: "Report", systemImage: "flag") {
+                    showReportDialog = true
+                })
+            }
+        }
+        if ChatModeration.canDelete(message, isParent: store.isParent, roomId: roomId) {
+            items.append(ChatMessageMenuAction(id: "delete", title: "Delete", systemImage: "trash", isDestructive: true) {
+                showDeleteDialog = true
+            })
+        }
+        return items
     }
 
     /// Reactions live on people's messages in Family and trip rooms, never on
@@ -2061,34 +2195,6 @@ struct ChatMessageRow: View, Equatable {
         }
         .padding(.horizontal, 4)
         .animation(.spring(response: 0.3, dampingFraction: 0.5), value: reactions)
-    }
-
-    /// The five reactions as one emoji row at the top of a message's menu.
-    @ViewBuilder private var reactionActions: some View {
-        if canReact {
-            ControlGroup {
-                ForEach(ChatReaction.all, id: \.key) { reaction in
-                    Button { react(reaction.key) } label: { Text(reaction.emoji) }
-                        .accessibilityLabel("React \(reaction.emoji)")
-                }
-            }
-            .controlGroupStyle(.palette)
-        }
-    }
-
-    @ViewBuilder private var moderationActions: some View {
-        reactionActions
-        if ChatModeration.canReport(message, isMine: isMine, roomId: roomId) {
-            if message.flagged {
-                Button {} label: { Label("Reported", systemImage: "flag.fill") }
-                    .disabled(true)
-            } else {
-                Button { showReportDialog = true } label: { Label("Report", systemImage: "flag") }
-            }
-        }
-        if ChatModeration.canDelete(message, isParent: store.isParent, roomId: roomId) {
-            Button(role: .destructive) { showDeleteDialog = true } label: { Label("Delete", systemImage: "trash") }
-        }
     }
 
     @ViewBuilder private var avatar: some View {
@@ -2305,7 +2411,6 @@ struct ChatMessageRow: View, Equatable {
                 .overlay(bubbleShape.strokeBorder(Palette.border, lineWidth: 1))
         } else if let card = message.card, card.type == "news", !message.isBuzz {
             ChatNewsCard(card: card, note: message.text)
-                .contextMenu { moderationActions }
         } else if message.isBuzz {
             VStack(alignment: isMine ? .trailing : .leading, spacing: 5) {
                 Label("BUZZ", systemImage: "wave.3.right")
@@ -2322,7 +2427,6 @@ struct ChatMessageRow: View, Equatable {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("BUZZ message from \(senderName): \(message.text)")
             .accessibilityHint("Time Sensitive alert")
-            .contextMenu { shareMessageAction; moderationActions }
         } else if let media = message.media, media.isVoiceMessage {
             ChatVoiceBubble(media: media,
                             messageId: message.id,
@@ -2331,49 +2435,14 @@ struct ChatMessageRow: View, Equatable {
                             stroke: senderColor.opacity(0.25),
                             canReact: canReact,
                             onReact: react)
-                .contextMenu {
-                    if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        shareMessageAction
-                    }
-                    moderationActions
-                }
         } else if let media = message.media, media.isChatAttachment {
             ChatAttachmentBubble(media: media)
-                .contextMenu {
-                    if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        shareMessageAction
-                    }
-                    moderationActions
-                }
         } else if let media = message.media, media.type == "gif",
                   let url = URL(string: media.previewUrl ?? media.url ?? "") {
             AnimatedGIFView(url: url)
                 .frame(maxWidth: 240, maxHeight: 240)
                 .background(Palette.panel)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextMenu {
-                    if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        shareMessageAction
-                    }
-                    // A GIF with accompanying text is still an eligible
-                    // family message; media-only messages have no text and
-                    // therefore receive no conversion action.
-                    if canAddToShopping && !message.deleted && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button {
-                            onAddToShopping(message)
-                        } label: {
-                            Label("Add to Shopping", systemImage: "cart.badge.plus")
-                        }
-                    }
-                    if canAddToCalendar && !message.deleted && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button {
-                            onAddToCalendar(message)
-                        } label: {
-                            Label("Add to Calendar", systemImage: "calendar.badge.plus")
-                        }
-                    }
-                    moderationActions
-                }
         } else {
             // Each sender keeps a readable identity color in both the sender
             // label and message text; alignment and names remain the secondary
@@ -2385,52 +2454,6 @@ struct ChatMessageRow: View, Equatable {
                 .padding(.horizontal, 16).padding(.vertical, 11)
                 .background(bubbleShape.fill(AnyShapeStyle(bubbleFill)))
                 .overlay(bubbleShape.strokeBorder(senderColor.opacity(0.25), lineWidth: 1))
-                .contextMenu {
-                    shareMessageAction
-                    if canImportMealPlan {
-                        Button {
-                            onImportMealPlan(message)
-                        } label: {
-                            Label("Review & add to Meals", systemImage: "fork.knife")
-                        }
-                    }
-                    if canImportTripItinerary {
-                        Button {
-                            onImportTripItinerary(message)
-                        } label: {
-                            Label("Review & add to Itinerary", systemImage: "airplane")
-                        }
-                    }
-                    if canAddToShopping && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button {
-                            onAddToShopping(message)
-                        } label: {
-                            Label("Add to Shopping", systemImage: "cart.badge.plus")
-                        }
-                    }
-                    if canAddToCalendar && !message.deleted && message.card == nil && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Button {
-                            onAddToCalendar(message)
-                        } label: {
-                            Label("Add to Calendar", systemImage: "calendar.badge.plus")
-                        }
-                    }
-                    Button {
-                        onPinToNotes(message)
-                    } label: {
-                        Label("Pin to Notes", systemImage: "pin")
-                    }
-                    moderationActions
-                }
-        }
-    }
-
-    @ViewBuilder
-    private var shareMessageAction: some View {
-        if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            ShareLink(item: message.text) {
-                Label("Share Message", systemImage: "square.and.arrow.up")
-            }
         }
     }
 }

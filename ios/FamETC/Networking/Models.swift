@@ -225,9 +225,10 @@ struct ChatReaction: Codable, Equatable {
     var names: [String]? = nil
 
     struct Option: Hashable { let key: String; let emoji: String }
-    /// The fixed five, in display order: server key and emoji.
+    /// The fixed eight, in display order: server key and emoji.
     static let all: [Option] = [
         Option(key: "thumbsup", emoji: "👍"), Option(key: "heart", emoji: "❤️"), Option(key: "laugh", emoji: "😂"),
+        Option(key: "wow", emoji: "😮"), Option(key: "sad", emoji: "😢"), Option(key: "pray", emoji: "🙏"),
         Option(key: "fire", emoji: "🔥"), Option(key: "party", emoji: "🎉"),
     ]
     static func emoji(for key: String) -> String? { all.first { $0.key == key }?.emoji }
