@@ -32,6 +32,17 @@ protocol FamilyActionService {
 protocol ChatMessageService {
     func chatMessages(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> [ChatMessage]
     func chatRooms() async throws -> [ChatRoom]
+    /// Same request as `chatMessages`, keeping the response's read receipts.
+    func chatPage(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> ChatPage
+    /// Reports "read up to `messageId`" and returns the room's current marks.
+    func markChatRead(roomId: String, messageId: String) async throws -> [ChatRead]
+}
+
+extension ChatMessageService {
+    func chatPage(roomId: String, since: String?, limit: Int?, afterId: String?, wait: Bool) async throws -> ChatPage {
+        ChatPage(messages: try await chatMessages(roomId: roomId, since: since, limit: limit, afterId: afterId, wait: wait))
+    }
+    func markChatRead(roomId: String, messageId: String) async throws -> [ChatRead] { [] }
 }
 
 /// Mutations share the receive loop's account-switch boundary.
@@ -582,6 +593,9 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
     /// `wait` requests a client-side timeout longer than the server's hold so
     /// the request doesn't get cut off right as new messages would arrive.
     func chatMessages(roomId: String = familyRoomId, since: String? = nil, limit: Int? = nil, afterId: String? = nil, wait: Bool = false) async throws -> [ChatMessage] {
+        try await chatPage(roomId: roomId, since: since, limit: limit, afterId: afterId, wait: wait).messages
+    }
+    func chatPage(roomId: String = familyRoomId, since: String? = nil, limit: Int? = nil, afterId: String? = nil, wait: Bool = false) async throws -> ChatPage {
         var path = Self.chatBasePath(roomId)
         var query: [String] = []
         if let since { query.append("since=\(since)") }
@@ -593,7 +607,22 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         if wait { query.append("wait=1") }
         if !query.isEmpty { path += "?" + query.joined(separator: "&") }
         let r: MessagesResponse = try await request(path, timeout: wait ? 35 : nil)
-        return r.messages
+        return ChatPage(messages: r.messages, reads: r.reads)
+    }
+
+    /// Read receipts exist for the family room and trip rooms; the private
+    /// Hermes thread has no other people in it, so it has none.
+    static func chatReadPath(for roomId: String) -> String? {
+        if roomId == "hermes" { return nil }
+        guard roomId.hasPrefix("trip:") else { return "/api/chat/read" }
+        let tripId = String(roomId.dropFirst("trip:".count))
+        return "/api/trips/\(encodedPathComponent(tripId))/chat/read"
+    }
+
+    func markChatRead(roomId: String = familyRoomId, messageId: String) async throws -> [ChatRead] {
+        guard let path = Self.chatReadPath(for: roomId) else { return [] }
+        let r: ChatReadsResponse = try await request(path, method: "POST", body: ["messageId": messageId])
+        return r.reads
     }
     func sendChatMessage(text: String, card: [String: Any]? = nil, media: [String: Any]? = nil, senderType: String, senderId: String, roomId: String = familyRoomId, clientMessageId: String? = nil, expectedContext: [String: String]? = nil) async throws -> ChatMessage {
         var body: [String: Any] = ["text": text, "senderType": senderType, "senderId": senderId]

@@ -42,6 +42,10 @@ final class AppStore {
     /// convenience mirror of the family room so pre-Trips call sites (and
     /// ChatMergeTests) keep working unchanged.
     var messagesByRoom: [String: [ChatMessage]] = [:]
+    /// Read receipts per room, as last returned by the server.
+    var readsByRoom: [String: [ChatRead]] = [:]
+    /// Last message id this device reported as read, per room.
+    private var readReportedByRoom: [String: String] = [:]
     var me: User? {
         didSet {
             ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
@@ -395,6 +399,8 @@ final class AppStore {
         homeworkMutationRevision &+= 1
         homeworkLoadGeneration &+= 1
         messagesByRoom = [:]
+        readsByRoom = [:]
+        readReportedByRoom = [:]
         pendingChatSends = [:]
         lastSeenChatIdByRoom = [:]
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
@@ -593,10 +599,12 @@ final class AppStore {
                     guard !Task.isCancelled, session == sessionGeneration else { return }
                     reconcileRoomSnapshot(snapshot, roomId: roomId, before: before)
                 }
-                let fresh = try await chatService.chatMessages(
+                let page = try await chatService.chatPage(
                     roomId: roomId, since: nil, limit: first ? 50 : nil,
                     afterId: first ? nil : cursor, wait: !first)
                 guard !Task.isCancelled, session == sessionGeneration else { return }
+                let fresh = page.messages
+                applyReads(page.reads, roomId: roomId)
                 rearmImmediately = first || (fresh.last.map { $0.id != cursor } ?? false)
                 if first {
                     applyRoomSnapshot(fresh, roomId: roomId, previousIDs: previousIDs)
@@ -1714,9 +1722,10 @@ final class AppStore {
         let session = sessionGeneration
         let previousIDs = Set((messagesByRoom[roomId] ?? []).map(\.id))
         do {
-            let fresh = try await chatService.chatMessages(roomId: roomId, since: nil, limit: 50, afterId: nil, wait: false)
+            let page = try await chatService.chatPage(roomId: roomId, since: nil, limit: 50, afterId: nil, wait: false)
             guard !Task.isCancelled, session == sessionGeneration else { return false }
-            applyRoomSnapshot(fresh, roomId: roomId, previousIDs: previousIDs)
+            applyRoomSnapshot(page.messages, roomId: roomId, previousIDs: previousIDs)
+            applyReads(page.reads, roomId: roomId)
             updateChatSeen(roomId)
             return true
         } catch {
@@ -1782,6 +1791,50 @@ final class AppStore {
         let last = messagesByRoom[roomId]?.last?.id
         lastSeenChatIdByRoom[roomId] = last
         if let last { UserDefaults.standard.set(last, forKey: lastSeenChatKey(roomId)) }
+        reportChatRead(roomId)
+    }
+
+    // MARK: Read receipts
+
+    /// Tell the server this room has been read up to its newest message — only
+    /// while the room is actually on screen (not for the first-load baseline
+    /// or a background poll). The server keeps the furthest mark, so a repeat
+    /// or out-of-order report is harmless.
+    private func reportChatRead(_ roomId: String) {
+        guard activeRoomId == roomId, !chatAppBackgrounded, !needsAuth, roomId != "hermes",
+              let last = messagesByRoom[roomId]?.last?.id, readReportedByRoom[roomId] != last else { return }
+        readReportedByRoom[roomId] = last
+        let session = sessionGeneration
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let reads = try await self.chatService.markChatRead(roomId: roomId, messageId: last)
+                guard session == self.sessionGeneration else { return }
+                self.applyReads(reads, roomId: roomId)
+            } catch {
+                guard session == self.sessionGeneration else { return }
+                if self.readReportedByRoom[roomId] == last { self.readReportedByRoom[roomId] = nil }
+            }
+        }
+    }
+
+    private func applyReads(_ reads: [ChatRead]?, roomId: String) {
+        guard let reads, readsByRoom[roomId] != reads else { return }
+        readsByRoom[roomId] = reads
+    }
+
+    /// "Seen by Dad, Arya" for the newest message of mine in a room: everyone
+    /// else whose read mark has reached it. Nil until someone has.
+    func seenBy(in roomId: String) -> (messageId: String, text: String)? {
+        guard let mine = messagesByRoom[roomId]?.last(where: { !$0.deleted && isMine($0) }) else { return nil }
+        let names = (readsByRoom[roomId] ?? [])
+            .filter { $0.userId != me?.id && ($0.messageCreatedAt ?? "") >= mine.createdAt }
+            .map { read in
+                let name = (read.name ?? "").trimmingCharacters(in: .whitespaces)
+                return name.split(separator: " ").first.map(String.init) ?? "Someone"
+            }
+        guard !names.isEmpty else { return nil }
+        return (mine.id, "Seen by " + names.joined(separator: ", "))
     }
 
     /// Keep a room's badge at 0 while it's on-screen; establish a baseline on
