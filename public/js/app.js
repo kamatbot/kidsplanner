@@ -3893,6 +3893,7 @@ function renderChatMessages() {
         ${m.card?.type !== 'news' ? renderChatCard(m.card, chatSenderName(m)) : ''}
         ${renderMealPlanReviewAction(m)}
       </div>
+      ${typeof renderChatReactions === 'function' ? renderChatReactions(m) : ''}
       <div class="chat-msg-meta">
         <span class="chat-msg-time">${time}</span>
         ${addToTodayBtn}
@@ -3927,6 +3928,45 @@ function renderChatMessages() {
 
   if (wasAtBottom) el.scrollTop = el.scrollHeight;
   updateChatUnreadBadge();
+}
+
+// Reactions: a fixed set of five, stored by key on the server.
+const CHAT_REACTIONS = [['thumbsup', '👍'], ['heart', '❤️'], ['laugh', '😂'], ['fire', '🔥'], ['party', '🎉']];
+
+function renderChatReactions(m) {
+  if (m.deleted || m.senderType === 'agent') return '';
+  const me = sessionUser?.id;
+  const chips = (m.reactions || []).map((r) => {
+    const emoji = (CHAT_REACTIONS.find(([key]) => key === r.key) || [])[1];
+    if (!emoji || !r.userIds?.length) return '';
+    const mine = r.userIds.includes(me);
+    const who = (r.names || []).join(', ');
+    return `<button type="button" class="chat-reaction${mine ? ' chat-reaction-mine' : ''}" data-reaction="${r.key}" onclick="handleChatReaction('${todayActionIdArg(m.id)}','${r.key}')" title="${esc(who)}" aria-label="${esc(`${emoji} ${r.userIds.length}${who ? ' — ' + who : ''}`)}" aria-pressed="${mine}"><span class="chat-reaction-emoji">${emoji}</span>${r.userIds.length > 1 ? `<span class="chat-reaction-count">${r.userIds.length}</span>` : ''}</button>`;
+  }).join('');
+  const tray = CHAT_REACTIONS.map(([key, emoji]) =>
+    `<button type="button" class="chat-react-pick" onclick="handleChatReaction('${todayActionIdArg(m.id)}','${key}')" aria-label="React ${emoji}">${emoji}</button>`).join('');
+  return `<div class="chat-reactions">${chips}<span class="chat-react-add-wrap"><button type="button" class="chat-react-add" onclick="toggleChatReactTray(this)" aria-label="Add reaction" aria-expanded="false" title="React">☺︎+</button><span class="chat-react-tray" role="group" aria-label="Reactions">${tray}</span></span></div>`;
+}
+
+function toggleChatReactTray(button) {
+  const open = !button.parentElement.classList.contains('open');
+  document.querySelectorAll('.chat-react-add-wrap.open').forEach((el) => {
+    el.classList.remove('open');
+    el.querySelector('.chat-react-add')?.setAttribute('aria-expanded', 'false');
+  });
+  if (open) { button.parentElement.classList.add('open'); button.setAttribute('aria-expanded', 'true'); }
+}
+
+async function handleChatReaction(id, key) {
+  document.querySelectorAll('.chat-react-add-wrap.open').forEach((el) => el.classList.remove('open'));
+  try {
+    const res = await window.auth.reactToChatMessage(id, key);
+    if (res && res.message) mergeChatMessages([res.message]);
+    const chip = document.querySelector(`[data-chat-id="${CSS.escape(id)}"] .chat-reaction[data-reaction="${key}"]`);
+    if (chip) { chip.classList.remove('chat-reaction-pop'); void chip.offsetWidth; chip.classList.add('chat-reaction-pop'); }
+  } catch (err) {
+    toast(`❌ ${err.message}`);
+  }
 }
 
 // Read receipts: "Seen by Dad, Arya" under this user's most recent message,
@@ -4028,6 +4068,8 @@ async function chatLongPollFetch(afterId = chatLastId) {
   if (!res.ok) throw new Error(`poll failed (${res.status})`);
   const data = await res.json().catch(() => null);
   window.auth?.emitChatReads?.(data);
+  // Reactions edit older messages; they arrive beside, not inside, `messages`.
+  if (data && Array.isArray(data.updated) && data.updated.length) mergeChatMessages(data.updated);
   return (data && data.messages) || [];
 }
 
@@ -4130,6 +4172,10 @@ function setupChatRealtimeNudges() {
   window.addEventListener('online', nudge);
   window.auth?.onChatReads?.(applyChatReads);
   document.addEventListener('visibilitychange', maybeMarkChatRead);
+  document.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('.chat-react-add-wrap')) return;
+    document.querySelectorAll('.chat-react-add-wrap.open').forEach((el) => el.classList.remove('open'));
+  });
 }
 
 /* ============================================================
