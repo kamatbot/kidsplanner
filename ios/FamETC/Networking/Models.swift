@@ -178,7 +178,10 @@ struct ChatMedia: Codable, Equatable {
     var filename: String?
     var mimeType: String?
     var size: Int?
-    var kind: String?
+    var kind: String?      // "photo" | "video" | "file" | "audio"
+    /// Voice messages only (docs/VOICE-MESSAGES.md): recording length in ms.
+    /// Optional so older cached messages and non-audio media keep decoding.
+    var durationMs: Int?
 }
 
 struct ChatMessage: Codable, Identifiable, Equatable {

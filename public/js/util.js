@@ -186,6 +186,52 @@ function chatMediaMaybeScroll(mediaElement) {
   if (el.scrollHeight - el.scrollTop - el.clientHeight < mediaHeight + 120) el.scrollTop = el.scrollHeight;
 }
 
+/* Voice messages (docs/VOICE-MESSAGES.md). The markup is deterministic for a
+   given descriptor so a chat re-render never swaps a playing row; who sent it,
+   the unplayed dot and play state are layered on by chat-voice.js. */
+const CHAT_VOICE_MIME_TYPES = ['audio/mp4', 'audio/aac', 'audio/mpeg', 'audio/wav'];
+const CHAT_VOICE_PREVIEW = '🎤 Voice message';
+
+function chatVoiceClock(ms) {
+  const total = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function chatVoiceSpoken(ms) {
+  const total = Math.max(1, Math.round((Number(ms) || 0) / 1000));
+  const minutes = Math.floor(total / 60), seconds = total % 60;
+  const parts = [];
+  if (minutes) parts.push(`${minutes} minute${minutes === 1 ? '' : 's'}`);
+  if (seconds || !minutes) parts.push(`${seconds} second${seconds === 1 ? '' : 's'}`);
+  return parts.join(' ');
+}
+
+// Decorative bar heights (percent), stable per attachment id.
+function chatVoiceBars(seed, count = 28) {
+  let h = 2166136261;
+  for (const ch of String(seed || 'voice')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const bars = [];
+  for (let i = 0; i < count; i++) {
+    h ^= h << 13; h >>>= 0; h ^= h >>> 17; h ^= h << 5; h >>>= 0;
+    const envelope = Math.sin(Math.PI * (i + 0.5) / count) * 0.45 + 0.55;
+    bars.push(Math.round(22 + (h % 1000) / 1000 * 78 * envelope));
+  }
+  return bars;
+}
+
+function renderChatVoice(media, url) {
+  const id = chatMediaEscape(media.attachmentId);
+  const durationMs = Math.min(60000, Math.max(0, Math.round(Number(media.durationMs) || 0)));
+  const label = `Play voice message, ${chatVoiceSpoken(durationMs)}`;
+  const bars = chatVoiceBars(media.attachmentId).map(h => `<i style="--h:${h}%"></i>`).join('');
+  return `<div class="chat-voice" data-voice-id="${id}" data-voice-src="${chatMediaEscape(url)}" data-voice-duration="${durationMs}" title="${CHAT_VOICE_PREVIEW}">
+      <button type="button" class="chat-voice-play" data-voice-play aria-label="${chatMediaEscape(label)}"><svg class="chat-voice-icon-play" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M7 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L8.5 3.94A1 1 0 0 0 7 4.8z"/></svg><svg class="chat-voice-icon-pause" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="6" y="4.5" width="4.2" height="15" rx="1.2"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.2"/></svg></button>
+      <span class="chat-voice-wave" aria-hidden="true">${bars}</span>
+      <span class="chat-voice-time"><span class="chat-voice-elapsed"></span><span class="chat-voice-total">${chatVoiceClock(durationMs)}</span></span>
+      <span class="chat-voice-dot" aria-hidden="true" hidden></span>
+    </div>`;
+}
+
 function renderChatMedia(media) {
   if (!media) return '';
 
@@ -201,7 +247,10 @@ function renderChatMedia(media) {
   if (media.type !== 'attachment') return '';
   const url = chatMediaAttachmentUrl(media);
   if (!url) return '';
-  const filename = chatMediaFilename(media, media.kind === 'photo' ? 'Photo' : media.kind === 'video' ? 'Video' : 'File');
+  if (media.kind === 'audio' && CHAT_VOICE_MIME_TYPES.includes(String(media.mimeType || '').toLowerCase())) {
+    return renderChatVoice(media, url);
+  }
+  const filename = chatMediaFilename(media, media.kind === 'photo' ? 'Photo' : media.kind === 'video' ? 'Video' : media.kind === 'audio' ? 'Voice message' : 'File');
   const safeUrl = chatMediaEscape(url);
   const safeName = chatMediaEscape(filename);
 

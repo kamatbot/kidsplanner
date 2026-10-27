@@ -31,6 +31,16 @@ protocol WatchChatClient {
     func sendChat(text: String, clientMessageId: String) async throws -> WatchChatMessage
 }
 
+/// Voice notes and reactions in the family room (docs/VOICE-MESSAGES.md).
+/// Upload first, then post a normal chat message carrying the descriptor.
+protocol WatchVoiceClient {
+    func uploadVoice(_ audio: Data, durationMs: Int) async throws -> WatchChatMessage.Media
+    func sendVoice(_ media: WatchChatMessage.Media, clientMessageId: String) async throws -> WatchChatMessage
+    func downloadAttachment(_ attachmentId: String) async throws -> Data
+    /// Toggles one of `thumbsup`, `heart`, `laugh`, `fire`, `party`.
+    func toggleReaction(messageId: String, reaction: String) async throws -> WatchChatMessage
+}
+
 protocol WatchPairingClient {
     func claimPairing(code: String, deviceLabel: String) async throws -> WatchCredential
 }
@@ -79,7 +89,7 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient, WatchCompanionChatClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient, WatchCompanionChatClient, WatchVoiceClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
@@ -91,6 +101,7 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     private struct EmptyResponse: Decodable {}
     private struct ChatMessagesResponse: Decodable { let messages: [WatchChatMessage] }
     private struct ChatMessageResponse: Decodable { let message: WatchChatMessage }
+    private struct AttachmentResponse: Decodable { let attachment: WatchChatMessage.Media }
 
     private let baseURL: URL
     private let session: URLSession
@@ -140,6 +151,33 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         try await request("/api/chat/messages", method: "POST",
                           body: ["text": text, "clientMessageId": clientMessageId],
                           response: ChatMessageResponse.self).message
+    }
+
+    func uploadVoice(_ audio: Data, durationMs: Int) async throws -> WatchChatMessage.Media {
+        var form = WatchMultipartBody()
+        form.addField("roomId", "family")
+        form.addField("durationMs", String(durationMs))
+        form.addFile("file", filename: "voice.m4a", mimeType: "audio/mp4", data: audio)
+        // The long-poll session's 35 s budget suits a slow cellular upload.
+        return try await request("/api/chat/attachments", method: "POST", rawBody: form.data, contentType: form.contentType,
+                                 response: AttachmentResponse.self, longPoll: true).attachment
+    }
+
+    func sendVoice(_ media: WatchChatMessage.Media, clientMessageId: String) async throws -> WatchChatMessage {
+        let descriptor = try JSONSerialization.jsonObject(with: JSONEncoder().encode(media))
+        return try await request("/api/chat/messages", method: "POST",
+                                 body: ["text": "", "media": descriptor, "clientMessageId": clientMessageId],
+                                 response: ChatMessageResponse.self).message
+    }
+
+    func downloadAttachment(_ attachmentId: String) async throws -> Data {
+        try await send("/api/chat/attachments/\(companionComponent(attachmentId))", method: "GET", body: nil,
+                       longPoll: true, accept: "*/*")
+    }
+
+    func toggleReaction(messageId: String, reaction: String) async throws -> WatchChatMessage {
+        try await request("/api/chat/messages/\(companionComponent(messageId))/reactions", method: "POST",
+                          body: ["reaction": reaction], response: ChatMessageResponse.self).message
     }
 
     func fetchCompanion(identity: WatchCompanionIdentity) async throws -> WatchCompanionProfile {
@@ -286,11 +324,14 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     private func request<Response: Decodable>(_ path: String,
                                                method: String = "GET",
                                                body: [String: Any]? = nil,
+                                               rawBody: Data? = nil,
+                                               contentType: String? = nil,
                                                response: Response.Type,
                                                requiresCredential: Bool = true,
                                                longPoll: Bool = false,
                                                companionIdentity: WatchCompanionIdentity? = nil) async throws -> Response {
-        let data = try await send(path, method: method, body: body, requiresCredential: requiresCredential, longPoll: longPoll, companionIdentity: companionIdentity)
+        let data = try await send(path, method: method, body: body, rawBody: rawBody, contentType: contentType,
+                                  requiresCredential: requiresCredential, longPoll: longPoll, companionIdentity: companionIdentity)
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
@@ -301,8 +342,11 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     private func send(_ path: String,
                       method: String,
                       body: [String: Any]?,
+                      rawBody: Data? = nil,
+                      contentType: String? = nil,
                       requiresCredential: Bool = true,
                       longPoll: Bool = false,
+                      accept: String = "application/json",
                       companionIdentity: WatchCompanionIdentity? = nil) async throws -> Data {
         guard let url = URL(string: baseURL.absoluteString + path) else {
             throw WatchAPIError.badURL
@@ -331,7 +375,7 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = longPoll ? 35 : 8
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
         // The server's native-client gate intentionally accepts the existing
         // iOS signal for the watch companion as well. The credential remains
         // the actual session authority.
@@ -351,7 +395,10 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
             }
         }
 
-        if let body {
+        if let rawBody {
+            request.setValue(contentType ?? "application/octet-stream", forHTTPHeaderField: "Content-Type")
+            request.httpBody = rawBody
+        } else if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             do {
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)

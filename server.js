@@ -130,7 +130,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), browsing-topics=()");
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), browsing-topics=()");
   res.setHeader("Content-Security-Policy", CSP);
   next();
 });
@@ -411,7 +411,7 @@ function requireAuth(req, res, next) {
     }
     return res.status(401).json({ error: "Not authenticated" });
   }
-  if (!watchAuth.allowedRequest(req.method, req.path)) {
+  if (!watchAuth.allowedRequest(req.method, req.path, watch)) {
     return res.status(403).json({ error: "This watch credential cannot access that surface." });
   }
   const user = store.getUser(watch.targetUserId);

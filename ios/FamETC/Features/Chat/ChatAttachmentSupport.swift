@@ -16,6 +16,8 @@ struct ChatAttachmentDescriptor: Decodable {
     let mimeType: String
     let size: Int
     let kind: String
+    /// Audio uploads only (docs/VOICE-MESSAGES.md); absent for photo/video/file.
+    let durationMs: Int?
 }
 
 private struct ChatAttachmentUploadResponse: Decodable {
@@ -25,6 +27,10 @@ private struct ChatAttachmentUploadResponse: Decodable {
 struct ChatPickedAttachment {
     let url: URL
     let mimeType: String
+    /// Filename sent in the multipart part; defaults to the local file name.
+    var filename: String? = nil
+    /// Voice recordings only: sent as the `durationMs` multipart field.
+    var durationMs: Int? = nil
 }
 
 extension ChatMedia {
@@ -39,7 +45,8 @@ extension ChatMedia {
     }
     var attachmentByteSize: Int { max(0, size ?? width ?? 0) }
     var attachmentKind: String {
-        if let kind, ["photo", "video", "file"].contains(kind) { return kind }
+        if let kind, ["photo", "video", "file", "audio"].contains(kind) { return kind }
+        if mimeType?.lowercased().hasPrefix("audio/") == true { return "audio" }
         switch height {
         case 1: return "photo"
         case 2: return "video"
@@ -88,7 +95,12 @@ private enum ChatAttachmentHTTP {
         return nil
     }
 
-    static func multipartFile(fileURL: URL, roomId: String, mimeType: String, boundary: String) throws -> URL {
+    static func multipartFile(fileURL: URL,
+                              filename: String?,
+                              roomId: String,
+                              durationMs: Int?,
+                              mimeType: String,
+                              boundary: String) throws -> URL {
         let fm = FileManager.default
         let bodyURL = fm.temporaryDirectory.appendingPathComponent("fam-chat-upload-\(UUID().uuidString).multipart")
         fm.createFile(atPath: bodyURL.path, contents: nil)
@@ -100,17 +112,14 @@ private enum ChatAttachmentHTTP {
             try out.write(contentsOf: data)
         }
 
-        try write("--\(boundary)\r\n")
-        try write("Content-Disposition: form-data; name=\"roomId\"\r\n\r\n")
-        try write("\(roomId)\r\n")
-        try write("--\(boundary)\r\n")
-        let escapedName = fileURL.lastPathComponent
-            .replacingOccurrences(of: "\r", with: "-")
-            .replacingOccurrences(of: "\n", with: "-")
-            .replacingOccurrences(of: "\"", with: "'")
-            .replacingOccurrences(of: "\\", with: "-")
-        try write("Content-Disposition: form-data; name=\"file\"; filename=\"\(escapedName)\"\r\n")
-        try write("Content-Type: \(mimeType)\r\n\r\n")
+        // Text fields precede the file so the server sees roomId/durationMs
+        // before it starts reading the file stream.
+        for field in ChatMultipartForm.fields(roomId: roomId, durationMs: durationMs) {
+            try write(ChatMultipartForm.textPart(field, boundary: boundary))
+        }
+        try write(ChatMultipartForm.filePartHeader(filename: filename ?? fileURL.lastPathComponent,
+                                                   mimeType: mimeType,
+                                                   boundary: boundary))
 
         let input = try FileHandle(forReadingFrom: fileURL)
         defer { try? input.close() }
@@ -119,9 +128,43 @@ private enum ChatAttachmentHTTP {
             if chunk.isEmpty { break }
             try out.write(contentsOf: chunk)
         }
-        try write("\r\n--\(boundary)--\r\n")
+        try write(ChatMultipartForm.closing(boundary: boundary))
         return bodyURL
     }
+}
+
+/// Pure multipart pieces for `POST /api/chat/attachments`, split out so the
+/// exact bytes (field order, escaping, the voice `durationMs` field) are unit
+/// testable without a network.
+enum ChatMultipartForm {
+    struct Field: Equatable {
+        let name: String
+        let value: String
+    }
+
+    static func fields(roomId: String, durationMs: Int?) -> [Field] {
+        var result = [Field(name: "roomId", value: roomId)]
+        if let durationMs { result.append(Field(name: "durationMs", value: String(durationMs))) }
+        return result
+    }
+
+    static func textPart(_ field: Field, boundary: String) -> String {
+        "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(field.name)\"\r\n\r\n\(field.value)\r\n"
+    }
+
+    static func safeFilename(_ name: String) -> String {
+        name
+            .replacingOccurrences(of: "\r", with: "-")
+            .replacingOccurrences(of: "\n", with: "-")
+            .replacingOccurrences(of: "\"", with: "'")
+            .replacingOccurrences(of: "\\", with: "-")
+    }
+
+    static func filePartHeader(filename: String, mimeType: String, boundary: String) -> String {
+        "--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(safeFilename(filename))\"\r\nContent-Type: \(mimeType)\r\n\r\n"
+    }
+
+    static func closing(boundary: String) -> String { "\r\n--\(boundary)--\r\n" }
 }
 
 extension APIClient {
@@ -136,7 +179,9 @@ extension APIClient {
         let bodyURL: URL
         do {
             bodyURL = try ChatAttachmentHTTP.multipartFile(fileURL: picked.url,
+                                                           filename: picked.filename,
                                                            roomId: roomId,
+                                                           durationMs: picked.durationMs,
                                                            mimeType: picked.mimeType,
                                                            boundary: boundary)
         } catch {
@@ -260,8 +305,19 @@ struct ChatComposerAddMenu: View {
     let onGif: () -> Void
     let onBuzz: () -> Void
     let onSend: (ChatPickedAttachment) async throws -> Void
+    /// Voice messages (docs/VOICE-MESSAGES.md). Nil, or `attachmentsEnabled`
+    /// false (Hermes), hides the microphone.
+    var onSendVoice: ((ChatPickedAttachment) async throws -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var recorder = ChatVoiceRecorder()
+    @State private var voiceSend: ((ChatPickedAttachment) async throws -> Void)?
+    @State private var isSendingVoice = false
+    @State private var failedVoice: ChatPickedAttachment?
+    @State private var voiceError: String?
+    @State private var voiceNotice: String?
+    @State private var showMicDenied = false
     @State private var showsAttachments = false
     @State private var keyboardTop: CGFloat?
     @State private var restingBottom: CGFloat = 0
@@ -283,68 +339,94 @@ struct ChatComposerAddMenu: View {
     private var reservedHeight: CGFloat {
         showsAttachments || returningToKeyboard ? max(0, lastKeyboardHeight - keyboardHeight) : 0
     }
+    /// The mic takes the send button's place while there is nothing to send.
+    private var showsMic: Bool {
+        attachmentsEnabled && onSendVoice != nil && !sendingMessage
+            && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var inputRow: some View {
+        HStack(alignment: .bottom, spacing: Space.sm) {
+            if attachmentsEnabled {
+                Button {
+                    Haptics.selection()
+                    if showsAttachments {
+                        returningToKeyboard = true
+                        showsAttachments = false
+                        fieldFocused = true
+                    } else {
+                        if keyboardHeight > 0 { lastKeyboardHeight = keyboardHeight }
+                        showsAttachments = true
+                        fieldFocused = false
+                    }
+                    isFocused = true
+                } label: {
+                    Group {
+                        if isSending { ProgressView().tint(Palette.accent) }
+                        else {
+                            Image(systemName: showsAttachments ? "keyboard" : "plus")
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundStyle(Palette.accent)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .background(Palette.accentSoft, in: Circle())
+                }
+                .buttonStyle(PressableStyle())
+                .accessibilityLabel(showsAttachments ? "Show keyboard" : "More chat actions")
+                .accessibilityIdentifier("chat.attachments.toggle")
+            }
+
+            TextField(placeholder, text: $text, axis: .vertical)
+                .font(.body)
+                .foregroundStyle(Palette.text)
+                .lineLimit(1...5)
+                .focused($fieldFocused)
+                .padding(.horizontal, Space.md).padding(.vertical, 11)
+                .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Palette.border, lineWidth: 1).allowsHitTesting(false))
+                .accessibilityIdentifier("chat.composer")
+
+            if showsMic {
+                ChatVoiceMicButton(isSending: isSendingVoice, action: startVoiceRecording)
+            } else {
+                sendButton
+            }
+        }
+        .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+        .background(Palette.panel)
+        .overlay(Divider().overlay(Palette.border), alignment: .top)
+    }
+
+    private var sendButton: some View {
+        Button(action: onSubmit) {
+            Group {
+                if sendingMessage { ProgressView().tint(Palette.onAccent) }
+                else { Image(systemName: "paperplane.fill") }
+            }
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(Palette.onAccent)
+            .frame(width: 44, height: 44)
+            .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
+        }
+        .disabled(!canSend)
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("Send message")
+        .accessibilityIdentifier("chat.send")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .bottom, spacing: Space.sm) {
-                if attachmentsEnabled {
-                    Button {
-                        Haptics.selection()
-                        if showsAttachments {
-                            returningToKeyboard = true
-                            showsAttachments = false
-                            fieldFocused = true
-                        } else {
-                            if keyboardHeight > 0 { lastKeyboardHeight = keyboardHeight }
-                            showsAttachments = true
-                            fieldFocused = false
-                        }
-                        isFocused = true
-                    } label: {
-                        Group {
-                            if isSending { ProgressView().tint(Palette.accent) }
-                            else {
-                                Image(systemName: showsAttachments ? "keyboard" : "plus")
-                                    .font(.system(size: 19, weight: .semibold))
-                                    .foregroundStyle(Palette.accent)
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                        .background(Palette.accentSoft, in: Circle())
-                    }
-                    .buttonStyle(PressableStyle())
-                    .accessibilityLabel(showsAttachments ? "Show keyboard" : "More chat actions")
-                    .accessibilityIdentifier("chat.attachments.toggle")
-                }
-
-                TextField(placeholder, text: $text, axis: .vertical)
-                    .font(.body)
-                    .foregroundStyle(Palette.text)
-                    .lineLimit(1...5)
-                    .focused($fieldFocused)
-                    .padding(.horizontal, Space.md).padding(.vertical, 11)
-                    .background(Palette.panel2, in: RoundedRectangle(cornerRadius: 22))
-                    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Palette.border, lineWidth: 1).allowsHitTesting(false))
-                    .accessibilityIdentifier("chat.composer")
-
-                Button(action: onSubmit) {
-                    Group {
-                        if sendingMessage { ProgressView().tint(Palette.onAccent) }
-                        else { Image(systemName: "paperplane.fill") }
-                    }
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Palette.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(canSend ? Palette.accent : Palette.textSecond.opacity(0.4), in: Circle())
-                }
-                .disabled(!canSend)
-                .buttonStyle(PressableStyle())
-                .accessibilityLabel("Send message")
-                .accessibilityIdentifier("chat.send")
+            if recorder.isRecording {
+                ChatVoiceRecordingStrip(recorder: recorder,
+                                        onCancel: cancelVoiceRecording,
+                                        onSend: finishVoiceRecording)
+                    .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
+                    .background(Palette.panel)
+                    .overlay(Divider().overlay(Palette.border), alignment: .top)
+            } else {
+                inputRow
             }
-            .padding(.horizontal, Space.md).padding(.vertical, Space.sm)
-            .background(Palette.panel)
-            .overlay(Divider().overlay(Palette.border), alignment: .top)
 
             ZStack(alignment: .top) {
                 if attachmentsEnabled && showsAttachments {
@@ -409,6 +491,117 @@ struct ChatComposerAddMenu: View {
         } message: {
             Text(errorMessage ?? "Please try again.")
         }
+        .modifier(ChatVoiceComposerAlerts(voiceError: $voiceError,
+                                          voiceNotice: $voiceNotice,
+                                          showMicDenied: $showMicDenied,
+                                          onRetry: { if let failedVoice { sendVoice(failedVoice) } },
+                                          onDiscard: discardFailedVoice))
+        .onChange(of: recorder.reachedLimit) { _, hit in
+            if hit { finishVoiceRecording() }   // 60 s cap auto-sends
+        }
+        .onChange(of: recorder.wasInterrupted) { _, interrupted in
+            guard interrupted else { return }
+            recorder.acknowledgeInterruption()
+            voiceSend = nil
+            voiceNotice = "Recording stopped because another app or a call needed the microphone. Nothing was sent."
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Without a background audio mode iOS stops capture anyway; drop
+            // the partial clip rather than sending something unexpected.
+            if phase == .background, recorder.isRecording {
+                recorder.cancel()
+                voiceSend = nil
+            }
+        }
+        .onDisappear {
+            if recorder.isRecording {
+                recorder.cancel()
+                voiceSend = nil
+            }
+        }
+    }
+
+    // MARK: Voice recording
+
+    private func startVoiceRecording() {
+        guard let onSendVoice, attachmentsEnabled, !recorder.isRecording, !isSendingVoice else { return }
+        Task { @MainActor in
+            switch ChatVoiceRecorder.permission {
+            case .denied:
+                showMicDenied = true
+                return
+            case .undetermined:
+                guard await ChatVoiceRecorder.requestPermission() else {
+                    showMicDenied = true
+                    return
+                }
+            case .granted:
+                break
+            }
+            guard !recorder.isRecording else { return }
+            ChatVoicePlayer.shared.stop()
+            isFocused = false
+            fieldFocused = false
+            showsAttachments = false
+            returningToKeyboard = false
+            voiceSend = onSendVoice // Keep the originating room for the whole clip.
+            do {
+                try recorder.start()
+                Haptics.impact(.light)
+            } catch {
+                voiceSend = nil
+                Haptics.notify(.error)
+                voiceNotice = ChatVoiceError.recordingFailed.localizedDescription
+            }
+        }
+    }
+
+    private func cancelVoiceRecording() {
+        recorder.cancel()
+        voiceSend = nil
+        Haptics.selection()
+    }
+
+    private func finishVoiceRecording() {
+        guard recorder.isRecording else { return }
+        guard let clip = recorder.finish() else {
+            voiceSend = nil
+            voiceNotice = "That was too short to send. Tap the microphone and talk a little longer."
+            return
+        }
+        Haptics.impact(.light)
+        sendVoice(ChatPickedAttachment(url: clip.url,
+                                       mimeType: ChatVoiceMessage.mimeType,
+                                       filename: ChatVoiceMessage.uploadFilename,
+                                       durationMs: clip.durationMs))
+    }
+
+    private func sendVoice(_ recording: ChatPickedAttachment) {
+        guard let send = voiceSend ?? onSendVoice, !isSendingVoice else { return }
+        voiceSend = send
+        isSendingVoice = true
+        voiceError = nil
+        Task { @MainActor in
+            defer { isSendingVoice = false }
+            do {
+                try await send(recording)
+                try? FileManager.default.removeItem(at: recording.url)
+                failedVoice = nil
+                voiceSend = nil
+                Haptics.notify(.success)
+            } catch {
+                failedVoice = recording
+                Haptics.notify(.error)
+                voiceError = error.localizedDescription
+            }
+        }
+    }
+
+    private func discardFailedVoice() {
+        if let failedVoice { try? FileManager.default.removeItem(at: failedVoice.url) }
+        failedVoice = nil
+        voiceError = nil
+        voiceSend = nil
     }
 
     private func selectAction(_ action: ChatAttachmentAction) {
@@ -644,7 +837,9 @@ private struct ChatDocumentPicker: UIViewControllerRepresentable {
 
 // MARK: - Attachment bubble / preview
 
-private actor ChatAttachmentLocalCache {
+/// Session-local cache of downloaded attachments, shared by photo previews,
+/// Quick Look and voice playback.
+actor ChatAttachmentLocalCache {
     static let shared = ChatAttachmentLocalCache()
     private var cached: [String: URL] = [:]
     private var inFlight: [String: Task<URL, Error>] = [:]
@@ -739,6 +934,7 @@ struct ChatAttachmentBubble: View {
         switch kind {
         case "photo": return "photo.fill"
         case "video": return "play.rectangle.fill"
+        case "audio": return "waveform"
         default: return "doc.fill"
         }
     }
@@ -749,6 +945,7 @@ struct ChatAttachmentBubble: View {
         switch kind {
         case "photo": return "Photo · \(size)"
         case "video": return "Video · \(size)"
+        case "audio": return "Voice message · \(size)"
         default: return size
         }
     }

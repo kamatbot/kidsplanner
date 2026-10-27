@@ -4709,10 +4709,12 @@ function switchChatRoom(room) {
   renderChatRoomTabs();
   closeChatPickers();
   const hide = chatActiveRoom === 'hermes';
-  ['chat-emoji-btn', 'chat-gif-btn', 'chat-media-btn'].forEach((id) => {
+  ['chat-emoji-btn', 'chat-gif-btn', 'chat-media-btn', 'chat-voice-btn'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.hidden = hide;
   });
+  // Voice messages are Family-only: drop an in-progress recording on leaving.
+  if (hide && typeof FamChatVoice !== 'undefined') FamChatVoice.cancel();
   const input = document.getElementById('chat-input');
   if (input) input.placeholder = hide ? 'Message Hermes…' : 'Message the family…';
   if (hide) {
@@ -5139,6 +5141,35 @@ function openFamilyChatMedia() {
   } catch (err) {
     toast(`❌ ${err.message}`);
   }
+}
+
+// Voice messages (docs/VOICE-MESSAGES.md): chat-voice.js records and uploads;
+// this sends the returned descriptor with empty text through the same
+// idempotent pending-send path as GIFs, then merges (never pushes) the result.
+function startFamilyVoiceMessage() {
+  if (typeof FamChatVoice === 'undefined') {
+    toast('❌ Voice messages are still loading. Try again in a moment.');
+    return;
+  }
+  const sendingUser = sessionUser?.id;
+  const sendingFamily = currentFamily?.id;
+  const stillHere = () => sessionUser?.id === sendingUser && currentFamily?.id === sendingFamily &&
+    !!document.getElementById('chat-messages') && chatActiveRoom === 'family';
+  FamChatVoice.record({
+    button: document.getElementById('chat-voice-btn'),
+    bar: document.getElementById('chat-voice-bar'),
+    roomId: 'family',
+    isCurrent: stillHere,
+    send: async (media) => {
+      const pending = chatSendRequest('', media);
+      const res = await window.auth.sendChatMessage('', media, pending.id);
+      if (!stillHere()) return;
+      if (!res?.message) throw new Error("Couldn't confirm delivery. Retry won't send it twice.");
+      if (chatPendingSend === pending) chatPendingSend = null;
+      mergeChatMessages([res.message]);
+      scrollChatToBottom();
+    },
+  });
 }
 
 async function handleDeleteChatMessage(id) {

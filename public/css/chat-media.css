@@ -46,3 +46,47 @@
 .chat-msg-arriving { animation:fam-chat-arrive .2s ease-out; }
 @media(prefers-reduced-motion:reduce) { .chat-msg-arriving { animation:none; } }
 @media(hover:none) { #chat-messages .chat-msg-controls { opacity:1; } }
+
+/* Voice messages: composer mic, recording bar and the voice bubble. */
+#chat-voice-btn { grid-column:4; grid-row:2; justify-self:start; width:44px; height:44px; flex-basis:44px; }
+#chat-voice-btn[hidden] { display:none; }
+.chat-send-row { position:relative; }
+.chat-send-row.chat-voice-active > :not(.chat-voice-bar) { visibility:hidden; }
+.chat-voice-bar { grid-column:1 / -1; grid-row:1 / 3; align-self:center; z-index:1; display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 6px 6px 8px; border-radius:26px; background:var(--fr-card-2, var(--panel-2)); border:1px solid var(--fr-rule, var(--border)); min-width:0; }
+.chat-voice-bar[hidden] { display:none; }
+.chat-voice-cancel { flex:0 0 40px; width:40px; height:40px; border:0; border-radius:50%; background:var(--fr-card, var(--panel)); color:var(--fr-ink-2, var(--text-2)); display:grid; place-items:center; cursor:pointer; }
+.chat-voice-cancel:hover { color:var(--fr-danger, var(--c-red)); }
+.chat-voice-rec-dot { flex:0 0 10px; width:10px; height:10px; border-radius:50%; background:var(--fr-danger, #C8283F); animation:fam-voice-pulse 1.2s ease-in-out infinite; }
+.chat-voice-rec-time { font-variant-numeric:tabular-nums; font-weight:650; font-size:14px; color:var(--fr-ink, var(--text)); min-width:34px; }
+.chat-voice-bar.is-ending .chat-voice-rec-time { color:var(--fr-danger, var(--c-red)); }
+.chat-voice-rec-status { flex:1 1 auto; min-width:0; font-size:12.5px; line-height:1.35; color:var(--fr-ink-2, var(--text-2)); }
+.chat-voice-send { flex:0 0 44px; width:44px; height:44px; padding:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
+.chat-voice-send[hidden] { display:none; }
+.chat-voice-retry-icon, .chat-voice-send.is-retry .chat-voice-send-icon { display:none; }
+.chat-voice-send.is-retry .chat-voice-retry-icon { display:block; }
+.chat-voice-bar:not([data-phase="recording"]) .chat-voice-rec-dot { animation:none; opacity:.35; }
+.chat-voice-bar[data-phase="starting"] .chat-voice-rec-dot, .chat-voice-bar.is-error .chat-voice-rec-dot { display:none; }
+.chat-voice-bar.is-error { border-color:color-mix(in srgb, var(--fr-danger, #C8283F) 40%, transparent); }
+.chat-voice-bar.is-error .chat-voice-rec-status { color:var(--fr-danger, var(--c-red)); }
+.chat-voice-bar button:focus-visible, .chat-voice-play:focus-visible { outline:2px solid var(--fr-you, var(--accent)); outline-offset:2px; }
+.chat-voice-bar button:disabled { opacity:.5; cursor:not-allowed; }
+@keyframes fam-voice-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.45; transform:scale(.8); } }
+
+.chat-voice { position:relative; display:flex; align-items:center; gap:10px; min-width:min(220px, 100%); max-width:260px; padding:2px 0; color:inherit; }
+.chat-voice-play { flex:0 0 36px; width:36px; height:36px; border:0; border-radius:50%; padding:0; display:grid; place-items:center; cursor:pointer; background:var(--sender-color, var(--fr-you, var(--accent))); color:var(--fr-card, #fff); }
+.chat-msg-own .chat-voice-play { background:var(--fr-you, var(--accent)); color:var(--fr-on-you, #fff); }
+.chat-voice-play svg { margin-left:2px; }
+.chat-voice-icon-pause, .chat-voice.is-playing .chat-voice-icon-play { display:none; }
+.chat-voice.is-playing .chat-voice-icon-pause { display:block; margin-left:0; }
+.chat-voice-wave { flex:1 1 auto; display:flex; align-items:center; gap:2px; height:26px; min-width:0; }
+.chat-voice-wave i { flex:1 1 0; min-width:2px; max-width:4px; height:var(--h, 50%); border-radius:2px; background:currentColor; opacity:.3; transition:opacity .15s; }
+.chat-voice-wave i.on { opacity:1; }
+.chat-voice-time { flex:0 0 auto; font-size:12px; font-variant-numeric:tabular-nums; color:var(--fr-ink-2, var(--text-2)); white-space:nowrap; }
+.chat-msg-own .chat-voice-time { color:inherit; opacity:.8; }
+.chat-voice-dot { position:absolute; top:-2px; left:28px; width:9px; height:9px; border-radius:50%; background:var(--fr-you, var(--accent)); box-shadow:0 0 0 2px var(--fr-card-2, var(--panel-2)); }
+.chat-voice-dot[hidden] { display:none; }
+.chat-voice.is-error .chat-voice-time { color:var(--fr-danger, var(--c-red)); }
+@media (prefers-reduced-motion: reduce) {
+  .chat-voice-rec-dot { animation:none; }
+  .chat-voice-wave i { transition:none; }
+}

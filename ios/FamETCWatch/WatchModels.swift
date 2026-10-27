@@ -15,6 +15,8 @@ struct WatchSnapshot: Codable, Equatable {
     var supportRemindersEnabled: Bool? = nil
     /// Recent family-room messages, oldest first. Nil until chat first loads.
     var chat: [WatchChatMessage]? = nil
+    /// Kid-only Fams chores from GET /api/fams. Nil until first loaded.
+    var chores: [WatchChore]? = nil
 
     init(actions: [WatchAction] = [],
          homework: [WatchHomework] = [],
@@ -36,10 +38,11 @@ struct WatchSnapshot: Codable, Equatable {
         support = try container.decodeIfPresent(WatchStudentSupport.self, forKey: .support)
         supportRemindersEnabled = try container.decodeIfPresent(Bool.self, forKey: .supportRemindersEnabled)
         chat = try container.decodeIfPresent([WatchChatMessage].self, forKey: .chat)
+        chores = try container.decodeIfPresent([WatchChore].self, forKey: .chores)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case actions, homework, shopping, updatedAt, context, support, supportRemindersEnabled, chat
+        case actions, homework, shopping, updatedAt, context, support, supportRemindersEnabled, chat, chores
     }
 
     /// Open actions are ordered by the server's due date fields. The string
@@ -273,6 +276,8 @@ enum WatchMutationKind: String, Codable {
     case homeworkChecklistStep
     /// resourceID is the client message id (server retry key); stringValue is the text.
     case chatMessage
+    /// resourceID is the Fams chore id; POST /api/fams/chores/:id/submit.
+    case choreSubmit
 }
 
 /// One user mutation in the durable outbox. The entry is written before any
@@ -444,8 +449,21 @@ struct WatchEvent: Codable, Equatable, Identifiable {
 /// Family-room chat message: the subset of the server's ChatMessage the watch
 /// renders. `pending` is local-only for an optimistic send still in the outbox.
 struct WatchChatMessage: Codable, Equatable, Identifiable {
-    struct Media: Codable, Equatable { var type: String?; var kind: String? }
+    /// Giphy or private-attachment descriptor. The same shape is returned by
+    /// `POST /api/chat/attachments` and sent back as the message's `media`.
+    struct Media: Codable, Equatable {
+        var type: String?
+        var kind: String?
+        var attachmentId: String? = nil
+        var url: String? = nil
+        var filename: String? = nil
+        var mimeType: String? = nil
+        var size: Int? = nil
+        var durationMs: Int? = nil
+    }
     struct Card: Codable, Equatable { var title: String? }
+    /// One of the server's five reaction keys with the users who chose it.
+    struct Reaction: Codable, Equatable { var key: String; var userIds: [String]? = nil; var names: [String]? = nil }
 
     var id: String
     var senderType: String
@@ -458,6 +476,10 @@ struct WatchChatMessage: Codable, Equatable, Identifiable {
     var media: Media? = nil
     var card: Card? = nil
     var pending: Bool? = nil
+    var reactions: [Reaction]? = nil
+
+    /// A playable voice note (private attachment with audio kind).
+    var isVoice: Bool { deleted != true && media?.kind == "audio" }
 
     func isMine(_ profile: WatchProfile?) -> Bool {
         guard let profile else { return false }
@@ -476,7 +498,7 @@ struct WatchChatMessage: Codable, Equatable, Identifiable {
             case ("gif", _): return "GIF"
             case (_, "photo"): return "📷 Photo"
             case (_, "video"): return "🎬 Video"
-            case (_, "audio"): return "🎙️ Audio"
+            case (_, "audio"): return "🎤 Voice message"
             case ("attachment", _): return "📎 File"
             default: return nil
             }

@@ -70,6 +70,31 @@ final class ChatMergeTests: XCTestCase {
         XCTAssertEqual(store.messages[1].media?.type, "gif")
     }
 
+    private func voiceMsg(_ id: String, at: String) -> ChatMessage {
+        ChatMessage(id: id, familyId: "f1", senderType: "kid", senderId: "k1",
+                    postedByUserId: nil, text: "",
+                    card: nil,
+                    media: ChatMedia(type: "attachment", url: "/api/chat/attachments/a_v", attachmentId: "a_v",
+                                     filename: "voice.m4a", mimeType: "audio/mp4", size: 4800,
+                                     kind: "audio", durationMs: 6200),
+                    createdAt: at, deleted: false, deletedBy: nil,
+                    flagged: false, flagReason: nil, flaggedBy: nil)
+    }
+
+    /// Voice messages ride the same upload-then-send path as photos, so the
+    /// send response and the long-poll can race exactly like GIFs did.
+    func testVoiceSendRacingLongPollDoesNotDuplicate() {
+        let store = AppStore()
+        store.messages = [msg("m1")]
+        let voice = voiceMsg("m2", at: "2026-01-01T10:01:00.000Z")
+        store.mergeIncoming([voice])   // long-poll delivery
+        store.mergeIncoming([voice])   // send-response delivery
+        XCTAssertEqual(store.messages.map(\.id), ["m1", "m2"])
+        XCTAssertEqual(store.messages[1].media?.kind, "audio")
+        XCTAssertEqual(store.messages[1].media?.durationMs, 6200)
+        XCTAssertTrue(store.messages[1].media?.isVoiceMessage == true)
+    }
+
     /// Fresh copy replaces the stale one for an existing id.
     func testMergeDedupesOverlappingDelta() {
         let store = AppStore()
