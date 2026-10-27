@@ -23,6 +23,9 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  // Audio/video (voice messages, chat clips) use Range requests; let the
+  // browser fetch them directly so 206 responses and seeking stay intact.
+  if (event.request.headers.has('range') || event.request.destination === 'audio' || event.request.destination === 'video') return;
   event.respondWith(fetch(event.request));
 });
 
