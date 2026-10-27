@@ -51,6 +51,14 @@ protocol ChatMutationService {
     func deleteChatMessage(_ id: String, roomId: String) async throws -> ChatMessage
     func flagChatMessage(_ id: String, reason: String, roomId: String) async throws -> ChatMessage
     func performHermesNudgeAction(messageId: String, action: String) async throws -> (message: ChatMessage, followUps: [ChatMessage])
+    /// Toggles one of the five reactions for the signed-in user.
+    func reactToChatMessage(_ id: String, reaction: String, roomId: String) async throws -> ChatMessage
+}
+
+extension ChatMutationService {
+    func reactToChatMessage(_ id: String, reaction: String, roomId: String) async throws -> ChatMessage {
+        throw CancellationError()
+    }
 }
 
 /// Typed async client for the Fam ETC JSON API. Shares `HTTPCookieStorage.shared`
@@ -607,7 +615,7 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         if wait { query.append("wait=1") }
         if !query.isEmpty { path += "?" + query.joined(separator: "&") }
         let r: MessagesResponse = try await request(path, timeout: wait ? 35 : nil)
-        return ChatPage(messages: r.messages, reads: r.reads)
+        return ChatPage(messages: r.messages, reads: r.reads, updated: r.updated ?? [])
     }
 
     /// Read receipts exist for the family room and trip rooms; the private
@@ -644,6 +652,10 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
     }
     func deleteChatMessage(_ id: String, roomId: String = familyRoomId) async throws -> ChatMessage {
         let r: MessageResponse = try await request("\(Self.chatBasePath(roomId))/\(id)", method: "DELETE")
+        return r.message
+    }
+    func reactToChatMessage(_ id: String, reaction: String, roomId: String = familyRoomId) async throws -> ChatMessage {
+        let r: MessageResponse = try await request("\(Self.chatBasePath(roomId))/\(id)/reactions", method: "POST", body: ["reaction": reaction])
         return r.message
     }
     func flagChatMessage(_ id: String, reason: String, roomId: String = familyRoomId) async throws -> ChatMessage {

@@ -1979,6 +1979,9 @@ struct ChatMessageRow: View, Equatable {
                     .accessibilityElement(children: .combine)
                 }
                 bubble
+                if canReact, let reactions = message.reactions, !reactions.isEmpty {
+                    reactionChips(reactions)
+                }
                 if canImportMealPlan {
                     mealPlanAction
                 } else if canImportTripItinerary {
@@ -2014,7 +2017,62 @@ struct ChatMessageRow: View, Equatable {
         }
     }
 
+    /// Reactions live on people's messages in Family and trip rooms, never on
+    /// Hermes or deleted messages.
+    private var canReact: Bool {
+        roomId != "hermes" && message.senderType != "agent" && !message.deleted
+    }
+
+    private func react(_ key: String) {
+        Haptics.impact(.light)
+        Task { await store.toggleReaction(key, on: message.id, roomId: roomId) }
+    }
+
+    private func reactionChips(_ reactions: [ChatReaction]) -> some View {
+        HStack(spacing: 4) {
+            ForEach(reactions.filter { ChatReaction.emoji(for: $0.key) != nil && !$0.userIds.isEmpty }, id: \.key) { reaction in
+                let mine = reaction.userIds.contains(store.me?.id ?? "")
+                let emoji = ChatReaction.emoji(for: reaction.key) ?? ""
+                Button { react(reaction.key) } label: {
+                    HStack(spacing: 3) {
+                        Text(emoji).font(.system(size: 16))
+                        if reaction.userIds.count > 1 {
+                            Text(reaction.userIds.count, format: .number)
+                                .font(Typography.caption.weight(.semibold)).monospacedDigit()
+                        }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .frame(minHeight: 28)
+                    .foregroundStyle(mine ? Palette.accent : Palette.textSecond)
+                    .background(mine ? Palette.accentSoft : Palette.panel, in: Capsule())
+                    .overlay(Capsule().strokeBorder(mine ? Palette.accent.opacity(0.5) : Palette.textSecond.opacity(0.2), lineWidth: 1))
+                }
+                .buttonStyle(PressableStyle())
+                .transition(.scale(scale: 0.3).combined(with: .opacity))
+                .accessibilityLabel("\(emoji) \(reaction.userIds.count): \((reaction.names ?? []).joined(separator: ", "))")
+                .accessibilityAddTraits(mine ? .isSelected : [])
+                .accessibilityHint(mine ? "Removes your reaction" : "Adds your reaction")
+            }
+        }
+        .padding(.horizontal, 4)
+        .animation(.spring(response: 0.3, dampingFraction: 0.5), value: reactions)
+    }
+
+    /// The five reactions as one emoji row at the top of a message's menu.
+    @ViewBuilder private var reactionActions: some View {
+        if canReact {
+            ControlGroup {
+                ForEach(ChatReaction.all, id: \.key) { reaction in
+                    Button { react(reaction.key) } label: { Text(reaction.emoji) }
+                        .accessibilityLabel("React \(reaction.emoji)")
+                }
+            }
+            .controlGroupStyle(.palette)
+        }
+    }
+
     @ViewBuilder private var moderationActions: some View {
+        reactionActions
         if ChatModeration.canReport(message, isMine: isMine, roomId: roomId) {
             if message.flagged {
                 Button {} label: { Label("Reported", systemImage: "flag.fill") }

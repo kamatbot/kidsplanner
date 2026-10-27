@@ -605,6 +605,7 @@ final class AppStore {
                 guard !Task.isCancelled, session == sessionGeneration else { return }
                 let fresh = page.messages
                 applyReads(page.reads, roomId: roomId)
+                if !page.updated.isEmpty { mergeIncoming(page.updated, roomId: roomId); persist() }
                 rearmImmediately = first || (fresh.last.map { $0.id != cursor } ?? false)
                 if first {
                     applyRoomSnapshot(fresh, roomId: roomId, previousIDs: previousIDs)
@@ -1865,6 +1866,18 @@ final class AppStore {
             }
             persist()
         } catch { if session == sessionGeneration { handle(error) } }
+    }
+
+    /// Toggles a reaction (one of `ChatReaction.all`) for me on a message and
+    /// applies the server's updated copy. Hermes messages have none.
+    func toggleReaction(_ key: String, on id: String, roomId: String = familyRoomId) async {
+        let session = sessionGeneration
+        do {
+            let updated = try await chatMutationService.reactToChatMessage(id, reaction: key, roomId: roomId)
+            guard session == sessionGeneration else { return }
+            mergeIncoming([updated], roomId: roomId)
+            persist()
+        } catch { if session == sessionGeneration, !(error is CancellationError) { handle(error) } }
     }
 
     /// Runs a `hermes-nudge` card's button action (docs/HERMES-THREADS-CONTRACT.md
