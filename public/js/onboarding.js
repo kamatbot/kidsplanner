@@ -23,32 +23,10 @@
     return value !== null && typeof value !== "undefined";
   }
 
-  function schoolSyncStorageKey(familyId) {
-    return familyId ? `fam_school_sync_${familyId}` : "";
-  }
-
-  function isSchoolSyncEnabled(familyOrId) {
-    const familyObj = familyOrId && typeof familyOrId === "object" ? familyOrId : null;
-    const familyId = familyObj ? familyObj.id : (typeof familyOrId === "string" ? familyOrId : "");
-    if (familyObj && familyObj.schoolSync === false) return false;
-    const key = schoolSyncStorageKey(familyId);
-    if (key && root.localStorage) {
-      try {
-        const stored = root.localStorage.getItem(key);
-        if (stored === "0") return false;
-        if (stored === "1") return true;
-      } catch (e) { /* ignore storage errors */ }
-    }
-    return true;
-  }
-
-  function setSchoolSyncEnabled(familyId, enabled) {
-    const key = schoolSyncStorageKey(familyId);
-    if (!key || !root.localStorage) return false;
-    try {
-      root.localStorage.setItem(key, enabled ? "1" : "0");
-      return true;
-    } catch (e) { return false; }
+  // The family's mode lives on the server (family.schoolSync). Families from
+  // before the signup wizard have no flag and keep School Sync on.
+  function isSchoolSyncEnabled(family) {
+    return !(family && family.schoolSync === false);
   }
 
   function derive(family, schoolFeeds, actions, actionState) {
@@ -115,9 +93,7 @@
     storageKey,
     isSkipped,
     setSkipped,
-    schoolSyncStorageKey,
     isSchoolSyncEnabled,
-    setSchoolSyncEnabled,
     stepDefinitions: STEP_DEFINITIONS.map((step) => Object.assign({}, step)),
   };
 })(typeof window !== "undefined" ? window : globalThis);

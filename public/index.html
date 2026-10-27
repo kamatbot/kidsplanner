@@ -767,6 +767,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             Your school calendar is synced automatically — ask a parent to add or change subscriptions here.
           </p>
           <div id="settings-parent-only-school">
+            <label class="school-sync-mode-row">
+              <input type="checkbox" id="school-sync-mode-toggle" checked onchange="handleToggleSchoolSyncMode(this.checked)">
+              <span>
+                <strong>Use School Sync</strong>
+                <span class="text-muted">Turn off to use Fam ETC as a family organizer only. Today stops asking you to set up school calendars.</span>
+              </span>
+            </label>
             <p class="text-muted" style="margin-bottom:12px">
               Subscribe each kid to their school calendars. Events sync automatically and show up
               on the calendar with a badge — read-only, since they come straight from the school.

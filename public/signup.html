@@ -589,6 +589,8 @@
   let currentStep = 1;
   let signedInUser = null;
   let createdFamily = null;
+  // Kid rows already saved on the server, so a retry after a failure doesn't add them twice.
+  const savedKidsByRow = new WeakMap();
   let kidRowCounter = 0;
 
   try {
@@ -785,20 +787,26 @@
       if (!createdFamily) {
         const famRes = await window.auth.createFamily(familyName, { schoolSync });
         createdFamily = famRes && famRes.family;
+      } else if (createdFamily.schoolSync !== schoolSync) {
+        // The parent changed the mode after an earlier attempt created the family.
+        const syncRes = await window.auth.setSchoolSync(schoolSync);
+        if (syncRes && syncRes.family) createdFamily = syncRes.family;
       }
       if (createdFamily && createdFamily.id) {
         try {
           localStorage.setItem('fam_family', JSON.stringify(createdFamily));
         } catch (e) {}
-        if (window.famTodaySetupGuide) {
-          window.famTodaySetupGuide.setSchoolSyncEnabled(createdFamily.id, schoolSync);
-        }
       }
 
       const addedKids = [];
       if (!skipKids) {
         const rows = Array.from(document.querySelectorAll('#onboarding-kids-list .onboard-kid-row'));
         for (const row of rows) {
+          const savedKid = savedKidsByRow.get(row);
+          if (savedKid) {
+            addedKids.push(savedKid);
+            continue;
+          }
           const kName = row.querySelector('.onboard-kid-name').value.trim();
           if (!kName) continue;
           const kGrade = row.querySelector('.onboard-kid-grade').value;
@@ -808,7 +816,10 @@
             createdFamily = kidRes.family;
             try { localStorage.setItem('fam_family', JSON.stringify(createdFamily)); } catch (e) {}
           }
-          if (kidRes && kidRes.kid) addedKids.push(kidRes.kid);
+          if (kidRes && kidRes.kid) {
+            savedKidsByRow.set(row, kidRes.kid);
+            addedKids.push(kidRes.kid);
+          }
         }
       }
 

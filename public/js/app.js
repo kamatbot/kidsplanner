@@ -697,16 +697,12 @@ async function handleCreateFamily(e) {
   const nameInput = document.getElementById('first-run-family-name');
   const name = nameInput ? nameInput.value.trim() : '';
   const modeInput = document.querySelector('input[name="first-run-mode"]:checked');
-  const savedMode = load('fam_signup_mode');
-  const schoolSync = modeInput ? modeInput.value !== 'organizer' : savedMode !== 'organizer';
+  const schoolSync = !modeInput || modeInput.value !== 'organizer';
   const errEl = document.getElementById('first-run-error');
   try {
     const res = await window.auth.createFamily(name, { schoolSync });
     currentFamily = res.family;
     save('fam_family', currentFamily);
-    if (window.famTodaySetupGuide && currentFamily && currentFamily.id) {
-      window.famTodaySetupGuide.setSchoolSyncEnabled(currentFamily.id, schoolSync);
-    }
     hideFirstRunPanel();
     renderKidSwitcher();
     renderManageFamily();

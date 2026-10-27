@@ -72,10 +72,23 @@ test("Just Family Organizer mode (schoolSync: false) omits the school sync step"
   assert.equal(state.complete, true);
   assert.equal(state.pending, false);
 
-  assert.equal(guide.schoolSyncStorageKey("family-1"), "fam_school_sync_family-1");
-  guide.setSchoolSyncEnabled("family-1", false);
-  assert.equal(guide.isSchoolSyncEnabled("family-1"), false);
-  guide.setSchoolSyncEnabled("family-1", true);
-  assert.equal(guide.isSchoolSyncEnabled("family-1"), true);
+});
+
+test("school sync follows the server flag, and older families without it keep School Sync on", () => {
+  assert.equal(guide.isSchoolSyncEnabled({ id: "family-1", schoolSync: false }), false);
+  assert.equal(guide.isSchoolSyncEnabled({ id: "family-1", schoolSync: true }), true);
+  assert.equal(guide.isSchoolSyncEnabled({ id: "family-1" }), true);
+  assert.equal(guide.isSchoolSyncEnabled(null), true);
+});
+
+test("an Organizer family that already subscribed to a school feed still sees the school step", () => {
+  values.clear();
+  const state = guide.derive(
+    family({ schoolSync: false, kids: [{ id: "kid-1" }] }),
+    { subscriptions: [{ id: "sub-1" }] },
+    [],
+    "ready",
+  );
+  assert.ok(state.steps.some((step) => step.id === "school" && step.complete));
 });
 
