@@ -27,7 +27,7 @@ test('reaction chips show the emoji, a count above one, and mark my own', () => 
   assert.match(html, /👍<\/span><span class="chat-reaction-count">2<\/span>/);
   assert.match(html, /data-reaction="fire"[^>]*title="Arya"/);
   assert.doesNotMatch(html, /🔥<\/span><span class="chat-reaction-count">/);
-  assert.equal((html.match(/chat-react-pick/g) || []).length, 5, 'the tray offers exactly five reactions');
+  assert.equal((html.match(/chat-react-pick/g) || []).length, 8, 'the tray offers exactly eight reactions');
 });
 
 test('deleted and Hermes messages get no reactions', () => {

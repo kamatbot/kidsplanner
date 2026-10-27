@@ -32,9 +32,10 @@ test("native chat exposes photo/video and file attachment affordances", () => {
 });
 
 test("message long press exposes the standard iOS share action", () => {
-  assert.match(chatView, /\.contextMenu\s*\{/);
-  assert.match(chatView, /ShareLink\(item:\s*message\.text\)/);
-  assert.match(chatView, /Label\("Share Message",\s*systemImage:\s*"square\.and\.arrow\.up"\)/);
+  assert.match(chatView, /\.onLongPressGesture\(minimumDuration:/);
+  assert.match(chatView, /ChatMessageActionsOverlay\(/);
+  assert.match(chatView, /title: "Share Message",\s*systemImage:\s*"square\.and\.arrow\.up"/);
+  assert.match(chatView, /ChatShareSheet\(items:\s*\[item\.text\]\)/);
 });
 
 test("notification tap starts chat fetch before navigation completes", () => {

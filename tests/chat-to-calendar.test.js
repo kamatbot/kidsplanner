@@ -30,7 +30,7 @@ test("native chat-to-calendar conversion is family-room-only and sends the messa
   assert.match(nativeChatSource, /NewEventReq\(messageId: message\.id/);
   assert.match(nativeChatSource, /sourceType: "chat"/);
   assert.match(nativeChatSource, /sourceId: messageId/);
-  assert.match(nativeChatSource, /Label\("Add to Calendar", systemImage: "calendar\.badge\.plus"\)/);
+  assert.match(nativeChatSource, /title: "Add to Calendar", systemImage: "calendar\.badge\.plus"/);
   assert.match(nativeAPIClientSource, /func addFamilyEventResult\(/);
   assert.match(nativeAPIClientSource, /body\["sourceType"\] = sourceType/);
   assert.match(nativeAPIClientSource, /body\["sourceId"\] = sourceId/);
@@ -47,7 +47,7 @@ test("shopping conversion controls stay family-text-only and expose editable con
   assert.match(indexSource, /id="chat-shopping-category"/);
   assert.match(indexSource, /id="chat-shopping-assignee"/);
   assert.match(nativeChatSource, /canAddToShopping: isFamilyRoom/);
-  assert.match(nativeChatSource, /Label\("Add to Shopping"/);
+  assert.match(nativeChatSource, /title: "Add to Shopping"/);
   assert.match(nativeChatSource, /sourceMessageId: messageId/);
   assert.match(nativeAPIClientSource, /func shoppingItems\(\)/);
   assert.match(nativeAPIClientSource, /body\["sourceType"\] = "chat"/);

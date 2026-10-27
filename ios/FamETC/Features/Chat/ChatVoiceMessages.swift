@@ -592,11 +592,11 @@ struct ChatVoiceBubble: View {
         .frame(height: 24)
     }
 
-    /// After someone else's clip plays through, offer the five reactions
-    /// inline (they also stay in the long-press menu).
+    /// After someone else's clip plays through, offer the first six
+    /// reactions inline (all eight stay in the long-press reaction bar).
     private var quickReactions: some View {
         HStack(spacing: 2) {
-            ForEach(ChatReaction.all, id: \.key) { option in
+            ForEach(Array(ChatReaction.all.prefix(6)), id: \.key) { option in
                 Button {
                     onReact(option.key)
                     offerReactions = false

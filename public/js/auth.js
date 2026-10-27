@@ -396,7 +396,7 @@
     return api("/api/chat/messages/" + encodeURIComponent(id), { method: "DELETE" });
   }
 
-  // Toggles one of the five chat reactions (thumbsup, heart, laugh, fire, party).
+  // Toggles one of the eight chat reactions (thumbsup, heart, laugh, wow, sad, pray, fire, party).
   async function reactToChatMessage(id, reaction) {
     return api("/api/chat/messages/" + encodeURIComponent(id) + "/reactions", {
       method: "POST",

@@ -111,6 +111,9 @@ enum WatchChatEmoji {
         case "👍": return "thumbsup"
         case "❤️", "❤": return "heart"
         case "😂": return "laugh"
+        case "😮": return "wow"
+        case "😢": return "sad"
+        case "🙏": return "pray"
         case "🔥": return "fire"
         case "🎉": return "party"
         default: return nil
@@ -118,6 +121,6 @@ enum WatchChatEmoji {
     }
 
     static func emoji(forReactionKey key: String) -> String? {
-        ["thumbsup": "👍", "heart": "❤️", "laugh": "😂", "fire": "🔥", "party": "🎉"][key]
+        ["thumbsup": "👍", "heart": "❤️", "laugh": "😂", "wow": "😮", "sad": "😢", "pray": "🙏", "fire": "🔥", "party": "🎉"][key]
     }
 }
