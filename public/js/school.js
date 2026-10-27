@@ -44,6 +44,25 @@ async function syncSchoolCalendar(opts) {
   }
 }
 
+// Settings > School calendars: switch the family between School Sync and
+// Just Family Organizer (family.schoolSync on the server).
+async function handleToggleSchoolSyncMode(enabled) {
+  const toggle = document.getElementById('school-sync-mode-toggle');
+  if (toggle) toggle.disabled = true;
+  try {
+    const res = await window.auth.setSchoolSync(enabled);
+    if (res && res.family) {
+      currentFamily = res.family;
+      save('fam_family', currentFamily);
+    }
+    if (typeof renderTodayScreen === 'function') renderTodayScreen();
+    toast(enabled ? 'School Sync is on 🎓' : 'Using Fam ETC as a family organizer 🏡');
+  } catch (e) {
+    toast(`❌ Could not update School Sync: ${e.message || 'unknown error'}`);
+  }
+  renderSchoolSettings();
+}
+
 async function handleSyncNowClick() {
   const btn = document.getElementById('school-sync-now-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
@@ -66,6 +85,12 @@ function renderSchoolSettings() {
   const el = document.getElementById('school-calendars-list');
   const lastSyncedEl = document.getElementById('school-last-synced');
   if (!el || isKidSession()) return;
+
+  const modeToggle = document.getElementById('school-sync-mode-toggle');
+  if (modeToggle) {
+    modeToggle.checked = !currentFamily || currentFamily.schoolSync !== false;
+    modeToggle.disabled = !currentFamily;
+  }
 
   if (lastSyncedEl) {
     lastSyncedEl.textContent = schoolFeedsInfo && schoolFeedsInfo.lastSyncAt

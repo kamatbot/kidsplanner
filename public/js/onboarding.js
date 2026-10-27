@@ -23,13 +23,24 @@
     return value !== null && typeof value !== "undefined";
   }
 
+  // The family's mode lives on the server (family.schoolSync). Families from
+  // before the signup wizard have no flag and keep School Sync on.
+  function isSchoolSyncEnabled(family) {
+    return !(family && family.schoolSync === false);
+  }
+
   function derive(family, schoolFeeds, actions, actionState) {
     const familyLoaded = !!family;
     const kids = familyLoaded && Array.isArray(family.kids) ? family.kids : [];
     const schoolLoaded = dataKnown(schoolFeeds);
+    const hasSchoolSubs = schoolLoaded && Array.isArray(schoolFeeds.subscriptions) && schoolFeeds.subscriptions.length > 0;
+    const includeSchoolStep = isSchoolSyncEnabled(family) || hasSchoolSubs;
     const actionLoaded = actionState !== "loading" && actionState !== "error" && dataKnown(actions);
     const staleActionsAvailable = Array.isArray(actions) && actions.length > 0;
-    const steps = STEP_DEFINITIONS.map((definition) => {
+    const definitions = includeSchoolStep
+      ? STEP_DEFINITIONS
+      : STEP_DEFINITIONS.filter((definition) => definition.id !== "school");
+    const steps = definitions.map((definition) => {
       let complete = false;
       let pending = false;
       if (definition.id === "kid") {
@@ -39,7 +50,7 @@
         complete = familyLoaded && parentCount(family) >= 2;
         pending = !familyLoaded;
       } else if (definition.id === "school") {
-        complete = schoolLoaded && Array.isArray(schoolFeeds.subscriptions) && schoolFeeds.subscriptions.length > 0;
+        complete = hasSchoolSubs;
         pending = !schoolLoaded;
       } else if (definition.id === "action") {
         complete = staleActionsAvailable || (actionLoaded && actions.length > 0);
@@ -49,6 +60,7 @@
     });
     return {
       steps,
+      schoolSyncEnabled: includeSchoolStep,
       complete: steps.every((step) => step.complete),
       pending: steps.some((step) => step.pending),
       familyLoaded,
@@ -81,6 +93,7 @@
     storageKey,
     isSkipped,
     setSkipped,
+    isSchoolSyncEnabled,
     stepDefinitions: STEP_DEFINITIONS.map((step) => Object.assign({}, step)),
   };
 })(typeof window !== "undefined" ? window : globalThis);

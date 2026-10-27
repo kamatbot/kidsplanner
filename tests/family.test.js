@@ -161,3 +161,17 @@ test('child appearance saves atomically, is shared, and remains parent-only', ()
   assert.ok(!family.updateKid(fam.id, parent.id, kid.id, { photo: '' }).error);
   assert.equal(kid.photo, '');
 });
+
+test("schoolSync preference is stored on createFamily and updated via setSchoolSync", () => {
+  const parent = store.createUser("schoolsync@example.com", "Parent");
+  const outsider = store.createUser("schoolsync-out@example.com", "Outsider");
+  const organizerFam = family.createFamily(parent.id, "Organizer Family", { schoolSync: false });
+  assert.equal(family.publicFamily(organizerFam).schoolSync, false);
+
+  const denied = family.setSchoolSync(organizerFam.id, outsider.id, true);
+  assert.ok(denied.error);
+
+  const toggled = family.setSchoolSync(organizerFam.id, parent.id, true);
+  assert.ok(!toggled.error);
+  assert.equal(family.publicFamily(toggled.family).schoolSync, true);
+});

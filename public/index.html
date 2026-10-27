@@ -66,6 +66,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     <form id="first-run-create-form" style="margin-bottom:20px">
       <div class="form-group">
+        <label>How will your family use Fam ETC?</label>
+        <div class="category-picker" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="cat-opt" style="display:flex"><input type="radio" name="first-run-mode" value="school_sync" checked><span class="cat-chip school" style="width:100%;text-align:center;padding:10px 8px">🎓 With School Sync</span></label>
+          <label class="cat-opt" style="display:flex"><input type="radio" name="first-run-mode" value="organizer"><span class="cat-chip social" style="width:100%;text-align:center;padding:10px 8px">🏡 Just Family Organizer</span></label>
+        </div>
+      </div>
+      <div class="form-group">
         <label>Family name</label>
         <input type="text" id="first-run-family-name" placeholder="The Johnsons" required>
       </div>
@@ -760,6 +767,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             Your school calendar is synced automatically — ask a parent to add or change subscriptions here.
           </p>
           <div id="settings-parent-only-school">
+            <label class="school-sync-mode-row">
+              <input type="checkbox" id="school-sync-mode-toggle" checked onchange="handleToggleSchoolSyncMode(this.checked)">
+              <span>
+                <strong>Use School Sync</strong>
+                <span class="text-muted">Turn off to use Fam ETC as a family organizer only. Today stops asking you to set up school calendars.</span>
+              </span>
+            </label>
             <p class="text-muted" style="margin-bottom:12px">
               Subscribe each kid to their school calendars. Events sync automatically and show up
               on the calendar with a badge — read-only, since they come straight from the school.

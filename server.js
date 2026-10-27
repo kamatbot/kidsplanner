@@ -807,7 +807,10 @@ app.get("/login", (req, res) => {
   sendPage(req, res, "login.html");
 });
 app.get("/signup", (req, res) => {
-  if (currentUser(req)) return res.redirect(safeNext(req.query.next));
+  const user = currentUser(req);
+  if (user && (userRole(user) === "kid" || family.familiesForUser(user.id).length > 0)) {
+    return res.redirect(safeNext(req.query.next));
+  }
   sendPage(req, res, "signup.html");
 });
 app.get("/admin", (req, res) => {

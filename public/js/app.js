@@ -696,9 +696,11 @@ async function handleCreateFamily(e) {
   e.preventDefault();
   const nameInput = document.getElementById('first-run-family-name');
   const name = nameInput ? nameInput.value.trim() : '';
+  const modeInput = document.querySelector('input[name="first-run-mode"]:checked');
+  const schoolSync = !modeInput || modeInput.value !== 'organizer';
   const errEl = document.getElementById('first-run-error');
   try {
-    const res = await window.auth.createFamily(name);
+    const res = await window.auth.createFamily(name, { schoolSync });
     currentFamily = res.family;
     save('fam_family', currentFamily);
     hideFirstRunPanel();
@@ -6378,7 +6380,9 @@ function renderTodayScreen() {
   const addEventBtn = document.getElementById('today-add-event-btn');
   if (addEventBtn) addEventBtn.style.display = '';
   if (syncStatusEl) {
-    syncStatusEl.hidden = false;
+    const hasSchoolSubs = !!(schoolFeedsInfo && Array.isArray(schoolFeedsInfo.subscriptions) && schoolFeedsInfo.subscriptions.length > 0);
+    const schoolSyncEnabled = !currentFamily || (window.famTodaySetupGuide ? window.famTodaySetupGuide.isSchoolSyncEnabled(currentFamily) : currentFamily.schoolSync !== false);
+    syncStatusEl.hidden = !schoolSyncEnabled && !hasSchoolSubs;
     const textEl = document.getElementById('today-sync-text');
     if (textEl) {
       textEl.textContent = (schoolFeedsInfo && schoolFeedsInfo.lastSyncAt)

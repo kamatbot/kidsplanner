@@ -7,6 +7,397 @@
   <link rel="stylesheet" href="/fonts/fonts.css">
   <link rel="stylesheet" href="/css/horizon.css">
   <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    .onboarding-card {
+      max-width: 520px;
+      padding: 32px;
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    @media (max-width: 560px) {
+      .onboarding-card { padding: 24px 20px; }
+    }
+
+    /* Stepper header */
+    .onboard-stepper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .onboard-step-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-2);
+      opacity: .6;
+      transition: opacity .2s, color .2s;
+    }
+    .onboard-step-pill.is-active {
+      color: var(--accent);
+      opacity: 1;
+    }
+    .onboard-step-pill.is-done {
+      color: var(--c-teal);
+      opacity: 1;
+    }
+    .onboard-step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      background: var(--bg);
+      color: var(--text-2);
+      border: 1.5px solid var(--border);
+      transition: all .2s;
+    }
+    .onboard-step-pill.is-active .onboard-step-num {
+      background: var(--accent);
+      color: var(--on-accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .onboard-step-pill.is-done .onboard-step-num {
+      background: var(--c-teal);
+      color: #fff;
+      border-color: var(--c-teal);
+    }
+    .onboard-step-line {
+      flex: 1;
+      height: 2px;
+      background: var(--border);
+      border-radius: 2px;
+    }
+
+    /* Wizard panels */
+    .onboard-pane {
+      display: none;
+      animation: fadeUp .22s ease-out;
+    }
+    .onboard-pane.is-active {
+      display: block;
+    }
+    .onboard-heading {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .onboard-sub {
+      font-size: 14px;
+      color: var(--text-2);
+      line-height: 1.45;
+      margin-bottom: 20px;
+    }
+
+    /* Mode picker cards (Step 1) */
+    .mode-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .mode-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      padding: 18px 20px;
+      border-radius: 18px;
+      border: 2px solid var(--border);
+      background: var(--panel);
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--text);
+      transition: border-color .16s ease, background .16s ease, transform .12s ease, box-shadow .16s ease;
+    }
+    .mode-card:hover {
+      border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+      transform: translateY(-1px);
+    }
+    .mode-card:focus-visible {
+      outline: 3px solid var(--accent-soft);
+      outline-offset: 2px;
+    }
+    .mode-card.is-selected {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel));
+      box-shadow: 0 8px 24px rgba(123, 77, 255, .12);
+    }
+    .mode-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .mode-card-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mode-card-emoji {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: var(--bg);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .mode-card.is-selected .mode-card-emoji {
+      background: var(--panel);
+      box-shadow: var(--shadow-sm);
+    }
+    .mode-card-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -.01em;
+    }
+    .mode-card-tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--text-2);
+    }
+    .mode-card.is-selected .mode-card-tag {
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+    .mode-card-desc {
+      font-size: 13.5px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+    .mode-card-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .mode-chip {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .mode-card.is-selected .mode-chip {
+      background: var(--panel);
+      border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    }
+
+    /* Top bar in Step 2 & Step 3 */
+    .onboard-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .onboard-back-btn {
+      background: none;
+      border: none;
+      color: var(--text-2);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 4px 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .onboard-back-btn:hover { color: var(--accent); }
+    .onboard-selected-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 11px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+    }
+
+    /* Step 3 Kid Builder */
+    .onboard-kids-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .onboard-kid-row {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .onboard-kid-inputs {
+      display: grid;
+      grid-template-columns: 1fr 140px auto;
+      gap: 8px;
+      align-items: center;
+    }
+    @media (max-width: 480px) {
+      .onboard-kid-inputs {
+        grid-template-columns: 1fr;
+      }
+    }
+    .onboard-kid-inputs input,
+    .onboard-kid-inputs select {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13.5px;
+      background: var(--panel);
+      color: var(--text);
+    }
+    .onboard-kid-remove {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: transparent;
+      color: var(--text-2);
+      font-size: 18px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .onboard-kid-remove:hover {
+      background: color-mix(in srgb, var(--c-red) 12%, transparent);
+      color: var(--c-red);
+    }
+    .onboard-colors {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .onboard-color-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-right: 4px;
+    }
+    .onboard-swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      padding: 0;
+      transition: transform .12s ease;
+    }
+    .onboard-swatch:hover { transform: scale(1.12); }
+    .onboard-swatch.is-active {
+      border-color: var(--text);
+      box-shadow: 0 0 0 2px var(--panel);
+      transform: scale(1.12);
+    }
+
+    /* School sync box in Step 3 */
+    .onboard-school-box {
+      margin: 16px 0;
+      padding: 16px;
+      border-radius: 16px;
+      border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+      background: color-mix(in srgb, var(--accent-soft) 35%, var(--panel));
+    }
+    .onboard-school-title {
+      font-size: 14px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .onboard-school-sub {
+      font-size: 12.5px;
+      color: var(--text-2);
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .onboard-feed-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .onboard-feed-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1.5px solid var(--border);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: all .15s;
+    }
+    .onboard-feed-chip input {
+      accent-color: var(--accent);
+      margin: 0;
+    }
+    .onboard-feed-chip:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+    }
+    .onboard-custom-ics {
+      margin-top: 12px;
+      font-size: 12.5px;
+    }
+    .onboard-custom-ics summary {
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .onboard-organizer-box {
+      margin: 16px 0;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+    .onboard-organizer-box strong {
+      color: var(--text);
+      display: block;
+      margin-bottom: 2px;
+    }
+  </style>
 </head>
 <body>
 
@@ -21,53 +412,506 @@
     <h1 class="auth-title">Fam ETC</h1>
     <p class="auth-subtitle">Invite-only access. Free for STA parents.</p>
   </div>
-  <div class="auth-card">
 
-    <!-- Parent-only signup — no role picker, no kid path. -->
-    <form id="signup-form">
-      <div class="form-group">
-        <label for="signup-name">Your Name</label>
-        <input type="text" id="signup-name" placeholder="Alex Johnson" required autocomplete="name">
+  <div class="auth-card onboarding-card">
+    <!-- 3-Step Progress Bar -->
+    <div class="onboard-stepper" aria-label="Signup steps">
+      <div class="onboard-step-pill is-active" id="stepper-1">
+        <span class="onboard-step-num" id="stepper-num-1">1</span>
+        <span>Setup</span>
       </div>
-      <div class="form-group">
-        <label for="signup-invite-code">Invite code</label>
-        <input type="text" id="signup-invite-code" placeholder="Enter your invite code" required autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="onboard-step-line"></div>
+      <div class="onboard-step-pill" id="stepper-2">
+        <span class="onboard-step-num" id="stepper-num-2">2</span>
+        <span>Passkey</span>
       </div>
-      <div id="signup-error" class="error-msg" role="alert" aria-live="polite"></div>
-      <button type="submit" class="btn-primary full-width" id="signup-submit">Create your passkey 🎉</button>
-      <p class="demo-hint">You'll be asked to create a passkey (Face ID / Touch ID / device PIN) — no password needed. This account is for parents; you'll add kid profiles once you're in.</p>
-    </form>
+      <div class="onboard-step-line"></div>
+      <div class="onboard-step-pill" id="stepper-3">
+        <span class="onboard-step-num" id="stepper-num-3">3</span>
+        <span>Family</span>
+      </div>
+    </div>
 
-    <p class="demo-hint">Already have an account? <a href="/login" style="color:var(--accent);font-weight:800">Sign in</a></p>
+    <!-- STEP 1: Pick Mode (With School Sync vs Just Family Organizer) -->
+    <section class="onboard-pane is-active" id="onboarding-step-1" aria-labelledby="step-1-heading">
+      <h2 class="onboard-heading" id="step-1-heading">How will your family use Fam ETC?</h2>
+      <p class="onboard-sub">Pick what fits your home today — you can always adjust this later in Settings.</p>
+
+      <div class="mode-grid" role="radiogroup" aria-label="Choose your Fam ETC setup">
+        <button type="button" class="mode-card is-selected" id="mode-card-school" data-mode="school_sync" role="radio" aria-checked="true">
+          <div class="mode-card-top">
+            <div class="mode-card-title-row">
+              <span class="mode-card-emoji" aria-hidden="true">🎓</span>
+              <span class="mode-card-title">With School Sync</span>
+            </div>
+            <span class="mode-card-tag">School + Hub</span>
+          </div>
+          <p class="mode-card-desc">Automatic school calendars, homework &amp; timetables alongside your shared family calendar, chat, meals, and daily learning.</p>
+          <div class="mode-card-chips">
+            <span class="mode-chip">📚 Homework &amp; timetable</span>
+            <span class="mode-chip">🗓️ School calendar feeds</span>
+            <span class="mode-chip">💬 Family chat &amp; planner</span>
+          </div>
+        </button>
+
+        <button type="button" class="mode-card" id="mode-card-organizer" data-mode="organizer" role="radio" aria-checked="false">
+          <div class="mode-card-top">
+            <div class="mode-card-title-row">
+              <span class="mode-card-emoji" aria-hidden="true">🏡</span>
+              <span class="mode-card-title">Just Family Organizer</span>
+            </div>
+            <span class="mode-card-tag">Home Hub</span>
+          </div>
+          <p class="mode-card-desc">Shared calendar, family chat, meals, trips &amp; habits — a calm home base with zero school sync prompts.</p>
+          <div class="mode-card-chips">
+            <span class="mode-chip">📅 Shared calendar</span>
+            <span class="mode-chip">💬 Family chat &amp; Hermes</span>
+            <span class="mode-chip">🍽️ Meals, trips &amp; habits</span>
+          </div>
+        </button>
+      </div>
+
+      <button type="button" class="btn-primary full-width" id="step-1-continue">Continue with School Sync →</button>
+      <p class="demo-hint">Already have an account? <a href="/login" style="color:var(--accent);font-weight:800">Sign in</a></p>
+    </section>
+
+    <!-- STEP 2: Parent Account & Passkey (Parent-only signup — no role picker, no kid path) -->
+    <section class="onboard-pane" id="onboarding-step-2" aria-labelledby="step-2-heading">
+      <div class="onboard-topbar">
+        <button type="button" class="onboard-back-btn" id="step-2-back">← Change setup</button>
+        <span class="onboard-selected-badge" id="step-2-mode-badge">🎓 With School Sync</span>
+      </div>
+      <h2 class="onboard-heading" id="step-2-heading">Create your parent account</h2>
+      <p class="onboard-sub">Sign in with Face ID, Touch ID, or your device PIN — no password to remember.</p>
+
+      <form id="signup-form">
+        <div class="form-group">
+          <label for="signup-name">Your Name</label>
+          <input type="text" id="signup-name" placeholder="Alex Johnson" required autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label for="signup-invite-code">Invite code</label>
+          <input type="text" id="signup-invite-code" placeholder="Enter your invite code" required autocomplete="off" autocapitalize="none" spellcheck="false">
+        </div>
+        <div id="signup-error" class="error-msg" role="alert" aria-live="polite"></div>
+        <button type="submit" class="btn-primary full-width" id="signup-submit">Create your passkey 🎉</button>
+        <p class="demo-hint">Invite-only access · Free for STA parents. This account is for parents; you'll set up your family next.</p>
+      </form>
+    </section>
+
+    <!-- STEP 3: Family Name & Kids / School Sync (or Join Co-Parent) -->
+    <section class="onboard-pane" id="onboarding-step-3" aria-labelledby="step-3-heading">
+      <div class="onboard-topbar">
+        <span class="onboard-selected-badge" id="step-3-mode-badge">🎓 With School Sync</span>
+        <button type="button" class="onboard-back-btn" id="step-3-toggle-mode">Switch mode</button>
+      </div>
+      <h2 class="onboard-heading" id="step-3-heading">Set up your family</h2>
+      <p class="onboard-sub" id="step-3-sub">Name your family and add your kids so everyone has their own color.</p>
+
+      <div class="auth-tabs" style="margin-bottom:18px" role="tablist">
+        <button type="button" class="auth-tab active" id="tab-create-fam" role="tab" aria-selected="true">🏠 Create family</button>
+        <button type="button" class="auth-tab" id="tab-join-fam" role="tab" aria-selected="false">🤝 Join co-parent</button>
+      </div>
+
+      <!-- Create new family form -->
+      <form id="onboarding-family-form">
+        <div class="form-group">
+          <label for="onboarding-family-name">Family Name</label>
+          <input type="text" id="onboarding-family-name" placeholder="The Johnson Family" required>
+        </div>
+
+        <div class="form-group" style="margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <label style="margin-bottom:0">Kids <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional — add now or later)</span></label>
+            <button type="button" class="btn-link" id="onboarding-add-kid-btn" style="font-size:12.5px">+ Add another kid</button>
+          </div>
+          <div class="onboard-kids-list" id="onboarding-kids-list"></div>
+        </div>
+
+        <!-- Shown only when mode === "school_sync" -->
+        <div class="onboard-school-box" id="onboarding-school-box">
+          <div class="onboard-school-title">🎓 Quick School Calendar Sync</div>
+          <p class="onboard-school-sub">Pick the school calendars to subscribe your kids to right away:</p>
+          <div class="onboard-feed-chips" id="onboarding-feed-chips">
+            <label class="onboard-feed-chip"><input type="checkbox" value="sta-whole-school" checked> STA Whole School</label>
+            <label class="onboard-feed-chip"><input type="checkbox" value="sta-high-school"> STA High School</label>
+            <label class="onboard-feed-chip"><input type="checkbox" value="sta-hs-sport"> STA HS Sport</label>
+            <label class="onboard-feed-chip"><input type="checkbox" value="cahe"> CAHE Deadlines</label>
+            <label class="onboard-feed-chip"><input type="checkbox" value="senior-studies-2027"> Class of 2027</label>
+            <label class="onboard-feed-chip"><input type="checkbox" value="senior-studies-2026"> Class of 2026</label>
+          </div>
+          <details class="onboard-custom-ics">
+            <summary>+ Have another school's calendar link (.ics)?</summary>
+            <div class="form-group" style="margin:8px 0 0">
+              <input type="url" id="onboarding-custom-ics-url" placeholder="https://... or webcal://...">
+            </div>
+          </details>
+          <p class="text-muted" style="font-size:11.5px;margin-top:10px">You can also connect private per-child homework &amp; timetable links anytime in Settings → School.</p>
+        </div>
+
+        <!-- Shown only when mode === "organizer" -->
+        <div class="onboard-organizer-box" id="onboarding-organizer-box" hidden>
+          <strong>🏡 Just Family Organizer</strong>
+          Your Today dashboard will stay focused on shared calendar events, family chat, meals, trips &amp; habits — with school sync prompts hidden.
+        </div>
+
+        <div id="onboarding-family-error" class="error-msg" role="alert" aria-live="polite"></div>
+        <button type="submit" class="btn-primary full-width" id="onboarding-finish-btn">Launch our family hub 🚀</button>
+        <button type="button" class="link-back" id="onboarding-skip-btn">Skip kids for now &amp; open hub →</button>
+      </form>
+
+      <!-- Join existing family form (co-parent code) -->
+      <form id="onboarding-join-form" hidden>
+        <div class="form-group">
+          <label for="onboarding-join-code">One-time co-parent code</label>
+          <input type="text" id="onboarding-join-code" placeholder="8-character code from your co-parent" required autocomplete="off" autocapitalize="characters">
+        </div>
+        <p class="text-muted" style="font-size:12.5px;margin-bottom:14px">Ask the other parent to open <strong>Settings → Family → Make parent code</strong> and share the 8-character code with you.</p>
+        <div id="onboarding-join-error" class="error-msg" role="alert" aria-live="polite"></div>
+        <button type="submit" class="btn-primary full-width" id="onboarding-join-btn">Join family 🎉</button>
+      </form>
+    </section>
   </div>
 </div>
 
 <script src="/js/auth.js"></script>
+<script src="/js/onboarding.js"></script>
 <script>
-document.getElementById('signup-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const errEl = document.getElementById('signup-error');
-  const btn = document.getElementById('signup-submit');
-  const name = document.getElementById('signup-name').value.trim();
-  const inviteCode = document.getElementById('signup-invite-code').value.trim();
-  errEl.textContent = '';
-  btn.disabled = true;
-  try {
-    await window.auth.signUp(name, inviteCode);
-    window.location.href = '/';
-  } catch (err) {
-    errEl.textContent = err.message || 'Could not create your account. Please try again.';
-  } finally {
-    btn.disabled = false;
-  }
-});
+(function () {
+  const KID_COLORS = ['#6C63FF', '#FF6B9D', '#4ECDC4', '#FFB84C', '#5AC8FA', '#FF7A7A'];
+  const GRADES = [
+    '', 'Kindergarten',
+    '1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade',
+    '7th Grade', '8th Grade', '9th Grade', '10th Grade', '11th Grade', '12th Grade'
+  ];
 
-// If already signed in, skip straight to the app.
-(async () => {
+  let selectedMode = 'school_sync';
+  let currentStep = 1;
+  let signedInUser = null;
+  let createdFamily = null;
+  // Kid rows already saved on the server, so a retry after a failure doesn't add them twice.
+  const savedKidsByRow = new WeakMap();
+  let kidRowCounter = 0;
+
   try {
-    const me = await window.auth.getMe();
-    if (me && me.user) window.location.href = '/';
-  } catch (e) { /* not signed in — stay on this page */ }
+    const saved = localStorage.getItem('fam_signup_mode');
+    if (saved === 'organizer' || saved === 'school_sync') selectedMode = saved;
+  } catch (e) {}
+
+  function saveSelectedMode(mode) {
+    selectedMode = mode === 'organizer' ? 'organizer' : 'school_sync';
+    try { localStorage.setItem('fam_signup_mode', selectedMode); } catch (e) {}
+    renderModeState();
+  }
+
+  function renderModeState() {
+    const isSchool = selectedMode === 'school_sync';
+    const cardSchool = document.getElementById('mode-card-school');
+    const cardOrg = document.getElementById('mode-card-organizer');
+    if (cardSchool && cardOrg) {
+      cardSchool.classList.toggle('is-selected', isSchool);
+      cardSchool.setAttribute('aria-checked', String(isSchool));
+      cardOrg.classList.toggle('is-selected', !isSchool);
+      cardOrg.setAttribute('aria-checked', String(!isSchool));
+    }
+    const continueBtn = document.getElementById('step-1-continue');
+    if (continueBtn) {
+      continueBtn.textContent = isSchool
+        ? 'Continue with School Sync →'
+        : 'Continue with Family Organizer →';
+    }
+    const badgeText = isSchool ? '🎓 With School Sync' : '🏡 Just Family Organizer';
+    const b2 = document.getElementById('step-2-mode-badge');
+    const b3 = document.getElementById('step-3-mode-badge');
+    if (b2) b2.textContent = badgeText;
+    if (b3) b3.textContent = badgeText;
+
+    const schoolBox = document.getElementById('onboarding-school-box');
+    const orgBox = document.getElementById('onboarding-organizer-box');
+    if (schoolBox) schoolBox.hidden = !isSchool;
+    if (orgBox) orgBox.hidden = isSchool;
+  }
+
+  function showStep(step) {
+    currentStep = step;
+    [1, 2, 3].forEach((n) => {
+      const pane = document.getElementById('onboarding-step-' + n);
+      const pill = document.getElementById('stepper-' + n);
+      const num = document.getElementById('stepper-num-' + n);
+      if (pane) pane.classList.toggle('is-active', n === step);
+      if (pill) {
+        pill.classList.toggle('is-active', n === step);
+        pill.classList.toggle('is-done', n < step);
+      }
+      if (num) num.textContent = n < step ? '✓' : String(n);
+    });
+    if (step === 2) {
+      const nameInput = document.getElementById('signup-name');
+      if (nameInput && !nameInput.value) nameInput.focus();
+    } else if (step === 3) {
+      const famInput = document.getElementById('onboarding-family-name');
+      if (famInput) famInput.focus();
+    }
+  }
+
+  function suggestFamilyName(fullName) {
+    const trimmed = String(fullName || '').trim();
+    if (!trimmed) return 'Our Family';
+    const parts = trimmed.split(/\s+/);
+    if (parts.length >= 2) {
+      return 'The ' + parts[parts.length - 1] + ' Family';
+    }
+    return parts[0] + "'s Family";
+  }
+
+  function addKidRow(prefill) {
+    const list = document.getElementById('onboarding-kids-list');
+    if (!list) return;
+    const index = kidRowCounter++;
+    const color = (prefill && prefill.color) || KID_COLORS[index % KID_COLORS.length];
+    const row = document.createElement('div');
+    row.className = 'onboard-kid-row';
+    row.dataset.kidColor = color;
+
+    const gradeOptions = GRADES.map((g) =>
+      `<option value="${g}">${g || 'Grade (optional)'}</option>`
+    ).join('');
+
+    const swatches = KID_COLORS.map((c) =>
+      `<button type="button" class="onboard-swatch${c === color ? ' is-active' : ''}" data-color="${c}" style="background:${c}" aria-label="Pick color ${c}"></button>`
+    ).join('');
+
+    row.innerHTML = `
+      <div class="onboard-kid-inputs">
+        <input type="text" class="onboard-kid-name" placeholder="Kid's first name (e.g. Maya)" maxlength="60">
+        <select class="onboard-kid-grade" aria-label="Grade">${gradeOptions}</select>
+        <button type="button" class="onboard-kid-remove" title="Remove row" aria-label="Remove kid row">×</button>
+      </div>
+      <div class="onboard-colors">
+        <span class="onboard-color-label">Color</span>
+        ${swatches}
+      </div>
+    `;
+
+    row.querySelectorAll('.onboard-swatch').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        row.dataset.kidColor = btn.dataset.color;
+        row.querySelectorAll('.onboard-swatch').forEach((b) => b.classList.toggle('is-active', b === btn));
+      });
+    });
+
+    row.querySelector('.onboard-kid-remove').addEventListener('click', () => {
+      if (list.children.length > 1) {
+        row.remove();
+      } else {
+        row.querySelector('.onboard-kid-name').value = '';
+        row.querySelector('.onboard-kid-grade').value = '';
+      }
+    });
+
+    list.appendChild(row);
+  }
+
+  // Wire Step 1 mode cards
+  document.getElementById('mode-card-school').addEventListener('click', () => saveSelectedMode('school_sync'));
+  document.getElementById('mode-card-organizer').addEventListener('click', () => saveSelectedMode('organizer'));
+  document.getElementById('step-1-continue').addEventListener('click', () => showStep(signedInUser ? 3 : 2));
+  document.getElementById('step-2-back').addEventListener('click', () => showStep(1));
+  document.getElementById('step-3-toggle-mode').addEventListener('click', () => {
+    saveSelectedMode(selectedMode === 'school_sync' ? 'organizer' : 'school_sync');
+  });
+
+  // Wire Step 3 Create vs Join tabs
+  const tabCreate = document.getElementById('tab-create-fam');
+  const tabJoin = document.getElementById('tab-join-fam');
+  const formCreate = document.getElementById('onboarding-family-form');
+  const formJoin = document.getElementById('onboarding-join-form');
+  tabCreate.addEventListener('click', () => {
+    tabCreate.classList.add('active');
+    tabCreate.setAttribute('aria-selected', 'true');
+    tabJoin.classList.remove('active');
+    tabJoin.setAttribute('aria-selected', 'false');
+    formCreate.hidden = false;
+    formJoin.hidden = true;
+  });
+  tabJoin.addEventListener('click', () => {
+    tabJoin.classList.add('active');
+    tabJoin.setAttribute('aria-selected', 'true');
+    tabCreate.classList.remove('active');
+    tabCreate.setAttribute('aria-selected', 'false');
+    formJoin.hidden = false;
+    formCreate.hidden = true;
+  });
+
+  document.getElementById('onboarding-add-kid-btn').addEventListener('click', () => addKidRow());
+
+  // Step 2: Passkey creation
+  document.getElementById('signup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('signup-error');
+    const btn = document.getElementById('signup-submit');
+    const name = document.getElementById('signup-name').value.trim();
+    const inviteCode = document.getElementById('signup-invite-code').value.trim();
+    errEl.textContent = '';
+    btn.disabled = true;
+    try {
+      const res = await window.auth.signUp(name, inviteCode);
+      signedInUser = (res && res.user) || { name };
+      const famInput = document.getElementById('onboarding-family-name');
+      if (famInput && !famInput.value.trim()) {
+        famInput.value = suggestFamilyName(name);
+      }
+      showStep(3);
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not create your account. Please try again.';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Step 3: Create family + optional kids + optional school feeds
+  async function completeFamilyOnboarding({ skipKids = false } = {}) {
+    const errEl = document.getElementById('onboarding-family-error');
+    const finishBtn = document.getElementById('onboarding-finish-btn');
+    const skipBtn = document.getElementById('onboarding-skip-btn');
+    const famNameInput = document.getElementById('onboarding-family-name');
+    const familyName = (famNameInput && famNameInput.value.trim()) || 'Our Family';
+    const schoolSync = selectedMode === 'school_sync';
+
+    errEl.textContent = '';
+    finishBtn.disabled = true;
+    skipBtn.disabled = true;
+    finishBtn.textContent = 'Setting up your hub…';
+
+    try {
+      if (!createdFamily) {
+        const famRes = await window.auth.createFamily(familyName, { schoolSync });
+        createdFamily = famRes && famRes.family;
+      } else if (createdFamily.schoolSync !== schoolSync) {
+        // The parent changed the mode after an earlier attempt created the family.
+        const syncRes = await window.auth.setSchoolSync(schoolSync);
+        if (syncRes && syncRes.family) createdFamily = syncRes.family;
+      }
+      if (createdFamily && createdFamily.id) {
+        try {
+          localStorage.setItem('fam_family', JSON.stringify(createdFamily));
+        } catch (e) {}
+      }
+
+      const addedKids = [];
+      if (!skipKids) {
+        const rows = Array.from(document.querySelectorAll('#onboarding-kids-list .onboard-kid-row'));
+        for (const row of rows) {
+          const savedKid = savedKidsByRow.get(row);
+          if (savedKid) {
+            addedKids.push(savedKid);
+            continue;
+          }
+          const kName = row.querySelector('.onboard-kid-name').value.trim();
+          if (!kName) continue;
+          const kGrade = row.querySelector('.onboard-kid-grade').value;
+          const kColor = row.dataset.kidColor || '#6C63FF';
+          const kidRes = await window.auth.addKid(kName, kGrade, kColor);
+          if (kidRes && kidRes.family) {
+            createdFamily = kidRes.family;
+            try { localStorage.setItem('fam_family', JSON.stringify(createdFamily)); } catch (e) {}
+          }
+          if (kidRes && kidRes.kid) {
+            savedKidsByRow.set(row, kidRes.kid);
+            addedKids.push(kidRes.kid);
+          }
+        }
+      }
+
+      // If "With School Sync" is active and kids were added, subscribe selected calendars
+      if (schoolSync && addedKids.length > 0) {
+        const checkedFeeds = Array.from(document.querySelectorAll('#onboarding-feed-chips input:checked'))
+          .map((input) => input.value);
+        const customUrlInput = document.getElementById('onboarding-custom-ics-url');
+        const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+
+        for (const kid of addedKids) {
+          for (const feedId of checkedFeeds) {
+            try {
+              await window.auth.subscribeCalendarFeed({ kidId: kid.id, feedId });
+            } catch (e) { /* best-effort during onboarding */ }
+          }
+          if (customUrl) {
+            try {
+              await window.auth.subscribeCalendarFeed({
+                kidId: kid.id,
+                customUrl,
+                customName: 'School calendar',
+              });
+            } catch (e) { /* best-effort during onboarding */ }
+          }
+        }
+        if (checkedFeeds.length > 0 || customUrl) {
+          try { await window.auth.syncCalendar(true); } catch (e) {}
+        }
+      }
+
+      window.location.href = '/';
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not finish family setup. Please try again.';
+      finishBtn.disabled = false;
+      skipBtn.disabled = false;
+      finishBtn.textContent = 'Launch our family hub 🚀';
+    }
+  }
+
+  document.getElementById('onboarding-family-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    completeFamilyOnboarding({ skipKids: false });
+  });
+
+  document.getElementById('onboarding-skip-btn').addEventListener('click', () => {
+    completeFamilyOnboarding({ skipKids: true });
+  });
+
+  // Step 3 Join Co-Parent
+  document.getElementById('onboarding-join-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('onboarding-join-error');
+    const btn = document.getElementById('onboarding-join-btn');
+    const code = document.getElementById('onboarding-join-code').value.trim();
+    errEl.textContent = '';
+    btn.disabled = true;
+    try {
+      const res = await window.auth.joinFamily(code);
+      if (res && res.family) {
+        try { localStorage.setItem('fam_family', JSON.stringify(res.family)); } catch (e) {}
+      }
+      window.location.href = '/';
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not join with that code. Check it and try again.';
+      btn.disabled = false;
+    }
+  });
+
+  // Initialize default row and mode UI
+  addKidRow();
+  renderModeState();
+
+  // If already signed in: redirect if family exists, otherwise jump to Step 3!
+  (async () => {
+    try {
+      const me = await window.auth.getMe();
+      if (me && me.user) {
+        signedInUser = me.user;
+        const fams = await window.auth.getFamilies();
+        if (fams && fams.length > 0) {
+          window.location.href = '/';
+          return;
+        }
+        const famInput = document.getElementById('onboarding-family-name');
+        if (famInput && !famInput.value.trim()) {
+          famInput.value = suggestFamilyName(me.user.name);
+        }
+        showStep(3);
+      }
+    } catch (e) { /* not signed in — stay on Step 1 */ }
+  })();
 })();
 </script>
 </body>
