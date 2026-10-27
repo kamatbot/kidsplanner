@@ -175,4 +175,3 @@ test("schoolSync preference is stored on createFamily and updated via setSchoolS
   assert.ok(!toggled.error);
   assert.equal(family.publicFamily(toggled.family).schoolSync, true);
 });
-

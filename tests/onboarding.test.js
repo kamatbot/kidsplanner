@@ -91,4 +91,3 @@ test("an Organizer family that already subscribed to a school feed still sees th
   );
   assert.ok(state.steps.some((step) => step.id === "school" && step.complete));
 });
-
