@@ -108,7 +108,7 @@ test("pairing stores only hashes, claims once, scopes the member, and revokes", 
   assert.equal(watchAuth.allowedRequest("POST", "/api/chat/messages"), true);
   assert.equal(watchAuth.allowedRequest("POST", "/api/chat/buzz"), false);
   assert.equal(watchAuth.allowedRequest("DELETE", "/api/chat/messages/m_1"), false);
-  assert.equal(watchAuth.allowedRequest("POST", "/api/chat/attachments"), false);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/chat/attachments"), true);
   assert.equal(watchAuth.allowedRequest("GET", "/api/chat/rooms"), false);
   assert.equal(watchAuth.allowedRequest("POST", "/api/family/actions"), false);
   assert.equal(watchAuth.allowedRequest("GET", "/api/student-support"), true);
