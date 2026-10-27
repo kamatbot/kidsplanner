@@ -404,6 +404,7 @@ body.chat-dock-resizing { cursor: col-resize; user-select: none; }
 .chat-msg-text a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 2px; }
 .chat-msg-meta { display: flex; align-items: center; gap: 8px; margin-top: 3px; padding: 0 4px; }
 .chat-msg-time { font-family: "Geist", sans-serif; font-size: 10px; color: var(--muted); }
+.chat-msg-seen { font-family: "Geist", sans-serif; font-size: 10px; color: var(--muted); padding: 2px 6px 0; text-align: right; }
 .chat-msg-controls { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
 .chat-msg:hover .chat-msg-controls { opacity: 1; }
 .chat-msg-ctrl { background: none; border: none; cursor: pointer; font-size: 12px; padding: 2px 4px; border-radius: 6px; }

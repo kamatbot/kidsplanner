@@ -142,6 +142,8 @@ let chatPollTimer   = null;   // AbortController owning exactly one receive loop
 let chatSending     = false;
 let chatPendingSend = null; // one uncertain send; scoped to account, family and payload
 let chatPollAbort   = null;   // AbortController for the in-flight long-poll fetch, if any
+let chatReads       = [];     // [{ userId, name, messageId, messageCreatedAt, readAt }] — family members' read marks
+let chatReadPosted  = null;   // last message id this session reported as read
 const CHAT_LONGPOLL_WAIT_S = 25; // must match LONG_POLL_MS in lib/routes/chat.js
 const CHAT_BACKOFF_MS = [2000, 5000, 10000]; // retry backoff on poll errors, capped
 
@@ -3853,6 +3855,7 @@ function renderChatMessages() {
   const el = document.getElementById('chat-messages');
   if (!el) return;
   const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  const seenBy = typeof chatSeenByLine === 'function' ? chatSeenByLine() : null;
 
   const rows = chatMessages.map((m) => {
     if (m.deleted) {
@@ -3897,6 +3900,7 @@ function renderChatMessages() {
         ${addToShoppingBtn}
         ${controls}
       </div>
+      ${seenBy && seenBy.messageId === m.id ? `<div class="chat-msg-seen" aria-label="${esc(seenBy.text)}">${esc(seenBy.text)}</div>` : ''}
     </div>`;
   });
 
@@ -3925,6 +3929,40 @@ function renderChatMessages() {
   updateChatUnreadBadge();
 }
 
+// Read receipts: "Seen by Dad, Arya" under this user's most recent message,
+// listing everyone else whose read mark has reached it.
+function chatSeenByLine() {
+  let own = null;
+  for (let i = chatMessages.length - 1; i >= 0; i--) {
+    if (!chatMessages[i].deleted && isOwnMessage(chatMessages[i])) { own = chatMessages[i]; break; }
+  }
+  if (!own) return null;
+  const names = chatReads
+    .filter((r) => r.userId !== sessionUser?.id && r.messageCreatedAt && r.messageCreatedAt >= own.createdAt)
+    .map((r) => (r.name || 'Someone').trim().split(/\s+/)[0]);
+  if (!names.length) return null;
+  return { messageId: own.id, text: 'Seen by ' + names.join(', ') };
+}
+
+function applyChatReads(reads) {
+  const next = Array.isArray(reads) ? reads : [];
+  if (JSON.stringify(next) === JSON.stringify(chatReads)) return;
+  chatReads = next;
+  renderChatMessages();
+}
+
+// Report the newest message as read while the family room is actually on
+// screen. The server keeps the furthest mark, so a repeat or race is harmless.
+function maybeMarkChatRead() {
+  if (document.hidden || chatActiveRoom !== 'family') return;
+  const dock = document.getElementById('chat-dock');
+  if (!dock || dock.hidden || (dock.classList.contains('chat-collapsed') && !dock.classList.contains('chat-force-open'))) return;
+  const latest = chatMessages[chatMessages.length - 1];
+  if (!latest || latest.id === chatReadPosted || !window.auth?.markChatRead) return;
+  chatReadPosted = latest.id;
+  window.auth.markChatRead(latest.id).catch(() => { if (chatReadPosted === latest.id) chatReadPosted = null; });
+}
+
 async function loadChatMessages() {
   const userId = sessionUser?.id;
   const familyId = currentFamily?.id;
@@ -3934,6 +3972,7 @@ async function loadChatMessages() {
     if (sessionUser?.id !== userId || currentFamily?.id !== familyId) return;
     const concurrent = chatMessages.filter(m => !previousIDs.has(m.id));
     chatMessages = [];
+    chatReadPosted = null;
     chatLastAt = null;
     chatLastId = null;
     mergeChatMessages([...msgs, ...concurrent.filter(m => !msgs.some(fresh => fresh.id === m.id))]);
@@ -3988,6 +4027,7 @@ async function chatLongPollFetch(afterId = chatLastId) {
   const res = await fetch('/api/chat/messages' + qs, { credentials: 'same-origin', signal: chatPollAbort.signal });
   if (!res.ok) throw new Error(`poll failed (${res.status})`);
   const data = await res.json().catch(() => null);
+  window.auth?.emitChatReads?.(data);
   return (data && data.messages) || [];
 }
 
@@ -4088,6 +4128,8 @@ function setupChatRealtimeNudges() {
   document.addEventListener('visibilitychange', nudge);
   window.addEventListener('focus', nudge);
   window.addEventListener('online', nudge);
+  window.auth?.onChatReads?.(applyChatReads);
+  document.addEventListener('visibilitychange', maybeMarkChatRead);
 }
 
 /* ============================================================
@@ -4867,6 +4909,7 @@ function updateChatUnreadBadge() {
     el.textContent = count > 9 ? '9+' : String(count);
     el.hidden = count === 0;
   });
+  if (typeof maybeMarkChatRead === 'function') maybeMarkChatRead();
 }
 
 /* Calendar/Homework/Goals/Activities: dock shrinks to a 56px avatar rail;
