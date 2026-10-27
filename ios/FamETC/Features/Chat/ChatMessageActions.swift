@@ -48,11 +48,21 @@ struct ChatReactionBar: View {
     }
 }
 
-/// Full-screen overlay presented on long press (see `ChatMessageRow`).
+/// The pressed bubble's on-screen frame. A reference box so a row can record
+/// it on every scroll without re-rendering.
+final class ChatBubbleFrame {
+    var rect: CGRect = .zero
+}
+
+/// Full-screen overlay presented on long press (see `ChatMessageRow`). The
+/// message stays where it was pressed, with the reaction bar right above it
+/// and the actions below, shifted only as far as needed to fit on screen.
 struct ChatMessageActionsOverlay<Preview: View>: View {
     let canReact: Bool
     let selectedReactions: Set<String>
     let alignTrailing: Bool
+    /// The pressed bubble's frame in global coordinates; `.zero` centres the menu.
+    let anchor: CGRect
     let actions: [ChatMessageMenuAction]
     let onReact: (String) -> Void
     let onSelect: (ChatMessageMenuAction) -> Void
@@ -61,9 +71,15 @@ struct ChatMessageActionsOverlay<Preview: View>: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
+    @State private var contentHeight: CGFloat = 0
+    @State private var barHeight: CGFloat = 0
+    @State private var previewHeight: CGFloat = 0
+
+    private let spacing: CGFloat = 10
+    private let edgeMargin: CGFloat = 8
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Rectangle()
                 .fill(.ultraThinMaterial)
                 .overlay(Color.black.opacity(0.12))
@@ -72,27 +88,31 @@ struct ChatMessageActionsOverlay<Preview: View>: View {
                 .accessibilityLabel("Close message options")
                 .accessibilityAddTraits(.isButton)
 
-            VStack(spacing: 12) {
-                Spacer(minLength: 0)
-                if canReact {
-                    ChatReactionBar(selected: selectedReactions, onReact: onReact)
-                }
-                preview
-                    .frame(maxHeight: 320, alignment: .top)
-                    .clipped()
-                    .frame(maxWidth: .infinity, alignment: alignTrailing ? .trailing : .leading)
-                    .allowsHitTesting(false)
-                if !actions.isEmpty {
-                    actionList
-                        .frame(maxWidth: 290)
+            GeometryReader { proxy in
+                VStack(spacing: spacing) {
+                    if canReact {
+                        ChatReactionBar(selected: selectedReactions, onReact: onReact)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
+                    }
+                    preview
+                        .frame(maxHeight: 320, alignment: .top)
+                        .clipped()
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewHeight = $0 }
                         .frame(maxWidth: .infinity, alignment: alignTrailing ? .trailing : .leading)
+                        .allowsHitTesting(false)
+                    if !actions.isEmpty {
+                        actionList
+                            .frame(maxWidth: 290)
+                            .frame(maxWidth: .infinity, alignment: alignTrailing ? .trailing : .leading)
+                    }
                 }
-                Spacer(minLength: 0)
+                .padding(.horizontal, 12)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                .offset(y: contentTop(in: proxy))
+                .scaleEffect(appeared || reduceMotion ? 1 : 0.94, anchor: .top)
+                .opacity(appeared && contentHeight > 0 ? 1 : 0)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 16)
-            .scaleEffect(appeared || reduceMotion ? 1 : 0.94)
-            .opacity(appeared ? 1 : 0)
         }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.28, dampingFraction: 0.82)) {
@@ -100,6 +120,19 @@ struct ChatMessageActionsOverlay<Preview: View>: View {
             }
         }
         .accessibilityAction(.escape) { onDismiss() }
+    }
+
+    /// Top of the menu so the preview lands on the pressed bubble, clamped so
+    /// the reaction bar and the actions stay on screen.
+    private func contentTop(in proxy: GeometryProxy) -> CGFloat {
+        let available = proxy.size.height
+        let barSpace = canReact ? barHeight + spacing : 0
+        let bubbleTop = anchor == .zero
+            ? (available - previewHeight) / 2
+            : anchor.minY - proxy.frame(in: .global).minY
+        var top = bubbleTop - barSpace
+        top = min(top, available - contentHeight - edgeMargin)
+        return max(top, edgeMargin)
     }
 
     private var actionList: some View {

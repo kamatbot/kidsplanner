@@ -1932,6 +1932,11 @@ struct ChatMessageRow: View, Equatable {
     @State private var showDeleteDialog = false
     @State private var showReportedThanks = false
     @State private var showMessageActions = false
+    /// Where the bubble sits on screen, read when the menu opens so the menu
+    /// appears right at the pressed message. A plain box, not state, so
+    /// scrolling doesn't re-render every row.
+    @State private var bubbleFrame = ChatBubbleFrame()
+    @State private var menuAnchor: CGRect = .zero
     @State private var shareItem: ChatShareText?
 
     static func == (lhs: ChatMessageRow, rhs: ChatMessageRow) -> Bool {
@@ -1987,6 +1992,7 @@ struct ChatMessageRow: View, Equatable {
                     .accessibilityElement(children: .combine)
                 }
                 bubble
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { bubbleFrame.rect = $0 }
                     .onLongPressGesture(minimumDuration: 0.35) {
                         if hasMessageActions { presentMessageActions() }
                     }
@@ -2033,6 +2039,7 @@ struct ChatMessageRow: View, Equatable {
             ChatMessageActionsOverlay(canReact: canReact,
                                       selectedReactions: myReactionKeys,
                                       alignTrailing: isMine,
+                                      anchor: menuAnchor,
                                       actions: menuActions,
                                       onReact: { key in
                                           react(key)
@@ -2064,6 +2071,7 @@ struct ChatMessageRow: View, Equatable {
     /// a popover over the chat rather than a new screen.
     private func presentMessageActions() {
         Haptics.impact(.medium)
+        menuAnchor = bubbleFrame.rect
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { showMessageActions = true }
