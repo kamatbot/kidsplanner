@@ -19,19 +19,34 @@ struct FamETCWatchComplicationSnapshot: Codable, Equatable {
     /// checklist text is written to the shared complication store.
     let focusActive: Bool
     let focusEndsAt: Date?
+    /// Today's My list progress ("1 of 4").
+    let todoDone: Int
+    let todoTotal: Int
+    /// Category of the next open item ("homework" or "chore") and its time.
+    /// Titles never reach the widget.
+    let nextKind: String?
+    let nextDueAt: Date?
 
     init(urgentCount: Int = 0,
          homeworkCount: Int = 0,
          shoppingCount: Int = 0,
          updatedAt: Date? = nil,
          focusActive: Bool = false,
-         focusEndsAt: Date? = nil) {
+         focusEndsAt: Date? = nil,
+         todoDone: Int = 0,
+         todoTotal: Int = 0,
+         nextKind: String? = nil,
+         nextDueAt: Date? = nil) {
         self.urgentCount = max(0, urgentCount)
         self.homeworkCount = max(0, homeworkCount)
         self.shoppingCount = max(0, shoppingCount)
         self.updatedAt = updatedAt
         self.focusActive = focusActive
         self.focusEndsAt = focusEndsAt
+        self.todoTotal = max(0, todoTotal)
+        self.todoDone = min(max(0, todoDone), max(0, todoTotal))
+        self.nextKind = nextKind == "homework" || nextKind == "chore" ? nextKind : nil
+        self.nextDueAt = nextDueAt
     }
 
     init(from decoder: Decoder) throws {
@@ -44,10 +59,18 @@ struct FamETCWatchComplicationSnapshot: Codable, Equatable {
         // JSON remains valid and simply represents an inactive focus state.
         focusActive = try container.decodeIfPresent(Bool.self, forKey: .focusActive) ?? false
         focusEndsAt = try container.decodeIfPresent(Date.self, forKey: .focusEndsAt)
+        // My list progress was added later still; old JSON means no list yet.
+        let total = max(0, try container.decodeIfPresent(Int.self, forKey: .todoTotal) ?? 0)
+        todoTotal = total
+        todoDone = min(max(0, try container.decodeIfPresent(Int.self, forKey: .todoDone) ?? 0), total)
+        let kind = try container.decodeIfPresent(String.self, forKey: .nextKind)
+        nextKind = kind == "homework" || kind == "chore" ? kind : nil
+        nextDueAt = try container.decodeIfPresent(Date.self, forKey: .nextDueAt)
     }
 
     private enum CodingKeys: String, CodingKey {
         case urgentCount, homeworkCount, shoppingCount, updatedAt, focusActive, focusEndsAt
+        case todoDone, todoTotal, nextKind, nextDueAt
     }
 
     func isFocusActive(at date: Date = Date()) -> Bool {

@@ -5,7 +5,8 @@ import WatchKit
 final class WatchDelegateTests: XCTestCase {
     func testBackgroundNotificationsUseSupportedPlistKey() {
         XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String], ["remote-notification"])
-        XCTAssertNil(Bundle.main.object(forInfoDictionaryKey: "WKBackgroundModes"))
+        // Smart-alarm extended runtime sessions for homework/chore reminders.
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "WKBackgroundModes") as? [String], ["alarm"])
     }
 
     func testSignedWatchCanSaveReplaceAndClearItsDeviceCredential() throws {

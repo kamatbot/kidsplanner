@@ -195,6 +195,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: "Fam ETC"
         INFOPLIST_KEY_FAMIOSClientKey: "$(FAM_IOS_CLIENT_KEY)"
         INFOPLIST_KEY_WKWatchOnly: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Fam ETC uses the microphone to record voice messages for your family chat."
         TARGETED_DEVICE_FAMILY: "4"
         WATCHOS_DEPLOYMENT_TARGET: "11.0"
         CODE_SIGN_ENTITLEMENTS: FamETCWatch/FamETCWatch.entitlements
@@ -246,6 +247,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: "Fam ETC"
         INFOPLIST_KEY_WKCompanionAppBundleIdentifier: com.fametc.app
         INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Fam ETC uses the microphone to record voice messages for your family chat."
         INFOPLIST_KEY_FAMIOSClientKey: "$(FAM_IOS_CLIENT_KEY)"
         TARGETED_DEVICE_FAMILY: "4"
         WATCHOS_DEPLOYMENT_TARGET: "11.0"

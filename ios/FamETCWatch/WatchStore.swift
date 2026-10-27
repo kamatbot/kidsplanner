@@ -89,7 +89,7 @@ final class WatchStore: ObservableObject {
         self.supportConflict = restored?.supportConflict ?? false
     }
 
-    var totalPendingCount: Int { pendingMutationCount + supportOutbox.count }
+    var totalPendingCount: Int { pendingMutationCount + supportOutbox.count + WatchVoiceOutbox.shared.items.count }
 
     var urgentActions: [WatchAction] { snapshot.urgentActions }
     var openHomework: [WatchHomework] { snapshot.openHomework }
@@ -169,6 +169,7 @@ final class WatchStore: ObservableObject {
         // successfully fetched section.
         if replayMutations { _ = await drainOutbox() }
         if contextFresh { await refreshSupport(replay: replayMutations) }
+        if contextFresh { await refreshChores() }
         guard epoch == connectionEpoch else { return }
 
         do {
@@ -429,6 +430,13 @@ final class WatchStore: ObservableObject {
         }
     }
 
+    /// Voice/reaction results from WatchStore+Voice: merge and cache.
+    func acceptChatMessages(_ messages: [WatchChatMessage]) {
+        guard !messages.isEmpty else { return }
+        mergeChat(messages)
+        saveState()
+    }
+
     private func mergeChat(_ incoming: [WatchChatMessage]) {
         var chat = snapshot.chat ?? []
         let profile = snapshot.context?.profile
@@ -537,6 +545,11 @@ final class WatchStore: ObservableObject {
                     snapshot.chat?.removeAll { $0.id == "local-" + entry.resourceID }
                     mergeChat([sent])
                     chatSendError = nil
+                case .choreSubmit:
+                    guard let client = api as? WatchChoreClient else { throw WatchAPIError.forbidden }
+                    let updated = try await withWatchTimeout(seconds: 8) { try await client.submitChore(entry.resourceID) }
+                    guard epoch == connectionEpoch else { return false }
+                    if let index = snapshot.chores?.firstIndex(where: { $0.id == updated.id }) { snapshot.chores?[index] = updated }
                 }
 
                 outbox.removeFirst()
@@ -553,6 +566,13 @@ final class WatchStore: ObservableObject {
                     pendingMutationCount = outbox.count
                     snapshot.chat?.removeAll { $0.id == "local-" + entry.resourceID }
                     chatSendError = "Not sent: \(error.localizedDescription)"
+                    persist()
+                    continue
+                }
+                // An approved/removed chore (400/403/404) can never be submitted.
+                if entry.kind == .choreSubmit, isPermanentRejection(error) {
+                    outbox.removeFirst()
+                    pendingMutationCount = outbox.count
                     persist()
                     continue
                 }
@@ -618,6 +638,11 @@ final class WatchStore: ObservableObject {
                 createdAt: mutation.createdAt.ISO8601Format(),
                 pending: true
             )]
+        case .choreSubmit:
+            guard let index = snapshot.chores?.firstIndex(where: { $0.id == mutation.resourceID }),
+                  snapshot.chores?[index].status == "pending" else { return }
+            snapshot.chores?[index].status = "submitted"
+            snapshot.chores?[index].submittedAt = mutation.createdAt.ISO8601Format()
         }
     }
 
@@ -658,6 +683,7 @@ final class WatchStore: ObservableObject {
         WatchComplicationSnapshotStore.save(.empty)
         WidgetCenter.shared.reloadAllTimelines()
         Task { await WatchReminders.shared.clear() }
+        WatchVoiceOutbox.shared.reset()
     }
 
     func enableReminders() async {
@@ -678,14 +704,8 @@ final class WatchStore: ObservableObject {
             reminderStatus = status
         }
         saveState()
-        WatchComplicationSnapshotStore.save(FamETCWatchComplicationSnapshot(
-            urgentCount: snapshot.urgentActions.count,
-            homeworkCount: snapshot.openHomework.count,
-            shoppingCount: snapshot.openShopping.count,
-            updatedAt: snapshot.updatedAt,
-            focusActive: focusSession != nil && focusSession?.pausedAt == nil && !(focusSession?.isComplete() ?? true),
-            focusEndsAt: focusSession?.pausedAt == nil ? focusSession?.endsAt : nil
-        ))
+        // Aggregate only (counts, focus, My list progress, next category/time).
+        WatchComplicationSnapshotStore.save(complicationSnapshot())
         WidgetCenter.shared.reloadTimelines(ofKind: "FamETCWatchComplication")
     }
 
@@ -846,6 +866,32 @@ final class WatchStore: ObservableObject {
             connection = .offline
         }
         lastError = error.localizedDescription
+    }
+}
+
+// MARK: - Fams chores (My list helpers live in WatchStore+Chores.swift)
+
+extension WatchStore {
+    /// Submit a pending Fams chore through the durable outbox; a parent's OK
+    /// then pays the Fams.
+    func submitChore(_ chore: WatchChore) async {
+        guard chore.isOpen, !isPending(chore.id, kind: .choreSubmit) else { return }
+        await enqueue(WatchMutation(kind: .choreSubmit, resourceID: chore.id))
+    }
+
+    /// Kid profiles only (parent tokens get 403). Failures keep the cache.
+    fileprivate func refreshChores() async {
+        guard let client = api as? WatchChoreClient, snapshot.context?.profile.role == "kid" else { return }
+        let epoch = connectionEpoch
+        do {
+            let chores = try await withWatchTimeout(seconds: 8) { try await client.fetchChores() }
+            guard epoch == connectionEpoch else { return }
+            snapshot.chores = chores
+            for mutation in outbox where mutation.kind == .choreSubmit { apply(mutation, to: &snapshot) }
+        } catch {
+            guard epoch == connectionEpoch else { return }
+            if case WatchAPIError.unauthenticated = error { handleNetworkError(error) }
+        }
     }
 }
 

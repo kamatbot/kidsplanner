@@ -8,6 +8,13 @@ struct FamETCWatchApp: App {
     @State private var isPaired = false
     @State private var connectionError: String?
     @State private var isDisconnecting = false
+    @StateObject private var alarms = WatchAlarmCenter.shared
+
+    init() {
+        // Reminder categories, Start/Done/Snooze actions and the foreground
+        // alarm ride on the shared notification delegate's hooks.
+        WatchAlarmNotifications.install()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -24,6 +31,19 @@ struct FamETCWatchApp: App {
             }
                 .environmentObject(store)
                 .disabled(isDisconnecting)
+                .fullScreenCover(isPresented: Binding(get: { isPaired && alarms.presentation != nil },
+                                                      set: { if !$0 { alarms.dismiss() } })) {
+                    WatchAlarmHost().environmentObject(store)
+                }
+                // While the app is in front, show a reminder the moment it is due
+                // (covers a missed willPresent and a reopened app after a buzz).
+                .task(id: scenePhase == .active && isPaired) {
+                    guard scenePhase == .active, isPaired else { return }
+                    while !Task.isCancelled {
+                        alarms.presentDueIfNeeded()
+                        do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                    }
+                }
                 .alert("Could not disconnect", isPresented: Binding(get: { connectionError != nil }, set: { if !$0 { connectionError = nil } })) {
                     Button("OK") { connectionError = nil }
                 } message: { Text(connectionError ?? "") }
@@ -34,7 +54,12 @@ struct FamETCWatchApp: App {
                     switch phase {
                     case .active:
                         if isPaired { WatchPushRegistrationService.shared.registerIfAuthorized() }
-                        Task { await store.refreshForForeground() }
+                        Task {
+                            await store.refreshForForeground()
+                            // Smart alarms can only be scheduled while the app is
+                            // in front; re-plan so the soonest reminder is armed.
+                            if isPaired { _ = await WatchReminders.shared.refresh(snapshot: store.snapshot, focus: store.focusSession) }
+                        }
                     case .inactive, .background:
                         store.endForegroundSession()
                     @unknown default:

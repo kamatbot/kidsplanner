@@ -11,6 +11,8 @@ final class WatchReminderTests: XCTestCase {
     private func work(_ id: String, kid: String? = "own", time: String? = nil, status: String = "todo") -> WatchHomework {
         WatchHomework(id: id, kidId: kid, title: id, dueDate: "2026-09-07", dueTime: time, status: status)
     }
+    /// First buzzes only; follow-ups are covered in WatchAlarmTests.
+    private func firsts(_ plan: [WatchReminder]) -> [WatchReminder] { plan.filter { $0.followUp == 0 } }
     private func action(_ id: String, source: String? = nil) -> WatchAction {
         WatchAction(id: id, familyId: nil, title: id, status: "todo", dueDate: "2026-09-07", dueTime: "15:30", sourceType: source == nil ? nil : "homework", sourceId: source)
     }
@@ -19,22 +21,25 @@ final class WatchReminderTests: XCTestCase {
         value.homework = [work("own"), work("other", kid: "sibling")]
         value.actions = [action("task")]
         value.context?.events = [WatchEvent(id: "shared", title: "Football", date: "2026-09-07", time: "11:00", allDay: false, isTimetable: false), WatchEvent(id: "private", title: "Sibling", date: "2026-09-07", time: "12:00", allDay: false, kidId: "sibling", isTimetable: false)]
-        let plan = WatchReminderPlan.make(snapshot: value, focus: nil, now: now)
+        let plan = firsts(WatchReminderPlan.make(snapshot: value, focus: nil, now: now))
         XCTAssertEqual(plan.map(\.id), ["fam_watch_event_shared", "fam_watch_action_task", "fam_watch_homework_own"])
+        XCTAssertEqual(plan.map(\.kind), [.event, .chore, .homework])
         XCTAssertEqual(plan.map(\.fireAt), ["10:50", "15:30", "17:00"].map { WatchPlanDate.date("2026-09-07", $0)! })
         XCTAssertEqual(plan.first?.title, "Football")
         XCTAssertEqual(plan.first?.body, "Starts in 10 minutes")
         value.context?.profile.role = "parent"
-        XCTAssertEqual(WatchReminderPlan.make(snapshot: value, focus: nil, now: now).count, 5)
+        XCTAssertEqual(firsts(WatchReminderPlan.make(snapshot: value, focus: nil, now: now)).count, 5)
+        // Events stay single; homework and chores each add five re-alerts.
+        XCTAssertEqual(WatchReminderPlan.make(snapshot: value, focus: nil, now: now).count, 5 + 3 * 5)
     }
     func testCompletedSnoozedRemovedAndDerivedWorkDisappear() {
         var value = snapshot()
         value.homework = [work("done", status: "done"), work("snoozed", status: "snoozed"), work("open")]
         value.actions = [action("done-copy", source: "done"), action("snooze-copy", source: "snoozed"), action("open-copy", source: "open")]
-        XCTAssertEqual(WatchReminderPlan.make(snapshot: value, focus: nil, now: now).map(\.id), ["fam_watch_homework_open"])
+        XCTAssertEqual(firsts(WatchReminderPlan.make(snapshot: value, focus: nil, now: now)).map(\.id), ["fam_watch_homework_open"])
         value.homework = []
         value.actions = [action("duplicate-a", source: "same"), action("duplicate-b", source: "same")]
-        XCTAssertEqual(WatchReminderPlan.make(snapshot: value, focus: nil, now: now).map(\.id), ["fam_watch_homework_same"])
+        XCTAssertEqual(firsts(WatchReminderPlan.make(snapshot: value, focus: nil, now: now)).map(\.id), ["fam_watch_homework_same"])
         value.actions = []
         XCTAssertTrue(WatchReminderPlan.make(snapshot: value, focus: nil, now: now).isEmpty)
         var done = action("done"); done.status = "done"
@@ -73,7 +78,7 @@ final class WatchReminderTests: XCTestCase {
         XCTAssertTrue(WatchReminderPlan.make(snapshot: value, focus: acknowledged, now: evening).isEmpty)
         value.updatedAt = evening
         value.homework = [WatchHomework(id: "far", title: "Later", dueDate: "2026-09-10", status: "todo"), WatchHomework(id: "early", title: "Early", dueDate: "2026-09-08", dueTime: "06:59", status: "todo"), WatchHomework(id: "seven", title: "Seven", dueDate: "2026-09-08", dueTime: "07:00", status: "todo")]
-        XCTAssertEqual(WatchReminderPlan.make(snapshot: value, focus: nil, now: evening).map(\.id), ["fam_watch_homework_seven"])
+        XCTAssertEqual(firsts(WatchReminderPlan.make(snapshot: value, focus: nil, now: evening)).map(\.id), ["fam_watch_homework_seven"])
     }
     func testCapReservesFocusAndRepeatedSourcesStayUnique() {
         var value = snapshot()

@@ -281,7 +281,7 @@ private struct WatchEventDetail: View {
     }
 }
 
-private struct WatchConnectionView: View {
+struct WatchConnectionView: View {
     @EnvironmentObject private var store: WatchStore
     @State private var confirmDisconnect = false
     let onDisconnect: () -> Void
@@ -320,7 +320,7 @@ private struct WatchConnectionView: View {
     }
 }
 
-private struct HomeworkDetailView: View {
+struct HomeworkDetailView: View {
     @EnvironmentObject private var store: WatchStore
     let item: WatchHomework
 
