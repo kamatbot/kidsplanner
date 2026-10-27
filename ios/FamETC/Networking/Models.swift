@@ -664,7 +664,21 @@ struct FamilyActionResponse: Codable { var action: FamilyAction }
 struct FamilyResponse: Codable { var family: Family }
 struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
 struct KidAccessRequestsResponse: Codable { var requests: [KidAccessRequest] }
-struct MessagesResponse: Codable { var messages: [ChatMessage] }
+/// Read receipts (`reads` on chat GETs, `POST …/chat/read`): one forward-only
+/// "read up to" mark per room member. Optional fields keep older servers and
+/// partial payloads decoding.
+struct ChatRead: Codable, Equatable {
+    let userId: String
+    var name: String? = nil
+    let messageId: String
+    var messageCreatedAt: String? = nil
+    var readAt: String? = nil
+}
+/// `reads` is absent on servers from before read receipts.
+struct MessagesResponse: Codable { var messages: [ChatMessage]; var reads: [ChatRead]? = nil }
+struct ChatReadsResponse: Codable { var reads: [ChatRead] }
+/// One receive response: messages plus the room's read marks (nil = unknown).
+struct ChatPage { var messages: [ChatMessage]; var reads: [ChatRead]? = nil }
 struct MessageResponse: Codable { var message: ChatMessage }
 /// `POST /api/hermes/thread/messages/:messageId/actions` (docs/HERMES-THREADS-CONTRACT.md §2):
 /// `message` is the tapped card, updated; `messages` are new Hermes follow-ups to append.

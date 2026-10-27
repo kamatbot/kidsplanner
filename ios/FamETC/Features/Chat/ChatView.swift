@@ -242,6 +242,7 @@ struct ChatScreen<HeaderAccessory: View>: View {
         // ForEach may evaluate retained rows after the store changes. Both the
         // row and its date predecessor must come from this immutable snapshot.
         let snapshot = currentMessages
+        let seenBy = store.seenBy(in: roomId)
         return ScrollView {
             VStack(spacing: Space.md) {
                 ForEach(Array(snapshot.enumerated()), id: \.element.id) { index, m in
@@ -270,6 +271,14 @@ struct ChatScreen<HeaderAccessory: View>: View {
                                    companionProfile: isKidHermesRoom && m.senderType == "agent" ? companionProfile : nil)
                         .equatable()
                         .id(m.id)
+                    if let seenBy, seenBy.messageId == m.id {
+                        Text(seenBy.text)
+                            .font(.caption2)
+                            .foregroundStyle(Palette.textSecond)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.top, -Space.sm)
+                            .accessibilityIdentifier("chat-seen-by")
+                    }
                 }
             }
             .scrollTargetLayout()
