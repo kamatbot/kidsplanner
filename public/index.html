@@ -66,6 +66,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
     <form id="first-run-create-form" style="margin-bottom:20px">
       <div class="form-group">
+        <label>How will your family use Fam ETC?</label>
+        <div class="category-picker" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="cat-opt" style="display:flex"><input type="radio" name="first-run-mode" value="school_sync" checked><span class="cat-chip school" style="width:100%;text-align:center;padding:10px 8px">🎓 With School Sync</span></label>
+          <label class="cat-opt" style="display:flex"><input type="radio" name="first-run-mode" value="organizer"><span class="cat-chip social" style="width:100%;text-align:center;padding:10px 8px">🏡 Just Family Organizer</span></label>
+        </div>
+      </div>
+      <div class="form-group">
         <label>Family name</label>
         <input type="text" id="first-run-family-name" placeholder="The Johnsons" required>
       </div>

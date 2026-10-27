@@ -102,6 +102,14 @@ test("signup page and client require and submit the invite code", () => {
   assert.doesNotMatch(html, /forever|30-day trial|annual plan|TBD|TODO/i);
   assert.match(html, /id="signup-error"[^>]*role="alert"[^>]*aria-live="polite"/);
   assert.match(html, /window\.auth\.signUp\(name, inviteCode\)/);
+  assert.match(html, /id="onboarding-step-1"/);
+  assert.match(html, /id="onboarding-step-2"/);
+  assert.match(html, /id="onboarding-step-3"/);
+  assert.match(html, /id="mode-card-school"/);
+  assert.match(html, /id="mode-card-organizer"/);
+  assert.match(html, /id="onboarding-family-form"/);
+  assert.match(html, /id="onboarding-school-box"/);
+  assert.match(html, /id="onboarding-organizer-box"/);
   assert.match(client, /async function signUp\(name, inviteCode\)/);
   assert.match(client, /JSON\.stringify\(\{ name: name \|\| "", inviteCode: inviteCode \|\| "" \}\)/);
 });

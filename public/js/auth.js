@@ -159,8 +159,22 @@
     return (data && data.families) || [];
   }
 
-  async function createFamily(name) {
-    return api("/api/family", { method: "POST", body: JSON.stringify({ name: name || "" }) });
+  async function createFamily(name, opts) {
+    const body = { name: name || "" };
+    if (opts && typeof opts === "object") {
+      if (typeof opts.schoolSync === "boolean") body.schoolSync = opts.schoolSync;
+      if (opts.plan) body.plan = opts.plan;
+      if (opts.timezone) body.timezone = opts.timezone;
+      if (opts.inviteCode) body.inviteCode = opts.inviteCode;
+    }
+    return api("/api/family", { method: "POST", body: JSON.stringify(body) });
+  }
+
+  async function setSchoolSync(schoolSync) {
+    return api("/api/family/school-sync", {
+      method: "PATCH",
+      body: JSON.stringify({ schoolSync: !!schoolSync }),
+    });
   }
 
   async function joinFamily(code) {
@@ -1127,6 +1141,7 @@
     signOut,
     getMe,
     createFamily,
+    setSchoolSync,
     joinFamily,
     createParentInvite,
     getFamilies,

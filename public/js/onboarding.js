@@ -23,13 +23,46 @@
     return value !== null && typeof value !== "undefined";
   }
 
+  function schoolSyncStorageKey(familyId) {
+    return familyId ? `fam_school_sync_${familyId}` : "";
+  }
+
+  function isSchoolSyncEnabled(familyOrId) {
+    const familyObj = familyOrId && typeof familyOrId === "object" ? familyOrId : null;
+    const familyId = familyObj ? familyObj.id : (typeof familyOrId === "string" ? familyOrId : "");
+    if (familyObj && familyObj.schoolSync === false) return false;
+    const key = schoolSyncStorageKey(familyId);
+    if (key && root.localStorage) {
+      try {
+        const stored = root.localStorage.getItem(key);
+        if (stored === "0") return false;
+        if (stored === "1") return true;
+      } catch (e) { /* ignore storage errors */ }
+    }
+    return true;
+  }
+
+  function setSchoolSyncEnabled(familyId, enabled) {
+    const key = schoolSyncStorageKey(familyId);
+    if (!key || !root.localStorage) return false;
+    try {
+      root.localStorage.setItem(key, enabled ? "1" : "0");
+      return true;
+    } catch (e) { return false; }
+  }
+
   function derive(family, schoolFeeds, actions, actionState) {
     const familyLoaded = !!family;
     const kids = familyLoaded && Array.isArray(family.kids) ? family.kids : [];
     const schoolLoaded = dataKnown(schoolFeeds);
+    const hasSchoolSubs = schoolLoaded && Array.isArray(schoolFeeds.subscriptions) && schoolFeeds.subscriptions.length > 0;
+    const includeSchoolStep = isSchoolSyncEnabled(family) || hasSchoolSubs;
     const actionLoaded = actionState !== "loading" && actionState !== "error" && dataKnown(actions);
     const staleActionsAvailable = Array.isArray(actions) && actions.length > 0;
-    const steps = STEP_DEFINITIONS.map((definition) => {
+    const definitions = includeSchoolStep
+      ? STEP_DEFINITIONS
+      : STEP_DEFINITIONS.filter((definition) => definition.id !== "school");
+    const steps = definitions.map((definition) => {
       let complete = false;
       let pending = false;
       if (definition.id === "kid") {
@@ -39,7 +72,7 @@
         complete = familyLoaded && parentCount(family) >= 2;
         pending = !familyLoaded;
       } else if (definition.id === "school") {
-        complete = schoolLoaded && Array.isArray(schoolFeeds.subscriptions) && schoolFeeds.subscriptions.length > 0;
+        complete = hasSchoolSubs;
         pending = !schoolLoaded;
       } else if (definition.id === "action") {
         complete = staleActionsAvailable || (actionLoaded && actions.length > 0);
@@ -49,6 +82,7 @@
     });
     return {
       steps,
+      schoolSyncEnabled: includeSchoolStep,
       complete: steps.every((step) => step.complete),
       pending: steps.some((step) => step.pending),
       familyLoaded,
@@ -81,6 +115,9 @@
     storageKey,
     isSkipped,
     setSkipped,
+    schoolSyncStorageKey,
+    isSchoolSyncEnabled,
+    setSchoolSyncEnabled,
     stepDefinitions: STEP_DEFINITIONS.map((step) => Object.assign({}, step)),
   };
 })(typeof window !== "undefined" ? window : globalThis);

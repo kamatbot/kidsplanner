@@ -52,3 +52,30 @@ test("skip preference is family-scoped and reversible", () => {
   guide.setSkipped("family-1", false);
   assert.equal(guide.isSkipped("family-1"), false);
 });
+
+test("Just Family Organizer mode (schoolSync: false) omits the school sync step", () => {
+  values.clear();
+  const state = guide.derive(
+    family({
+      schoolSync: false,
+      parentIds: ["parent-1", "parent-2"],
+      kids: [{ id: "kid-1" }],
+      parents: [{ id: "parent-1" }, { id: "parent-2" }],
+    }),
+    null,
+    [{ id: "action-1" }],
+    "ready",
+  );
+
+  assert.deepEqual(Array.from(state.steps, (step) => step.id), ["kid", "parent", "action"]);
+  assert.deepEqual(Array.from(state.steps, (step) => step.complete), [true, true, true]);
+  assert.equal(state.complete, true);
+  assert.equal(state.pending, false);
+
+  assert.equal(guide.schoolSyncStorageKey("family-1"), "fam_school_sync_family-1");
+  guide.setSchoolSyncEnabled("family-1", false);
+  assert.equal(guide.isSchoolSyncEnabled("family-1"), false);
+  guide.setSchoolSyncEnabled("family-1", true);
+  assert.equal(guide.isSchoolSyncEnabled("family-1"), true);
+});
+
