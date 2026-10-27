@@ -363,10 +363,25 @@
   }
 
   /* ---------- chat ---------- */
+  // Read receipts ride along on every message fetch; listeners get the
+  // latest `reads` while getMessages keeps returning a bare array.
+  const chatReadsListeners = [];
+  function onChatReads(cb) { chatReadsListeners.push(cb); }
+  function emitChatReads(data) {
+    if (data && Array.isArray(data.reads)) chatReadsListeners.forEach((cb) => cb(data.reads));
+  }
+
   async function getMessages(since) {
     const qs = since ? ("?since=" + encodeURIComponent(since)) : "";
     const data = await api("/api/chat/messages" + qs, { method: "GET" });
+    emitChatReads(data);
     return (data && data.messages) || [];
+  }
+
+  async function markChatRead(messageId) {
+    const data = await api("/api/chat/read", { method: "POST", body: JSON.stringify({ messageId }) });
+    emitChatReads(data);
+    return data;
   }
 
   async function sendChatMessage(text, media, clientMessageId, expectedContext) {
@@ -1153,6 +1168,9 @@
     unsubscribeWebPush,
     notifySelf,
     getMessages,
+    onChatReads,
+    markChatRead,
+    emitChatReads,
     sendChatMessage,
     deleteChatMessage,
     flagChatMessage,
