@@ -458,6 +458,11 @@ struct ChatScreen<HeaderAccessory: View>: View {
             onBuzz: requestBuzz,
             onSend: { picked in
                 try await store.sendCompressedAttachment(picked, roomId: roomId)
+            },
+            // Voice clips skip photo/video compression: they are already a
+            // small AAC .m4a uploaded as audio/mp4 with durationMs.
+            onSendVoice: { recording in
+                try await store.sendAttachment(recording, roomId: roomId)
             }
         )
         .disabled(isKidHermesRoom && companionProfile?.enabled != true)
@@ -2318,6 +2323,20 @@ struct ChatMessageRow: View, Equatable {
             .accessibilityLabel("BUZZ message from \(senderName): \(message.text)")
             .accessibilityHint("Time Sensitive alert")
             .contextMenu { shareMessageAction; moderationActions }
+        } else if let media = message.media, media.isVoiceMessage {
+            ChatVoiceBubble(media: media,
+                            messageId: message.id,
+                            isMine: isMine,
+                            fill: bubbleFill,
+                            stroke: senderColor.opacity(0.25),
+                            canReact: canReact,
+                            onReact: react)
+                .contextMenu {
+                    if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        shareMessageAction
+                    }
+                    moderationActions
+                }
         } else if let media = message.media, media.isChatAttachment {
             ChatAttachmentBubble(media: media)
                 .contextMenu {

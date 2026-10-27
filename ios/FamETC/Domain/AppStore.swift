@@ -403,6 +403,7 @@ final class AppStore {
         readReportedByRoom = [:]
         pendingChatSends = [:]
         lastSeenChatIdByRoom = [:]
+        ChatVoicePlayer.shared.stop()   // no clip keeps playing across sign-out/account switch
         chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: "Family")]
         activeRoomId = nil
         kidRequests = []

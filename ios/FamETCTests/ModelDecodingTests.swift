@@ -240,6 +240,76 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(r.message.media?.width, 200)
     }
 
+    // MARK: - Voice messages (docs/VOICE-MESSAGES.md)
+
+    func testDecodesVoiceMessageAudioMedia() throws {
+        let payload = """
+        {
+          "messages": [{
+            "id": "m_v1", "familyId": "f_1", "senderType": "kid", "senderId": "k_1",
+            "postedByUserId": "u_kid", "text": "",
+            "media": { "type": "attachment", "attachmentId": "a_0123456789abcdef0123456789abcdef0123",
+                       "url": "/api/chat/attachments/a_0123456789abcdef0123456789abcdef0123",
+                       "filename": "voice.m4a", "mimeType": "audio/mp4", "size": 48213,
+                       "kind": "audio", "durationMs": 6200 },
+            "createdAt": "2026-10-27T09:00:00.000Z",
+            "deleted": false, "deletedBy": null, "flagged": false, "flagReason": null, "flaggedBy": null,
+            "roomId": "family"
+          }]
+        }
+        """
+        let r = try JSONDecoder().decode(MessagesResponse.self, from: Data(payload.utf8))
+        let media = try XCTUnwrap(r.messages.first?.media)
+        XCTAssertEqual(media.type, "attachment")
+        XCTAssertEqual(media.kind, "audio")
+        XCTAssertEqual(media.durationMs, 6200)
+        XCTAssertEqual(media.mimeType, "audio/mp4")
+        XCTAssertEqual(media.attachmentKind, "audio")
+        XCTAssertTrue(media.isVoiceMessage)
+        XCTAssertEqual(r.messages.first?.previewText, "🎤 Voice message")
+
+        // The disk cache round-trips through JSONEncoder: durationMs must survive.
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(r.messages[0]))
+        XCTAssertEqual(restored.media?.durationMs, 6200)
+        XCTAssertEqual(restored, r.messages[0])
+    }
+
+    func testPhotoAttachmentWithoutDurationStillDecodesAndIsNotVoice() throws {
+        let payload = """
+        {
+          "message": {
+            "id": "m_p1", "familyId": "f_1", "senderType": "parent", "senderId": "u_1",
+            "postedByUserId": "u_1", "text": "",
+            "media": { "type": "attachment", "attachmentId": "a_1", "url": "/api/chat/attachments/a_1",
+                       "filename": "beach.jpg", "mimeType": "image/jpeg", "size": 1200, "kind": "photo" },
+            "createdAt": "2026-10-27T09:00:00.000Z",
+            "deleted": false, "deletedBy": null, "flagged": false, "flagReason": null, "flaggedBy": null
+          }
+        }
+        """
+        let r = try JSONDecoder().decode(MessageResponse.self, from: Data(payload.utf8))
+        XCTAssertNil(r.message.media?.durationMs)
+        XCTAssertEqual(r.message.media?.attachmentKind, "photo")
+        XCTAssertEqual(r.message.media?.isVoiceMessage, false)
+        XCTAssertEqual(r.message.previewText, "Sent a photo")
+    }
+
+    func testAudioKindFallsBackToMimeTypeWhenKindMissing() throws {
+        let media = try JSONDecoder().decode(ChatMedia.self, from: Data(#"{"type":"attachment","attachmentId":"a_2","url":"/api/chat/attachments/a_2","mimeType":"audio/mp4","durationMs":1500}"#.utf8))
+        XCTAssertEqual(media.attachmentKind, "audio")
+        XCTAssertTrue(media.isVoiceMessage)
+        XCTAssertEqual(media.durationMs, 1500)
+    }
+
+    func testDecodesAudioUploadDescriptorWithAndWithoutDuration() throws {
+        let audio = try JSONDecoder().decode(ChatAttachmentDescriptor.self, from: Data(#"{"type":"attachment","attachmentId":"a_3","url":"/api/chat/attachments/a_3","filename":"voice.m4a","mimeType":"audio/mp4","size":48213,"kind":"audio","durationMs":6200}"#.utf8))
+        XCTAssertEqual(audio.kind, "audio")
+        XCTAssertEqual(audio.durationMs, 6200)
+        // Photo/video/file descriptors predate durationMs and must keep decoding.
+        let photo = try JSONDecoder().decode(ChatAttachmentDescriptor.self, from: Data(#"{"type":"attachment","attachmentId":"a_4","url":"/api/chat/attachments/a_4","filename":"a.jpg","mimeType":"image/jpeg","size":10,"kind":"photo"}"#.utf8))
+        XCTAssertNil(photo.durationMs)
+    }
+
     func testDecodesFamilyWithParentsNames() throws {
         let payload = """
         {
