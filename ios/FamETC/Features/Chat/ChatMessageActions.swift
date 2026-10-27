@@ -48,14 +48,21 @@ struct ChatReactionBar: View {
     }
 }
 
+/// The pressed bubble's on-screen frame. A reference box so a row can record
+/// it on every scroll without re-rendering.
+final class ChatBubbleFrame {
+    var rect: CGRect = .zero
+}
+
 /// Full-screen overlay presented on long press (see `ChatMessageRow`). The
-/// message sits in the middle of the screen with the reaction bar right above
-/// it, in easy thumb reach, and the actions below; a tall message shifts only
-/// as far as needed to keep everything on screen.
+/// message stays where it was pressed, with the reaction bar right above it
+/// and the actions below, shifted only as far as needed to fit on screen.
 struct ChatMessageActionsOverlay<Preview: View>: View {
     let canReact: Bool
     let selectedReactions: Set<String>
     let alignTrailing: Bool
+    /// The pressed bubble's frame in global coordinates; `.zero` centres the menu.
+    let anchor: CGRect
     let actions: [ChatMessageMenuAction]
     let onReact: (String) -> Void
     let onSelect: (ChatMessageMenuAction) -> Void
@@ -115,12 +122,15 @@ struct ChatMessageActionsOverlay<Preview: View>: View {
         .accessibilityAction(.escape) { onDismiss() }
     }
 
-    /// Top of the menu so the message is centred on screen, clamped so the
-    /// reaction bar and the actions stay on screen.
+    /// Top of the menu so the preview lands on the pressed bubble, clamped so
+    /// the reaction bar and the actions stay on screen.
     private func contentTop(in proxy: GeometryProxy) -> CGFloat {
         let available = proxy.size.height
         let barSpace = canReact ? barHeight + spacing : 0
-        var top = (available - previewHeight) / 2 - barSpace
+        let bubbleTop = anchor == .zero
+            ? (available - previewHeight) / 2
+            : anchor.minY - proxy.frame(in: .global).minY
+        var top = bubbleTop - barSpace
         top = min(top, available - contentHeight - edgeMargin)
         return max(top, edgeMargin)
     }
