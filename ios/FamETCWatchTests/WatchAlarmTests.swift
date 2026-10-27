@@ -3,6 +3,7 @@ import UserNotifications
 import WatchKit
 @testable import FamETCWatch
 
+@MainActor
 final class WatchAlarmTests: XCTestCase {
     private let now = WatchPlanDate.date("2026-09-07", "10:00")!
     private func at(_ time: String, _ day: String = "2026-09-07") -> Date { WatchPlanDate.date(day, time)! }
