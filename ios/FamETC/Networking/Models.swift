@@ -208,8 +208,26 @@ struct ChatMessage: Codable, Identifiable, Equatable {
     /// True only for a server-created Buzz. Optional for cached messages from
     /// before Buzz existed; `isBuzz` keeps the UI check simple and fails closed.
     var buzz: Bool? = nil
+    /// Emoji reactions (one of `ChatReaction.all`), absent on older payloads.
+    var reactions: [ChatReaction]? = nil
 
     var isBuzz: Bool { buzz == true }
+}
+
+/// One reaction on a message: which of the five, who added it, and their
+/// display names (server-resolved; optional for cached messages).
+struct ChatReaction: Codable, Equatable {
+    let key: String
+    var userIds: [String]
+    var names: [String]? = nil
+
+    struct Option: Hashable { let key: String; let emoji: String }
+    /// The fixed five, in display order: server key and emoji.
+    static let all: [Option] = [
+        Option(key: "thumbsup", emoji: "👍"), Option(key: "heart", emoji: "❤️"), Option(key: "laugh", emoji: "😂"),
+        Option(key: "fire", emoji: "🔥"), Option(key: "party", emoji: "🎉"),
+    ]
+    static func emoji(for key: String) -> String? { all.first { $0.key == key }?.emoji }
 }
 
 /// The room id for the always-present family chat thread (docs/TRIPS-PLAN.md).
@@ -675,10 +693,12 @@ struct ChatRead: Codable, Equatable {
     var readAt: String? = nil
 }
 /// `reads` is absent on servers from before read receipts.
-struct MessagesResponse: Codable { var messages: [ChatMessage]; var reads: [ChatRead]? = nil }
+struct MessagesResponse: Codable { var messages: [ChatMessage]; var reads: [ChatRead]? = nil; var updated: [ChatMessage]? = nil }
 struct ChatReadsResponse: Codable { var reads: [ChatRead] }
 /// One receive response: messages plus the room's read marks (nil = unknown).
-struct ChatPage { var messages: [ChatMessage]; var reads: [ChatRead]? = nil }
+/// `updated` carries older messages edited in place (reactions); they are
+/// merged by id and never move the receive cursor.
+struct ChatPage { var messages: [ChatMessage]; var reads: [ChatRead]? = nil; var updated: [ChatMessage] = [] }
 struct MessageResponse: Codable { var message: ChatMessage }
 /// `POST /api/hermes/thread/messages/:messageId/actions` (docs/HERMES-THREADS-CONTRACT.md §2):
 /// `message` is the tapped card, updated; `messages` are new Hermes follow-ups to append.

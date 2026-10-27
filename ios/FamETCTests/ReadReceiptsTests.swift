@@ -46,3 +46,21 @@ final class ReadReceiptsTests: XCTestCase {
         XCTAssertEqual(seen?.text, "Seen by Dad")
     }
 }
+
+/// Emoji reactions: wire decoding (including the `updated` side channel)
+/// and the fixed five.
+final class ChatReactionsTests: XCTestCase {
+    func testDecodesReactionsAndUpdated() throws {
+        let json = #"{"messages":[],"updated":[{"id":"m1","familyId":"f1","senderType":"parent","senderId":"u1","text":"hi","createdAt":"2026-10-27T10:00:00.000Z","deleted":false,"flagged":false,"reactions":[{"key":"fire","userIds":["u2"],"names":["Arya"]}]}]}"#
+        let r = try JSONDecoder().decode(MessagesResponse.self, from: Data(json.utf8))
+        XCTAssertEqual(r.updated?.first?.reactions, [ChatReaction(key: "fire", userIds: ["u2"], names: ["Arya"])])
+        let old = #"{"id":"m2","familyId":"f1","senderType":"parent","senderId":"u1","text":"hi","createdAt":"2026-10-27T10:00:00.000Z","deleted":false,"flagged":false}"#
+        XCTAssertNil(try JSONDecoder().decode(ChatMessage.self, from: Data(old.utf8)).reactions)
+    }
+
+    func testFixedFiveReactions() {
+        XCTAssertEqual(ChatReaction.all.map(\.key), ["thumbsup", "heart", "laugh", "fire", "party"])
+        XCTAssertEqual(ChatReaction.emoji(for: "heart"), "❤️")
+        XCTAssertNil(ChatReaction.emoji(for: "poop"))
+    }
+}
