@@ -433,7 +433,34 @@ enum ScreenTimeServiceError: LocalizedError {
     }
 
     func checkThisDevice() async {
-        await sync(source: "app")
+        // An Apple Screen Time call that never answers must not leave "Checking this
+        // device…" up forever. Stop waiting after 45 s; the sync carries on and
+        // updates the state if it finishes later.
+        let finished = await Self.finishes(within: .seconds(45)) { await self.sync(source: "app") }
+        if !finished {
+            lastError = "This device is taking a while to answer. Keep Fam ETC open and retry in a minute."
+        }
+    }
+
+    @MainActor private final class Once { var done = false }
+
+    /// Runs `work` and returns true if it finished within `limit`, false if the limit came first.
+    private static func finishes(within limit: Duration, _ work: @escaping @MainActor () async -> Void) async -> Bool {
+        let once = Once()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            Task { @MainActor in
+                await work()
+                guard !once.done else { return }
+                once.done = true
+                continuation.resume(returning: true)
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                guard !once.done else { return }
+                once.done = true
+                continuation.resume(returning: false)
+            }
+        }
     }
 
     // MARK: Kid — our Screen Time deal

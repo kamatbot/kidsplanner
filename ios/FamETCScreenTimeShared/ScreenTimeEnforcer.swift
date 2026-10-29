@@ -117,6 +117,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let usageRecord = "fam_st_usageRecord"
         static let usageHeartbeatAt = "fam_st_usageHeartbeatAt"
         static let registeredAt = "fam_st_registeredAt"
+        static let registeringAt = "fam_st_registeringAt"
         static let registeredTotalMinutes = "fam_st_registeredTotalMinutes"
         static func limitEventAt(_ id: String) -> String { "fam_st_limitEventAt.\(id)" }
     }
@@ -329,6 +330,14 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// When the app last (re)registered the DeviceActivity schedules (registration-burst filter).
     var registeredAt: Date? { defaults.object(forKey: Key.registeredAt) as? Date }
+
+    /// Set just before the app (re)registers schedules. A monitor callback within 60 s
+    /// of it is that registration's echo, so the monitor skips its network heartbeat
+    /// (the app heartbeats itself) and `startMonitoring` isn't held up by it.
+    func markRegistering(_ now: Date = Date()) { defaults.set(now, forKey: Key.registeringAt) }
+    func isRegistrationEcho(now: Date = Date()) -> Bool {
+        ScreenTimeSchedule.isRegistrationEcho(now: now, registeredAt: defaults.object(forKey: Key.registeringAt) as? Date)
+    }
 
     /// Weekday ("1"…"7") → the `limit.total` threshold minutes the app last registered.
     private var registeredTotalMinutes: [String: Int] {
@@ -585,13 +594,22 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// `kidId`, when known at the call site, lets `shouldAccept` recognize a device moved
     /// to another kid; omitting it just falls back to the version check.
     func apply(_ policy: ScreenTimePolicy, kidId: String? = nil, now: Date = Date()) {
-        withStateLock { applyUnlocked(policy, kidId: kidId, now: now) }
+        // Only the accept + store needs the shared lock. Registration runs outside it:
+        // `startMonitoring` for an interval that covers now waits for the monitor's
+        // `intervalDidStart`, and the monitor takes this lock, so holding it here
+        // stalled every registration (the launch hang, then "Checking this device…").
+        let previousLimitIds: [String]? = withStateLock {
+            guard shouldAccept(policy, kidId: kidId, generation: assignmentGeneration) else { return nil }
+            let previous = storedPolicy?.limits.map(\.id) ?? []
+            storedPolicy = policy
+            return previous
+        }
+        guard let previousLimitIds else { return }
+        applyRegistrations(policy, previousLimitIds: previousLimitIds, now: now)
     }
 
-    private func applyUnlocked(_ policy: ScreenTimePolicy, kidId: String?, now: Date) {
-        guard shouldAccept(policy, kidId: kidId, generation: assignmentGeneration) else { return }
-        let previousLimitIds = storedPolicy?.limits.map(\.id) ?? []
-        storedPolicy = policy
+    private func applyRegistrations(_ policy: ScreenTimePolicy, previousLimitIds: [String], now: Date) {
+        markRegistering(now)
         let center = DeviceActivityCenter()
         var failures: [String] = []
         if Self.currentAuthState != .approved { failures.append("authorization_unavailable") }
@@ -716,6 +734,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// Registers the quarter-day heartbeat activities that aren't in `registered`.
     private func registerHeartbeats(center: DeviceActivityCenter, skipping registered: Set<DeviceActivityName> = []) -> [String] {
         var failures: [String] = []
+        markRegistering()
         for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() {
             let schedule = DeviceActivitySchedule(intervalStart: w.start, intervalEnd: w.end, repeats: true)
             if registered.contains(.heartbeat(n)), center.schedule(for: .heartbeat(n)) == schedule { continue }
@@ -805,6 +824,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         let plan = registrationPlan(policy, now: now)
         var failures = plan.failures
         defaults.set(now, forKey: Key.registeredAt)
+        markRegistering()
         var totalMinutes: [String: Int] = [:]
         for activity in plan.activities {
             do { try center.startMonitoring(activity.name, during: activity.schedule, events: activity.events) }

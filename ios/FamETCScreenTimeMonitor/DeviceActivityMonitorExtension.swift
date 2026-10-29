@@ -15,8 +15,11 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         super.intervalDidStart(for: activity)
         enforcer.recordMonitorFire()
         let name = activity.rawValue
-        if name.hasPrefix("heartbeat.") { heartbeat() }   // always, even while Screen Time is off
         let now = Date()
+        // Echo of the app registering schedules: the app heartbeats itself, and its
+        // `startMonitoring` call waits for this callback to return.
+        let echo = enforcer.isRegistrationEcho(now: now)
+        if name.hasPrefix("heartbeat."), !echo { heartbeat() }   // always, even while Screen Time is off
         enforcer.reconcileShields(now: now)
         guard enforcer.isEnrolled, enforcer.storedPolicy?.enabled == true else { return }
 
@@ -32,11 +35,11 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             guard enforcer.downtimeShouldShield(id: id, now: now) else { return }
             // Refresh first: a force-quit app never gets the "turned off" push, so the stored
             // policy may be stale. downtimeDidStart re-checks the refreshed policy.
-            heartbeat()
+            if !echo { heartbeat() }
             enforcer.downtimeDidStart(id: id, now: now)
         } else if activity == .pause {
             guard enforcer.pauseShouldShield(now: now) else { return }
-            heartbeat()
+            if !echo { heartbeat() }
             enforcer.pauseDidStart(now: now)
         }
     }
