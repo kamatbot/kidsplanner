@@ -117,6 +117,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         static let usageRecord = "fam_st_usageRecord"
         static let usageHeartbeatAt = "fam_st_usageHeartbeatAt"
         static let registeredAt = "fam_st_registeredAt"
+        static let registeringAt = "fam_st_registeringAt"
         static let registeredTotalMinutes = "fam_st_registeredTotalMinutes"
         static func limitEventAt(_ id: String) -> String { "fam_st_limitEventAt.\(id)" }
     }
@@ -329,6 +330,18 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// When the app last (re)registered the DeviceActivity schedules (registration-burst filter).
     var registeredAt: Date? { defaults.object(forKey: Key.registeredAt) as? Date }
+
+    /// Why DeviceActivity refused registrations during the last apply (this process
+    /// only, shown on the setup screen's failed device check).
+    private(set) var registrationErrors: [String] = []
+
+    /// Set just before the app (re)registers schedules. A monitor callback within 60 s
+    /// of it is that registration's echo, so the monitor skips its network heartbeat
+    /// (the app heartbeats itself) and `startMonitoring` isn't held up by it.
+    func markRegistering(_ now: Date = Date()) { defaults.set(now, forKey: Key.registeringAt) }
+    func isRegistrationEcho(now: Date = Date()) -> Bool {
+        ScreenTimeSchedule.isRegistrationEcho(now: now, registeredAt: defaults.object(forKey: Key.registeringAt) as? Date)
+    }
 
     /// Weekday ("1"…"7") → the `limit.total` threshold minutes the app last registered.
     private var registeredTotalMinutes: [String: Int] {
@@ -585,13 +598,23 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// `kidId`, when known at the call site, lets `shouldAccept` recognize a device moved
     /// to another kid; omitting it just falls back to the version check.
     func apply(_ policy: ScreenTimePolicy, kidId: String? = nil, now: Date = Date()) {
-        withStateLock { applyUnlocked(policy, kidId: kidId, now: now) }
+        // Only the accept + store needs the shared lock. Registration runs outside it:
+        // `startMonitoring` for an interval that covers now waits for the monitor's
+        // `intervalDidStart`, and the monitor takes this lock, so holding it here
+        // stalled every registration (the launch hang, then "Checking this device…").
+        let previousLimitIds: [String]? = withStateLock {
+            guard shouldAccept(policy, kidId: kidId, generation: assignmentGeneration) else { return nil }
+            let previous = storedPolicy?.limits.map(\.id) ?? []
+            storedPolicy = policy
+            return previous
+        }
+        guard let previousLimitIds else { return }
+        applyRegistrations(policy, previousLimitIds: previousLimitIds, now: now)
     }
 
-    private func applyUnlocked(_ policy: ScreenTimePolicy, kidId: String?, now: Date) {
-        guard shouldAccept(policy, kidId: kidId, generation: assignmentGeneration) else { return }
-        let previousLimitIds = storedPolicy?.limits.map(\.id) ?? []
-        storedPolicy = policy
+    private func applyRegistrations(_ policy: ScreenTimePolicy, previousLimitIds: [String], now: Date) {
+        markRegistering(now)
+        registrationErrors = []
         let center = DeviceActivityCenter()
         var failures: [String] = []
         if Self.currentAuthState != .approved { failures.append("authorization_unavailable") }
@@ -599,13 +622,20 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
            Self.decodeSelection(essential).map(Self.isValidEssentialSelection) != true { failures.append("invalid_essential_selection") }
         var expected = Set(ScreenTimeSchedule.heartbeatWindows().indices.map(DeviceActivityName.heartbeat))
         defer {
+            // iOS can list a fresh registration a moment late. Off the main thread, so
+            // give it up to ~1.5 s before calling the check failed.
+            let desired = policy.enabled ? registrationPlan(policy, now: now).activities : []
+            for _ in 0..<6 where !(expected.isSubset(of: Set(center.activities))
+                                   && desired.allSatisfy({ Self.isRegistered($0, in: center) })) {
+                usleep(250_000)
+            }
             let actual = Set(center.activities)
             if !expected.isSubset(of: actual) { failures.append("missing_activities") }
             if expected.contains(where: { center.schedule(for: $0) == nil }) { failures.append("missing_schedule") }
             if policy.enabled {
                 let plan = registrationPlan(policy, now: now)
                 failures += plan.failures
-                if !plan.activities.allSatisfy({ center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events }) {
+                if !plan.activities.allSatisfy({ Self.isRegistered($0, in: center) }) {
                     failures.append("registration_mismatch")
                     defaults.removeObject(forKey: Key.scheduleSignature)
                 }
@@ -650,7 +680,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         if policy.downtime.count > 4 { failures.append("too_many_downtime_windows") }
         let desired = registrationPlan(policy, now: now)
         let schedulesPresent = desired.failures.isEmpty && desired.activities.allSatisfy {
-            center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events
+            Self.isRegistered($0, in: center)
         }
         if signature != defaults.string(forKey: Key.scheduleSignature) || !schedulesPresent {
             let stop = registered.filter { $0 != .pause }
@@ -686,6 +716,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                     try center.startMonitoring(.pause, during: schedule)
                     defaults.set(pauseSig, forKey: Key.pauseSignature)
                 } catch {
+                    registrationErrors.append("pause: \(error)")
                     failures.append("pause_registration_failed")
                     defaults.removeObject(forKey: Key.pauseSignature)
                 }
@@ -716,12 +747,14 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// Registers the quarter-day heartbeat activities that aren't in `registered`.
     private func registerHeartbeats(center: DeviceActivityCenter, skipping registered: Set<DeviceActivityName> = []) -> [String] {
         var failures: [String] = []
+        markRegistering()
         for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() {
             let schedule = DeviceActivitySchedule(intervalStart: w.start, intervalEnd: w.end, repeats: true)
-            if registered.contains(.heartbeat(n)), center.schedule(for: .heartbeat(n)) == schedule { continue }
+            if registered.contains(.heartbeat(n)), Self.isRegistered((.heartbeat(n), schedule, [:]), in: center) { continue }
             do {
                 try center.startMonitoring(.heartbeat(n), during: schedule)
             } catch {
+                registrationErrors.append("heartbeat.\(n): \(error)")
                 failures.append("heartbeat_registration_failed")
             }
         }
@@ -730,6 +763,22 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     private typealias Registration = (name: DeviceActivityName, schedule: DeviceActivitySchedule,
                                      events: [DeviceActivityEvent.Name: DeviceActivityEvent])
+
+    /// Whether `center` holds `registration`: same interval, repeat and event thresholds.
+    /// Not `==` on the schedule and events. What iOS hands back can differ in fields
+    /// we never set (calendar, time zone, token encoding), and on iPad that made every
+    /// check fail as `registration_mismatch` even though the schedules were registered.
+    private static func isRegistered(_ registration: Registration, in center: DeviceActivityCenter) -> Bool {
+        func clock(_ c: DateComponents) -> [Int?] { [c.weekday, c.hour, c.minute, c.second ?? 0] }
+        guard let actual = center.schedule(for: registration.name),
+              clock(actual.intervalStart) == clock(registration.schedule.intervalStart),
+              clock(actual.intervalEnd) == clock(registration.schedule.intervalEnd),
+              actual.repeats == registration.schedule.repeats else { return false }
+        let events = center.events(for: registration.name)
+        return Set(events.keys) == Set(registration.events.keys) && registration.events.allSatisfy { name, event in
+            events[name].map { clock($0.threshold) == clock(event.threshold) } ?? false
+        }
+    }
 
     private func registrationPlan(_ policy: ScreenTimePolicy, now: Date) -> (activities: [Registration], failures: [String]) {
         var activities: [Registration] = []
@@ -805,10 +854,14 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         let plan = registrationPlan(policy, now: now)
         var failures = plan.failures
         defaults.set(now, forKey: Key.registeredAt)
+        markRegistering()
         var totalMinutes: [String: Int] = [:]
         for activity in plan.activities {
             do { try center.startMonitoring(activity.name, during: activity.schedule, events: activity.events) }
-            catch { failures.append("activity_registration_failed") }
+            catch {
+                failures.append("activity_registration_failed")
+                registrationErrors.append("\(activity.name.rawValue): \(error)")
+            }
             if let event = activity.events[DeviceActivityEvent.Name("limit.total")],
                let weekday = activity.schedule.intervalStart.weekday {
                 totalMinutes[String(weekday)] = (event.threshold.hour ?? 0) * 60 + (event.threshold.minute ?? 0)
@@ -851,7 +904,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         var expected = Set(activities.map(\.name))
         var failures = health.failures
         if policy.enabled { failures += plan.failures }
-        if !activities.allSatisfy({ center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events }) {
+        if !activities.allSatisfy({ Self.isRegistered($0, in: center) }) {
             failures.append("registration_mismatch")
         }
         if policy.enabled, let interval = ScreenTimeSchedule.pauseInterval(now: now, until: policy.pauseUntilDate) {
