@@ -622,6 +622,13 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
            Self.decodeSelection(essential).map(Self.isValidEssentialSelection) != true { failures.append("invalid_essential_selection") }
         var expected = Set(ScreenTimeSchedule.heartbeatWindows().indices.map(DeviceActivityName.heartbeat))
         defer {
+            // iOS can list a fresh registration a moment late. Off the main thread, so
+            // give it up to ~1.5 s before calling the check failed.
+            let desired = policy.enabled ? registrationPlan(policy, now: now).activities : []
+            for _ in 0..<6 where !(expected.isSubset(of: Set(center.activities))
+                                   && desired.allSatisfy({ Self.isRegistered($0, in: center) })) {
+                usleep(250_000)
+            }
             let actual = Set(center.activities)
             if !expected.isSubset(of: actual) { failures.append("missing_activities") }
             if expected.contains(where: { center.schedule(for: $0) == nil }) { failures.append("missing_schedule") }
