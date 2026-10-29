@@ -331,6 +331,10 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
     /// When the app last (re)registered the DeviceActivity schedules (registration-burst filter).
     var registeredAt: Date? { defaults.object(forKey: Key.registeredAt) as? Date }
 
+    /// Why DeviceActivity refused registrations during the last apply (this process
+    /// only, shown on the setup screen's failed device check).
+    private(set) var registrationErrors: [String] = []
+
     /// Set just before the app (re)registers schedules. A monitor callback within 60 s
     /// of it is that registration's echo, so the monitor skips its network heartbeat
     /// (the app heartbeats itself) and `startMonitoring` isn't held up by it.
@@ -610,6 +614,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     private func applyRegistrations(_ policy: ScreenTimePolicy, previousLimitIds: [String], now: Date) {
         markRegistering(now)
+        registrationErrors = []
         let center = DeviceActivityCenter()
         var failures: [String] = []
         if Self.currentAuthState != .approved { failures.append("authorization_unavailable") }
@@ -704,6 +709,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
                     try center.startMonitoring(.pause, during: schedule)
                     defaults.set(pauseSig, forKey: Key.pauseSignature)
                 } catch {
+                    registrationErrors.append("pause: \(error)")
                     failures.append("pause_registration_failed")
                     defaults.removeObject(forKey: Key.pauseSignature)
                 }
@@ -741,6 +747,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             do {
                 try center.startMonitoring(.heartbeat(n), during: schedule)
             } catch {
+                registrationErrors.append("heartbeat.\(n): \(error)")
                 failures.append("heartbeat_registration_failed")
             }
         }
@@ -828,7 +835,10 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         var totalMinutes: [String: Int] = [:]
         for activity in plan.activities {
             do { try center.startMonitoring(activity.name, during: activity.schedule, events: activity.events) }
-            catch { failures.append("activity_registration_failed") }
+            catch {
+                failures.append("activity_registration_failed")
+                registrationErrors.append("\(activity.name.rawValue): \(error)")
+            }
             if let event = activity.events[DeviceActivityEvent.Name("limit.total")],
                let weekday = activity.schedule.intervalStart.weekday {
                 totalMinutes[String(weekday)] = (event.threshold.hour ?? 0) * 60 + (event.threshold.minute ?? 0)

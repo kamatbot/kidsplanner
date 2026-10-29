@@ -1322,6 +1322,14 @@ struct ScreenTimeKidSetupSheet: View {
                          : "Waiting for the current device check. Keep Fam ETC open and retry when online.")
                         .font(Typography.body).foregroundStyle(Palette.textSecond)
                         .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    if !health.failures.isEmpty {
+                        // What iOS refused, so a failed check can be diagnosed from a screenshot.
+                        Text((["\(health.registeredActivities) of \(health.expectedActivities) registered", health.failures.joined(separator: ", ")]
+                              + ScreenTimeEnforcer.shared.registrationErrors.prefix(3)).joined(separator: " · "))
+                            .font(Typography.caption).foregroundStyle(Palette.textSecond)
+                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
                 }
                 if let error = service.lastError { Text(error).font(Typography.label).foregroundStyle(Palette.frDanger) }
             }
