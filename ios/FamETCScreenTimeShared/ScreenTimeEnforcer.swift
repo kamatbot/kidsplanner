@@ -58,7 +58,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         if lock.depth == 0 {
             if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroup) {
                 descriptor = Darwin.open(container.appendingPathComponent("fam_st_state.lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-                if descriptor >= 0 { _ = flock(descriptor, LOCK_EX) }
+                if descriptor >= 0, !Self.lockFile(descriptor) { Darwin.close(descriptor); descriptor = -1 }
             }
             defaults.synchronize()
         }
@@ -70,6 +70,20 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             lock.process.unlock()
         }
         return work()
+    }
+
+    /// Waits a bounded time for the App Group lock. The other side can hold it for a
+    /// long time (a monitor callback that the app's own `startMonitoring` triggered,
+    /// or an extension suspended mid-callback), and an unbounded `LOCK_EX` here froze
+    /// the app at launch. Past the bound, carry on without it: the version and
+    /// assignment-generation guards still reject stale writes.
+    private static func lockFile(_ descriptor: Int32, timeout: TimeInterval = 2) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+            guard errno == EWOULDBLOCK || errno == EINTR, Date() < deadline else { return false }
+            usleep(20_000)
+        }
+        return true
     }
 
     private enum Key {
@@ -861,6 +875,8 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     /// POST /api/screen-time/device/heartbeat. Stores (does not apply) the returned policy.
     func heartbeat(source: String, completion: @escaping (Result<ScreenTimePolicy, Error>) -> Void) {
+        // DeviceActivity queries stay outside the shared lock (see `lockFile`).
+        let health = validatedHeartbeatHealth()
         withStateLock {
         var body: [String: Any] = [
             "authStatus": Self.currentAuthState.rawValue,
@@ -869,7 +885,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             "source": source,
             "assignmentGeneration": assignmentGeneration,
         ]
-        if let health = validatedHeartbeatHealth(), let data = try? JSONEncoder().encode(health),
+        if let health, let data = try? JSONEncoder().encode(health),
            let json = try? JSONSerialization.jsonObject(with: data) { body["health"] = json }
         if let pushToken { body["pushToken"] = pushToken }
         if let u = todayUsage() {
