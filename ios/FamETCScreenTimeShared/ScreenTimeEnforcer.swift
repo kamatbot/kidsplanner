@@ -628,7 +628,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
             if policy.enabled {
                 let plan = registrationPlan(policy, now: now)
                 failures += plan.failures
-                if !plan.activities.allSatisfy({ center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events }) {
+                if !plan.activities.allSatisfy({ Self.isRegistered($0, in: center) }) {
                     failures.append("registration_mismatch")
                     defaults.removeObject(forKey: Key.scheduleSignature)
                 }
@@ -673,7 +673,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         if policy.downtime.count > 4 { failures.append("too_many_downtime_windows") }
         let desired = registrationPlan(policy, now: now)
         let schedulesPresent = desired.failures.isEmpty && desired.activities.allSatisfy {
-            center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events
+            Self.isRegistered($0, in: center)
         }
         if signature != defaults.string(forKey: Key.scheduleSignature) || !schedulesPresent {
             let stop = registered.filter { $0 != .pause }
@@ -743,7 +743,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         markRegistering()
         for (n, w) in ScreenTimeSchedule.heartbeatWindows().enumerated() {
             let schedule = DeviceActivitySchedule(intervalStart: w.start, intervalEnd: w.end, repeats: true)
-            if registered.contains(.heartbeat(n)), center.schedule(for: .heartbeat(n)) == schedule { continue }
+            if registered.contains(.heartbeat(n)), Self.isRegistered((.heartbeat(n), schedule, [:]), in: center) { continue }
             do {
                 try center.startMonitoring(.heartbeat(n), during: schedule)
             } catch {
@@ -756,6 +756,22 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
 
     private typealias Registration = (name: DeviceActivityName, schedule: DeviceActivitySchedule,
                                      events: [DeviceActivityEvent.Name: DeviceActivityEvent])
+
+    /// Whether `center` holds `registration`: same interval, repeat and event thresholds.
+    /// Not `==` on the schedule and events. What iOS hands back can differ in fields
+    /// we never set (calendar, time zone, token encoding), and on iPad that made every
+    /// check fail as `registration_mismatch` even though the schedules were registered.
+    private static func isRegistered(_ registration: Registration, in center: DeviceActivityCenter) -> Bool {
+        func clock(_ c: DateComponents) -> [Int?] { [c.weekday, c.hour, c.minute, c.second ?? 0] }
+        guard let actual = center.schedule(for: registration.name),
+              clock(actual.intervalStart) == clock(registration.schedule.intervalStart),
+              clock(actual.intervalEnd) == clock(registration.schedule.intervalEnd),
+              actual.repeats == registration.schedule.repeats else { return false }
+        let events = center.events(for: registration.name)
+        return Set(events.keys) == Set(registration.events.keys) && registration.events.allSatisfy { name, event in
+            events[name].map { clock($0.threshold) == clock(event.threshold) } ?? false
+        }
+    }
 
     private func registrationPlan(_ policy: ScreenTimePolicy, now: Date) -> (activities: [Registration], failures: [String]) {
         var activities: [Registration] = []
@@ -881,7 +897,7 @@ final class ScreenTimeEnforcer: @unchecked Sendable {
         var expected = Set(activities.map(\.name))
         var failures = health.failures
         if policy.enabled { failures += plan.failures }
-        if !activities.allSatisfy({ center.schedule(for: $0.name) == $0.schedule && center.events(for: $0.name) == $0.events }) {
+        if !activities.allSatisfy({ Self.isRegistered($0, in: center) }) {
             failures.append("registration_mismatch")
         }
         if policy.enabled, let interval = ScreenTimeSchedule.pauseInterval(now: now, until: policy.pauseUntilDate) {
