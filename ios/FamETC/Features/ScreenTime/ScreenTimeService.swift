@@ -280,8 +280,8 @@ enum ScreenTimeServiceError: LocalizedError {
             enrolledKidId = nil
             enrolledKidName = nil
             // The extension saw a 401 (device forgotten): stop leftover schedules.
-            if !DeviceActivityCenter().activities.isEmpty || enforcer.storedPolicy != nil {
-                enforcer.reset()
+            await offMain { enforcer in
+                if !DeviceActivityCenter().activities.isEmpty || enforcer.storedPolicy != nil { enforcer.reset() }
             }
             // Not set up yet: show the kid the parents' rules so the Today card can
             // offer "Set it up". Display only — nothing is enforced until enroll().
@@ -301,17 +301,17 @@ enum ScreenTimeServiceError: LocalizedError {
         do {
             // A parent check must report this attempt's evidence, not revive a
             // previously successful apply that would fail now.
-            if authState == .approved, let stored = enforcer.storedPolicy { enforcer.apply(stored) }
+            if authState == .approved, let stored = enforcer.storedPolicy { await applyOffMain(stored) }
             let sentHealth = enforcer.deviceHealth
             let sentVersion = enforcer.appliedVersion
             let p = try await enforcer.heartbeat(source: source)
-            if authState == .approved { enforcer.apply(p) }
+            if authState == .approved { await applyOffMain(p) }
             if ScreenTimeSchedule.needsHealthAcknowledgement(previous: sentHealth, current: enforcer.deviceHealth,
                                                               previousVersion: sentVersion, currentVersion: enforcer.appliedVersion) {
                 // One bounded acknowledgement. If this reply itself contains a
                 // newer policy, apply it and report on the next normal sync.
                 let latest = try await enforcer.heartbeat(source: source)
-                if authState == .approved { enforcer.apply(latest) }
+                if authState == .approved { await applyOffMain(latest) }
             }
             guard generation == accountGeneration else { return }
             // What's actually enforced: `storedPolicy` only changes when the enforcer's own
@@ -328,7 +328,7 @@ enum ScreenTimeServiceError: LocalizedError {
         } catch ScreenTimeDeviceError.unenrolled {
             // A fresh enrollment may have completed while this failed request
             // resumed. An old 401 must never erase its new device credentials.
-            if !enforcer.isEnrolled { enforcer.reset() }
+            await offMain { enforcer in if !enforcer.isEnrolled { enforcer.reset() } }
             guard generation == accountGeneration else { return }
             if enforcer.isEnrolled { publishDeviceState(); return }
             isEnrolled = false
@@ -340,12 +340,24 @@ enum ScreenTimeServiceError: LocalizedError {
         } catch {
             // Offline: still enforce what we have (e.g. a policy the extension stored, pause expiry).
             if authState == .approved, let stored = enforcer.storedPolicy {
-                enforcer.apply(stored)
+                await applyOffMain(stored)
             }
             guard generation == accountGeneration else { return }
             publishDeviceState()
             lastError = error.localizedDescription
         }
+    }
+
+    /// `apply` and `reset` make many synchronous DeviceActivity / ManagedSettings calls
+    /// under the App Group lock it shares with the monitor extension. On the main thread
+    /// that froze launch once Screen Time access was granted, so they run off it.
+    private func offMain(_ work: @escaping @Sendable (ScreenTimeEnforcer) -> Void) async {
+        let enforcer = enforcer
+        await Task.detached(priority: .userInitiated) { work(enforcer) }.value
+    }
+
+    private func applyOffMain(_ policy: ScreenTimePolicy) async {
+        await offMain { $0.apply(policy) }
     }
 
     /// Kid sessions, once at launch: Apple status observer (revocation while the app
@@ -382,7 +394,7 @@ enum ScreenTimeServiceError: LocalizedError {
             throw ScreenTimeServiceError.message("Couldn't save those apps. Try again.")
         }
         let p = try await enforcer.uploadSelection(limitId: limitId, selection: blob, summary: Self.summary(of: selection))
-        if authState == .approved { enforcer.apply(p) }
+        if authState == .approved { await applyOffMain(p) }
         guard generation == accountGeneration else { throw CancellationError() }
         publishDeviceState()
     }
@@ -402,7 +414,7 @@ enum ScreenTimeServiceError: LocalizedError {
         if policy?.limits.contains(where: \.isTotal) == true {
             try await saveDeviceSelection(limitId: "total", selection: selection)   // applies
         } else if authState == .approved, let p = enforcer.storedPolicy {
-            enforcer.apply(p)
+            await applyOffMain(p)
         }
         publishDeviceState()
     }
