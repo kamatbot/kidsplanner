@@ -34,6 +34,14 @@ explicit confirmation first.
   (free, app-only, any family). The server gates hub APIs on `family.plan`
   (`requireHub`); iOS switches its root on `AppStore.productPlan`. Spec and
   build contract: [docs/SCREEN-TIME-ONLY-PLAN.md](docs/SCREEN-TIME-ONLY-PLAN.md).
+- **Family assistant** (`lib/family-assistant.js`): the built-in "Hermes" seat.
+  A parent's @Hermes message (or any message in their private Hermes thread)
+  makes the server call the Claude API with a compact family snapshot and four
+  tools (add/update event, add/update to-do) that run through
+  `operatorExecution.runDirectParentAction`. Needs `ANTHROPIC_API_KEY`;
+  `FAM_ASSISTANT=off` disables it, `FAM_ASSISTANT_MODEL` overrides the model.
+  It stays silent while an external Hermes gateway is connected. The external
+  Hermes Agent gateway was uninstalled on 2026-11-06.
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
 - **Private child feeds** (`lib/school-api.js`): parents connect each child in
