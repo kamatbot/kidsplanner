@@ -76,6 +76,10 @@ test("Hermes MCP advertises modern stateless tools, Family Memory, case attachme
   const contextTool = list.body.result.tools.find((tool) => tool.name === "fametc_context_get");
   const contextSections = contextTool.inputSchema.properties.sections.items.enum;
   for (const section of ["identities", "preferences", "calendar", "homework", "actions", "meals", "trips", "room", "members"]) assert.ok(contextSections.includes(section), `context schema should advertise ${section}`);
+  // The model must not guess action names (it once sent calendar.event.create and was refused).
+  const approvalTool = list.body.result.tools.find((tool) => tool.name === "fametc_approvals_request");
+  assert.deepEqual(approvalTool.inputSchema.properties.actionType.enum, ["calendar.create", "calendar.update", "action.create", "action.update", "trip.itinerary.update"]);
+  assert.match(approvalTool.description, /calendar\.create \{title, date YYYY-MM-DD/);
   assert.equal(list.body.result.ttlMs, 60000);
   assert.equal(list.body.result.cacheScope, "private");
   assert.equal(list.body.result._meta["io.modelcontextprotocol/serverInfo"].name, "fametc-family-operator");
