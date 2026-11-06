@@ -187,6 +187,21 @@ class FamETCAdapter(BasePlatformAdapter):
             })
         return valid
 
+    async def reauthorize_native_roles(self, source) -> bool:
+        """Hermes >= 0.23 re-checks role_authorized events before each turn.
+
+        Only a literal True lets the message through. Ask FamETC for the rooms
+        this bridge token can reach right now (not the cached room list), so a
+        revoked or rotated connection, or a room the family no longer
+        authorizes, is refused immediately. Any bridge failure fails closed.
+        """
+        try:
+            rooms = await self._list_rooms()
+        except Exception:
+            return False
+        chat_id = str(getattr(source, "chat_id", "") or "")
+        return bool(chat_id) and any(room["roomId"] == chat_id for room in rooms)
+
     async def _poll_room(self, room_id: str, cursor: Optional[str]) -> dict:
         query = {"wait": "1"}
         if cursor:
