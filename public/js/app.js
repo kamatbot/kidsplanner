@@ -1494,14 +1494,11 @@ function calendarIsoDateAt(date, offset) {
 
 function calendarWeekAxis(events, start, end) {
   let axisStart = 8 * 60;
-  let axisEnd = 22 * 60;
+  // Always run through midnight so 10 PM and 11 PM slots can be tapped.
+  const axisEnd = 24 * 60;
   events.forEach((ev) => {
     if (calendarMinutes(ev.time) === null || ev.date > end || (ev.endDate || ev.date) < start) return;
-    const startMinutes = calendarMinutes(ev.time);
-    const endMinutes = calendarMinutes(ev.endTime);
-    if (startMinutes < axisStart) axisStart = 0;
-    if (endMinutes !== null && endMinutes > axisEnd) axisEnd = 1440;
-    if (startMinutes >= axisEnd) axisEnd = 1440;
+    if (calendarMinutes(ev.time) < axisStart) axisStart = 0;
   });
   return { start: axisStart, end: axisEnd };
 }

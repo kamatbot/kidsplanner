@@ -139,6 +139,8 @@ test("week uses compact hourly slots from 8 AM and keeps Timetable read-only", (
   assert.match(markup, /class="week-all-day-row"/);
   assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 8 AM"/);
   assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 3 PM"/);
+  assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 10 PM"/);
+  assert.match(markup, /aria-label="Add event on Wednesday, August 19, 2026 at 11 PM"/);
   assert.doesNotMatch(markup, /aria-label="Add event[^\"]+3:30 PM"/);
   assert.match(markup, /class="week-evt timed-event/);
   const timetableMarkup = renderWeekMarkup([{ id: "lesson-1", date: "2026-08-19", time: "15:30", title: "Math" }], true);
