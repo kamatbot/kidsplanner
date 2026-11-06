@@ -209,3 +209,27 @@ test("a kid's request cannot use the direct write path", (t) => {
   const res = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "fametc_family_write", arguments: { actorToken: token, actionType: "calendar.create", action: { title: "Party", date: "2026-11-10" } } } });
   assert.equal(res.body.result.isError, true);
 });
+
+test("short actor handle resolves to the signed token and writes like the full token", () => {
+  const fixture = familyFixture("Handle");
+  const token = actorToken(fixture, { messageId: "m_handle" });
+  const handle = actorCapabilities.handleFor(token);
+  assert.match(handle, /^opk1_[A-Za-z0-9_-]{20}$/);
+  const verified = actorCapabilities.verify({ family: fixture.auth.family, connection: fixture.auth.connection, token: handle });
+  assert.equal(verified.messageId, "m_handle");
+  assert.equal(verified.actor.type, "parent");
+  const res = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "fametc_family_write", arguments: { actorToken: handle, actionType: "calendar.create", action: { title: "Test", date: "2026-11-07", time: "00:00" } } } });
+  assert.equal(res.statusCode, 200);
+  assert.notEqual(res.body.result.isError, true, JSON.stringify(res.body.result));
+});
+
+test("unknown or garbled actor handles fail as expired, never as another actor", () => {
+  const fixture = familyFixture("HandleBad");
+  const handle = actorCapabilities.handleFor(actorToken(fixture));
+  const garbled = handle.slice(0, -1) + (handle.endsWith("A") ? "B" : "A");
+  for (const bad of [garbled, "opk1_short"]) {
+    assert.throws(() => actorCapabilities.verify({ family: fixture.auth.family, connection: fixture.auth.connection, token: bad }), (error) => error.code === "ACTOR_CAPABILITY_EXPIRED");
+  }
+  const other = familyFixture("HandleOther");
+  assert.throws(() => actorCapabilities.verify({ family: other.auth.family, connection: other.auth.connection, token: handle }), (error) => error.code === "ACTOR_CAPABILITY_INVALID");
+});

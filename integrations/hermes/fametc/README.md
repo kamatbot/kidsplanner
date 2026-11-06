@@ -9,6 +9,15 @@ Only human messages explicitly mentioning `@Hermes` are forwarded. A single
 Hermes conversation is retained per FamETC room even when multiple family
 members participate.
 
+## What changed in v1.6.3 (2026-11-06)
+
+The model mis-copied the ~420-character signed `actorToken` into tool calls,
+which FamETC rejected as `ACTOR_CAPABILITY_INVALID`. FamETC now also attaches a
+short `actorHandle` (`opk1_` plus 20 characters) that maps server-side to the
+full signed token for its 15-minute lifetime, and the plugin gives the model
+only that handle. The signed token is still verified in full. Replies are also
+told to stay in the language the person wrote in.
+
 ## What changed in v1.6.1 (2026-11-06)
 
 Hermes Agent v0.23 re-checks every `role_authorized` message by calling the

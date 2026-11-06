@@ -22,8 +22,12 @@ _ACTION_CAPABILITY_SKILL = Path(__file__).parent / "skills" / "action-capability
 
 
 def _operator_channel_prompt(message: Dict[str, Any]) -> str | None:
-    actor_token = message.get("actorToken")
-    if not isinstance(actor_token, str) or not actor_token.startswith("opact1."):
+    # Prefer the short handle: models garble long signed tokens when copying
+    # them into tool calls, which FamETC reports as an invalid signature.
+    actor_token = message.get("actorHandle")
+    if not isinstance(actor_token, str) or not actor_token.startswith("opk1_"):
+        actor_token = message.get("actorToken")
+    if not isinstance(actor_token, str) or not actor_token.startswith(("opact1.", "opk1_")):
         return None
     if len(actor_token) > 5000:
         return None
