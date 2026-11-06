@@ -42,6 +42,11 @@ explicit confirmation first.
   `FAM_ASSISTANT=off` disables it, `FAM_ASSISTANT_MODEL` overrides the model.
   It stays silent while an external Hermes gateway is connected. The external
   Hermes Agent gateway was uninstalled on 2026-11-06.
+- **Hermes reminders** (`lib/proactive-loop.js`): a once-a-minute server loop
+  that ports the Mac's old `proactive.py` planner (school day end, welcome
+  home, tonight's homework, dinner). It reads `hermes-proactive.buildState()`
+  and posts with `hermesThreads.postNudge()` (idempotent, pushes, topic and
+  kid-safety rules). `FAM_PROACTIVE=off` stops it.
 - **Family chat**: lightweight custom real-time (WebSocket/polling) on our own
   backend, encrypted at rest — net-new, not a copy-ready component.
 - **Private child feeds** (`lib/school-api.js`): parents connect each child in
