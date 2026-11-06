@@ -114,3 +114,25 @@ test("an API failure posts a short apology instead of hanging", async () => {
     assert.match(reply.message.text, /try again/);
   } finally { global.fetch = original; }
 });
+
+test("disabledReason explains a missing key and a lingering Hermes connection", () => {
+  const { fam } = fixture();
+  assert.equal(assistant.disabledReason(fam), null);
+  const key = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  assert.match(assistant.disabledReason(fam), /ANTHROPIC_API_KEY/);
+  process.env.ANTHROPIC_API_KEY = key;
+  hermes.connectFamily(fam.id);
+  assert.match(assistant.disabledReason(fam), /Disconnect Hermes/);
+});
+
+test("a private-thread message gets the reason posted when the assistant is off", async () => {
+  const { parent, fam } = fixture();
+  hermes.connectFamily(fam.id);
+  const msg = parentMessage(fam, parent, "hello");
+  assistant.handleAsync({ fam, scopeKey: fam.id, message: msg, explainWhenOff: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  const last = chat.listMessages(fam.id, { limit: 1 })[0];
+  assert.equal(last.senderType, "agent");
+  assert.match(last.text, /Disconnect Hermes/);
+});
