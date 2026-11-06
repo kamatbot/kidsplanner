@@ -62,6 +62,7 @@ test("Hermes MCP advertises modern stateless tools, Family Memory, case attachme
     "fametc_memory_propose",
     "fametc_attachments_list",
     "fametc_attachments_get_text",
+    "fametc_family_write",
     "fametc_cases_create",
     "fametc_cases_get",
     "fametc_cases_list",
@@ -153,6 +154,9 @@ test("MCP creates a family-scoped durable case from the actor capability", (t) =
   assert.equal(caseData.actorId, fixture.parent.id);
   assert.equal(caseData.state, "draft");
   assert.equal(caseData.context.schemaVersion, "fametc.family-context.v1");
+  // Case tools return a slim context summary, never the full family snapshot.
+  assert.ok(Array.isArray(caseData.context.sections));
+  assert.ok(JSON.stringify(caseData).length < 4000, "case payload must stay small");
   const transitionName = "fametc_cases_transition";
   const impossible = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: transitionName, arguments: { actorToken: actorToken(fixture), caseId: caseData.id, state: "executing" } } });
   assert.equal(impossible.body.result.isError, true);
@@ -163,4 +167,45 @@ test("MCP creates a family-scoped durable case from the actor capability", (t) =
   const bearerOnly = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: transitionName, arguments: { caseId: caseData.id, state: "researching" } } });
   assert.equal(bearerOnly.body.result.isError, true);
   assert.match(bearerOnly.body.result.content[0].text, /actorToken is required/);
+});
+
+
+test("a parent's request writes a calendar event directly, once, without beta enrollment or approval", (t) => {
+  try { require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 is optional on this host"); return; }
+  const events = require("../lib/events");
+  const fixture = familyFixture("DirectWrite");
+  const token = actorToken(fixture, { messageId: "msg_direct_1" });
+  const call = (args) => invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "fametc_family_write", arguments: args } });
+  const action = { title: "Swim practice", date: "2026-11-10", time: "17:00" };
+  const first = call({ actorToken: token, actionType: "calendar.create", action });
+  assert.equal(first.body.result.isError, false, first.body.result.content[0].text);
+  const created = first.body.result.structuredContent;
+  assert.equal(created.actionType, "calendar.create");
+  const saved = events.getById(fixture.fam.id, created.eventId);
+  assert.equal(saved.title, "Swim practice");
+  assert.equal(saved.time, "17:00");
+  // The same message retried (or delivered twice) never duplicates the event.
+  const again = call({ actorToken: token, actionType: "calendar.create", action });
+  assert.equal(again.body.result.structuredContent.eventId, created.eventId);
+  assert.equal(again.body.result.structuredContent.existing, true);
+  // Update goes through the same fast path.
+  const moved = call({ actorToken: token, actionType: "calendar.update", action: { eventId: created.eventId, patch: { time: "18:00" } } });
+  assert.equal(moved.body.result.isError, false, moved.body.result.content[0].text);
+  assert.equal(events.getById(fixture.fam.id, created.eventId).time, "18:00");
+  // Invalid payloads and non-direct action types are refused.
+  const bad = call({ actorToken: token, actionType: "calendar.create", action: { title: "No date" } });
+  assert.equal(bad.body.result.isError, true);
+  const trip = call({ actorToken: token, actionType: "trip.itinerary.update", action: {} });
+  assert.equal(trip.body.result.isError, true);
+});
+
+test("a kid's request cannot use the direct write path", (t) => {
+  try { require("better-sqlite3"); } catch (error) { t.skip("better-sqlite3 is optional on this host"); return; }
+  const fixture = familyFixture("DirectKid");
+  const added = family.addKid(fixture.fam.id, fixture.parent.id, { name: "Kiddo" });
+  const kidId = (family.getFamily(fixture.fam.id).kids || []).find((k) => k.name === "Kiddo").id;
+  assert.ok(kidId, JSON.stringify(added));
+  const token = actorToken(fixture, { actor: { type: "kid", kidId, principalId: `kid:${kidId}` } });
+  const res = invokeMcp(fixture.auth, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "fametc_family_write", arguments: { actorToken: token, actionType: "calendar.create", action: { title: "Party", date: "2026-11-10" } } } });
+  assert.equal(res.body.result.isError, true);
 });

@@ -107,6 +107,9 @@ const _tp = Number(process.env.TRUST_PROXY);
 app.set("trust proxy", Number.isInteger(_tp) && _tp >= 0 ? _tp : 1);
 app.disable("x-powered-by");
 
+const perfMonitor = require("./lib/perf-monitor");
+perfMonitor.start();
+app.use(perfMonitor.slowRequestLogger);
 app.use(compression());
 
 // ---------- security headers ----------
@@ -572,6 +575,7 @@ app.get(["/api/health", "/healthz"], (req, res) => {
       keyConfigured: !!(process.env.DATA_ENCRYPTION_KEY || "").trim(),
       atRestEncrypted: db.isFileEncrypted(),
     },
+    eventLoop: perfMonitor.status(),
     persistence: persistence ? {
       dirty: persistence.dirty,
       flushing: persistence.flushing,
