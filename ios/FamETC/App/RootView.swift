@@ -335,6 +335,9 @@ struct RootView: View {
                                  options: PlanningDestination.allCases,
                                  title: { $0.label }, systemImage: { $0.icon },
                                  identifier: "planning.destination")
+                // A two-option switch, not a full-width bar across an iPad.
+                .frame(maxWidth: 420)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, Space.lg)
                 .padding(.vertical, Space.sm)
                 .background(Palette.bg)

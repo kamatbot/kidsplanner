@@ -40,18 +40,50 @@ struct CalendarScreen: View {
             VStack(spacing: 0) {
                 // iPhone portrait scrolls the audience chips and the Week | Month
                 // pill with its content (`compactAccessory`); grids keep them fixed.
+                // The grids keep one slim toolbar: audience chips on the left and
+                // the Next 7 days homework pill in the otherwise empty right side,
+                // so the week grid starts high enough to show the morning.
                 if useGrid {
-                    if store.isParent {
-                        if isLandscape {
-                            CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
-                                .padding(.horizontal, Space.md)
-                                .padding(.vertical, Space.xs)
-                        } else {
-                            CalendarAudienceBar(selection: $audience, kids: store.kids)
+                    let showsWorkload = hSize == .regular
+                    if isLandscape {
+                        // Landscape: one row. Chips on the left, the homework
+                        // pill in the otherwise empty right side.
+                        if store.isParent || showsWorkload {
+                            HStack(alignment: .center, spacing: Space.md) {
+                                if store.isParent {
+                                    CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                                } else {
+                                    Spacer(minLength: 0)
+                                }
+                                if showsWorkload {
+                                    HomeworkWorkloadPill(homework: displayData.homework)
+                                        .fixedSize()
+                                }
+                            }
+                            .padding(.horizontal, Space.md)
+                            .padding(.top, Space.xs)
+                            .padding(.bottom, Space.xs)
                         }
-                    }
-                    if !isLandscape {
-                        modeBar
+                    } else {
+                        // Portrait: chips get the full width (an 11-inch iPad
+                        // clipped Timetable), then the homework pill and the
+                        // Week | Month switch share the second row.
+                        if store.isParent {
+                            CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                                .padding(.horizontal, Space.lg)
+                                .padding(.top, Space.sm)
+                        }
+                        HStack(spacing: Space.md) {
+                            if showsWorkload {
+                                HomeworkWorkloadPill(homework: displayData.homework)
+                                    .fixedSize()
+                            }
+                            Spacer(minLength: Space.sm)
+                            modePill
+                                .frame(width: 220)
+                        }
+                        .padding(.horizontal, Space.lg)
+                        .padding(.top, Space.sm)
                     }
                 }
                 if store.isLoadingCalendar && store.events.isEmpty && store.familyEvents.isEmpty {
@@ -82,12 +114,6 @@ struct CalendarScreen: View {
                     }
                     .padding(.horizontal, hSize == .regular ? Space.lg : Space.md)
                     .padding(.top, Space.sm)
-                }
-                if hSize == .regular {
-                    HomeworkWorkloadPanel(homework: displayData.homework)
-                        .padding(.horizontal, Space.lg)
-                        .padding(.top, Space.sm)
-                        .padding(.bottom, Space.md)
                 }
                 Group {
                     if store.events.isEmpty && store.familyEvents.isEmpty && store.homework.isEmpty
@@ -180,16 +206,6 @@ struct CalendarScreen: View {
         addEventDate = date
         addEventTime = time
         showAddEvent = true
-    }
-
-    private var modeBar: some View {
-        HStack {
-            Spacer()
-            modePill
-                .frame(width: 260)
-        }
-        .padding(.horizontal, Space.lg)
-        .padding(.top, Space.md)
     }
 
     private var modePill: some View {
@@ -363,47 +379,68 @@ private struct HomeworkSyncErrorNotice: View {
     }
 }
 
-private struct HomeworkWorkloadPanel: View {
+/// iPad Calendar's "Next 7 days" homework summary as one pill in the toolbar.
+/// It used to be a full-width card above the week grid, which pushed the
+/// grid's morning hours off screen. The pill keeps the headline (open count
+/// and the heaviest day) visible; tapping it shows every day and assignment.
+private struct HomeworkWorkloadPill: View {
     let homework: [HomeworkItem]
-    @State private var selectedBucket: HomeworkWorkloadBucket?
+    @State private var showsDetail = false
 
     private var buckets: [HomeworkWorkloadBucket] { HomeworkWorkload.buckets(from: homework) }
     private var assignmentCount: Int { buckets.reduce(0) { $0 + $1.assignments.count } }
 
     var body: some View {
-        Card(padding: Space.lg) {
-            VStack(alignment: .leading, spacing: Space.sm) {
-                Text("Next 7 days")
-                    .font(Typography.cardTitle)
-                    .foregroundStyle(Palette.text)
-                Text(summary)
-                    .font(Typography.body)
-                    .foregroundStyle(Palette.textSecond)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !buckets.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 0) {
-                            ForEach(Array(buckets.enumerated()), id: \.element.id) { index, bucket in
-                                if index > 0 {
-                                    Divider()
-                                        .frame(height: 72)
-                                        .overlay(Palette.border)
-                                }
-                                workloadButton(bucket)
-                            }
-                        }
-                    }
-                    .scrollClipDisabled()
+        let buckets = buckets
+        let heaviest = HomeworkWorkload.heaviest(in: buckets)?.bucket
+        Button {
+            Haptics.selection()
+            showsDetail = true
+        } label: {
+            HStack(spacing: Space.sm) {
+                Image(systemName: "book.closed.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Palette.frYouInk)
+                    .accessibilityHidden(true)
+                Text(buckets.isEmpty ? "No homework due this week" : "\(assignmentCount) due in 7 days")
+                    .font(Typography.body.weight(.semibold))
+                    .foregroundStyle(Palette.frInk)
+                    .lineLimit(1)
+                if let heaviest {
+                    Text("·").foregroundStyle(Palette.frInk2).accessibilityHidden(true)
+                    Label(Self.shortDay(heaviest), systemImage: "exclamationmark.circle.fill")
+                        .font(Typography.caption.weight(.semibold))
+                        .foregroundStyle(Palette.warn)
+                        .lineLimit(1)
                 }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Palette.frInk2)
+                    .accessibilityHidden(true)
             }
+            .padding(.horizontal, Space.lg)
+            .frame(minHeight: 44)
+            .background(Palette.frCard, in: Capsule())
+            .overlay(Capsule().strokeBorder(Palette.frRule, lineWidth: 1))
+            .contentShape(Capsule())
         }
-        .popover(item: $selectedBucket) { bucket in
-            HomeworkWorkloadPopover(bucket: bucket)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Homework in the next 7 days")
+        .accessibilityValue(HomeworkWorkloadSummary.text(buckets: buckets, assignmentCount: assignmentCount))
+        .accessibilityHint("Shows homework due each day")
+        .popover(isPresented: $showsDetail, arrowEdge: .top) {
+            HomeworkWorkloadOverview(buckets: buckets, assignmentCount: assignmentCount)
         }
     }
 
-    private var summary: String {
+    private static func shortDay(_ bucket: HomeworkWorkloadBucket) -> String {
+        if bucket.dayKey == Agenda.todayKey() { return "Heavy today" }
+        return "Heavy \(bucket.date.formatted(.dateTime.weekday(.abbreviated)))"
+    }
+}
+
+enum HomeworkWorkloadSummary {
+    static func text(buckets: [HomeworkWorkloadBucket], assignmentCount: Int) -> String {
         guard !buckets.isEmpty else { return "No open homework is due in the next 7 days." }
         guard let ranking = HomeworkWorkload.heaviest(in: buckets) else {
             return "\(assignmentCount) open assignment\(assignmentCount == 1 ? " is" : "s are") due, with no heavy days."
@@ -422,96 +459,99 @@ private struct HomeworkWorkloadPanel: View {
         let weekday = heaviest.date.formatted(.dateTime.weekday(.wide))
         return "\(weekday) has the heaviest workload based on known estimates — start before then."
     }
-
-    private func workloadButton(_ bucket: HomeworkWorkloadBucket) -> some View {
-        Button {
-            Haptics.selection()
-            selectedBucket = bucket
-        } label: {
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text(bucket.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                    .font(Typography.body.weight(.semibold))
-                    .foregroundStyle(Palette.text)
-                Text("\(bucket.assignments.count) due")
-                    .font(Typography.caption)
-                    .foregroundStyle(Palette.textSecond)
-                Text(bucket.knownEffortCount == 0
-                     ? "No effort estimate"
-                     : "\(bucket.knownEffortMinutes) min known")
-                    .font(Typography.caption)
-                    .foregroundStyle(Palette.textSecond)
-                if bucket.isHeavy {
-                    Label("Heavy day", systemImage: "exclamationmark.circle.fill")
-                        .font(Typography.caption.weight(.semibold))
-                        .foregroundStyle(Palette.warn)
-                }
-            }
-            .frame(minWidth: 132, minHeight: 76, alignment: .leading)
-            .padding(.horizontal, Space.md)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(bucket.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-        .accessibilityValue(accessibilityValue(for: bucket))
-        .accessibilityHint("Shows homework due that day")
-    }
-
-    private func accessibilityValue(for bucket: HomeworkWorkloadBucket) -> String {
-        let count = "\(bucket.assignments.count) assignment\(bucket.assignments.count == 1 ? "" : "s") due"
-        let effort = bucket.knownEffortCount == 0
-            ? "no effort estimates"
-            : "\(bucket.knownEffortMinutes) known minutes"
-        return bucket.isHeavy ? "\(count), \(effort), heavy day" : "\(count), \(effort)"
-    }
 }
 
-private struct HomeworkWorkloadPopover: View {
-    let bucket: HomeworkWorkloadBucket
+/// The pill's popover: the summary sentence, then each day with its
+/// assignments, effort and heavy-day flag.
+private struct HomeworkWorkloadOverview: View {
+    let buckets: [HomeworkWorkloadBucket]
+    let assignmentCount: Int
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Space.md) {
-                Text(bucket.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                    .font(Typography.title)
-                    .foregroundStyle(Palette.text)
-                Text("\(bucket.assignments.count) assignment\(bucket.assignments.count == 1 ? "" : "s") due")
-                    .font(Typography.body)
-                    .foregroundStyle(Palette.textSecond)
-
-                Divider().overlay(Palette.border)
-
-                ForEach(Array(bucket.assignments.enumerated()), id: \.element.id) { index, item in
-                    if index > 0 { Divider().overlay(Palette.border) }
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text(item.title)
-                            .font(Typography.body.weight(.semibold))
-                            .foregroundStyle(Palette.text)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if let subject = item.subject, !subject.isEmpty {
-                            Text(subject)
-                                .font(Typography.caption)
-                                .foregroundStyle(Palette.textSecond)
-                        }
-                        if let effort = item.effortMin {
-                            Label("\(effort) min", systemImage: "clock")
-                                .font(Typography.caption)
-                                .foregroundStyle(Palette.textSecond)
-                        }
-                        if let step = item.firstIncompleteChecklistItem {
-                            Label(step.text, systemImage: "arrow.right")
-                                .font(Typography.body)
+            VStack(alignment: .leading, spacing: Space.lg) {
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text("Next 7 days")
+                        .font(Typography.title)
+                        .foregroundStyle(Palette.text)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(HomeworkWorkloadSummary.text(buckets: buckets, assignmentCount: assignmentCount))
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.textSecond)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(buckets) { bucket in
+                    VStack(alignment: .leading, spacing: Space.sm) {
+                        HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
+                            Text(bucket.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                                .font(Typography.body.weight(.bold))
                                 .foregroundStyle(Palette.text)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .accessibilityLabel("Next step: \(step.text)")
+                                .accessibilityAddTraits(.isHeader)
+                            Spacer(minLength: Space.sm)
+                            Text(Self.meta(bucket))
+                                .font(Typography.caption)
+                                .foregroundStyle(Palette.textSecond)
+                            if bucket.isHeavy {
+                                Label("Heavy", systemImage: "exclamationmark.circle.fill")
+                                    .font(Typography.caption.weight(.semibold))
+                                    .foregroundStyle(Palette.warn)
+                            }
                         }
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(bucket.assignments.enumerated()), id: \.element.id) { index, item in
+                                if index > 0 { Divider().overlay(Palette.border) }
+                                HomeworkWorkloadRow(item: item)
+                                    .padding(.vertical, Space.sm)
+                            }
+                        }
+                        .padding(.horizontal, Space.md)
+                        .background(Palette.panel2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                     }
-                    .accessibilityElement(children: .contain)
                 }
             }
             .padding(Space.xl)
         }
-        .frame(minWidth: 340, idealWidth: 400, maxWidth: 460, minHeight: 220, maxHeight: 520)
+        .frame(minWidth: 360, idealWidth: 420, maxWidth: 480, minHeight: 200, maxHeight: 600)
         .background(Palette.panel)
+    }
+
+    private static func meta(_ bucket: HomeworkWorkloadBucket) -> String {
+        let count = "\(bucket.assignments.count) due"
+        return bucket.knownEffortCount == 0 ? count : "\(count) · \(bucket.knownEffortMinutes) min known"
+    }
+}
+
+private struct HomeworkWorkloadRow: View {
+    let item: HomeworkItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text(item.title)
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.text)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Space.md) {
+                if let subject = item.subject, !subject.isEmpty {
+                    Text(subject)
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                }
+                if let effort = item.effortMin {
+                    Label("\(effort) min", systemImage: "clock")
+                        .font(Typography.caption)
+                        .foregroundStyle(Palette.textSecond)
+                }
+            }
+            if let step = item.firstIncompleteChecklistItem {
+                Label(step.text, systemImage: "arrow.right")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Next step: \(step.text)")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 }
 
