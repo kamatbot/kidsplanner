@@ -45,24 +45,45 @@ struct CalendarScreen: View {
                 // so the week grid starts high enough to show the morning.
                 if useGrid {
                     let showsWorkload = hSize == .regular
-                    if store.isParent || showsWorkload {
-                        HStack(alignment: .center, spacing: Space.md) {
-                            if store.isParent {
-                                CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
-                            } else {
-                                Spacer(minLength: 0)
+                    if isLandscape {
+                        // Landscape: one row. Chips on the left, the homework
+                        // pill in the otherwise empty right side.
+                        if store.isParent || showsWorkload {
+                            HStack(alignment: .center, spacing: Space.md) {
+                                if store.isParent {
+                                    CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                                } else {
+                                    Spacer(minLength: 0)
+                                }
+                                if showsWorkload {
+                                    HomeworkWorkloadPill(homework: displayData.homework)
+                                        .fixedSize()
+                                }
                             }
+                            .padding(.horizontal, Space.md)
+                            .padding(.top, Space.xs)
+                            .padding(.bottom, Space.xs)
+                        }
+                    } else {
+                        // Portrait: chips get the full width (an 11-inch iPad
+                        // clipped Timetable), then the homework pill and the
+                        // Week | Month switch share the second row.
+                        if store.isParent {
+                            CalendarAudienceBar(selection: $audience, kids: store.kids, compact: true)
+                                .padding(.horizontal, Space.lg)
+                                .padding(.top, Space.sm)
+                        }
+                        HStack(spacing: Space.md) {
                             if showsWorkload {
                                 HomeworkWorkloadPill(homework: displayData.homework)
                                     .fixedSize()
                             }
+                            Spacer(minLength: Space.sm)
+                            modePill
+                                .frame(width: 220)
                         }
-                        .padding(.horizontal, isLandscape ? Space.md : Space.lg)
-                        .padding(.top, isLandscape ? Space.xs : Space.sm)
-                        .padding(.bottom, Space.xs)
-                    }
-                    if !isLandscape {
-                        modeBar
+                        .padding(.horizontal, Space.lg)
+                        .padding(.top, Space.sm)
                     }
                 }
                 if store.isLoadingCalendar && store.events.isEmpty && store.familyEvents.isEmpty {
@@ -185,16 +206,6 @@ struct CalendarScreen: View {
         addEventDate = date
         addEventTime = time
         showAddEvent = true
-    }
-
-    private var modeBar: some View {
-        HStack {
-            Spacer()
-            modePill
-                .frame(width: 260)
-        }
-        .padding(.horizontal, Space.lg)
-        .padding(.top, Space.xs)
     }
 
     private var modePill: some View {

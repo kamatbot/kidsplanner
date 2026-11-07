@@ -93,11 +93,6 @@ struct WeekCalendarView: View {
                 Text(weekLabel)
                     .font(compactLandscape ? Typography.cardTitle : Typography.title)
                     .foregroundStyle(Palette.text)
-                if !compactLandscape {
-                    Text("Week calendar")
-                        .font(Typography.caption)
-                        .foregroundStyle(Palette.textSecond)
-                }
             }
             Spacer(minLength: Space.sm)
             if onAdd != nil {

@@ -51,7 +51,9 @@ struct MonthCalendarView: View {
                                         dayNumber: cal.component(.day, from: date), items: itemsByDay[key] ?? [],
                                         homeworkIDs: homeworkIDs,
                                         showKidLabels: showKidLabels,
-                                        maxVisibleItems: compactLandscape ? 1 : 3,
+                                        maxVisibleItems: compactLandscape ? 1 : Self.visibleItems(
+                                            cellHeight: cellHeight(availableHeight: proxy.size.height, weekCount: weekCount)
+                                        ),
                                         onOpenAgenda: {
                                             dayAgendaRef = DayAgendaRef(id: key, date: date)
                                         })
@@ -89,13 +91,33 @@ struct MonthCalendarView: View {
     }
 
     private func cellHeight(availableHeight: CGFloat, weekCount: Int) -> CGFloat {
-        guard compactLandscape else { return hSize == .regular ? 104 : 72 }
+        guard compactLandscape else {
+            guard hSize == .regular else { return 72 }
+            return Self.regularCellHeight(availableHeight: availableHeight, weekCount: weekCount, gridSpacing: gridSpacing)
+        }
         return Self.compactCellHeight(
             availableHeight: availableHeight,
             weekCount: weekCount,
             gridSpacing: gridSpacing,
             bottomClearance: Layout.bottomNavigationClearance
         )
+    }
+
+    /// Portrait iPad: rows share the height under the header, weekday row and
+    /// item count, so a month fills the screen instead of leaving a blank lower
+    /// half. Between 104pt (scrolls on short windows) and 180pt.
+    static func regularCellHeight(availableHeight: CGFloat, weekCount: Int, gridSpacing: CGFloat = 6) -> CGFloat {
+        // header 44 + weekday row 16 + item count ~16, three VStack gaps of 12,
+        // vertical padding 16 * 2, bottom grid padding 12.
+        let fixedHeight: CGFloat = 44 + 16 + 16 + (Space.md * 3) + (Space.lg * 2) + Space.md
+        let rowGaps = CGFloat(max(0, weekCount - 1)) * gridSpacing
+        let available = availableHeight - fixedHeight - rowGaps
+        return min(180, max(104, floor(available / CGFloat(max(1, weekCount)))))
+    }
+
+    /// Chips that fit under the 44pt day-number row (about 19pt each).
+    static func visibleItems(cellHeight: CGFloat) -> Int {
+        max(3, min(6, Int((cellHeight - 48) / 19)))
     }
 
     static func compactCellHeight(
@@ -151,16 +173,20 @@ struct MonthCalendarView: View {
 
     // MARK: date math
 
+    /// Monday first, like the Week grid, Today's week strip and the iPhone
+    /// month, whatever the device region's first weekday is.
+    private static let mondayFirstWeekday = 2
+
     private var weekdaySymbols: [String] {
-        let syms = cal.veryShortWeekdaySymbols
-        let start = cal.firstWeekday - 1
+        let syms = hSize == .regular ? cal.shortWeekdaySymbols : cal.veryShortWeekdaySymbols
+        let start = Self.mondayFirstWeekday - 1
         return Array(syms[start...] + syms[..<start])
     }
     private var gridDays: [Date?] {
         let first = monthAnchor
         let numDays = cal.range(of: .day, in: .month, for: first)?.count ?? 30
         let firstWeekday = cal.component(.weekday, from: first)
-        let leading = (firstWeekday - cal.firstWeekday + 7) % 7
+        let leading = (firstWeekday - Self.mondayFirstWeekday + 7) % 7
         var days: [Date?] = Array(repeating: nil, count: leading)
         for d in 0..<numDays { days.append(cal.date(byAdding: .day, value: d, to: first)) }
         while days.count % 7 != 0 { days.append(nil) }
