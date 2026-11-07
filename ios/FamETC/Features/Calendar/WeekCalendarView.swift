@@ -20,8 +20,11 @@ struct WeekCalendarView: View {
     @State private var eventDetailRef: WeekEventRef?
 
     private var timeAxisWidth: CGFloat { compactLandscape ? 42 : 50 }
-    private var hourHeight: CGFloat { compactLandscape ? 44 : 56 }
-    private var timelineHeight: CGFloat { 24 * hourHeight + 44 }
+    /// The smallest hour row; on a tall iPad the rows grow so the first
+    /// visible hour through midnight fills the grid without scrolling.
+    private var minimumHourHeight: CGFloat { compactLandscape ? 44 : 52 }
+    private static let allDayRowHeight: CGFloat = 28
+    private static let allDayVisibleRows = 3
     private var days: [Date] { WeekCalendarMath.weekDates(startingAt: weekStart) }
 
     var body: some View {
@@ -35,6 +38,11 @@ struct WeekCalendarView: View {
             .map { itemsByDay[DateFmt.ymd.string(from: $0), default: []].filter { !$0.isTimed }.count }
             .max() ?? 0
         let allDayContentHeight = Self.allDayContentHeight(maxItemCount: maxAllDayItemCount)
+        let firstHour = WeekCalendarMath.firstVisibleHour(
+            startMinutes: visibleDays.flatMap { day in
+                itemsByDay[DateFmt.ymd.string(from: day), default: []].compactMap(\.startMinute)
+            }
+        )
 
         GeometryReader { proxy in
             VStack(spacing: compactLandscape ? Space.xs : Space.sm) {
@@ -45,7 +53,20 @@ struct WeekCalendarView: View {
                     maxAllDayItemCount: maxAllDayItemCount,
                     contentHeight: allDayContentHeight
                 )
-                timeline(width: proxy.size.width, days: visibleDays, itemsByDay: itemsByDay)
+                GeometryReader { timelineProxy in
+                    let hourHeight = WeekCalendarMath.fittedHourHeight(
+                        visibleHeight: timelineProxy.size.height,
+                        firstHour: firstHour,
+                        minimum: minimumHourHeight
+                    )
+                    timeline(
+                        width: proxy.size.width,
+                        days: visibleDays,
+                        itemsByDay: itemsByDay,
+                        hourHeight: hourHeight,
+                        firstHour: firstHour
+                    )
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .layoutPriority(1)
@@ -135,26 +156,34 @@ struct WeekCalendarView: View {
             .background(Palette.panel2)
 
             if maxAllDayItemCount > 0 {
-                HStack(alignment: .top, spacing: 0) {
-                    Text("ALL-DAY")
-                        .font(Typography.mono(9, .bold))
-                        .foregroundStyle(Palette.textSecond)
-                        .frame(width: timeAxisWidth, height: contentHeight, alignment: .topLeading)
-                        .padding(.top, 5)
-                    ForEach(days, id: \.self) { day in
-                        allDayItems(
-                            items: itemsByDay[DateFmt.ymd.string(from: day), default: []],
-                            contentHeight: contentHeight
-                        )
-                            .frame(maxWidth: .infinity)
-                            .frame(height: contentHeight)
-                            .padding(.horizontal, 2)
+                ScrollView(.vertical) {
+                    HStack(alignment: .top, spacing: 0) {
+                        Text("ALL-DAY")
+                            .font(Typography.mono(9, .bold))
+                            .foregroundStyle(Palette.textSecond)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .padding(.top, 8)
+                            .padding(.leading, 4)
+                            .frame(width: timeAxisWidth, height: contentHeight, alignment: .topLeading)
+                        ForEach(days, id: \.self) { day in
+                            allDayItems(
+                                items: itemsByDay[DateFmt.ymd.string(from: day), default: []],
+                                contentHeight: contentHeight
+                            )
+                                .frame(maxWidth: .infinity)
+                                .frame(height: contentHeight)
+                                .padding(.horizontal, 2)
+                        }
                     }
                 }
+                // Three rows stay visible; a busier day scrolls inside the band
+                // instead of pushing the hour grid down.
+                .frame(height: min(contentHeight, Self.allDayContentHeight(maxItemCount: Self.allDayVisibleRows)))
+                .scrollBounceBehavior(.basedOnSize)
                 .background(Palette.panel)
             }
         }
-        .fixedSize(horizontal: false, vertical: true)
         .clipShape(RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
@@ -200,13 +229,16 @@ struct WeekCalendarView: View {
     private func timeline(
         width: CGFloat,
         days: [Date],
-        itemsByDay: [String: [WeekCalendarItem]]
+        itemsByDay: [String: [WeekCalendarItem]],
+        hourHeight: CGFloat,
+        firstHour: Int
     ) -> some View {
-        ScrollViewReader { proxy in
+        let timelineHeight = 24 * hourHeight + 44
+        return ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 ZStack(alignment: .topLeading) {
                     HStack(alignment: .top, spacing: 0) {
-                        timeAxis
+                        timeAxis(hourHeight: hourHeight, timelineHeight: timelineHeight)
                             .frame(width: timeAxisWidth)
                         ForEach(days, id: \.self) { day in
                             WeekTimelineDayColumn(
@@ -227,10 +259,10 @@ struct WeekCalendarView: View {
 
                     VStack(spacing: 0) {
                         Color.clear
-                            .frame(height: CGFloat(WeekCalendarMath.initialHour) * hourHeight)
+                            .frame(height: CGFloat(firstHour) * hourHeight)
                         Color.clear
                             .frame(width: 1, height: 1)
-                            .id("week-hour-8")
+                            .id(Self.firstHourAnchor)
                         Spacer(minLength: 0)
                     }
                     .frame(width: 1, height: timelineHeight, alignment: .top)
@@ -241,15 +273,20 @@ struct WeekCalendarView: View {
             .scrollIndicators(.visible)
             .onAppear { scrollToInitialHour(proxy) }
             .onChange(of: weekStart) { _, _ in scrollToInitialHour(proxy) }
+            .onChange(of: firstHour) { _, _ in scrollToInitialHour(proxy) }
+            .onChange(of: hourHeight) { _, _ in scrollToInitialHour(proxy, animated: false) }
         }
     }
 
-    private var timeAxis: some View {
+    private static let firstHourAnchor = "week-first-hour"
+
+    private func timeAxis(hourHeight: CGFloat, timelineHeight: CGFloat) -> some View {
         VStack(alignment: .trailing, spacing: 0) {
             ForEach(0..<24, id: \.self) { hour in
                 Text(WeekCalendarMath.hourLabel(hour))
                     .font(Typography.mono(10))
                     .foregroundStyle(Palette.textSecond)
+                    .padding(.top, 3)
                     .frame(height: hourHeight, alignment: .topTrailing)
                     .frame(maxWidth: .infinity, alignment: .topTrailing)
                     .padding(.trailing, 5)
@@ -268,7 +305,7 @@ struct WeekCalendarView: View {
 
     private static func allDayContentHeight(maxItemCount: Int) -> CGFloat {
         guard maxItemCount > 0 else { return 0 }
-        let itemHeight = CGFloat(maxItemCount * 44)
+        let itemHeight = CGFloat(maxItemCount) * allDayRowHeight
         let spacing = CGFloat(max(0, maxItemCount - 1) * 3)
         return itemHeight + spacing + 8
     }
@@ -285,10 +322,14 @@ struct WeekCalendarView: View {
         onAdd?(date, nil)
     }
 
-    private func scrollToInitialHour(_ proxy: ScrollViewProxy) {
+    private func scrollToInitialHour(_ proxy: ScrollViewProxy, animated: Bool = true) {
         DispatchQueue.main.async {
-            withAnimation(.easeOut(duration: 0.2)) {
-                proxy.scrollTo("week-hour-8", anchor: .top)
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(Self.firstHourAnchor, anchor: .top)
+                }
+            } else {
+                proxy.scrollTo(Self.firstHourAnchor, anchor: .top)
             }
         }
     }
@@ -372,7 +413,9 @@ private struct WeekTimelineDayColumn: View {
                     if let placement = placements[item.id], let start = item.startMinute, let end = item.endMinute {
                         let y = WeekCalendarMath.offset(for: start, hourHeight: hourHeight)
                         let naturalHeight = WeekCalendarMath.durationHeight(start: start, end: end, hourHeight: hourHeight)
-                        let height = min(max(44, naturalHeight), max(44, timelineHeight - y - 2))
+                        // Blocks keep their real length (minus a hairline gap) so a
+                        // 30-minute event no longer covers the one that follows it.
+                        let height = min(max(22, naturalHeight - 2), max(22, timelineHeight - y - 2))
                         let columnWidth = proxy.size.width / CGFloat(placement.columnCount)
                         timedEventBlock(
                             item,
@@ -399,7 +442,7 @@ private struct WeekTimelineDayColumn: View {
         y: CGFloat,
         onFamilyEvent: @escaping (WeekCalendarItem) -> Void
     ) -> some View {
-        let label = WeekEventLabel(item: item, compact: false, showKidLabels: showKidLabels, kids: kids)
+        let label = WeekEventLabel(item: item, compact: false, short: height < 40, showKidLabels: showKidLabels, kids: kids)
         if item.familyEventID != nil {
             Button { onFamilyEvent(item) } label: { label }
                 .buttonStyle(.plain)
@@ -409,7 +452,6 @@ private struct WeekTimelineDayColumn: View {
         } else {
             label
                 .frame(width: width, height: height, alignment: .topLeading)
-                .offset(x: x, y: y)
                 .overlay {
                     // Consume taps on read-only blocks so they cannot fall
                     // through to the empty-slot creator beneath them.
@@ -417,6 +459,7 @@ private struct WeekTimelineDayColumn: View {
                         .contentShape(Rectangle())
                         .onTapGesture {}
                 }
+                .offset(x: x, y: y)
                 .accessibilityHint("Read-only calendar item")
         }
     }
@@ -425,6 +468,9 @@ private struct WeekTimelineDayColumn: View {
 private struct WeekEventLabel: View {
     let item: WeekCalendarItem
     let compact: Bool
+    /// A timed block under 40pt tall: one line, no time row (its position
+    /// on the grid already says when it starts).
+    var short = false
     let showKidLabels: Bool
     let kids: [Kid]
 
@@ -436,17 +482,18 @@ private struct WeekEventLabel: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 4) {
+        HStack(alignment: compact ? .center : .top, spacing: 4) {
             RoundedRectangle(cornerRadius: 1, style: .continuous)
                 .fill(color)
                 .frame(width: compact ? 2.5 : 3)
+                .padding(.vertical, compact ? 5 : 0)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(Typography.caption.weight(.semibold))
                     .foregroundStyle(Palette.text)
-                    .lineLimit(compact ? 1 : 3)
+                    .lineLimit(compact || short ? 1 : 3)
                     .minimumScaleFactor(0.75)
-                if !compact, let time = item.displayTime {
+                if !compact, !short, let time = item.displayTime {
                     Text(time)
                         .font(Typography.mono(9))
                         .foregroundStyle(Palette.textSecond)
@@ -454,12 +501,13 @@ private struct WeekEventLabel: View {
                 }
             }
         }
-        .padding(.vertical, compact ? 3 : 5)
+        .padding(.vertical, compact ? 0 : (short ? 2 : 5))
         .padding(.horizontal, compact ? 3 : 4)
-        .frame(maxWidth: .infinity, minHeight: compact ? 44 : nil, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: compact ? nil : .infinity, alignment: compact ? .leading : .topLeading)
+        .frame(height: compact ? 28 : nil)
         .background(item.kidID == nil ? Palette.frYouSoft : color.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .strokeBorder(color.opacity(0.28), lineWidth: 1)
         )
         .strikethrough(item.isDone, color: Palette.textSecond)
@@ -627,6 +675,21 @@ struct WeekCalendarSlot: Equatable {
 
 enum WeekCalendarMath {
     static let initialHour = 8
+    /// The grid always keeps the hours to midnight reachable (PR #52), but
+    /// opens at 8 AM, or earlier when the week has an earlier event.
+    static func firstVisibleHour(startMinutes: [Int]) -> Int {
+        let earliest = startMinutes.min().map { max(0, min(23, $0 / 60)) } ?? initialHour
+        return min(initialHour, earliest)
+    }
+
+    /// Row height that fits `firstHour` through midnight in `visibleHeight`,
+    /// never smaller than `minimum` and never taller than 88pt.
+    static func fittedHourHeight(visibleHeight: CGFloat, firstHour: Int, minimum: CGFloat) -> CGFloat {
+        let hours = CGFloat(max(1, 24 - firstHour))
+        guard visibleHeight > 0 else { return minimum }
+        return min(88, max(minimum, (visibleHeight / hours).rounded(.down)))
+    }
+
 
     static func monday(containing date: Date, calendar: Calendar = .current) -> Date {
         let local = calendar.startOfDay(for: date)
