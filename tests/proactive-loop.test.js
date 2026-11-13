@@ -46,16 +46,43 @@ const sentFrom = (nudges, postedAt, extra = {}) => nudges.map((n) => Object.assi
   userId: n.userId, nudgeKey: n.nudgeKey, kind: n.card.kind, postedAt: iso(postedAt), status: "open", until: null, covers: (n.card.data || {}).covers || [],
 }, extra));
 
-test("day end: heads-up, then combined status, never repeated", () => {
+test("day end: one message per commitment, no repeat when it ends", () => {
   const state = baseState();
   const first = ofKind(loop.plan(state, at("14:40")), "day-end");
   assert.deepEqual(new Set(first.map((n) => n.userId)), new Set(["p1", "p2"]));
   assert.equal(first[0].text, "Ryshi finishes school in 30 min.");
+  assert.deepEqual(first[0].card.data.covers, ["k-ryshi@15:10"]);
   state.sent = sentFrom(first, "14:40");
   assert.deepEqual(ofKind(loop.plan(state, at("14:50")), "day-end"), []);
-  const combined = ofKind(loop.plan(state, at("15:10")), "day-end");
-  assert.equal(combined[0].text, "Ryshi's school ended now. Arya finishes Chess in 30 min (Room 3).");
-  assert.deepEqual(combined[0].card.data.covers, ["k-arya:soon", "k-ryshi:now"]);
+  // At 15:10 Ryshi's school ends (already announced) and Arya's Chess is 30 min out.
+  const next = ofKind(loop.plan(state, at("15:10")), "day-end");
+  assert.equal(next[0].text, "Arya finishes Chess in 30 min (Room 3).");
+  assert.deepEqual(next[0].card.data.covers, ["k-arya@15:40"]);
+  state.sent = state.sent.concat(sentFrom(next, "15:10"));
+  for (const t of ["15:15", "15:25", "15:40", "15:50"]) assert.deepEqual(ofKind(loop.plan(state, at(t)), "day-end"), [], t);
+});
+
+test("day end: 'ended now' only when the heads-up was missed", () => {
+  const late = ofKind(loop.plan(baseState(), at("15:12")), "day-end");
+  assert.equal(late[0].text, "Ryshi's school ended now. Arya finishes Chess in 28 min (Room 3).");
+});
+
+test("day end: a kid's evening event (cook dinner) messages parents once", () => {
+  const state = baseState({ kids: [kid("k-ryshi", "Ryshi", "19:00", { kind: "event", title: "Cook dinner" })] });
+  const sent = [];
+  for (let m = 0; m <= 45; m += 1) {
+    const now = new Date(at("18:20").getTime() + m * 60000);
+    const out = ofKind(loop.plan(Object.assign({}, state, { sent: sent.slice() }), now), "day-end");
+    for (const n of out) sent.push(Object.assign({ userId: n.userId, nudgeKey: n.nudgeKey, kind: "day-end", postedAt: now.toISOString(), status: "open", until: null, covers: n.card.data.covers }));
+  }
+  assert.equal(sent.filter((s) => s.userId === "p1").length, 1);
+  assert.equal(sent.filter((s) => s.userId === "p2").length, 1);
+});
+
+test("day end: reminders sent under the old soon/now keys are not repeated", () => {
+  const state = baseState({ sent: [{ userId: "p1", nudgeKey: "day-end:2026-09-25:k-ryshi:soon", kind: "day-end", postedAt: iso("14:40"), status: "open", until: null, covers: ["k-ryshi:soon"] }] });
+  const out = ofKind(loop.plan(state, at("15:12")), "day-end").filter((n) => n.userId === "p1");
+  assert.equal(out[0].text, "Arya finishes Chess in 28 min (Room 3).");
 });
 
 test("welcome home an hour after the day ends, and evening check-in for parents", () => {
