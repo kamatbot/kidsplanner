@@ -4737,7 +4737,9 @@ function hermesPendingItems(messages, nowMs = Date.now(), limit = 3) {
   const ACTIONABLE_WINDOW_MS = 18 * 3600 * 1000;
   return (messages || [])
     .filter((m) => m && !m.deleted && m.senderType === 'agent' && m.card
-      && m.card.type === 'hermes-nudge' && m.card.state && m.card.state.status === 'open')
+      && m.card.type === 'hermes-nudge' && m.card.state && m.card.state.status === 'open'
+      // An Undo button on a finished reply isn't something waiting on you.
+      && m.card.kind !== 'assistant-done')
     .filter((m) => (Array.isArray(m.card.actions) ? m.card.actions : []).some((a) => a && !a.open && !a.done))
     .filter((m) => {
       const postedAt = Date.parse(m.createdAt);

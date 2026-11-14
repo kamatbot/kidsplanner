@@ -397,9 +397,9 @@ test("what Hermes helps with: dinner is opt-in, off topics never reach anyone, p
   delete fam.hermesHelpsWith; // a family that never touched the settings
   const auth = connect(fam);
   const settings = await invoke(routes["GET /api/hermes/settings"], { user: parent });
-  assert.deepEqual(settings.body.helpsWith, { schoolDay: true, homework: true, dinner: false });
+  assert.deepEqual(settings.body.helpsWith, { schoolDay: true, homework: true, dinner: false, followUps: true, routines: true, summaries: false });
   assert.deepEqual((await invoke(routes["GET /api/hermes/proactive/state"], { headers: auth })).body.helpsWith,
-    { schoolDay: true, homework: true, dinner: false });
+    { schoolDay: true, homework: true, dinner: false, followUps: true, routines: true, summaries: false });
 
   const dinner = { userId: parent.id, nudgeKey: "dinner-tonight:helps", text: "Dinner tonight isn't planned.",
     card: { kind: "dinner-tonight", actions: [{ id: "dinner-ideas", label: "Show 3 ideas" }] } };
@@ -419,7 +419,7 @@ test("what Hermes helps with: dinner is opt-in, off topics never reach anyone, p
   assert.equal((await invoke(routes["PUT /api/hermes/settings"], { user: ryshiUser, body: { helpsWith: { dinner: true } } })).statusCode, 403);
   assert.equal((await invoke(routes["PUT /api/hermes/settings"], { user: parent, body: { helpsWith: { lasers: true } } })).statusCode, 400);
   const on = await invoke(routes["PUT /api/hermes/settings"], { user: parent, body: { helpsWith: { dinner: true, homework: false } } });
-  assert.deepEqual(on.body.helpsWith, { schoolDay: true, homework: false, dinner: true });
+  assert.deepEqual(on.body.helpsWith, { schoolDay: true, homework: false, dinner: true, followUps: true, routines: true, summaries: false });
   const again = await invoke(routes["POST /api/hermes/proactive/nudges"], { headers: auth, body: { nudges: [dinner, { ...evening, nudgeKey: "home-parent:helps3" }] } });
   assert.equal(again.body.results[0].created, true, "dinner offer arrives once opted in");
   assert.equal(again.body.results[1].skipped, "homework", "homework check-ins stop when turned off");

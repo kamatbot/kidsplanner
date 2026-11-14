@@ -46,6 +46,10 @@ test('an actionable card (a button with no "open" that is not done) shows within
   const older = nudge({ id: 'b', createdAt: hoursAgo(19) });
   assert.deepEqual(c.hermesPendingItems([within], NOW).map((m) => m.id), ['a']);
   assert.deepEqual(c.hermesPendingItems([older], NOW).map((m) => m.id), []);
+  // An Undo button on a finished assistant reply isn't waiting on anyone.
+  const undo = nudge({ id: 'u' });
+  undo.card = Object.assign({}, undo.card, { kind: 'assistant-done', actions: [{ id: 'undo', label: 'Undo', done: false }] });
+  assert.deepEqual(c.hermesPendingItems([undo], NOW).map((m) => m.id), []);
 });
 
 test('a status-only card (no actionable button, e.g. "school ended now") never shows, even freshly posted', () => {
