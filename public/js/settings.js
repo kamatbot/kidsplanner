@@ -14,6 +14,7 @@ function showSettingsSection(section) {
   if (notice) notice.hidden = !isKidSession();
   if (section === 'connections') {
     renderHermesHelpSettings();
+    renderHermesMemorySettings();
     renderDisplaySettingsLink();
   }
 }
@@ -48,6 +49,9 @@ const hermesHelpTopics = [
   ['schoolDay', 'School day updates', 'When lessons and activities end, so you know who’s coming home.'],
   ['homework', 'Homework check-ins', 'Evening nudges for kids, and a homework summary for parents.'],
   ['dinner', 'Dinner & meal planning', 'Offers to plan tonight’s dinner and draft next week’s meals.'],
+  ['followUps', 'Chat follow-ups', 'If something asked for in family chat isn’t done after a few hours, Hermes checks with a parent. Never about a kid ignoring something.'],
+  ['routines', 'Usual week', 'On Sunday evening, flags weekly things (like swim) that aren’t on next week’s calendar.'],
+  ['summaries', 'Morning summary', 'One message around 7am with today’s plan.'],
 ];
 
 function hermesHelpScope() {
@@ -152,6 +156,85 @@ async function saveHermesHelpSetting(key, value) {
       state.saving = false;
       renderHermesHelpSettings();
       document.querySelector(`[data-hermes-topic="${key}"]`)?.focus();
+    }
+  }
+}
+
+// What Hermes remembers: family notes it reads before every reply. Notes it
+// picked up from family chat are marked so a parent can remove a wrong one.
+let hermesMemoryState = null;
+
+async function requestHermesNotes(method = 'GET', { text, id } = {}) {
+  const response = await fetch(id ? `/api/hermes/notes/${encodeURIComponent(id)}` : '/api/hermes/notes', {
+    method, credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...(text ? { body: JSON.stringify({ text }) } : {}),
+  });
+  const data = await response.json();
+  if (!response.ok || !Array.isArray(data.notes)) throw new Error(data.error || 'Could not load what Hermes remembers. Try again.');
+  return data.notes;
+}
+
+function renderHermesMemorySettings() {
+  const scope = hermesHelpScope();
+  const parent = document.getElementById('connections-parent-only');
+  let card = document.getElementById('hermes-memory-settings');
+  if (!scope || !parent) {
+    hermesMemoryState = null;
+    card?.remove();
+    return;
+  }
+  if (!card) {
+    card = document.createElement('section');
+    card.id = 'hermes-memory-settings';
+    card.className = 'settings-subcard';
+    parent.appendChild(card);
+  }
+  if (hermesMemoryState?.scope !== scope) {
+    hermesMemoryState = { scope, notes: null, busy: true, error: '' };
+    loadHermesNotes();
+  }
+  const state = hermesMemoryState;
+  const notes = state.notes || [];
+  card.innerHTML = `<h3>What Hermes remembers</h3>
+    <p class="text-muted">Hermes reads these before every reply. Tell Hermes “remember …” in chat, or add one here.</p>
+    ${state.notes && !notes.length ? '<p class="text-muted">Nothing yet.</p>' : ''}
+    <ul class="hermes-memory-list">${notes.map((n) => `<li>
+      <span>${esc(n.text)}${n.source === 'chat' ? ' <span class="text-muted">(learned from chat)</span>' : ''}</span>
+      <button type="button" class="btn-secondary" data-hermes-note-remove="${esc(n.id)}" aria-label="Forget: ${esc(n.text)}"${state.busy ? ' disabled' : ''}>Forget</button>
+    </li>`).join('')}</ul>
+    <form data-hermes-note-form class="hermes-memory-form">
+      <input type="text" maxlength="200" placeholder="e.g. Dinner is at 7pm" aria-label="New note for Hermes"${state.busy ? ' disabled' : ''}>
+      <button type="submit" class="btn-secondary"${state.busy ? ' disabled' : ''}>Add</button>
+    </form>
+    ${state.error ? `<p class="error-msg" role="status">${esc(state.error)}</p>` : ''}`;
+  card.querySelectorAll('[data-hermes-note-remove]').forEach((button) => {
+    button.addEventListener('click', () => changeHermesNotes('DELETE', { id: button.dataset.hermesNoteRemove }));
+  });
+  card.querySelector('[data-hermes-note-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const text = event.target.querySelector('input')?.value.trim();
+    if (text) changeHermesNotes('POST', { text });
+  });
+}
+
+async function loadHermesNotes() { return changeHermesNotes('GET'); }
+
+async function changeHermesNotes(method, args) {
+  const state = hermesMemoryState;
+  if (!state) return;
+  state.busy = true;
+  state.error = '';
+  if (method !== 'GET') renderHermesMemorySettings();
+  try {
+    const notes = await requestHermesNotes(method, args);
+    if (hermesMemoryState === state) state.notes = notes;
+  } catch (error) {
+    if (hermesMemoryState === state) state.error = error.message;
+  } finally {
+    if (hermesMemoryState === state) {
+      state.busy = false;
+      renderHermesMemorySettings();
     }
   }
 }

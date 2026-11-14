@@ -50,6 +50,10 @@
 .hermes-help-option { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 64px; padding-block: 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .hermes-help-option > span { display: grid; gap: 4px; min-width: 0; }
 .hermes-help-option .text-muted { font-size: 0.875rem; line-height: 1.5; }
+.hermes-memory-list { list-style: none; margin: 0; padding: 0; }
+.hermes-memory-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding-block: 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.hermes-memory-form { display: flex; gap: 8px; margin-top: 12px; }
+.hermes-memory-form input { flex: 1; min-width: 0; }
 .settings-content .hermes-help-option input { width: 20px; height: 20px; flex: 0 0 20px; padding: 0; accent-color: var(--accent); cursor: pointer; }
 .settings-content .hermes-help-option input:disabled { cursor: wait; }
 .hermes-help-status { min-height: 1.5em; margin: 12px 0; }

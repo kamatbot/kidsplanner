@@ -885,6 +885,8 @@ require("./lib/chat-attachments").startMaintenance();
 // Hermes reminders (school end, tonight's homework, dinner): decided here now
 // that no always-on Mac runs the old proactive loop. FAM_PROACTIVE=off stops it.
 require("./lib/proactive-loop").start();
+// Answer any parent message a restart interrupted mid-reply.
+try { require("./lib/family-assistant").recover(); } catch (error) { console.warn(`[family-assistant] recover failed: ${error.message}`); }
 
 // Tests require this module directly and need the bound `server` (e.g. to
 // read its ephemeral port when PORT=0, and to close() it when done) — `app`

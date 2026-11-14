@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('public/js/settings.js', 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
-const defaults = { schoolDay: true, homework: true, dinner: false };
+const defaults = { schoolDay: true, homework: true, dinner: false, followUps: true, routines: true, summaries: false };
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -58,6 +58,7 @@ test('parent controls load server defaults and expose labelled native checkboxes
   assert.deepEqual(requests.map(request => [request.path, request.method]), [['/api/hermes/settings', 'GET']]);
   assert.deepEqual(card().inputs.map(input => [input.dataset.hermesTopic, input.checked, input.disabled]), [
     ['schoolDay', true, false], ['homework', true, false], ['dinner', false, false],
+    ['followUps', true, false], ['routines', true, false], ['summaries', false, false],
   ]);
   assert.match(card().html, /aria-label="Dinner & meal planning"/);
   assert.match(card().html, /approval always stay on/);
@@ -105,11 +106,11 @@ test('old-account preference responses cannot overwrite the next family and chil
   c.fetch = async (path, options) => { requests.push({ path, ...options }); return old.promise; };
   c.renderHermesHelpSettings();
   c.sessionUser = { id: 'b', role: 'parent' }; c.currentFamily = { id: 'family-b' };
-  c.fetch = async () => ({ ok: true, json: async () => ({ helpsWith: { schoolDay: false, homework: false, dinner: true } }) });
+  c.fetch = async () => ({ ok: true, json: async () => ({ helpsWith: { schoolDay: false, homework: false, dinner: true, followUps: false, routines: false, summaries: true } }) });
   c.renderHermesHelpSettings(); await tick();
   old.resolve({ ok: true, json: async () => ({ helpsWith: defaults }) });
   await tick();
-  assert.deepEqual(card().inputs.map(input => input.checked), [false, false, true]);
+  assert.deepEqual(card().inputs.map(input => input.checked), [false, false, true, false, false, true]);
   c.sessionUser = { id: 'kid', role: 'kid' };
   c.renderHermesHelpSettings();
   assert.equal(card(), undefined);

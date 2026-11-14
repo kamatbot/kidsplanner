@@ -36,12 +36,15 @@ explicit confirmation first.
   build contract: [docs/SCREEN-TIME-ONLY-PLAN.md](docs/SCREEN-TIME-ONLY-PLAN.md).
 - **Family assistant** (`lib/family-assistant.js`): the built-in "Hermes" seat.
   A parent's @Hermes message (or any message in their private Hermes thread)
-  makes the server call the Claude API with a compact family snapshot and four
-  tools (add/update event, add/update to-do) that run through
+  makes the server call the Claude API with a compact family snapshot and tools
+  (add/update event and to-do, reminders, notes, follow-ups, undo); writes run through
   `operatorExecution.runDirectParentAction`. Needs `ANTHROPIC_API_KEY`;
   `FAM_ASSISTANT=off` disables it, `FAM_ASSISTANT_MODEL` overrides the model.
   It stays silent while an external Hermes gateway is connected. The external
-  Hermes Agent gateway was uninstalled on 2026-11-06.
+  Hermes Agent gateway was uninstalled on 2026-11-06. Memory (family notes,
+  reminders, chat follow-ups, undo log) lives in `lib/assistant-memory.js`;
+  chat follow-up detection in `lib/chat-followups.js` (`FAM_FOLLOWUPS=off`
+  stops it). Design: [docs/HERMES-ASSISTANT.md](docs/HERMES-ASSISTANT.md).
 - **Hermes reminders** (`lib/proactive-loop.js`): a once-a-minute server loop
   that ports the Mac's old `proactive.py` planner (school day end, welcome
   home, tonight's homework, dinner). It reads `hermes-proactive.buildState()`

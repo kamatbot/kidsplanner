@@ -10,6 +10,7 @@ const crypto = require("crypto");
 process.env.FAM_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fametc-family-assistant-"));
 process.env.DATA_ENCRYPTION_KEY = crypto.randomBytes(32).toString("hex");
 process.env.ANTHROPIC_API_KEY = "test-key";
+process.env.FAM_ASSISTANT_RETRY_MS = "0";
 
 const store = require("../lib/store");
 const family = require("../lib/family");
@@ -60,8 +61,10 @@ test("a parent's @Hermes request adds the event through the tool and posts a sho
   assert.equal(saved[0].time, "21:00");
   assert.equal(claude.calls.length, 2);
   const first = claude.calls[0].body;
-  assert.deepEqual(first.tools.map((t) => t.name), ["add_event", "update_event", "add_todo", "update_todo"]);
-  assert.match(first.system, /Family snapshot/);
+  assert.deepEqual(first.tools.map((t) => t.name), ["add_event", "update_event", "add_todo", "update_todo", "set_reminder", "remember", "forget", "close_followup", "undo_last"]);
+  assert.match(first.system.map((b) => b.text).join("\n"), /Family snapshot/);
+  assert.deepEqual(first.system.map((b) => b.cache_control && b.cache_control.type), ["ephemeral", "ephemeral"]);
+  assert.equal(first.tools.at(-1).cache_control.type, "ephemeral");
   assert.equal(first.messages.at(-1).role, "user");
   assert.match(first.messages.at(-1).content, /add test at 9pm/);
   const toolResult = claude.calls[1].body.messages.at(-1).content[0];
