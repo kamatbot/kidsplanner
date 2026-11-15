@@ -27,6 +27,7 @@ const {
 const store = require("./lib/store");
 const accountDeletion = require("./lib/account-deletion");
 const db = require("./lib/db");
+const singleInstance = require("./lib/single-instance");
 const datacrypto = require("./lib/datacrypto");
 const hermes = require("./lib/hermes");
 const billing = require("./lib/billing");
@@ -576,6 +577,7 @@ app.get(["/api/health", "/healthz"], (req, res) => {
       atRestEncrypted: db.isFileEncrypted(),
     },
     eventLoop: perfMonitor.status(),
+    instance: singleInstance.status(),
     persistence: persistence ? {
       dirty: persistence.dirty,
       flushing: persistence.flushing,
@@ -876,17 +878,29 @@ app.get(["/app", "/app/*", "/goals", "/activities", "/settings"], requireAuth, (
 });
 
 const listenTarget = process.env.SOCKET_PATH || PORT;
-const server = app.listen(listenTarget, () => {
-  console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD_INFO.label}${BUILD_INFO.builtAt ? " @ " + BUILD_INFO.builtAt : ""}, assets ${BUILD})`);
+// Background jobs run in exactly one process. Hostinger's LiteSpeed starts
+// several Node processes for this app; lib/single-instance.js picks one
+// leader to own the data and jobs and has the others forward requests to it.
+// Outside production (tests, local dev) it is a plain app.listen().
+function startBackgroundJobs() {
+  schoolApi.startScheduler();
+  screenTime.startMonitor();
+  require("./lib/chat-attachments").startMaintenance();
+  // Hermes reminders (school end, tonight's homework, dinner): decided here now
+  // that no always-on Mac runs the old proactive loop. FAM_PROACTIVE=off stops it.
+  require("./lib/proactive-loop").start();
+  // Answer any parent message a restart interrupted mid-reply.
+  try { require("./lib/family-assistant").recover(); } catch (error) { console.warn(`[family-assistant] recover failed: ${error.message}`); }
+}
+const server = singleInstance.serve(app, {
+  listenTarget,
+  dataDir: require("./lib/paths").DATA_DIR,
+  onListening: () => {
+    console.log(`Fam ETC server listening on ${listenTarget} (build ${BUILD_INFO.label}${BUILD_INFO.builtAt ? " @ " + BUILD_INFO.builtAt : ""}, assets ${BUILD}, pid ${process.pid})`);
+  },
+  onLeader: startBackgroundJobs,
+  beforeLead: () => db.dropCache(),
 });
-schoolApi.startScheduler();
-screenTime.startMonitor();
-require("./lib/chat-attachments").startMaintenance();
-// Hermes reminders (school end, tonight's homework, dinner): decided here now
-// that no always-on Mac runs the old proactive loop. FAM_PROACTIVE=off stops it.
-require("./lib/proactive-loop").start();
-// Answer any parent message a restart interrupted mid-reply.
-try { require("./lib/family-assistant").recover(); } catch (error) { console.warn(`[family-assistant] recover failed: ${error.message}`); }
 
 // Tests require this module directly and need the bound `server` (e.g. to
 // read its ephemeral port when PORT=0, and to close() it when done) — `app`
