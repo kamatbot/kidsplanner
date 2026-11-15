@@ -131,3 +131,37 @@ test("three processes: one leader runs jobs, followers forward, leader exit and 
   assert.deepEqual(jobs(dir), [leader, second, third]);
   assert.equal(singleInstance.pidAlive(second), false);
 });
+
+test("forwarding still works when the host ignores a second http listen() (LiteSpeed lsnode)", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fam-si-ls-"));
+  const ports = [await freePort(), await freePort(), await freePort()];
+  const kids = ports.map((p) => start(dir, p, { FAM_TEST_LSNODE: "1" }));
+  t.after(() => {
+    for (const k of kids) { try { k.kill("SIGKILL"); } catch (_) {} }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  await Promise.all(kids.map((k) => k.ready));
+  const leader = await waitFor(async () => {
+    const pids = await Promise.all(ports.map((p) => request(p).then((r) => Number(r.body))));
+    return pids.every((pid) => pid === pids[0]) ? pids[0] : null;
+  });
+  const lock = JSON.parse(fs.readFileSync(path.join(dir, "server.lock"), "utf8"));
+  assert.equal(lock.pid, leader);
+  assert.equal(lock.proxy, true);
+  assert.deepEqual(jobs(dir), [leader]);
+});
+
+test("a leader without a working socket is never stopped by the others", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fam-si-nosock-"));
+  // A live process (this test runner) holds the lock but never opens a socket.
+  fs.writeFileSync(path.join(dir, "server.lock"), JSON.stringify({ pid: process.pid, proxy: null }));
+  const port = await freePort();
+  const kid = start(dir, port, { FAM_INSTANCE_BOOT_WAIT_MS: "500" });
+  t.after(() => { try { kid.kill("SIGKILL"); } catch (_) {} fs.rmSync(dir, { recursive: true, force: true }); });
+  await kid.ready;
+  const r = await waitFor(() => request(port).then((x) => (x.status === 200 ? x : null)));
+  assert.equal(Number(r.body), kid.pid); // serves locally
+  await new Promise((res) => setTimeout(res, 2500)); // past FAM_INSTANCE_HUNG_MS
+  assert.equal(singleInstance.pidAlive(process.pid), true);
+  assert.deepEqual(jobs(dir), []); // and runs no jobs
+});

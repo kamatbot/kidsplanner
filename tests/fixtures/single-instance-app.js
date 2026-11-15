@@ -3,6 +3,22 @@
 // process records whether it started background jobs and answers with its pid.
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
+
+// Mimic LiteSpeed's lsnode, which ignores every http.Server listen() after the
+// first one ("http.Server.listen() was called more than once, ignore.").
+if (process.env.FAM_TEST_LSNODE === "1") {
+  const original = http.Server.prototype.listen;
+  let called = false;
+  http.Server.prototype.listen = function (...args) {
+    if (called) {
+      console.error("http.Server.listen() was called more than once, ignore.");
+      return this;
+    }
+    called = true;
+    return original.apply(this, args);
+  };
+}
 const singleInstance = require("../../lib/single-instance");
 
 const dataDir = process.env.FAM_DATA_DIR;
