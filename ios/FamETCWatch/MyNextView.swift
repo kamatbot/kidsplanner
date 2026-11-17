@@ -30,6 +30,10 @@ struct MyNextView: View {
         ScrollView {
             TimelineView(.everyMinute) { clock in
                 VStack(alignment: .leading, spacing: 12) {
+                    if let tomorrowItems = store.snapshot.context?.tomorrow,
+                       WatchTomorrowRule.shouldShowTomorrow(at: clock.date, hasItems: !tomorrowItems.isEmpty) {
+                        WatchTomorrowCard(items: tomorrowItems)
+                    }
                     HStack(spacing: 8) {
                         WatchIdentity(profile: store.snapshot.context?.profile)
                         Text(store.snapshot.isParent ? "Family next" : greeting)
@@ -664,4 +668,36 @@ private func dueText(date: String?, time: String?) -> String? {
     guard let date, !date.isEmpty else { return nil }
     if let time, !time.isEmpty { return "Due \(date) at \(time)" }
     return "Due \(date)"
+}
+
+struct WatchTomorrowCard: View {
+    let items: [WatchTomorrowItem]
+
+    private var summaryText: String {
+        WatchTomorrowRule.tomorrowLine(for: items) ?? ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label {
+                Text(summaryText)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "sun.horizon.fill")
+                    .font(.caption2)
+                    .foregroundStyle(Color(red: 240 / 255, green: 112 / 255, blue: 79 / 255))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(summaryText)
+    }
 }

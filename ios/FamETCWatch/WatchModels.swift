@@ -427,9 +427,27 @@ struct WatchProfile: Codable, Equatable {
     var photo: String?
 }
 
+public struct WatchTomorrowItem: Codable, Equatable, Identifiable {
+    public var id: String { "\(title)|\(time ?? "")" }
+    public var title: String
+    public var time: String?
+
+    public init(title: String, time: String? = nil) {
+        self.title = title
+        self.time = time
+    }
+}
+
 struct WatchContext: Codable, Equatable {
     var profile: WatchProfile
     var events: [WatchEvent]
+    var tomorrow: [WatchTomorrowItem]? = nil
+
+    init(profile: WatchProfile, events: [WatchEvent] = [], tomorrow: [WatchTomorrowItem]? = nil) {
+        self.profile = profile
+        self.events = events
+        self.tomorrow = tomorrow
+    }
 }
 
 struct WatchEvent: Codable, Equatable, Identifiable {

@@ -5987,8 +5987,31 @@ function renderTodayActionQueue() {
       : famRing({ size:188, stroke:18, key:'needs-you', rings:[{ value:cleared,total:cleared + nowGroup.length,color:'var(--fr-you)',radius:80 }], label:`${eligible.length} ${isKidSession() ? 'things to do' : 'things need you'}, ${cleared} cleared today` }) +
         `<div class="fr-ring-center"><b>${eligible.length || (cleared ? '✓' : '0')}</b><span>${eligible.length ? isKidSession() ? 'To do' : 'Need you' : 'All clear'}</span><small>${cleared} cleared today</small></div>`;
   }
+  let emptyStateHtml = `<div class="today-actions-empty"><strong>All clear.</strong><p>Nothing waiting right now.</p><button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>`;
+  if (!isKidSession()) {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const tomorrowIso = isoDate(tomorrow);
+    const calEvents = typeof allEvents === 'function' ? eventsOnDay(allEvents(), tomorrowIso) : [];
+    const tomorrowActions = todayActionItems.filter(item => {
+      if (!item || item.status === 'done') return false;
+      const due = window.famActionQueue ? window.famActionQueue.effectiveDue(item, now) : null;
+      return due && due.date === tomorrowIso;
+    }).map(item => {
+      const due = window.famActionQueue.effectiveDue(item, now);
+      return { title: item.title, time: due ? due.time : null };
+    });
+    const tomorrowItems = [
+      ...calEvents.map(e => ({ title: e.title, time: e.time || (e.start && e.start.includes('T') ? e.start.slice(11, 16) : null) })),
+      ...tomorrowActions
+    ];
+    const calm = window.famTodayCalm ? window.famTodayCalm.calmToday({ now, needsYouCount: eligible.length, tomorrowItems }) : null;
+    if (calm && calm.calmLine) {
+      emptyStateHtml = `<div class="today-actions-empty today-calm-state"><p class="today-calm-line">${esc(calm.calmLine)}</p>${calm.tomorrowLine ? `<p class="today-calm-tomorrow">${esc(calm.tomorrowLine)}</p>` : ''}<button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>`;
+    }
+  }
   listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now)).join('') ||
-    (canShowContents ? `<div class="today-actions-empty"><strong>All clear.</strong><p>Nothing waiting right now.</p><button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>` : loadingWithoutData ? '<div class="fr-row-skeleton"></div><div class="fr-row-skeleton"></div>' : '');
+    (canShowContents ? emptyStateHtml : loadingWithoutData ? '<div class="fr-row-skeleton"></div><div class="fr-row-skeleton"></div>' : '');
   const footer = document.getElementById('today-actions-footer');
   if (footer) footer.innerHTML = eligible.length > preview.length
     ? `<button type="button" class="family-actions-view-all today-link" onclick="openAllFamilyActions()">+${eligible.length - preview.length} more ${todayIcon('arrow',14)}</button>` : '';
@@ -6367,8 +6390,8 @@ function renderTodayScreen() {
   const greetingEl = document.getElementById('today-greeting');
   if (greetingEl) {
     const firstName = ownName().split(' ')[0] || 'there';
-    const hour = now.getHours();
-    const salutation = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const calm = window.famTodayCalm ? window.famTodayCalm.calmToday({ now }) : null;
+    const salutation = calm ? calm.greeting : (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening');
     greetingEl.textContent = `${salutation}, ${firstName}`;
   }
 

@@ -58,8 +58,7 @@ struct TodayScreen: View {
                            kids: store.kids, kidID: kidID)
     }
     private var greetingLead: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+        TodayCalmCopy.greeting(for: Date())
     }
     private var firstName: String { store.ownName.split(separator: " ").first.map(String.init) ?? "" }
     private var dateLabel: String { Date().formatted(.dateTime.weekday(.wide).day().month(.wide)) }
