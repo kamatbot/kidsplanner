@@ -1425,6 +1425,94 @@ function allEvents() {
   return merged.filter((ev) => !isImportedTimetableEvent(ev));
 }
 
+let calendarGuesses = [];
+let activeGuess = null;
+
+function formatMovedTag(previousStart) {
+  if (!previousStart) return '';
+  try {
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(previousStart));
+    if (!m) return 'Moved';
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    const wday = days[d.getUTCDay()];
+    if (m[4] && m[5]) {
+      const timeStr = fmt12(`${m[4]}:${m[5]}`);
+      return `Moved, was ${wday} ${timeStr}`;
+    }
+    return `Moved, was ${wday}`;
+  } catch (_) {
+    return 'Moved';
+  }
+}
+
+async function loadCalendarGuesses() {
+  if (typeof isKidSession === 'function' && isKidSession()) {
+    calendarGuesses = [];
+    return;
+  }
+  if (typeof window === 'undefined' || !window.auth || typeof window.auth.getCalendarGuesses !== 'function') {
+    calendarGuesses = [];
+    return;
+  }
+  try {
+    calendarGuesses = await window.auth.getCalendarGuesses();
+  } catch (_) {
+    calendarGuesses = [];
+  }
+}
+
+function openGuessDialog(id) {
+  const guess = calendarGuesses.find((g) => g.id === id);
+  if (!guess) return;
+  activeGuess = guess;
+  const titleEl = document.getElementById('guess-title');
+  if (titleEl) titleEl.textContent = guess.title;
+  const dateEl = document.getElementById('guess-date');
+  if (dateEl) dateEl.textContent = formatLong(parseIso(guess.date));
+  const timeEl = document.getElementById('guess-time');
+  if (timeEl) timeEl.textContent = guess.time ? fmt12(guess.time) + (guess.endTime ? ' – ' + fmt12(guess.endTime) : '') : 'All day';
+  const kidRow = document.getElementById('guess-kid-row');
+  if (guess.kidId && kidRow) {
+    const kidNameEl = document.getElementById('guess-kid');
+    if (kidNameEl) kidNameEl.textContent = kidNameFor(guess.kidId);
+    kidRow.style.display = '';
+  } else if (kidRow) {
+    kidRow.style.display = 'none';
+  }
+  openModal('guess-modal');
+}
+
+async function dismissCurrentGuess() {
+  if (!activeGuess) return;
+  const id = activeGuess.id;
+  closeModal('guess-modal');
+  calendarGuesses = calendarGuesses.filter((g) => g.id !== id);
+  renderCalendar();
+  toast('Guess dismissed for this week 👍');
+  try {
+    await window.auth.dismissCalendarGuess(id);
+  } catch (err) {
+    console.error('Failed to dismiss guess:', err);
+  }
+}
+
+async function addCurrentGuess() {
+  if (!activeGuess) return;
+  const guess = activeGuess;
+  closeModal('guess-modal');
+  calendarGuesses = calendarGuesses.filter((g) => g.id !== guess.id);
+  toast(`Adding ${guess.title}… 📅`);
+  try {
+    await window.auth.addCalendarGuess(guess);
+    toast(`Added ${guess.title} to calendar! ✨`);
+    await loadFamilyEvents();
+  } catch (err) {
+    toast(`❌ ${err.message || 'Could not add event'}`);
+    renderCalendar();
+  }
+}
+
 function visibleEvents() {
   const merged = mergedCalendarEvents();
   if (isKidSession()) {
@@ -1435,14 +1523,16 @@ function visibleEvents() {
   if (isTimetableMode()) return merged.filter(isImportedTimetableEvent);
 
   const ordinary = merged.filter((ev) => !isImportedTimetableEvent(ev));
-  if (!activeKidId) return ordinary;
+  const guesses = (typeof calendarGuesses !== 'undefined' && Array.isArray(calendarGuesses) ? calendarGuesses : []).filter((g) => !activeKidId || g.kidId === activeKidId || g.kidId == null);
+  if (!activeKidId) return ordinary.concat(guesses);
   // A filtered view (parent tapping a kid chip, or a kid session which pins
   // activeKidId to itself) is "that kid's calendar": their own events PLUS
   // every whole-family event (kidId == null covers both null and undefined) —
   // family events must never be hidden just because a kid filter is active.
   return ordinary
     .filter((e) => e.kidId === activeKidId || e.kidId == null || (e.source === 'school' && !e.kidId))
-    .concat(merged.filter((e) => isImportedTimetableEvent(e) && e.kidId === activeKidId));
+    .concat(merged.filter((e) => isImportedTimetableEvent(e) && e.kidId === activeKidId))
+    .concat(guesses);
 }
 
 function renderCalendar() {
@@ -1585,10 +1675,17 @@ function openCalendarAddEvent() {
 
 function renderWeekEvent(ev, ds, continuation, className, style, onClick) {
   const rLabel = repeatLabel(ev);
-  return `<button type="button" class="${className}${ev.source === 'school' ? ' school-evt' : ''}${continuation ? ' evt-continuation' : ''}" style="${style}"
-    onclick="${onClick}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
+  const isGuess = !!ev.isGuess;
+  const guessClass = isGuess ? ' cal-guess-evt' : '';
+  const movedText = ev.previousStart ? formatMovedTag(ev.previousStart) : '';
+  const movedTag = ev.previousStart ? `<span class="cal-moved-tag" title="${esc(movedText)}" aria-label="${esc(movedText)}">Moved</span>` : '';
+  const srcTag = (!isGuess && ev.sourceLabel) ? `<span class="cal-source-badge">${esc(ev.sourceLabel)}</span>` : '';
+  const guessTag = isGuess ? `<span class="guess-badge">Guess</span>` : '';
+  const clickHandler = isGuess ? `openGuessDialog('${esc(ev.id)}')` : onClick;
+  return `<button type="button" class="${className}${ev.source === 'school' ? ' school-evt' : ''}${continuation ? ' evt-continuation' : ''}${guessClass}" style="${style}"
+    onclick="${clickHandler}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
     <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
-    <span class="evt-title">${timetableEventKidLabel(ev)}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
+    <span class="evt-title">${timetableEventKidLabel(ev)}${guessTag}${srcTag}${movedTag}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
   </button>`;
 }
 
@@ -1726,7 +1823,14 @@ function renderMonthView() {
       ${evs.slice(0,3).map((ev) => {
         const isCont = ev.date !== ds;
         const rLabel = repeatLabel(ev);
-        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${timetableEventKidLabel(ev)}${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
+        const isGuess = !!ev.isGuess;
+        const guessClass = isGuess ? ' cal-guess-evt' : '';
+        const movedText = ev.previousStart ? formatMovedTag(ev.previousStart) : '';
+        const movedTag = ev.previousStart ? `<span class="month-moved-tag" title="${esc(movedText)}" aria-label="${esc(movedText)}">Moved</span>` : '';
+        const srcTag = (!isGuess && ev.sourceLabel) ? `<span class="cal-source-badge">${esc(ev.sourceLabel)}</span>` : '';
+        const guessTag = isGuess ? `<span class="guess-badge">Guess</span>` : '';
+        const clickHandler = isGuess ? `openGuessDialog('${esc(ev.id)}')` : `showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')`;
+        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}${guessClass}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();${clickHandler}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${timetableEventKidLabel(ev)}${guessTag}${srcTag}${movedTag}${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
       }).join('')}
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
@@ -2155,6 +2259,9 @@ function loadFamilyEvents() {
       }
     }
     saveEvents(serverEvents.concat(pending));
+    if (typeof isKidSession === 'function' && !isKidSession() && typeof loadCalendarGuesses === 'function') {
+      loadCalendarGuesses().then(() => { if (typeof renderCalendar === 'function') renderCalendar(); }).catch(() => {});
+    }
     renderCalendar();
     renderTodayScreen();
     scheduleReminders();
@@ -2181,6 +2288,28 @@ function showDetail(id, occDate) {
   const badge = document.getElementById('detail-badge');
   badge.textContent  = (ev.source === 'school' ? '🎓 ' : '') + (ev.isDeadline ? 'Deadline' : (catLabel[ev.category] || ev.category));
   badge.className    = `detail-category-badge chip-${ev.category}`;
+
+  const srcBadge = document.getElementById('detail-source-badge');
+  if (srcBadge) {
+    if (ev.sourceLabel) {
+      srcBadge.textContent = ev.sourceLabel;
+      srcBadge.style.display = '';
+    } else {
+      srcBadge.style.display = 'none';
+    }
+  }
+  const movedTag = document.getElementById('detail-moved-tag');
+  if (movedTag) {
+    if (ev.previousStart) {
+      const text = formatMovedTag(ev.previousStart);
+      movedTag.textContent = text;
+      movedTag.title = text;
+      movedTag.setAttribute('aria-label', text);
+      movedTag.style.display = '';
+    } else {
+      movedTag.style.display = 'none';
+    }
+  }
 
   document.getElementById('detail-title').textContent = ev.title;
   document.getElementById('detail-date').textContent  = formatLong(parseIso(ev.date));
@@ -6564,8 +6693,12 @@ function renderTodayScheduleRow(ev, now, placement = null) {
   const driverName = ev.driverName || (ev.driverMemberId && typeof resolveDriverNameFromCurrentFamily === 'function' ? resolveDriverNameFromCurrentFamily(ev.driverMemberId) : null);
   const driverText = driverName ? ` · Driving: ${driverName}` : '';
   const text = `${title} · ${time}${driverText}`;
+  const srcText = ev.sourceLabel ? ` · ${ev.sourceLabel}` : '';
+  const movedText = ev.previousStart ? ` · ${formatMovedTag(ev.previousStart)}` : '';
   const style = placement ? `left:${placement.left}%;width:${placement.width}%;top:${placement.top}px;` : '';
-  return `<button type="button" class="fr-day-event${placement ? '' : ' fr-day-untimed'}" style="${style}--event-color:${esc(color)}" onclick="showDetail('${todayActionIdArg(ev.id)}','${todayActionIdArg(ev.occurrenceDate || ev.date)}')" aria-label="${esc(text + (ev.kidId ? ' · ' + kidNameFor(ev.kidId) : '') + (todayScheduleMeta(ev) ? ' · ' + todayScheduleMeta(ev) : ''))}">${isMeal ? todayIcon('bowl',14) : ''}<span>${esc(text)}</span></button>`;
+  const srcHtml = ev.sourceLabel ? `<small class="today-source-label">${esc(ev.sourceLabel)}</small>` : '';
+  const movedHtml = ev.previousStart ? `<small class="today-moved-tag" title="${esc(formatMovedTag(ev.previousStart))}" aria-label="${esc(formatMovedTag(ev.previousStart))}">Moved</small>` : '';
+  return `<button type="button" class="fr-day-event${placement ? '' : ' fr-day-untimed'}" style="${style}--event-color:${esc(color)}" onclick="showDetail('${todayActionIdArg(ev.id)}','${todayActionIdArg(ev.occurrenceDate || ev.date)}')" aria-label="${esc(text + srcText + movedText + (ev.kidId ? ' · ' + kidNameFor(ev.kidId) : '') + (todayScheduleMeta(ev) ? ' · ' + todayScheduleMeta(ev) : ''))}">${isMeal ? todayIcon('bowl',14) : ''}${srcHtml}${movedHtml}<span>${esc(text)}</span></button>`;
 }
 
 function eventsOnDay(events, ds) {

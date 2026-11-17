@@ -1121,7 +1121,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <div id="event-detail-modal" class="modal-overlay" onclick="closeModalOnBg(event,'event-detail-modal')">
   <div class="modal-card">
     <div class="modal-header">
-      <div class="detail-category-badge" id="detail-badge"></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="detail-category-badge" id="detail-badge"></div>
+        <span class="cal-source-badge" id="detail-source-badge" style="display:none"></span>
+        <span class="cal-moved-tag" id="detail-moved-tag" style="display:none"></span>
+      </div>
       <button class="modal-close" onclick="closeModal('event-detail-modal')">×</button>
     </div>
     <h3 class="detail-title" id="detail-title"></h3>
@@ -1138,6 +1142,30 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <button type="button" class="btn-secondary" onclick="closeModal('event-detail-modal')">Close</button>
       <button type="button" class="btn-secondary" id="btn-edit-event" onclick="editCurrentEvent()" style="display:none">Edit ✏️</button>
       <button type="button" class="btn-danger" id="btn-delete-event" onclick="deleteCurrentEvent()" style="display:none">Delete 🗑️</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guess Event Modal -->
+<div id="guess-modal" class="modal-overlay" onclick="closeModalOnBg(event,'guess-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="guess-badge">Guess</span>
+        <span class="text-muted" style="font-size:12px;font-weight:600">Usual routine</span>
+      </div>
+      <button class="modal-close" onclick="closeModal('guess-modal')" aria-label="Close">×</button>
+    </div>
+    <h3 class="detail-title" id="guess-title"></h3>
+    <div class="detail-rows">
+      <div class="detail-row"><span class="detail-icon">📅</span><span id="guess-date"></span></div>
+      <div class="detail-row"><span class="detail-icon">⏰</span><span id="guess-time"></span></div>
+      <div class="detail-row" id="guess-kid-row" style="display:none"><span class="detail-icon">👤</span><span id="guess-kid"></span></div>
+    </div>
+    <p class="text-muted" style="margin:10px 0 0;font-size:13px">This routine usually happens on this day, but isn't on your calendar yet.</p>
+    <div class="modal-actions" style="margin-top:16px;display:flex;gap:10px">
+      <button type="button" class="btn-secondary" id="btn-dismiss-guess" onclick="dismissCurrentGuess()">Not this week</button>
+      <button type="button" class="btn-primary" id="btn-add-guess" onclick="addCurrentGuess()">Add it</button>
     </div>
   </div>
 </div>

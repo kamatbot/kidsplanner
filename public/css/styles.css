@@ -1164,6 +1164,53 @@ button.today-action-check:hover { border-color: var(--accent); color: var(--acce
 .week-evt.evt-continuation, .month-evt.evt-continuation { opacity: .7; }
 .evt-repeat-badge { margin-right: 3px; font-size: 11px; opacity: .75; }
 
+/* Calendar source badges & moved tags */
+.cal-source-badge, .detail-source-badge, .today-source-label {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fr-ink-2, #6B7280);
+  background: var(--fr-card-2, #F7F8FA);
+  border: 1px solid var(--fr-rule, #E7E9EE);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.cal-moved-tag, .month-moved-tag, .detail-moved-tag, .today-moved-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--fr-hw-ink, #B0540A);
+  background: var(--fr-hw-soft, #FFF3E3);
+  border: 1px solid var(--fr-hw, #F5821F);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+.week-evt.cal-guess-evt, .month-evt.cal-guess-evt {
+  border: 1.5px dashed var(--fr-you, #7B4DFF) !important;
+  background: var(--fr-you-soft, #EFEAFF);
+  color: var(--fr-ink, #15171C);
+}
+.guess-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 4px;
+  margin-right: 4px;
+  border-radius: 4px;
+  background: var(--fr-you-soft, #EFEAFF);
+  color: var(--fr-you-ink, #5B2EE6);
+  border: 1px dashed var(--fr-you, #7B4DFF);
+  vertical-align: middle;
+}
+
 .month-view { display: grid; grid-template-columns: repeat(7,1fr); grid-template-rows: auto repeat(6, minmax(0, 1fr)); height: max(var(--calendar-canvas-height), calc(100vh - 240px)); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); min-width: 760px; }
 .month-day-hdr {
   padding: 8px; text-align: center; font-family: "Geist", sans-serif; font-size: 10px; font-weight: 700;

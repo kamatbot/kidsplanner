@@ -240,6 +240,7 @@ struct EventDetailSheet: View {
                             detailRow("Driving", driver)
                                 .accessibilityLabel("Driving: \(driver)")
                         }
+                        if let src = ev.sourceLabel, !src.isEmpty { detailRow("Source", src) }
                         if let notes = ev.notes, !notes.isEmpty {
                             VStack(alignment: .leading, spacing: Space.xs) {
                                 Text("Notes").font(Typography.caption.weight(.bold)).foregroundStyle(Palette.textSecond)
