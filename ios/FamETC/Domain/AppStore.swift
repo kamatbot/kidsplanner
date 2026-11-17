@@ -1260,9 +1260,9 @@ final class AppStore {
     /// Reloads `familyEvents` from the server afterward rather than appending the
     /// raw response, since a recurring `repeat` expands into multiple occurrences
     /// server-side (lib/events.js) that only `GET /api/calendar/events` returns.
-    func addEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async {
+    func addEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, driverMemberId: String? = nil) async {
         do {
-            _ = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil)
+            _ = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil, driverMemberId: driverMemberId)
             if let fe = try? await api.familyEvents() { familyEvents = fe }
             Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
         } catch { handle(error) }
@@ -1273,9 +1273,9 @@ final class AppStore {
     /// server afterward rather than patching in place, matching `addEvent`: a
     /// changed `repeat` rule reshapes how many occurrences the series expands to
     /// (lib/events.js `expandRecurring`), which only a fresh `GET` reflects.
-    func updateEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async {
+    func updateEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, driverMemberId: String? = nil) async {
         do {
-            _ = try await api.updateFamilyEvent(id, title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil)
+            _ = try await api.updateFamilyEvent(id, title: title, date: date, time: time, notes: notes, category: category, kidId: kidId, endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil, driverMemberId: driverMemberId)
             if let fe = try? await api.familyEvents() { familyEvents = fe }
             Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
         } catch { handle(error) }

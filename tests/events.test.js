@@ -262,3 +262,42 @@ test("updateEvent: kidId must be a real kid in the family or null", () => {
   const bogus = events.updateEvent(f.id, ev.id, { kidId: "not_a_real_kid" });
   assert.equal(bogus.event.kidId, null);
 });
+
+test("driver: adult driver ok, kid driver rejected, non-family id rejected", () => {
+  const p1 = store.createUser("driver1@example.com", "Sam Walker");
+  const f = family.createFamily(p1.id, "Drive Fam");
+  const kidRes = family.addKid(f.id, p1.id, { name: "Leo" });
+  const kidId = kidRes.kid.id;
+
+  // Adult parent driver is ok
+  const ok = events.addEvent(f.id, { title: "Soccer", date: "2026-07-20", driverMemberId: p1.id });
+  assert.equal(ok.error, undefined);
+  assert.equal(ok.event.driverMemberId, p1.id);
+
+  // Kid driver is rejected
+  const kidDriver = events.addEvent(f.id, { title: "Soccer", date: "2026-07-20", driverMemberId: kidId });
+  assert.equal(kidDriver.error, "Driver must be an adult family member.");
+
+  // Non-family id is rejected
+  const nonFam = events.addEvent(f.id, { title: "Soccer", date: "2026-07-20", driverMemberId: "stranger_123" });
+  assert.equal(nonFam.error, "Driver must be an adult family member.");
+
+  // Clearing driver on update with null or ""
+  const updatedNull = events.updateEvent(f.id, ok.event.id, { driverMemberId: null });
+  assert.equal(updatedNull.error, undefined);
+  assert.equal(updatedNull.event.driverMemberId, null);
+
+  // Setting driver again
+  const updatedAgain = events.updateEvent(f.id, ok.event.id, { driverMemberId: p1.id });
+  assert.equal(updatedAgain.error, undefined);
+  assert.equal(updatedAgain.event.driverMemberId, p1.id);
+
+  // Clearing with empty string
+  const updatedEmpty = events.updateEvent(f.id, ok.event.id, { driverMemberId: "" });
+  assert.equal(updatedEmpty.error, undefined);
+  assert.equal(updatedEmpty.event.driverMemberId, null);
+
+  // Updating with kid driver is rejected
+  const updateKid = events.updateEvent(f.id, ok.event.id, { driverMemberId: kidId });
+  assert.equal(updateKid.error, "Driver must be an adult family member.");
+});

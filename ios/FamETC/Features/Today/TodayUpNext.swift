@@ -84,7 +84,10 @@ struct TodayUpNext: View {
                         .font(Typography.body.weight(.semibold))
                         .foregroundStyle(Palette.frInk)
                         .lineLimit(2)
-                    Text("\(spokenOwner(item)) · \(Agenda.dayLabel(item.dayKey)) · \(timeRange(item))")
+                    var subparts = [spokenOwner(item), Agenda.dayLabel(item.dayKey), timeRange(item)]
+                    let rowDriver = item.familyEvent?.driverName ?? store.family?.parents?.first(where: { $0.id == item.familyEvent?.driverMemberId })?.name?.components(separatedBy: " ").first
+                    if let rowDriver, !rowDriver.isEmpty { subparts.append("Driving: \(rowDriver)") }
+                    Text(subparts.joined(separator: " · "))
                         .font(Typography.label)
                         .foregroundStyle(Palette.frInk2)
                         .lineLimit(2)
@@ -122,6 +125,8 @@ struct TodayUpNext: View {
     private func cardDetail(_ item: AgendaItem) -> String {
         var parts = [Agenda.dayLabel(item.dayKey), timeRange(item)]
         if item.familyEvent == nil, let place = item.subtitle, !place.isEmpty { parts.append(place) }
+        let driver = item.familyEvent?.driverName ?? store.family?.parents?.first(where: { $0.id == item.familyEvent?.driverMemberId })?.name?.components(separatedBy: " ").first
+        if let driver, !driver.isEmpty { parts.append("Driving: \(driver)") }
         return parts.joined(separator: " · ")
     }
 

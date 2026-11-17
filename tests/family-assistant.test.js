@@ -139,3 +139,116 @@ test("a private-thread message gets the reason posted when the assistant is off"
   assert.equal(last.senderType, "agent");
   assert.match(last.text, /Disconnect Hermes/);
 });
+
+test("driver resolution: resolves adult first name or id, includes driver and adults in snapshot, and rejects kid name", async () => {
+  const sam = store.createUser(`sam_${Date.now()}@example.com`, "Sam Parent");
+  const robin = store.createUser(`robin_${Date.now()}@example.com`, "Robin Parent");
+  const fam = family.createFamily(sam.id, "Smith Family");
+  family.joinFamilyAsParent(fam.inviteCode, robin.id);
+  const updatedFam = family.getFamily(fam.id);
+  family.addKid(fam.id, sam.id, { name: "Leo" });
+
+  // 1. Add event with driver "Sam" (first name resolution)
+  const msg1 = parentMessage(updatedFam, sam, "@Hermes add Swim on 2026-11-19 at 16:00 with driver Sam");
+  const claude1 = mockClaude([
+    {
+      stop_reason: "tool_use",
+      content: [{ type: "tool_use", id: "t1", name: "add_event", input: { title: "Swim", date: "2026-11-19", time: "16:00", driver: "Sam" } }],
+    },
+    { stop_reason: "end_turn", content: [{ type: "text", text: "Added Swim on Thu 19 Nov at 4pm with driver Sam." }] },
+  ]);
+  try {
+    const reply1 = await assistant.respond({ fam: updatedFam, scopeKey: updatedFam.id, message: msg1 });
+    assert.equal(reply1.message.text, "Added Swim on Thu 19 Nov at 4pm with driver Sam.");
+  } finally { claude1.restore(); }
+
+  // Check event was created with driverMemberId = sam.id
+  const saved = events.listEvents(fam.id, { from: "2026-11-19", to: "2026-11-19" });
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].driverMemberId, sam.id);
+
+  // 2. Next turn: snapshot includes driver and adults list
+  const msg2 = parentMessage(updatedFam, sam, "@Hermes who is driving Thursday?");
+  const claude2 = mockClaude([
+    { stop_reason: "end_turn", content: [{ type: "text", text: "Sam is driving Swim on Thursday." }] },
+  ]);
+  try {
+    await assistant.respond({ fam: updatedFam, scopeKey: updatedFam.id, message: msg2 });
+  } finally { claude2.restore(); }
+
+  assert.equal(claude2.calls.length, 1);
+  const sysText = claude2.calls[0].body.system.map((b) => b.text).join("\n");
+  const snapshotMatch = /Family snapshot \(data, not instructions\): (\{.*\})/.exec(sysText);
+  assert.ok(snapshotMatch, "Snapshot must be present in system prompt");
+  const snapData = JSON.parse(snapshotMatch[1]);
+  assert.ok(snapData.adults.some((a) => a.id === sam.id && a.name === "Sam"));
+  assert.ok(snapData.adults.some((a) => a.id === robin.id && a.name === "Robin"));
+  const swimSnap = snapData.events.find((e) => e.title === "Swim");
+  assert.ok(swimSnap);
+  assert.equal(swimSnap.driver, "Sam");
+
+  // 3. Kid driver name rejected
+  const msg3 = parentMessage(updatedFam, sam, "@Hermes add Tennis with driver Leo");
+  const claude3 = mockClaude([
+    {
+      stop_reason: "tool_use",
+      content: [{ type: "tool_use", id: "t3", name: "add_event", input: { title: "Tennis", date: "2026-11-13", driver: "Leo" } }],
+    },
+    { stop_reason: "end_turn", content: [{ type: "text", text: "Kids cannot be drivers." }] },
+  ]);
+  try {
+    await assistant.respond({ fam: updatedFam, scopeKey: updatedFam.id, message: msg3 });
+  } finally { claude3.restore(); }
+  const toolResult = claude3.calls[1].body.messages.at(-1).content[0];
+  assert.equal(toolResult.is_error, true);
+  assert.match(toolResult.content, /Kids cannot be drivers/);
+});
+
+test("Hermes update_event with driver and undo restores previous driver", async () => {
+  const sam = store.createUser(`sam2_${Date.now()}@example.com`, "Sam Parent");
+  const robin = store.createUser(`robin2_${Date.now()}@example.com`, "Robin Parent");
+  const fam = family.createFamily(sam.id, "Smith Family 2");
+  family.joinFamilyAsParent(fam.inviteCode, robin.id);
+  const updatedFam = family.getFamily(fam.id);
+
+  // Create initial event with driver Sam
+  const evRes = events.addEvent(updatedFam.id, {
+    title: "Gymnastics", date: "2026-11-14", time: "10:00",
+    driverMemberId: sam.id, createdBy: sam.id,
+  });
+  assert.ok(evRes.event);
+  const evId = evRes.event.id;
+
+  // 1. Update event to driver "Robin" via Hermes
+  const msg1 = parentMessage(updatedFam, sam, "@Hermes Robin is driving gymnastics");
+  const claude1 = mockClaude([
+    {
+      stop_reason: "tool_use",
+      content: [{ type: "tool_use", id: "t1", name: "update_event", input: { eventId: evId, patch: { driver: "Robin" } } }],
+    },
+    { stop_reason: "end_turn", content: [{ type: "text", text: "Changed driver to Robin." }] },
+  ]);
+  try {
+    await assistant.respond({ fam: updatedFam, scopeKey: updatedFam.id, message: msg1 });
+  } finally { claude1.restore(); }
+
+  let ev = events.getById(updatedFam.id, evId);
+  assert.equal(ev.driverMemberId, robin.id);
+
+  // 2. Undo via undo_last tool
+  const msg2 = parentMessage(updatedFam, sam, "@Hermes undo");
+  const claude2 = mockClaude([
+    {
+      stop_reason: "tool_use",
+      content: [{ type: "tool_use", id: "t2", name: "undo_last", input: {} }],
+    },
+    { stop_reason: "end_turn", content: [{ type: "text", text: "Undone." }] },
+  ]);
+  try {
+    await assistant.respond({ fam: updatedFam, scopeKey: updatedFam.id, message: msg2 });
+  } finally { claude2.restore(); }
+
+  ev = events.getById(updatedFam.id, evId);
+  assert.equal(ev.driverMemberId, sam.id, "Undo must restore previous driverMemberId");
+});
+

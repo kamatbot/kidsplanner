@@ -1844,6 +1844,35 @@ function populateEventAudienceOptions(selected) {
   sel.value = selected && sel.querySelector(`option[value="${selected}"]`) ? selected : 'family';
 }
 
+function resolveDriverNameFromCurrentFamily(driverMemberId) {
+  if (!driverMemberId) return null;
+  const parents = typeof todayActionParentOptions === 'function' ? todayActionParentOptions() : [];
+  const parent = parents.find((p) => p.id === driverMemberId);
+  if (parent && parent.name) {
+    return parent.name.trim().split(' ')[0] || parent.name;
+  }
+  return null;
+}
+
+function populateEventDriverOptions(selected) {
+  const sel = document.getElementById('event-driver');
+  const group = document.getElementById('event-driver-group');
+  if (!sel || !group) return;
+  const isKid = typeof isKidSession === 'function' ? isKidSession() : false;
+  if (isKid) {
+    group.style.display = 'none';
+    return;
+  }
+  group.style.display = '';
+  const parents = typeof todayActionParentOptions === 'function' ? todayActionParentOptions() : [];
+  const escFn = typeof esc === 'function' ? esc : (s) => String(s);
+  sel.innerHTML = '<option value="">Nobody</option>' + parents.map((p) => {
+    const name = p.name ? p.name.trim().split(' ')[0] : 'Parent';
+    return `<option value="${escFn(p.id)}">${escFn(name)}</option>`;
+  }).join('');
+  sel.value = selected && Array.from(sel.options).some((o) => o.value === selected) ? selected : '';
+}
+
 function openAddEventModal(ds, time) {
   editingEventId = null; // adding fresh — make sure a stale edit session can't hijack this save
   chatEventComposerSource = null;
@@ -1861,6 +1890,7 @@ function openAddEventModal(ds, time) {
   document.getElementById('event-repeat-until-group').style.display = 'none';
   document.querySelector('input[name="cat"][value="school"]').checked = true;
   populateEventAudienceOptions('family');
+  if (typeof populateEventDriverOptions === 'function') populateEventDriverOptions('');
   setAddEventModalMode(false);
   openModal('add-event-modal');
 }
@@ -1974,6 +2004,7 @@ function openEditEventModal(ev) {
   if (catRadio) catRadio.checked = true;
   else document.querySelector('input[name="cat"][value="other"]').checked = true;
   populateEventAudienceOptions(ev.kidId || 'family');
+  if (typeof populateEventDriverOptions === 'function') populateEventDriverOptions(ev.driverMemberId || '');
   setAddEventModalMode(true, repeats);
   openModal('add-event-modal');
 }
@@ -2013,6 +2044,9 @@ async function saveEvent(e) {
   if (!scope) return;
   const chatSource = chatEventComposerSource;
   const audience = document.getElementById('event-audience').value;
+  const driverEl = document.getElementById('event-driver');
+  const isKid = typeof isKidSession === 'function' ? isKidSession() : false;
+  const driverMemberId = (!isKid && driverEl) ? (driverEl.value || null) : null;
   const payload = {
     kidId:    audience === 'family' ? null : audience,
     title:    document.getElementById('event-title').value.trim(),
@@ -2025,6 +2059,7 @@ async function saveEvent(e) {
     repeat:   document.getElementById('event-repeat').value,
     repeatUntil: document.getElementById('event-repeat-until').value || null,
   };
+  if (!isKid && driverEl) payload.driverMemberId = driverMemberId;
   if (chatSource) Object.assign(payload, chatSource);
 
   if (editingEventId) {
@@ -2177,6 +2212,17 @@ function showDetail(id, occDate) {
     repeatRow.style.display = '';
   } else {
     repeatRow.style.display = 'none';
+  }
+
+  const driverRow = document.getElementById('detail-driver-row');
+  const driverName = ev.driverName || (ev.driverMemberId && typeof resolveDriverNameFromCurrentFamily === 'function' ? resolveDriverNameFromCurrentFamily(ev.driverMemberId) : null);
+  if (driverRow) {
+    if (driverName) {
+      document.getElementById('detail-driver').textContent = `Driving: ${driverName}`;
+      driverRow.style.display = '';
+    } else {
+      driverRow.style.display = 'none';
+    }
   }
 
   // School events are read-only for kids (synced from the school's calendar)
@@ -6515,7 +6561,9 @@ function renderTodayScheduleRow(ev, now, placement = null) {
   const isMeal = ev.source === 'menu';
   const title = isMeal ? String(ev.title || '').replace(/^\u{1F37D}\uFE0F?\s*/u, '') : ev.title;
   const time = ev.time ? `${fmt12(ev.time)}${ev.endTime ? '–' + fmt12(ev.endTime) : ''}` : 'All day';
-  const text = `${title} · ${time}`;
+  const driverName = ev.driverName || (ev.driverMemberId && typeof resolveDriverNameFromCurrentFamily === 'function' ? resolveDriverNameFromCurrentFamily(ev.driverMemberId) : null);
+  const driverText = driverName ? ` · Driving: ${driverName}` : '';
+  const text = `${title} · ${time}${driverText}`;
   const style = placement ? `left:${placement.left}%;width:${placement.width}%;top:${placement.top}px;` : '';
   return `<button type="button" class="fr-day-event${placement ? '' : ' fr-day-untimed'}" style="${style}--event-color:${esc(color)}" onclick="showDetail('${todayActionIdArg(ev.id)}','${todayActionIdArg(ev.occurrenceDate || ev.date)}')" aria-label="${esc(text + (ev.kidId ? ' · ' + kidNameFor(ev.kidId) : '') + (todayScheduleMeta(ev) ? ' · ' + todayScheduleMeta(ev) : ''))}">${isMeal ? todayIcon('bowl',14) : ''}<span>${esc(text)}</span></button>`;
 }

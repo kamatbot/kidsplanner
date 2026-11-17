@@ -467,6 +467,31 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(r.event.canEdit)
     }
 
+    func testDecodesFamilyEventDriverFields() throws {
+        let withDriver = """
+        {
+          "event": {
+            "id": "ev_drive_1", "title": "Soccer practice", "date": "2026-07-20",
+            "driverMemberId": "u_parent_1", "driverName": "Sam"
+          }
+        }
+        """
+        let r1 = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(withDriver.utf8))
+        XCTAssertEqual(r1.event.driverMemberId, "u_parent_1")
+        XCTAssertEqual(r1.event.driverName, "Sam")
+
+        let oldPayload = """
+        {
+          "event": {
+            "id": "ev_drive_2", "title": "Swim meet", "date": "2026-07-21"
+          }
+        }
+        """
+        let r2 = try JSONDecoder().decode(FamilyEventResponse.self, from: Data(oldPayload.utf8))
+        XCTAssertNil(r2.event.driverMemberId)
+        XCTAssertNil(r2.event.driverName)
+    }
+
     func testDecodesLegacyHomeworkWithoutChecklist() throws {
         let payload = """
         {

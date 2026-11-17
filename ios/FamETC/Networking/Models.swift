@@ -307,6 +307,8 @@ struct FamilyEvent: Codable, Identifiable {
     var notes: String?
     var category: String?
     var kidId: String?
+    var driverMemberId: String? = nil
+    var driverName: String? = nil
     var repeatRule: String?   // "none" | "daily" | "weekly" | "biweekly" | "monthly" (server key "repeat")
     var repeatUntil: String?  // YYYY-MM-DD
     var seriesId: String?     // set on expanded occurrences — the series' event id
@@ -326,6 +328,7 @@ struct FamilyEvent: Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, date, time, endTime, endDate, notes, category, kidId
+        case driverMemberId, driverName
         case repeatRule = "repeat"
         case repeatUntil, seriesId, recurring, occurrenceDate, canEdit, sourceType, sourceId
     }
