@@ -229,19 +229,20 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         let r: FamilyEventsResponse = try await request(path)
         return r.events
     }
-    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil) async throws -> FamilyEvent {
+    func addFamilyEvent(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil, driverMemberId: String? = nil) async throws -> FamilyEvent {
         let r = try await addFamilyEventResult(title: title, date: date, time: time, notes: notes, category: category, kidId: kidId,
                                                endDate: endDate, repeatRule: repeatRule, repeatUntil: repeatUntil,
-                                               sourceType: sourceType, sourceId: sourceId)
+                                               sourceType: sourceType, sourceId: sourceId, driverMemberId: driverMemberId)
         return r.event
     }
 
-    func addFamilyEventResult(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil) async throws -> FamilyEventResponse {
+    func addFamilyEventResult(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil, driverMemberId: String? = nil) async throws -> FamilyEventResponse {
         var body: [String: Any] = ["title": title, "date": date]
         if let time, !time.isEmpty { body["time"] = time }
         if let notes, !notes.isEmpty { body["notes"] = notes }
         if let category { body["category"] = category }
         if let kidId { body["kidId"] = kidId }
+        if let driverMemberId, !driverMemberId.isEmpty { body["driverMemberId"] = driverMemberId }
         if let endDate, !endDate.isEmpty { body["endDate"] = endDate }
         if let repeatRule, !repeatRule.isEmpty { body["repeat"] = repeatRule }
         if let repeatUntil, !repeatUntil.isEmpty { body["repeatUntil"] = repeatUntil }
@@ -259,12 +260,13 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
     /// set (rather than a sparse diff) so the sheet can also clear an optional field
     /// back to empty — an omitted optional is sent as JSON `null`, which the server
     /// clears; a supplied "none" repeat rule likewise clears recurrence.
-    func updateFamilyEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil) async throws -> FamilyEvent {
+    func updateFamilyEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, driverMemberId: String? = nil) async throws -> FamilyEvent {
         var body: [String: Any] = ["title": title, "date": date]
         body["time"] = (time?.isEmpty == false) ? time! : NSNull()
         body["notes"] = (notes?.isEmpty == false) ? notes! : NSNull()
         body["category"] = category ?? NSNull()
         body["kidId"] = kidId ?? NSNull()
+        body["driverMemberId"] = (driverMemberId?.isEmpty == false) ? driverMemberId! : NSNull()
         body["endDate"] = (endDate?.isEmpty == false) ? endDate! : NSNull()
         body["repeat"] = (repeatRule?.isEmpty == false) ? repeatRule! : "none"
         body["repeatUntil"] = (repeatUntil?.isEmpty == false) ? repeatUntil! : NSNull()

@@ -1425,6 +1425,94 @@ function allEvents() {
   return merged.filter((ev) => !isImportedTimetableEvent(ev));
 }
 
+let calendarGuesses = [];
+let activeGuess = null;
+
+function formatMovedTag(previousStart) {
+  if (!previousStart) return '';
+  try {
+    const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(previousStart));
+    if (!m) return 'Moved';
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    const wday = days[d.getUTCDay()];
+    if (m[4] && m[5]) {
+      const timeStr = fmt12(`${m[4]}:${m[5]}`);
+      return `Moved, was ${wday} ${timeStr}`;
+    }
+    return `Moved, was ${wday}`;
+  } catch (_) {
+    return 'Moved';
+  }
+}
+
+async function loadCalendarGuesses() {
+  if (typeof isKidSession === 'function' && isKidSession()) {
+    calendarGuesses = [];
+    return;
+  }
+  if (typeof window === 'undefined' || !window.auth || typeof window.auth.getCalendarGuesses !== 'function') {
+    calendarGuesses = [];
+    return;
+  }
+  try {
+    calendarGuesses = await window.auth.getCalendarGuesses();
+  } catch (_) {
+    calendarGuesses = [];
+  }
+}
+
+function openGuessDialog(id) {
+  const guess = calendarGuesses.find((g) => g.id === id);
+  if (!guess) return;
+  activeGuess = guess;
+  const titleEl = document.getElementById('guess-title');
+  if (titleEl) titleEl.textContent = guess.title;
+  const dateEl = document.getElementById('guess-date');
+  if (dateEl) dateEl.textContent = formatLong(parseIso(guess.date));
+  const timeEl = document.getElementById('guess-time');
+  if (timeEl) timeEl.textContent = guess.time ? fmt12(guess.time) + (guess.endTime ? ' – ' + fmt12(guess.endTime) : '') : 'All day';
+  const kidRow = document.getElementById('guess-kid-row');
+  if (guess.kidId && kidRow) {
+    const kidNameEl = document.getElementById('guess-kid');
+    if (kidNameEl) kidNameEl.textContent = kidNameFor(guess.kidId);
+    kidRow.style.display = '';
+  } else if (kidRow) {
+    kidRow.style.display = 'none';
+  }
+  openModal('guess-modal');
+}
+
+async function dismissCurrentGuess() {
+  if (!activeGuess) return;
+  const id = activeGuess.id;
+  closeModal('guess-modal');
+  calendarGuesses = calendarGuesses.filter((g) => g.id !== id);
+  renderCalendar();
+  toast('Guess dismissed for this week 👍');
+  try {
+    await window.auth.dismissCalendarGuess(id);
+  } catch (err) {
+    console.error('Failed to dismiss guess:', err);
+  }
+}
+
+async function addCurrentGuess() {
+  if (!activeGuess) return;
+  const guess = activeGuess;
+  closeModal('guess-modal');
+  calendarGuesses = calendarGuesses.filter((g) => g.id !== guess.id);
+  toast(`Adding ${guess.title}… 📅`);
+  try {
+    await window.auth.addCalendarGuess(guess);
+    toast(`Added ${guess.title} to calendar! ✨`);
+    await loadFamilyEvents();
+  } catch (err) {
+    toast(`❌ ${err.message || 'Could not add event'}`);
+    renderCalendar();
+  }
+}
+
 function visibleEvents() {
   const merged = mergedCalendarEvents();
   if (isKidSession()) {
@@ -1435,14 +1523,16 @@ function visibleEvents() {
   if (isTimetableMode()) return merged.filter(isImportedTimetableEvent);
 
   const ordinary = merged.filter((ev) => !isImportedTimetableEvent(ev));
-  if (!activeKidId) return ordinary;
+  const guesses = (typeof calendarGuesses !== 'undefined' && Array.isArray(calendarGuesses) ? calendarGuesses : []).filter((g) => !activeKidId || g.kidId === activeKidId || g.kidId == null);
+  if (!activeKidId) return ordinary.concat(guesses);
   // A filtered view (parent tapping a kid chip, or a kid session which pins
   // activeKidId to itself) is "that kid's calendar": their own events PLUS
   // every whole-family event (kidId == null covers both null and undefined) —
   // family events must never be hidden just because a kid filter is active.
   return ordinary
     .filter((e) => e.kidId === activeKidId || e.kidId == null || (e.source === 'school' && !e.kidId))
-    .concat(merged.filter((e) => isImportedTimetableEvent(e) && e.kidId === activeKidId));
+    .concat(merged.filter((e) => isImportedTimetableEvent(e) && e.kidId === activeKidId))
+    .concat(guesses);
 }
 
 function renderCalendar() {
@@ -1585,10 +1675,17 @@ function openCalendarAddEvent() {
 
 function renderWeekEvent(ev, ds, continuation, className, style, onClick) {
   const rLabel = repeatLabel(ev);
-  return `<button type="button" class="${className}${ev.source === 'school' ? ' school-evt' : ''}${continuation ? ' evt-continuation' : ''}" style="${style}"
-    onclick="${onClick}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
+  const isGuess = !!ev.isGuess;
+  const guessClass = isGuess ? ' cal-guess-evt' : '';
+  const movedText = ev.previousStart ? formatMovedTag(ev.previousStart) : '';
+  const movedTag = ev.previousStart ? `<span class="cal-moved-tag" title="${esc(movedText)}" aria-label="${esc(movedText)}">Moved</span>` : '';
+  const srcTag = (!isGuess && ev.sourceLabel) ? `<span class="cal-source-badge">${esc(ev.sourceLabel)}</span>` : '';
+  const guessTag = isGuess ? `<span class="guess-badge">Guess</span>` : '';
+  const clickHandler = isGuess ? `openGuessDialog('${esc(ev.id)}')` : onClick;
+  return `<button type="button" class="${className}${ev.source === 'school' ? ' school-evt' : ''}${continuation ? ' evt-continuation' : ''}${guessClass}" style="${style}"
+    onclick="${clickHandler}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>
     <span class="evt-time">${ev.time ? fmt12(ev.time) : `All day ${allDayIconSvg}`}</span>
-    <span class="evt-title">${timetableEventKidLabel(ev)}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
+    <span class="evt-title">${timetableEventKidLabel(ev)}${guessTag}${srcTag}${movedTag}${ev.source === 'school' ? '<span class="school-badge" title="Synced from school calendar — read-only">🎓</span>' : ''}${ev.recurring ? `<span class="evt-repeat-badge">↻</span>` : ''}${esc(ev.title)}</span>
   </button>`;
 }
 
@@ -1726,7 +1823,14 @@ function renderMonthView() {
       ${evs.slice(0,3).map((ev) => {
         const isCont = ev.date !== ds;
         const rLabel = repeatLabel(ev);
-        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${timetableEventKidLabel(ev)}${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
+        const isGuess = !!ev.isGuess;
+        const guessClass = isGuess ? ' cal-guess-evt' : '';
+        const movedText = ev.previousStart ? formatMovedTag(ev.previousStart) : '';
+        const movedTag = ev.previousStart ? `<span class="month-moved-tag" title="${esc(movedText)}" aria-label="${esc(movedText)}">Moved</span>` : '';
+        const srcTag = (!isGuess && ev.sourceLabel) ? `<span class="cal-source-badge">${esc(ev.sourceLabel)}</span>` : '';
+        const guessTag = isGuess ? `<span class="guess-badge">Guess</span>` : '';
+        const clickHandler = isGuess ? `openGuessDialog('${esc(ev.id)}')` : `showDetail('${ev.id}','${ev.occurrenceDate || ev.date}')`;
+        return `<span class="month-evt${ev.source === 'school' ? ' school-evt' : ''}${isCont ? ' evt-continuation' : ''}${guessClass}" style="border-left-color:${eventBarColor(ev)}" onclick="event.stopPropagation();${clickHandler}"${rLabel ? ` title="${esc(rLabel)}"` : ''}>${timetableEventKidLabel(ev)}${guessTag}${srcTag}${movedTag}${ev.source === 'school' ? '🎓 ' : ''}${ev.recurring ? '↻ ' : ''}${esc(ev.title)}</span>`;
       }).join('')}
       ${evs.length > 3 ? `<span class="month-more">+${evs.length-3} more</span>` : ''}
     </div>`;
@@ -1844,6 +1948,35 @@ function populateEventAudienceOptions(selected) {
   sel.value = selected && sel.querySelector(`option[value="${selected}"]`) ? selected : 'family';
 }
 
+function resolveDriverNameFromCurrentFamily(driverMemberId) {
+  if (!driverMemberId) return null;
+  const parents = typeof todayActionParentOptions === 'function' ? todayActionParentOptions() : [];
+  const parent = parents.find((p) => p.id === driverMemberId);
+  if (parent && parent.name) {
+    return parent.name.trim().split(' ')[0] || parent.name;
+  }
+  return null;
+}
+
+function populateEventDriverOptions(selected) {
+  const sel = document.getElementById('event-driver');
+  const group = document.getElementById('event-driver-group');
+  if (!sel || !group) return;
+  const isKid = typeof isKidSession === 'function' ? isKidSession() : false;
+  if (isKid) {
+    group.style.display = 'none';
+    return;
+  }
+  group.style.display = '';
+  const parents = typeof todayActionParentOptions === 'function' ? todayActionParentOptions() : [];
+  const escFn = typeof esc === 'function' ? esc : (s) => String(s);
+  sel.innerHTML = '<option value="">Nobody</option>' + parents.map((p) => {
+    const name = p.name ? p.name.trim().split(' ')[0] : 'Parent';
+    return `<option value="${escFn(p.id)}">${escFn(name)}</option>`;
+  }).join('');
+  sel.value = selected && Array.from(sel.options).some((o) => o.value === selected) ? selected : '';
+}
+
 function openAddEventModal(ds, time) {
   editingEventId = null; // adding fresh — make sure a stale edit session can't hijack this save
   chatEventComposerSource = null;
@@ -1861,6 +1994,7 @@ function openAddEventModal(ds, time) {
   document.getElementById('event-repeat-until-group').style.display = 'none';
   document.querySelector('input[name="cat"][value="school"]').checked = true;
   populateEventAudienceOptions('family');
+  if (typeof populateEventDriverOptions === 'function') populateEventDriverOptions('');
   setAddEventModalMode(false);
   openModal('add-event-modal');
 }
@@ -1974,6 +2108,7 @@ function openEditEventModal(ev) {
   if (catRadio) catRadio.checked = true;
   else document.querySelector('input[name="cat"][value="other"]').checked = true;
   populateEventAudienceOptions(ev.kidId || 'family');
+  if (typeof populateEventDriverOptions === 'function') populateEventDriverOptions(ev.driverMemberId || '');
   setAddEventModalMode(true, repeats);
   openModal('add-event-modal');
 }
@@ -2013,6 +2148,9 @@ async function saveEvent(e) {
   if (!scope) return;
   const chatSource = chatEventComposerSource;
   const audience = document.getElementById('event-audience').value;
+  const driverEl = document.getElementById('event-driver');
+  const isKid = typeof isKidSession === 'function' ? isKidSession() : false;
+  const driverMemberId = (!isKid && driverEl) ? (driverEl.value || null) : null;
   const payload = {
     kidId:    audience === 'family' ? null : audience,
     title:    document.getElementById('event-title').value.trim(),
@@ -2025,6 +2163,7 @@ async function saveEvent(e) {
     repeat:   document.getElementById('event-repeat').value,
     repeatUntil: document.getElementById('event-repeat-until').value || null,
   };
+  if (!isKid && driverEl) payload.driverMemberId = driverMemberId;
   if (chatSource) Object.assign(payload, chatSource);
 
   if (editingEventId) {
@@ -2120,6 +2259,9 @@ function loadFamilyEvents() {
       }
     }
     saveEvents(serverEvents.concat(pending));
+    if (typeof isKidSession === 'function' && !isKidSession() && typeof loadCalendarGuesses === 'function') {
+      loadCalendarGuesses().then(() => { if (typeof renderCalendar === 'function') renderCalendar(); }).catch(() => {});
+    }
     renderCalendar();
     renderTodayScreen();
     scheduleReminders();
@@ -2146,6 +2288,28 @@ function showDetail(id, occDate) {
   const badge = document.getElementById('detail-badge');
   badge.textContent  = (ev.source === 'school' ? '🎓 ' : '') + (ev.isDeadline ? 'Deadline' : (catLabel[ev.category] || ev.category));
   badge.className    = `detail-category-badge chip-${ev.category}`;
+
+  const srcBadge = document.getElementById('detail-source-badge');
+  if (srcBadge) {
+    if (ev.sourceLabel) {
+      srcBadge.textContent = ev.sourceLabel;
+      srcBadge.style.display = '';
+    } else {
+      srcBadge.style.display = 'none';
+    }
+  }
+  const movedTag = document.getElementById('detail-moved-tag');
+  if (movedTag) {
+    if (ev.previousStart) {
+      const text = formatMovedTag(ev.previousStart);
+      movedTag.textContent = text;
+      movedTag.title = text;
+      movedTag.setAttribute('aria-label', text);
+      movedTag.style.display = '';
+    } else {
+      movedTag.style.display = 'none';
+    }
+  }
 
   document.getElementById('detail-title').textContent = ev.title;
   document.getElementById('detail-date').textContent  = formatLong(parseIso(ev.date));
@@ -2177,6 +2341,17 @@ function showDetail(id, occDate) {
     repeatRow.style.display = '';
   } else {
     repeatRow.style.display = 'none';
+  }
+
+  const driverRow = document.getElementById('detail-driver-row');
+  const driverName = ev.driverName || (ev.driverMemberId && typeof resolveDriverNameFromCurrentFamily === 'function' ? resolveDriverNameFromCurrentFamily(ev.driverMemberId) : null);
+  if (driverRow) {
+    if (driverName) {
+      document.getElementById('detail-driver').textContent = `Driving: ${driverName}`;
+      driverRow.style.display = '';
+    } else {
+      driverRow.style.display = 'none';
+    }
   }
 
   // School events are read-only for kids (synced from the school's calendar)
@@ -5987,8 +6162,31 @@ function renderTodayActionQueue() {
       : famRing({ size:188, stroke:18, key:'needs-you', rings:[{ value:cleared,total:cleared + nowGroup.length,color:'var(--fr-you)',radius:80 }], label:`${eligible.length} ${isKidSession() ? 'things to do' : 'things need you'}, ${cleared} cleared today` }) +
         `<div class="fr-ring-center"><b>${eligible.length || (cleared ? '✓' : '0')}</b><span>${eligible.length ? isKidSession() ? 'To do' : 'Need you' : 'All clear'}</span><small>${cleared} cleared today</small></div>`;
   }
+  let emptyStateHtml = `<div class="today-actions-empty"><strong>All clear.</strong><p>Nothing waiting right now.</p><button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>`;
+  if (!isKidSession()) {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const tomorrowIso = isoDate(tomorrow);
+    const calEvents = typeof allEvents === 'function' ? eventsOnDay(allEvents(), tomorrowIso) : [];
+    const tomorrowActions = todayActionItems.filter(item => {
+      if (!item || item.status === 'done') return false;
+      const due = window.famActionQueue ? window.famActionQueue.effectiveDue(item, now) : null;
+      return due && due.date === tomorrowIso;
+    }).map(item => {
+      const due = window.famActionQueue.effectiveDue(item, now);
+      return { title: item.title, time: due ? due.time : null };
+    });
+    const tomorrowItems = [
+      ...calEvents.map(e => ({ title: e.title, time: e.time || (e.start && e.start.includes('T') ? e.start.slice(11, 16) : null) })),
+      ...tomorrowActions
+    ];
+    const calm = window.famTodayCalm ? window.famTodayCalm.calmToday({ now, needsYouCount: eligible.length, tomorrowItems }) : null;
+    if (calm && calm.calmLine) {
+      emptyStateHtml = `<div class="today-actions-empty today-calm-state"><p class="today-calm-line">${esc(calm.calmLine)}</p>${calm.tomorrowLine ? `<p class="today-calm-tomorrow">${esc(calm.tomorrowLine)}</p>` : ''}<button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>`;
+    }
+  }
   listEl.innerHTML = preview.map((action) => renderTodayActionRow(action, now)).join('') ||
-    (canShowContents ? `<div class="today-actions-empty"><strong>All clear.</strong><p>Nothing waiting right now.</p><button type="button" class="today-link" onclick="openAllFamilyActions()">Family actions ${todayIcon('arrow',14)}</button></div>` : loadingWithoutData ? '<div class="fr-row-skeleton"></div><div class="fr-row-skeleton"></div>' : '');
+    (canShowContents ? emptyStateHtml : loadingWithoutData ? '<div class="fr-row-skeleton"></div><div class="fr-row-skeleton"></div>' : '');
   const footer = document.getElementById('today-actions-footer');
   if (footer) footer.innerHTML = eligible.length > preview.length
     ? `<button type="button" class="family-actions-view-all today-link" onclick="openAllFamilyActions()">+${eligible.length - preview.length} more ${todayIcon('arrow',14)}</button>` : '';
@@ -6367,8 +6565,8 @@ function renderTodayScreen() {
   const greetingEl = document.getElementById('today-greeting');
   if (greetingEl) {
     const firstName = ownName().split(' ')[0] || 'there';
-    const hour = now.getHours();
-    const salutation = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const calm = window.famTodayCalm ? window.famTodayCalm.calmToday({ now }) : null;
+    const salutation = calm ? calm.greeting : (now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening');
     greetingEl.textContent = `${salutation}, ${firstName}`;
   }
 
@@ -6492,9 +6690,15 @@ function renderTodayScheduleRow(ev, now, placement = null) {
   const isMeal = ev.source === 'menu';
   const title = isMeal ? String(ev.title || '').replace(/^\u{1F37D}\uFE0F?\s*/u, '') : ev.title;
   const time = ev.time ? `${fmt12(ev.time)}${ev.endTime ? '–' + fmt12(ev.endTime) : ''}` : 'All day';
-  const text = `${title} · ${time}`;
+  const driverName = ev.driverName || (ev.driverMemberId && typeof resolveDriverNameFromCurrentFamily === 'function' ? resolveDriverNameFromCurrentFamily(ev.driverMemberId) : null);
+  const driverText = driverName ? ` · Driving: ${driverName}` : '';
+  const text = `${title} · ${time}${driverText}`;
+  const srcText = ev.sourceLabel ? ` · ${ev.sourceLabel}` : '';
+  const movedText = ev.previousStart ? ` · ${formatMovedTag(ev.previousStart)}` : '';
   const style = placement ? `left:${placement.left}%;width:${placement.width}%;top:${placement.top}px;` : '';
-  return `<button type="button" class="fr-day-event${placement ? '' : ' fr-day-untimed'}" style="${style}--event-color:${esc(color)}" onclick="showDetail('${todayActionIdArg(ev.id)}','${todayActionIdArg(ev.occurrenceDate || ev.date)}')" aria-label="${esc(text + (ev.kidId ? ' · ' + kidNameFor(ev.kidId) : '') + (todayScheduleMeta(ev) ? ' · ' + todayScheduleMeta(ev) : ''))}">${isMeal ? todayIcon('bowl',14) : ''}<span>${esc(text)}</span></button>`;
+  const srcHtml = ev.sourceLabel ? `<small class="today-source-label">${esc(ev.sourceLabel)}</small>` : '';
+  const movedHtml = ev.previousStart ? `<small class="today-moved-tag" title="${esc(formatMovedTag(ev.previousStart))}" aria-label="${esc(formatMovedTag(ev.previousStart))}">Moved</small>` : '';
+  return `<button type="button" class="fr-day-event${placement ? '' : ' fr-day-untimed'}" style="${style}--event-color:${esc(color)}" onclick="showDetail('${todayActionIdArg(ev.id)}','${todayActionIdArg(ev.occurrenceDate || ev.date)}')" aria-label="${esc(text + srcText + movedText + (ev.kidId ? ' · ' + kidNameFor(ev.kidId) : '') + (todayScheduleMeta(ev) ? ' · ' + todayScheduleMeta(ev) : ''))}">${isMeal ? todayIcon('bowl',14) : ''}${srcHtml}${movedHtml}<span>${esc(text)}</span></button>`;
 }
 
 function eventsOnDay(events, ds) {

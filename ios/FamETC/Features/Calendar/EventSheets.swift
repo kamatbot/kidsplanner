@@ -20,6 +20,7 @@ struct AddEventSheet: View {
     @State private var notes = ""
     @State private var category = "other"
     @State private var kidId: String? = nil
+    @State private var driverMemberId: String? = nil
     @State private var saving = false
     @State private var isMultiDay = false
     @State private var endDate = Date()
@@ -46,6 +47,10 @@ struct AddEventSheet: View {
     /// but the UI shouldn't offer a choice that's a no-op).
     private var audienceKids: [Kid] {
         store.isParent ? store.kids : store.kids.filter { $0.id == store.me?.kidId }
+    }
+
+    private var drivingParents: [Parent] {
+        store.family?.parents ?? (store.family?.parentIds.map { Parent(id: $0, name: nil) } ?? [])
     }
 
 
@@ -94,6 +99,19 @@ struct AddEventSheet: View {
                     }
                     .pickerStyle(.menu)
                 }
+                if store.isParent {
+                    Section("Who's driving?") {
+                        Picker("Who's driving?", selection: $driverMemberId) {
+                            Text("Nobody").tag(String?.none)
+                            ForEach(drivingParents) { parent in
+                                let name = parent.name?.components(separatedBy: " ").first ?? parent.name ?? "Parent"
+                                Text(name).tag(Optional(parent.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .accessibilityLabel("Who's driving?")
+                    }
+                }
                 Section("Category") {
                     Picker("Category", selection: $category) {
                         ForEach(categories, id: \.self) { Text($0.capitalized).tag($0) }
@@ -134,6 +152,7 @@ struct AddEventSheet: View {
                 notes = editing.notes ?? ""
                 category = editing.category ?? "other"
                 kidId = editing.kidId
+                driverMemberId = editing.driverMemberId
                 repeatRule = editing.repeatRule ?? "none"
                 repeatUntilDate = date
                 if let ru = editing.repeatUntil, !ru.isEmpty, let d = EventFmt.ymd.date(from: ru) {
@@ -165,13 +184,14 @@ struct AddEventSheet: View {
         let n = notes.trimmingCharacters(in: .whitespaces)
         let ed = (isMultiDay && endDate > date) ? EventFmt.ymd.string(from: endDate) : nil
         let until = (repeatRule != "none" && hasRepeatUntil) ? EventFmt.ymd.string(from: repeatUntilDate) : nil
+        let drv = store.isParent ? driverMemberId : (editing?.driverMemberId ?? nil)
         Task {
             if let editing {
                 await store.updateEvent(editing.id, title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: kidId,
-                                         endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
+                                         endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until, driverMemberId: drv)
             } else {
                 await store.addEvent(title: clean, date: d, time: t, notes: n.isEmpty ? nil : n, category: category, kidId: kidId,
-                                      endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until)
+                                      endDate: ed, repeatRule: repeatRule == "none" ? nil : repeatRule, repeatUntil: until, driverMemberId: drv)
             }
             dismiss()
         }
@@ -215,6 +235,12 @@ struct EventDetailSheet: View {
                             detailRow("Repeats", rule + until)
                         }
                         if let cat = ev.category, !cat.isEmpty { detailRow("Category", cat.capitalized) }
+                        let driver = ev.driverName ?? store.family?.parents?.first(where: { $0.id == ev.driverMemberId })?.name?.components(separatedBy: " ").first
+                        if let driver, !driver.isEmpty {
+                            detailRow("Driving", driver)
+                                .accessibilityLabel("Driving: \(driver)")
+                        }
+                        if let src = ev.sourceLabel, !src.isEmpty { detailRow("Source", src) }
                         if let notes = ev.notes, !notes.isEmpty {
                             VStack(alignment: .leading, spacing: Space.xs) {
                                 Text("Notes").font(Typography.caption.weight(.bold)).foregroundStyle(Palette.textSecond)

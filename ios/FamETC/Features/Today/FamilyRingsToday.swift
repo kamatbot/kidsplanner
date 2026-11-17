@@ -20,6 +20,16 @@ struct FamilyRingsHero: View {
     private var active: [FamilyAction] {
         ActionQueue.sortActive(viewerItems).filter { ActionQueue.effectiveDue($0)?.isSnoozed != true }
     }
+    private var tomorrowItems: [TomorrowItem] {
+        let tomorrowKey = Agenda.dayKey(offset: 1)
+        let calItems = Agenda.items(on: tomorrowKey, events: store.visibleEvents, familyEvents: store.visibleFamilyEvents, homework: [])
+            .map { TomorrowItem(title: $0.title, time: $0.time) }
+        let actionItems = viewerItems.compactMap { action -> TomorrowItem? in
+            guard !action.isDone, let due = ActionQueue.effectiveDue(action), due.dateKey == tomorrowKey else { return nil }
+            return TomorrowItem(title: action.title, time: due.timeKey)
+        }
+        return calItems + actionItems
+    }
     private var progress: FamilyRingsMath.ActionProgress { FamilyRingsMath.parentRing(viewerItems: viewerItems) }
     private var identity: String { "\(store.me?.id ?? "")|\(store.family?.id ?? "")|\(Agenda.todayKey())" }
     private var summary: String {
@@ -66,8 +76,20 @@ struct FamilyRingsHero: View {
                                 }
                             }
                             if active.isEmpty {
-                                Text("All clear. Nothing waiting right now.")
-                                    .font(Typography.body).foregroundStyle(Palette.frInk2)
+                                let calm = TodayCalmCopy.calmToday(needsYouCount: active.count, tomorrowItems: tomorrowItems)
+                                if store.isParent, let calmLine = calm.calmLine {
+                                    Text(calmLine)
+                                        .font(Typography.body.weight(.semibold))
+                                        .foregroundStyle(Palette.frInk)
+                                    if let tomorrowLine = calm.tomorrowLine {
+                                        Text(tomorrowLine)
+                                            .font(Typography.caption)
+                                            .foregroundStyle(Palette.frInk2)
+                                    }
+                                } else {
+                                    Text("All clear. Nothing waiting right now.")
+                                        .font(Typography.body).foregroundStyle(Palette.frInk2)
+                                }
                                 Button("Family actions", action: onSeeAll).frame(minHeight: 44)
                             } else {
                                 ForEach(Array(active.prefix(3))) { action in

@@ -368,3 +368,123 @@ test("GET + DELETE /api/calendar/events: round-trip the web app relies on", () =
   const missing = call(routes["DELETE /api/calendar/events/:id"], { familyId: fam.id, params: { id: "ev_nope" } });
   assert.equal(missing.statusCode, 404);
 });
+
+test("POST, GET, PATCH /api/calendar/events: driverMemberId and driverName handling, kid rejection", () => {
+  const { routes } = buildHarness();
+  const parentA = store.createUser(`pa_${Date.now()}@example.com`, "Alex Parent");
+  const parentB = store.createUser(`pb_${Date.now()}@example.com`, "Brooke Parent");
+  const fam = family.createFamily(parentA.id, "Fam");
+  family.joinFamilyAsParent(fam.inviteCode, parentB.id);
+  const updatedFam = family.getFamily(fam.id);
+
+  const kid = family.addKid(fam.id, parentA.id, { name: "Charlie Kid" }).kid;
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
+
+  // 1. Parent POST with valid adult driverMemberId: returns driverMemberId and driverName
+  const res = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: parentA,
+    body: { title: "Soccer", date: "2026-08-01", driverMemberId: parentB.id, silent: true },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.event.driverMemberId, parentB.id);
+  assert.equal(res.body.event.driverName, "Brooke");
+
+  // 2. GET /api/calendar/events includes driverMemberId and driverName
+  const listRes = call(routes["GET /api/calendar/events"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: parentA,
+    query: { from: "2026-08-01", to: "2026-08-01" },
+  });
+  assert.equal(listRes.statusCode, 200);
+  const soccerEvent = listRes.body.events.find((e) => e.title === "Soccer");
+  assert.ok(soccerEvent);
+  assert.equal(soccerEvent.driverMemberId, parentB.id);
+  assert.equal(soccerEvent.driverName, "Brooke");
+
+  // 3. Parent POST with kid driverMemberId: rejected with 400
+  const kidDriverRes = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: parentA,
+    body: { title: "Piano", date: "2026-08-02", driverMemberId: kid.id, silent: true },
+  });
+  assert.equal(kidDriverRes.statusCode, 400);
+
+  // 4. Parent POST with non-family driverMemberId: rejected with 400
+  const nonFamDriverRes = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: parentA,
+    body: { title: "Tennis", date: "2026-08-02", driverMemberId: "stranger-123", silent: true },
+  });
+  assert.equal(nonFamDriverRes.statusCode, 400);
+
+  // 5. Kid POST with driverMemberId: rejected with 403
+  const kidPostRes = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: kidUser,
+    body: { title: "Camp", date: "2026-08-03", driverMemberId: parentA.id, silent: true },
+  });
+  assert.equal(kidPostRes.statusCode, 403);
+  assert.match(kidPostRes.body.error, /Kids cannot set the driver/);
+
+  // 6. Kid creates event without driver: succeeds
+  const kidCreateRes = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: kidUser,
+    body: { title: "Kid Art", date: "2026-08-04", silent: true },
+  });
+  assert.equal(kidCreateRes.statusCode, 200);
+  const kidEventId = kidCreateRes.body.event.id;
+
+  // 7. Kid PATCH trying to set driverMemberId on their own event: rejected with 403
+  const kidPatchRes = call(routes["PATCH /api/calendar/events/:id"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: kidUser,
+    params: { id: kidEventId },
+    body: { driverMemberId: parentA.id },
+  });
+  assert.equal(kidPatchRes.statusCode, 403);
+  assert.match(kidPatchRes.body.error, /Kids cannot set the driver/);
+
+  // 7b. Kid PATCH re-sending the unchanged (null) driver, as the native
+  // editor does with its full field set, still saves.
+  const kidResendRes = call(routes["PATCH /api/calendar/events/:id"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: kidUser,
+    params: { id: kidEventId },
+    body: { title: "Kid Art club", driverMemberId: null },
+  });
+  assert.equal(kidResendRes.statusCode, 200);
+  assert.equal(kidResendRes.body.event.title, "Kid Art club");
+
+  // 8. Parent PATCH updates driverMemberId to another parent, then clears it with null
+  const parentPatchRes = call(routes["PATCH /api/calendar/events/:id"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: parentA,
+    params: { id: soccerEvent.id },
+    body: { driverMemberId: parentA.id },
+  });
+  assert.equal(parentPatchRes.statusCode, 200);
+  assert.equal(parentPatchRes.body.event.driverMemberId, parentA.id);
+  assert.equal(parentPatchRes.body.event.driverName, "Alex");
+
+  const clearPatchRes = call(routes["PATCH /api/calendar/events/:id"], {
+    familyId: fam.id,
+    familyObj: updatedFam,
+    user: parentA,
+    params: { id: soccerEvent.id },
+    body: { driverMemberId: null },
+  });
+  assert.equal(clearPatchRes.statusCode, 200);
+  assert.equal(clearPatchRes.body.event.driverMemberId, null);
+  assert.equal(clearPatchRes.body.event.driverName, null);
+});

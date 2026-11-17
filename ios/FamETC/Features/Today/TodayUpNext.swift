@@ -80,11 +80,18 @@ struct TodayUpNext: View {
                     .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(item.title)
-                        .font(Typography.body.weight(.semibold))
-                        .foregroundStyle(Palette.frInk)
-                        .lineLimit(2)
-                    Text("\(spokenOwner(item)) · \(Agenda.dayLabel(item.dayKey)) · \(timeRange(item))")
+                    HStack(spacing: 6) {
+                        Text(item.title)
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Palette.frInk)
+                            .lineLimit(2)
+                        if let src = item.sourceLabel, !src.isEmpty {
+                            Text(src)
+                                .font(Typography.caption.weight(.semibold))
+                                .foregroundStyle(Palette.frInk2)
+                        }
+                    }
+                    Text(([spokenOwner(item), Agenda.dayLabel(item.dayKey), timeRange(item)] + (driverName(item).map { ["Driving: \($0)"] } ?? [])).joined(separator: " · "))
                         .font(Typography.label)
                         .foregroundStyle(Palette.frInk2)
                         .lineLimit(2)
@@ -121,8 +128,16 @@ struct TodayUpNext: View {
     /// subtitle is its free-text notes).
     private func cardDetail(_ item: AgendaItem) -> String {
         var parts = [Agenda.dayLabel(item.dayKey), timeRange(item)]
+        if let source = item.sourceLabel, !source.isEmpty { parts.append(source) }
         if item.familyEvent == nil, let place = item.subtitle, !place.isEmpty { parts.append(place) }
+        if let driver = driverName(item) { parts.append("Driving: \(driver)") }
         return parts.joined(separator: " · ")
+    }
+
+    private func driverName(_ item: AgendaItem) -> String? {
+        guard let ev = item.familyEvent else { return nil }
+        let name = ev.driverName ?? store.family?.parents?.first(where: { $0.id == ev.driverMemberId })?.name?.components(separatedBy: " ").first
+        return (name?.isEmpty == false) ? name : nil
     }
 
     private func timeRange(_ item: AgendaItem) -> String {
@@ -231,6 +246,26 @@ struct SchoolAgendaDetail: View {
                 Text(item.title).font(Typography.title)
                 Text(item.time ?? "All day")
                 if let subtitle = item.subtitle { Text(subtitle) }
+                if let source = item.sourceLabel, !source.isEmpty {
+                    HStack {
+                        Text("Source").foregroundStyle(Palette.textSecond)
+                        Spacer()
+                        Text(source).foregroundStyle(Palette.text)
+                    }
+                }
+                if let prev = item.previousStart, !prev.isEmpty {
+                    HStack {
+                        Text("Status").foregroundStyle(Palette.textSecond)
+                        Spacer()
+                        Text("Moved")
+                            .font(Typography.caption.weight(.bold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Palette.amber.opacity(0.15), in: Capsule())
+                            .foregroundStyle(Palette.amber)
+                            .accessibilityLabel("Moved, was \(Agenda.displayMoved(prev))")
+                    }
+                }
             }
             .navigationTitle("Calendar event")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

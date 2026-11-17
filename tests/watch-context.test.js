@@ -35,3 +35,19 @@ test('recurring calendar occurrences have distinct watch identities',()=>{
  const ids=r.body.events.filter(e=>e.title==='Reading').map(e=>e.id);
  assert.equal(new Set(ids).size,2);
 });
+
+test('kid watch context includes own tomorrow items and excludes another kid events and parent-only data',()=>{
+ const next=new Date(Date.now()+86400000).toISOString().slice(0,10);
+ const r=context('kid',{},[
+  {id:'kid-tomorrow',title:'Pack swim bag',date:next,time:'08:00',kidId:'kid'},
+  {id:'sibling-tomorrow',title:'Violin lesson',date:next,time:'09:00',kidId:'sibling'},
+  {id:'parent-only-tomorrow',title:'Parent conference',date:next,time:'07:30',parentOnly:true}
+ ]);
+ assert.equal(r.code,200);
+ assert.ok(Array.isArray(r.body.tomorrow),'tomorrow should be an array');
+ assert.equal(r.body.tomorrow.length,1);
+ assert.equal(r.body.tomorrow[0].title,'Pack swim bag');
+ assert.equal(r.body.tomorrow[0].time,'08:00');
+ assert.ok(!r.body.tomorrow.some(t=>t.title==='Violin lesson'));
+ assert.ok(!r.body.tomorrow.some(t=>t.title==='Parent conference'));
+});

@@ -501,6 +501,24 @@
     return (data && data.events) || [];
   }
 
+  async function getCalendarGuesses(from, to) {
+    let url = "/api/calendar/guesses";
+    const q = [];
+    if (from) q.push(`from=${encodeURIComponent(from)}`);
+    if (to) q.push(`to=${encodeURIComponent(to)}`);
+    if (q.length) url += `?${q.join("&")}`;
+    const data = await api(url, { method: "GET" });
+    return (data && data.guesses) || [];
+  }
+
+  async function dismissCalendarGuess(id) {
+    return api(`/api/calendar/guesses/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
+  }
+
+  async function addCalendarGuess(payload) {
+    return api("/api/calendar/guesses/add", { method: "POST", body: JSON.stringify(payload || {}) });
+  }
+
   // payload: {title, date, time, endTime, notes, category, kidId, silent,
   //           endDate, repeat, repeatUntil, sourceType, sourceId} — optional
   //           fields are forwarded untouched; the server validates them.
@@ -1159,6 +1177,9 @@
     syncCalendar,
     hideSchoolEvent,
     getCalendarEvents,
+    getCalendarGuesses,
+    dismissCalendarGuess,
+    addCalendarGuess,
     addCalendarEvent,
     updateCalendarEvent,
     deleteCalendarEvent,

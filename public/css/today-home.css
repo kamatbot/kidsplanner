@@ -83,6 +83,9 @@
 #tab-today .today-actions-empty { padding: 20px 0; color: var(--fr-ink-2); }
 #tab-today .today-actions-empty strong { color: var(--fr-ink); font-size: 20px; }
 #tab-today .today-actions-empty p { margin: 4px 0; }
+#tab-today .today-actions-empty.today-calm-state { padding: 18px 0; }
+#tab-today .today-calm-line { color: var(--fr-ink); font-size: 16px; font-weight: 600; line-height: 1.4; margin: 0 0 6px; }
+#tab-today .today-calm-tomorrow { color: var(--fr-ink-2); font: var(--t-meta); line-height: 1.4; margin: 0 0 12px; }
 #tab-today .fr-composer-wrap { grid-column: 1 / -1; }
 #tab-today .today-action-composer { margin-top: 16px; padding: 18px; background: var(--fr-card-2); border: 1px solid var(--fr-rule); border-radius: 12px; }
 #tab-today .today-setup-card { padding: 24px; margin: 0; }

@@ -284,6 +284,9 @@ struct CalendarEvent: Codable, Identifiable {
     var kidId: String?
     var isDeadline: Bool?
     var type: String?      // "event" | "deadline"
+    var sourceLabel: String? = nil
+    var previousStart: String? = nil
+    var movedAt: String? = nil
 
     var id: String { uid ?? "\(feedLabel ?? "")|\(title)|\(start ?? "")" }
     var isImportedTimetable: Bool { feedId == "sta-child-timetable" }
@@ -307,6 +310,8 @@ struct FamilyEvent: Codable, Identifiable {
     var notes: String?
     var category: String?
     var kidId: String?
+    var driverMemberId: String? = nil
+    var driverName: String? = nil
     var repeatRule: String?   // "none" | "daily" | "weekly" | "biweekly" | "monthly" (server key "repeat")
     var repeatUntil: String?  // YYYY-MM-DD
     var seriesId: String?     // set on expanded occurrences — the series' event id
@@ -320,14 +325,16 @@ struct FamilyEvent: Codable, Identifiable {
     /// and the family-chat message id; the server keeps it immutable.
     var sourceType: String? = nil
     var sourceId: String? = nil
+    var sourceLabel: String? = nil
 
     /// True for a recurring series or any of its expanded occurrences.
     var isRecurring: Bool { recurring == true || (repeatRule ?? "none") != "none" }
 
     private enum CodingKeys: String, CodingKey {
         case id, title, date, time, endTime, endDate, notes, category, kidId
+        case driverMemberId, driverName
         case repeatRule = "repeat"
-        case repeatUntil, seriesId, recurring, occurrenceDate, canEdit, sourceType, sourceId
+        case repeatUntil, seriesId, recurring, occurrenceDate, canEdit, sourceType, sourceId, sourceLabel
     }
 }
 

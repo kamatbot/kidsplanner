@@ -16,6 +16,9 @@ struct AgendaItem: Identifiable {
     let homework: HomeworkItem?  // set when kind == .homework (enables the done toggle)
     let kidId: String?       // resolves a per-kid color/name badge (Palette.kidColor)
     let familyEvent: FamilyEvent?  // set for manually-added events (recurring indicator, tap-to-detail)
+    var sourceLabel: String? = nil
+    var previousStart: String? = nil
+    var movedAt: String? = nil
 }
 
 /// Builds/labels agenda data. Formatters are shared (see DateFmt) — allocating
@@ -58,6 +61,18 @@ enum Agenda {
     /// matches `AgendaItem.time`.
     static func displayTime(_ date: Date) -> String { time12.string(from: date) }
 
+    /// A friendly "Tue 5:00 PM" string for moved calendar events.
+    static func displayMoved(_ raw: String) -> String {
+        guard let d = parseISO(raw) else { return raw }
+        let wday = DateFormatter()
+        wday.dateFormat = "EEE"
+        let w = wday.string(from: d)
+        if raw.contains("T") {
+            return "\(w) \(time12.string(from: d))"
+        }
+        return w
+    }
+
     /// Convert a stored "HH:mm" to a display "h:mm a" (falls back to the raw value).
     private static func display(hhmm: String) -> String {
         if let d = time24.date(from: hhmm) { return time12.string(from: d) }
@@ -78,7 +93,7 @@ enum Agenda {
         let kind: AgendaKind = (e.isDeadline ?? false) || e.type == "deadline" ? .deadline : .event
         return AgendaItem(id: "ev-\(e.id)", kind: kind, title: e.title, dayKey: dayKey,
                           time: time, sortKey: sort, subtitle: e.feedLabel ?? e.location, homework: nil,
-                          kidId: e.kidId, familyEvent: nil)
+                          kidId: e.kidId, familyEvent: nil, sourceLabel: e.sourceLabel, previousStart: e.previousStart, movedAt: e.movedAt)
     }
 
     private static func fromFamilyEvent(_ e: FamilyEvent) -> AgendaItem {
@@ -87,7 +102,7 @@ enum Agenda {
                           time: hasTime ? display(hhmm: e.time!) : nil,
                           sortKey: hasTime ? e.time! : "00:00",
                           subtitle: (e.notes?.isEmpty == false) ? e.notes : nil, homework: nil,
-                          kidId: e.kidId, familyEvent: e)
+                          kidId: e.kidId, familyEvent: e, sourceLabel: e.sourceLabel, previousStart: nil, movedAt: nil)
     }
 
     /// Expands a multi-day family event (`endDate` set) into one AgendaItem per
@@ -114,7 +129,7 @@ enum Agenda {
             let key = DateFmt.ymd.string(from: cur)
             items.append(AgendaItem(id: "fe-\(e.id)-\(key)", kind: .event, title: e.title, dayKey: key,
                                      time: nil, sortKey: "00:00", subtitle: first.subtitle, homework: nil,
-                                     kidId: e.kidId, familyEvent: e))
+                                     kidId: e.kidId, familyEvent: e, sourceLabel: e.sourceLabel, previousStart: nil, movedAt: nil))
         }
         return items
     }
@@ -124,7 +139,7 @@ enum Agenda {
                    time: h.dueTime.map(display(hhmm:)),
                    sortKey: h.dueTime ?? "23:59",
                    subtitle: (h.subject?.isEmpty == false) ? h.subject : "Homework",
-                   homework: h, kidId: h.kidId, familyEvent: nil)
+                   homework: h, kidId: h.kidId, familyEvent: nil, sourceLabel: nil, previousStart: nil, movedAt: nil)
     }
 
     /// All agenda items for a day key, sorted by time.
