@@ -251,4 +251,3 @@ test("Hermes update_event with driver and undo restores previous driver", async 
   ev = events.getById(updatedFam.id, evId);
   assert.equal(ev.driverMemberId, sam.id, "Undo must restore previous driverMemberId");
 });
-

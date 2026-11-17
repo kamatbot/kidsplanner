@@ -488,4 +488,3 @@ test("POST, GET, PATCH /api/calendar/events: driverMemberId and driverName handl
   assert.equal(clearPatchRes.body.event.driverMemberId, null);
   assert.equal(clearPatchRes.body.event.driverName, null);
 });
-
