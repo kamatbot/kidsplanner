@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#F4F5F7">
+  <title>Fam ETC — Family Planner</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <!-- Dark mode must be applied before first paint (no flash): read the saved
+       preference or fall back to the OS setting. Settings > Appearance writes
+       fam_theme ('light'|'dark'|'system') via setTheme() in app.js. -->
+  <script>
+    (function () {
+      try {
+        // fam_theme is stored JSON-encoded (see save() in util.js) — mirror
+        // that here so this pre-paint check agrees with applyThemeChoice().
+        var raw = localStorage.getItem('fam_theme');
+        var t = raw ? JSON.parse(raw) : null;
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+      } catch (e) { /* localStorage unavailable — default light */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/horizon.css">
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Enrichment + Notes styles (Notes tab, feelings check-in, SAT activity,
+       brain teaser, gating overlay). Kept separate from styles.css so this
+       feature's CSS is easy to find/own. -->
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/web-experience.css">
+  <link rel="stylesheet" href="/css/chat-media.css">
+  <link rel="stylesheet" href="/css/settings.css">
+  <link rel="stylesheet" href="/css/today-home.css">
+  <link rel="stylesheet" href="/css/mood-check-in.css">
+  <link rel="stylesheet" href="/css/today-learning.css">
+  <link rel="stylesheet" href="/css/puzzle-studio.css">
+  <link rel="stylesheet" href="/css/child-view.css">
+  <link rel="stylesheet" href="/css/family-os.css">
+  <!-- PDF.js is dynamically loaded on demand when a PDF upload is processed -->
+</head>
+<body>
+<!-- Family Rings seed 19a71449.
+THESIS: Every child's day is rings to close, and the parent's ring is what needs you.
+OWN-WORLD: Cool grey, white cards, violet actions, rose/teal/azure rings, gold fams, Geist.
+STORY: Glance, act, watch rings close.
+FIRST VIEWPORT: The parent ring and actions hero, then kid ring cards.
+FORM: Family Rings, seed 19a71449. -->
+<!-- Child view seed f65d002f.
+THESIS: The child page connects parental help with observed progress, without a timetable or sibling ranking.
+OWN-WORLD: Existing Horizon type, neutral panels, violet actions, circular child avatars and status marks.
+STORY: Choose a child, review the next homework task, see recorded progress, and set today's expected home plan.
+FIRST VIEWPORT: Identity above equal help/progress columns; a wide after-school journey below; primary homework review on the left; family chat collapsed to its 56px rail.
+FORM: Help & Progress, structure 4, seed f65d002f; approved comp with the user's Calendar-style chat adaptation.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance. -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     FIRST-RUN: CREATE OR JOIN A FAMILY (shown until a family exists)
+═══════════════════════════════════════════════════════════ -->
+<div id="first-run-panel" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Welcome to Fam ETC!</h3>
+    </div>
+    <p style="margin-bottom:16px;color:var(--text-2);font-weight:600">Create your family, or join one with a parent invite code from your co-parent.</p>
+
+    <form id="first-run-create-form" style="margin-bottom:20px">
+      <div class="form-group">
+        <label>How will your family use Fam ETC?</label>
+        <div class="category-picker" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="cat-opt" style="display:flex"><input type="radio" name="first-run-mode" value="school_sync" checked><span class="cat-chip school" style="width:100%;text-align:center;padding:10px 8px">🎓 With School Sync</span></label>
+          <label class="cat-opt" style="display:flex"><input type="radio" name="first-run-mode" value="organizer"><span class="cat-chip social" style="width:100%;text-align:center;padding:10px 8px">🏡 Just Family Organizer</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Family name</label>
+        <input type="text" id="first-run-family-name" placeholder="The Johnsons" required>
+      </div>
+      <button type="submit" class="btn-primary full-width">Create our family 🏠</button>
+    </form>
+
+    <hr class="dropdown-divider">
+
+    <form id="first-run-join-form" style="margin-top:20px">
+      <div class="form-group">
+        <label>Invite code</label>
+        <input type="text" id="first-run-join-code" placeholder="ABC123" required>
+      </div>
+      <button type="submit" class="btn-secondary full-width">Join with a code</button>
+    </form>
+
+    <div id="first-run-error" class="error-msg" style="margin-top:12px"></div>
+    <button type="button" class="btn-secondary full-width" onclick="handleLogout()">Sign out</button>
+  </div>
+</div>
+
+<div id="family-load-error-panel" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="family-load-error-heading" aria-describedby="family-load-error-description">
+  <div class="modal-card">
+    <h3 id="family-load-error-heading">Your family couldn’t load</h3>
+    <p id="family-load-error-description">Check your connection and try again. You can also sign out to use another account.</p>
+    <div class="form-row">
+      <button type="button" class="btn-primary" onclick="window.location.reload()">Try again</button>
+      <button type="button" class="btn-secondary" onclick="handleLogout()">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP SHELL — desktop rail, tablet kid top bar, Family Rings phone
+     navigation, main content, and docked family chat. isKidSession() adds
+     .kid-view to #dashboard-screen at boot; phones use the shared Family
+     Rings top and bottom navigation for every role.
+═══════════════════════════════════════════════════════════ -->
+<div id="dashboard-screen" class="screen active">
+  <div class="app-shell">
+
+    <!-- Family Rings phone shell. It is deliberately separate from the
+         desktop rail so every role gets the same compact navigation. -->
+    <header class="fr-mobile-topbar" aria-label="Fam ETC">
+      <div class="fr-mobile-brand"><span class="fr-mobile-mark" aria-hidden="true">F</span><span>Fam ETC</span></div>
+      <button type="button" class="fr-mobile-avatar" id="mobile-user-avatar" aria-label="Open more navigation" onclick="document.getElementById('mobile-more-dialog').showModal()">F</button>
+    </header>
+    <nav class="fr-mobile-tabbar" aria-label="Primary navigation">
+      <button type="button" class="sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')" aria-label="Command"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg><span>Command</span></button>
+      <button type="button" class="sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')" aria-label="Schedule"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg><span>Schedule</span></button>
+      <button type="button" class="sidebar-nav-item" data-tab="homework" onclick="switchNavTab('homework')" aria-label="Kids and Work"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg><span>Work</span></button>
+      <button type="button" class="sidebar-nav-item" data-tab="home" onclick="switchNavTab('home')" aria-label="Home"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v11a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg><span>Home</span></button>
+      <button type="button" class="sidebar-nav-item" onclick="document.getElementById('mobile-more-dialog').showModal()" aria-label="More"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg><span>More</span></button>
+    </nav>
+    <dialog class="fr-mobile-more" id="mobile-more-dialog" aria-label="More navigation">
+      <div class="fr-mobile-more-header"><strong>More</strong><button type="button" aria-label="Close menu" onclick="this.closest('dialog').close()">×</button></div>
+      <button type="button" data-tab="hermes" onclick="this.closest('dialog').close();switchNavTab('hermes')">Hermes</button>
+      <button type="button" data-tab="goals" onclick="this.closest('dialog').close();switchNavTab('goals')">Goals &amp; Habits</button>
+      <button type="button" data-tab="activities" onclick="this.closest('dialog').close();switchNavTab('activities')">Activities</button>
+      <a href="/trips">Trips (Full page)</a>
+      <a class="parent-only" href="/meals">Meals (Full page)</a>
+      <button type="button" data-tab="notes" onclick="this.closest('dialog').close();switchNavTab('notes')">Notes</button>
+      <button type="button" data-tab="settings" onclick="this.closest('dialog').close();switchNavTab('settings')">Settings</button>
+      <a class="parent-only" href="/security">Account &amp; passkeys</a>
+      <button type="button" class="fr-mobile-logout" onclick="this.closest('dialog').close();handleLogout()">Log out</button>
+    </dialog>
+
+    <!-- Kid top bar (kid sessions only — clean labeled 4-pillar navigation) -->
+    <div class="kid-topbar">
+      <div class="kid-topbar-avatar" id="kid-topbar-avatar"></div>
+      <nav class="kid-topbar-nav" aria-label="Kid navigation">
+        <button class="kid-topbar-nav-item sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')" aria-label="My Day" title="My Day">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2"></path></svg>
+          <span>My Day</span>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')" aria-label="Schedule" title="Schedule">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
+          <span>Schedule</span>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="homework" onclick="switchNavTab('homework')" aria-label="My Work" title="My Work">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>
+          <span>My Work</span>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="home" onclick="switchNavTab('home')" aria-label="Home" title="Home">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v11a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+          <span>Home</span>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="hermes" onclick="switchNavTab('hermes')" aria-label="Helper" title="AI Helper">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14 10L22 12L14 14L12 22L10 14L2 12L10 10Z"></path></svg>
+          <span>Helper</span>
+        </button>
+        <button class="kid-topbar-nav-item sidebar-nav-item" data-tab="settings" onclick="switchNavTab('settings')" aria-label="Settings" title="Settings">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+        </button>
+      </nav>
+    </div>
+
+    <div class="main-content-wrap">
+
+      <!-- Unified 4-Pillar Sidebar (parent sessions — CSS-hidden for .kid-view) -->
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-mark">F</div>
+          <span class="sidebar-brand-name">Fam ETC</span>
+        </div>
+        <div class="fos-nav-group-label">Family Hub</div>
+        <nav class="sidebar-nav" aria-label="Primary navigation">
+          <button class="sidebar-nav-item active" data-tab="today" onclick="switchNavTab('today')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"></path></svg>
+            <span>Command</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="calendar" onclick="switchNavTab('calendar')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 9h18M8 3v4M16 3v4"></path></svg>
+            <span>Schedule</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="homework" onclick="switchNavTab('homework')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>
+            <span>Kids &amp; Work</span>
+            <span class="sidebar-nav-badge" id="sidebar-homework-badge" hidden>0</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="home" onclick="switchNavTab('home')">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v11a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"></path></svg>
+            <span>Home</span>
+          </button>
+        </nav>
+        <div id="child-nav" hidden></div>
+        <div class="fos-sidebar-secondary">
+          <button class="sidebar-nav-item" data-tab="hermes" onclick="switchNavTab('hermes')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14 10L22 12L14 14L12 22L10 14L2 12L10 10Z"></path></svg>
+            <span>Hermes</span>
+            <span class="sidebar-nav-badge" id="sidebar-hermes-badge" hidden>0</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="goals" onclick="switchNavTab('goals')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>
+            <span>Habits &amp; Goals</span>
+          </button>
+          <button class="sidebar-nav-item" data-tab="activities" onclick="switchNavTab('activities')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>
+            <span>Activities</span>
+          </button>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-bottom">
+          <button class="sidebar-nav-item" data-tab="settings" onclick="switchNavTab('settings')" style="padding:9px 10px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"></path></svg>
+            <span>Settings</span>
+          </button>
+          <div class="sidebar-user-menu" id="sidebar-user-menu">
+            <div class="sidebar-user" onclick="toggleUserMenu()">
+              <div class="sidebar-user-avatar" id="user-avatar" tabindex="0"></div>
+              <div>
+                <div class="sidebar-user-name" id="user-name-display"></div>
+                <div class="sidebar-user-role" id="sidebar-user-role"></div>
+              </div>
+            </div>
+            <div class="user-dropdown" id="user-dropdown">
+              <div class="dropdown-name" id="user-name-display-2"></div>
+              <hr class="dropdown-divider">
+              <a class="dropdown-item" href="/security" style="display:block;text-decoration:none;color:inherit">🔐 Security &amp; passkeys</a>
+              <a class="dropdown-item" id="nav-billing-link" href="/billing" style="display:block;text-decoration:none;color:inherit">💳 Billing</a>
+              <button class="dropdown-item logout-item" onclick="handleLogout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M13 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5"/></svg> Logout</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main -->
+      <main class="main-content">
+
+        <!-- Pending kid sign-in requests (parents only) — a kid asked to join on a
+             device; a parent approves/denies here. Populated by renderKidAccessRequests(). -->
+        <div id="kid-requests-banner" class="kid-requests-banner" hidden></div>
+
+        <!-- Today Tab — the Needs-You Stack. Three bands: what needs you beside
+             today's schedule; the children beside dinner and habits; Daily 4
+             beside the weekly challenge. Lists are rendered by
+             renderTodayScreen() (app.js); the learning widgets keep their
+             mounted panels so drafts and puzzle progress survive tab changes. -->
+        <div id="tab-child" class="tab-panel" hidden></div>
+        <div class="tab-panel active" id="tab-today">
+          <header class="today-header">
+            <div class="today-greeting-col">
+              <div class="fos-header-title-row">
+                <h1 class="today-greeting" id="today-greeting"></h1>
+                <span class="fos-phase-pill" id="fos-phase-pill" hidden></span>
+              </div>
+              <p class="today-summary" id="today-summary"><span id="today-date-label"></span><span id="today-summary-needs"></span><span id="today-summary-events"></span></p>
+            </div>
+            <div class="fos-header-right">
+              <div class="today-sync-status" id="today-sync-status" hidden>
+                <span class="today-sync-dot" id="today-sync-dot"></span><span id="today-sync-text"></span>
+              </div>
+              <div class="fos-quick-capture-wrap">
+                <button type="button" class="fos-quick-capture-btn" id="fos-quick-capture-btn" aria-haspopup="menu" aria-expanded="false" onclick="window.famOS.toggleQuickCapture(event)">+ Quick capture</button>
+                <div class="fos-quick-capture-menu" id="fos-quick-capture-menu" role="menu" hidden>
+                  <button type="button" class="fos-qc-item" role="menuitem" onclick="window.famOS.closeQuickCapture();openTodayActionComposer()">
+                    <span class="fos-qc-icon" aria-hidden="true">✓</span>
+                    <span><strong>Family action</strong><small>Add to Needs you queue</small></span>
+                  </button>
+                  <button type="button" class="fos-qc-item" role="menuitem" onclick="window.famOS.closeQuickCapture();openAddEventModal()">
+                    <span class="fos-qc-icon" aria-hidden="true">📅</span>
+                    <span><strong>Calendar event</strong><small>Schedule with driver &amp; notes</small></span>
+                  </button>
+                  <button type="button" class="fos-qc-item" role="menuitem" onclick="window.famOS.closeQuickCapture();openSnapHomeworkModal()">
+                    <span class="fos-qc-icon" aria-hidden="true">📷</span>
+                    <span><strong>Scan homework diary</strong><small>Extract tasks from photo/PDF</small></span>
+                  </button>
+                  <button type="button" class="fos-qc-item" role="menuitem" onclick="window.famOS.closeQuickCapture();openUploadModal()">
+                    <span class="fos-qc-icon" aria-hidden="true">🗓</span>
+                    <span><strong>Upload schedule</strong><small>Import timetable or flyer</small></span>
+                  </button>
+                  <button type="button" class="fos-qc-item" role="menuitem" onclick="window.famOS.closeQuickCapture();window.famOS.openHome('meals')">
+                    <span class="fos-qc-icon" aria-hidden="true">🛒</span>
+                    <span><strong>Dinner or shopping</strong><small>Plan tonight or add groceries</small></span>
+                  </button>
+                  <button type="button" class="fos-qc-item" role="menuitem" onclick="window.famOS.closeQuickCapture();window.famOS.openHome('notes')">
+                    <span class="fos-qc-icon" aria-hidden="true">🗳</span>
+                    <span><strong>Family poll</strong><small>Create a quick decision</small></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <!-- Proactive Insights Strip (synthesized from real family data) -->
+          <section class="fos-insights-strip" id="fos-insights-strip" aria-label="Proactive insights" hidden>
+            <div class="fos-strip-label">
+              <span>Proactive Insights</span>
+              <small>Synthesized from Schedule, Homework, Meals &amp; Readiness</small>
+            </div>
+            <div class="fos-insights-grid" id="fos-insights-grid"></div>
+          </section>
+
+          <section class="today-setup-card parent-only" id="today-setup-card" aria-labelledby="today-setup-title" hidden>
+            <div class="today-setup-header">
+              <div>
+                <h2 id="today-setup-title">Make Fam ETC useful this week <span class="today-count" id="today-setup-progress"></span></h2>
+                <p id="today-setup-intro">A few small connections now will save time later. You can come back whenever you're ready.</p>
+              </div>
+              <div class="today-setup-header-actions">
+                <button type="button" class="today-link" id="today-setup-skip-btn" onclick="skipTodaySetup()">Dismiss</button>
+              </div>
+            </div>
+            <div id="today-setup-content"></div>
+          </section>
+
+          <!-- Kid-only single "Start Next" Focus Hero -->
+          <section class="fos-kid-focus" id="fos-kid-focus" aria-label="Start next focus" hidden></section>
+
+          <!-- 2-Column Command Workspace (iPad & Desktop Web) -->
+          <div class="fos-command-columns">
+            <div class="fos-col-main">
+              <section class="today-actions-card fr-hero" id="today-actions-card" aria-labelledby="today-actions-title">
+                <div class="fos-hero-top">
+                  <div id="today-parent-ring" class="fr-you-ring" aria-live="polite"></div>
+                  <div class="fos-hero-heading-wrap">
+                    <div class="today-section-head">
+                      <h2 id="today-actions-title">Needs you</h2>
+                      <button type="button" id="today-actions-count" class="today-link" onclick="openAllFamilyActions()">See all</button>
+                    </div>
+                    <p class="fos-hero-sub">Approvals, logistics gaps, decisions &amp; family actions in one queue.</p>
+                  </div>
+                </div>
+                <div class="fos-action-filters" id="fos-action-filters" hidden></div>
+                <div id="fos-unified-inbox" class="fos-unified-inbox" aria-live="polite"></div>
+                <div class="fr-hero-actions">
+                  <div id="today-actions-status" class="today-actions-status" role="status" aria-live="polite"></div>
+                  <div id="today-actions-list" class="today-actions-list"></div>
+                  <div id="today-actions-footer" class="today-actions-footer"></div>
+                </div>
+                <div class="fr-composer-wrap">
+                    <div id="today-action-composer" class="today-action-composer" hidden>
+                      <div class="today-action-composer-header">
+                        <div>
+                          <h3>Add a family action</h3>
+                          <p>Give the next step a clear home. You can change the details later.</p>
+                        </div>
+                        <button type="button" class="today-action-close btn-link" onclick="closeTodayActionComposer()">Cancel</button>
+                      </div>
+                      <form id="today-action-form" onsubmit="saveTodayAction(event)">
+                        <div class="form-group">
+                          <label for="today-action-title">Action</label>
+                          <input type="text" id="today-action-title" maxlength="200" required aria-describedby="today-action-form-error"
+                                 placeholder="Pack uniforms for Friday">
+                        </div>
+                        <div class="today-action-form-grid">
+                          <div class="form-group">
+                            <label for="today-action-due-date">Due date <span>(optional)</span></label>
+                            <input type="date" id="today-action-due-date">
+                          </div>
+                          <div class="form-group">
+                            <label for="today-action-due-time">Time <span>(optional)</span></label>
+                            <input type="time" id="today-action-due-time">
+                          </div>
+                          <div class="form-group">
+                            <label for="today-action-assignee">For</label>
+                            <select id="today-action-assignee" aria-describedby="today-action-assignee-help">
+                              <option value="family">Family / shared</option>
+                            </select>
+                            <span id="today-action-assignee-help" class="today-action-field-help">The whole family can see shared actions.</span>
+                          </div>
+                          <div class="form-group today-action-notes-group">
+                            <label for="today-action-notes">Notes <span>(optional)</span></label>
+                            <textarea id="today-action-notes" rows="2" maxlength="2000" placeholder="Anything helpful to remember"></textarea>
+                          </div>
+                        </div>
+                        <div id="today-action-form-error" class="error-msg today-action-form-error" role="alert" hidden></div>
+                        <div class="today-action-form-actions">
+                          <button type="button" class="btn-secondary" onclick="closeTodayActionComposer()">Cancel</button>
+                          <button type="submit" class="btn-primary" id="today-action-save-btn">Add action</button>
+                        </div>
+                      </form>
+                    </div>
+                </div>
+              </section>
+
+              <!-- Compact Dinner & Home Pulse (parent-only) -->
+              <section class="fos-home-pulse parent-only" id="fos-home-pulse" aria-label="Tonight and Home pulse" hidden></section>
+            </div>
+
+            <div class="fos-col-side">
+              <section class="today-people" aria-label="Children's progress">
+                <h2 id="today-fams-title" class="today-sr">Children</h2>
+                <div id="today-fams-body" class="fr-kids" aria-live="polite"></div>
+                <div class="fr-legend" aria-label="Ring legend">
+                  <span><i class="fr-legend-hw"></i>Homework (outer)</span><span><i class="fr-legend-d3"></i>Daily 4 (middle)</span><span><i class="fr-legend-hab"></i>Habits (inner)</span><span><i class="fr-legend-fams"></i>Fams this week</span>
+                </div>
+                  <section class="today-homework-card" id="today-homework-card" aria-labelledby="today-homework-title" hidden>
+                    <div class="today-section-head">
+                      <h3 id="today-homework-title">Your homework</h3>
+                      <span class="today-count" id="today-homework-count"></span>
+                      <div class="today-section-actions"><a href="#" class="today-link" onclick="switchNavTab('homework');return false">All homework<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a></div>
+                    </div>
+                    <div id="today-homework-list"></div>
+                  </section>
+              </section>
+
+              <section class="today-agenda-card" aria-labelledby="today-agenda-title">
+                <div class="today-section-head">
+                  <h2 id="today-agenda-title">Today <span id="today-schedule-count"></span></h2>
+                  <a href="/meals" class="fr-tonight" id="today-meals-card" hidden><span id="today-meals-body"></span></a>
+                  <button type="button" id="fos-runsheet-mode-btn" class="fos-runsheet-mode-btn" onclick="window.famOS.toggleRunsheetMode()">Timeline strip</button>
+                  <button type="button" id="today-add-event-btn" class="today-link" onclick="openAddEventModal()" aria-label="Add event">+ Event</button>
+                </div>
+                <div id="fos-runsheet" class="fos-runsheet-list"></div>
+                <div id="today-schedule-list" class="fr-day-scroll"></div>
+                <div class="today-tomorrow" id="today-tomorrow" hidden><h3>Tomorrow</h3><div id="today-tomorrow-row" class="fr-day-scroll"></div></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="fos-learning-shell" id="fos-learning-shell">
+            <button type="button" class="fos-tabletalk-bar" id="fos-tabletalk-bar" aria-expanded="false" onclick="window.famOS.toggleTableTalk()">
+              <span>✨ Family Table Talk · Daily 4 <small>News, Quote, Word &amp; Challenge</small></span>
+              <span class="fos-tabletalk-cta" id="fos-tabletalk-cta">Open</span>
+            </button>
+            <div class="fr-learning-tiles">
+                  <div class="daily5-tabs" id="daily5-tabs" role="tablist" aria-label="Daily 4 activities">
+                    <button type="button" id="daily5-tab-news" role="tab" aria-controls="daily5-panel-news" aria-selected="true" tabindex="0" onclick="selectDaily5Activity('news')"><span class="fr-learning-ring" id="fr-learning-news"></span><span><b>News</b><small>Stories today</small></span></button>
+                    <button type="button" id="daily5-tab-quote" role="tab" aria-controls="daily5-panel-quote" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('quote')"><span class="fr-learning-ring" id="fr-learning-quote"></span><span><b>Quote</b><small>This week’s theme</small></span></button>
+                    <button type="button" id="daily5-tab-word" role="tab" aria-controls="daily5-panel-word" aria-selected="false" tabindex="-1" onclick="selectDaily5Activity('word')"><span class="fr-learning-ring" id="fr-learning-word"></span><span><b>Word</b><small>Word of the week</small></span></button>
+                  </div>
+
+              <button type="button" class="fr-challenge-tile" onclick="openTodayChallenge()"><span class="fr-learning-ring" id="fr-learning-challenge"></span><span><b>Challenge</b><small id="fr-challenge-status">Today's puzzle</small></span></button>
+            </div>
+            <!-- Band 3: Daily 4 beside the weekly challenge. Learning band —
+                 owned by Agent B. Styles in today-learning.css. -->
+            <div class="today-band today-band-learn">
+                <section id="mood-check-in" class="card mood-check-in" hidden aria-label="Optional energy check-in"></section>
+                <section class="today-region daily5-card today-daily3" aria-labelledby="daily5-title">
+                <div class="today-section-head">
+                  <h2 id="daily5-title">Daily 4</h2>
+                  <div class="today-section-actions">
+                    <span class="daily5-streak">
+                      <svg class="streak-flame" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.7-2.6-1.5-3.5.2 1-.3 2-1.5 2.5.6-2-1-4.5-1-7z"></path></svg>
+                      <span class="streak-count"><span id="daily5-streak-count">0</span>-day streak</span>
+                      <span class="streak-zero">Start a streak</span>
+                    </span>
+                  </div>
+                </div>
+                <p id="daily-quest-summary" class="puzzle-instructions" role="status" aria-live="polite">News, Quote, Word &amp; Challenge · 0 of 4 complete</p>
+
+                <!-- Quote of the Day — flips to a reflection composer that saves
+                     as a note (source:"quote"). See renderWidgets/flipQuoteCard.
+                     The two faces swap via display, not a 3D transform. -->
+                <section class="daily5-panel" id="daily5-panel-quote" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-quote" hidden>
+                <div class="widget-quote" id="widget-quote">
+                  <div class="fam-enrich-lock" id="lock-quote" hidden></div>
+                  <div id="quote-flip-inner">
+                    <div class="quote-face quote-face-front">
+                      <div class="daily3-panel-top">
+                        <p class="puzzle-instructions" id="quote-theme"></p>
+                        <button type="button" class="today-mini-btn icon-only" title="Pin to notes" aria-label="Pin to notes" onclick="handlePinQuote()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"></path><path d="M12 14v7"></path></svg></button>
+                      </div>
+                      <svg class="quote-mark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11H4.5A1.5 1.5 0 0 1 3 9.5v-3A1.5 1.5 0 0 1 4.5 5h3A1.5 1.5 0 0 1 9 6.5V12a6 6 0 0 1-4 5.6"></path><path d="M18 11h-2.5A1.5 1.5 0 0 1 14 9.5v-3A1.5 1.5 0 0 1 15.5 5h3A1.5 1.5 0 0 1 20 6.5V12a6 6 0 0 1-4 5.6"></path></svg>
+                      <blockquote class="quote-text" id="quote-text"></blockquote>
+                      <cite class="quote-author" id="quote-author"></cite>
+                      <button type="button" class="today-link" onclick="flipQuoteCard(true)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"></path><path d="M13.5 6.5l4 4"></path></svg>Write a reflection</button>
+                    </div>
+                    <div class="quote-face quote-face-back">
+                      <p class="fam-reflect-prompt" id="quote-reflect-prompt"></p>
+                      <textarea id="quote-reflect-text" class="fam-reflect-textarea" rows="3" placeholder="What does this quote mean to you today?"></textarea>
+                      <div class="quote-back-actions">
+                        <button type="button" class="btn-primary fam-save-btn" onclick="saveQuoteReflection()">Save reflection</button>
+                        <button type="button" class="today-mini-btn" onclick="flipQuoteCard(false)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>Back to quote</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                </section>
+
+                <!-- SAT Word — interactive daily activity + word bank + pop quiz. -->
+                <section class="daily5-panel" id="daily5-panel-word" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-word" hidden>
+                <div class="widget-word" id="widget-word">
+                  <div class="fam-enrich-lock" id="lock-sat" hidden></div>
+                  <div class="daily3-panel-top">
+                    <p class="puzzle-instructions" id="word-root"></p>
+                    <button type="button" class="today-mini-btn icon-only" title="Pin to notes" aria-label="Pin to notes" onclick="handlePinSatWord()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3z"></path><path d="M12 14v7"></path></svg></button>
+                  </div>
+                  <div class="sat-word" id="sat-word"></div>
+                  <div class="sat-pos" id="sat-pos"></div>
+                  <div class="sat-def" id="sat-def"></div>
+                  <div class="sat-example" id="sat-example"></div>
+                  <details id="sat-placement" class="fam-sat-placement" hidden></details>
+                  <div id="sat-activity" class="fam-sat-activity"></div>
+                  <div class="fam-sat-footer">
+                    <button type="button" class="today-link" onclick="toggleWordBank()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2z"></path><path d="M4 21a2 2 0 0 1 2-2h14"></path></svg>Word bank</button>
+                    <button type="button" class="today-mini-btn" id="sat-quiz-btn" onclick="startWordQuiz()" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="4.5"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle></svg>Pop quiz</button>
+                  </div>
+                  <div id="sat-wordbank-panel" class="fam-sat-wordbank" hidden></div>
+                  <div id="sat-quiz-panel" class="fam-sat-quiz" hidden></div>
+                </div>
+                </section>
+
+                <!-- Interesting News — headline is a real link straight to the
+                     article; the summary + reflection composer show under the
+                     list as soon as a story is selected (toggleNewsDetails()
+                     stays wired for compatibility but #news-more-btn is
+                     visually retired — see today-learning.css). -->
+                <section class="daily5-panel" id="daily5-panel-news" role="tabpanel" tabindex="0" aria-labelledby="daily5-tab-news">
+                <div class="widget-news" id="widget-news">
+                  <div class="fam-enrich-lock" id="lock-news" hidden></div>
+                  <div class="news-helper-row">
+                    <p class="news-helper-line" id="news-helper-line">Pick any of today's stories — read one or all three.</p>
+                    <button type="button" class="today-mini-btn" onclick="renderNewsLoading(); loadRecentNews(++newsRequestToken, new Date())"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>Refresh stories</button>
+                  </div>
+                  <span class="news-badge" id="news-badge"></span>
+                  <div id="news-choices" class="news-choices" aria-label="Today’s news choices"></div>
+                  <a id="news-headline" href="#" target="_blank" rel="noopener noreferrer"></a>
+                  <button type="button" class="news-more-btn" id="news-more-btn" onclick="toggleNewsDetails()" aria-label="Show summary" hidden>▾</button>
+                  <div id="news-details" hidden>
+                    <div class="news-summary" id="news-summary"></div>
+                    <a class="news-link today-link" id="news-link" href="#" target="_blank" rel="noopener noreferrer">Read the full story</a>
+                    <p class="fam-reflect-prompt" id="news-reflect-prompt"></p>
+                    <textarea id="news-reflect-text" class="fam-reflect-textarea" rows="2" placeholder="Share your thoughts…" aria-label="Your news reflection" oninput="rememberNewsDraft()"></textarea>
+                    <p class="text-muted" style="font-size:12px">Saves to Notes and shares the article and your response in Family chat.</p>
+                    <button type="button" class="btn-primary fam-save-btn" onclick="saveNewsReflection()">Save &amp; share</button>
+                  </div>
+                </div>
+                </section>
+              </section>
+              <section class="today-region daily5-card today-challenge" aria-labelledby="daily-challenge-title">
+                <div class="today-section-head">
+                  <h2 id="daily-challenge-title">Brain teaser &amp; puzzle</h2>
+                </div>
+                <div class="challenge-chip-row" aria-hidden="true">
+                  <span class="challenge-chip" data-days="1,2">Mon–Tue · Brain teaser</span>
+                  <span class="challenge-chip" data-days="3">Wed · Sudoku + math</span>
+                  <span class="challenge-chip" data-days="4">Thu · News data</span>
+                  <span class="challenge-chip" data-days="5">Fri · SAT question</span>
+                  <span class="challenge-chip" data-days="6,0">Sat–Sun · Crossword</span>
+                </div>
+                <p class="today-sr" id="challenge-today-sr"></p>
+                <!-- Daily Brain Teaser — always visible in-card; day-ramped
+                     question count from the brainteaser API, resurfacing
+                     previously-wrong ones. -->
+                <section class="daily5-panel" id="daily5-panel-quiz" aria-label="Brain teaser" hidden>
+                <div class="widget-quiz" id="widget-quiz">
+                  <div class="fam-enrich-lock" id="lock-quiz" hidden></div>
+                  <div class="bt-head">
+                    <span class="fam-bt-progress" id="bt-progress"></span>
+                  </div>
+                  <div id="quiz-visual"></div>
+                  <div class="quiz-question" id="quiz-question"></div>
+                  <div class="quiz-options" id="quiz-options"></div>
+                  <div class="quiz-feedback" id="quiz-feedback" role="status" aria-live="polite"></div>
+                  <button class="btn-primary" id="btn-next-q" onclick="nextQuestion()" hidden>Next question →</button>
+                </div>
+                <p id="daily5-quiz-done" role="status" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>Brain teaser complete for today. Come back tomorrow for a new challenge.</p>
+                </section>
+
+                <section class="daily5-panel" id="daily5-panel-puzzle" aria-label="Scheduled puzzle">
+                <div class="widget-puzzle" id="widget-puzzle" hidden>
+                  <div class="fam-enrich-lock" id="lock-puzzle" hidden></div>
+                  <div class="puzzle-head">
+                    <span class="puzzle-icon" id="puzzle-icon" aria-hidden="true"></span>
+                    <span class="puzzle-title" id="puzzle-title">Today's puzzle</span>
+                  </div>
+                  <p class="puzzle-instructions" id="puzzle-instructions"></p>
+                  <div id="puzzle-mental-math"></div>
+                  <div class="puzzle-grid-wrap" id="puzzle-grid-wrap"></div>
+                  <div class="puzzle-clues" id="puzzle-clues"></div>
+                  <p class="puzzle-status" id="puzzle-status" role="status" aria-live="polite"></p>
+                  <div class="puzzle-actions">
+                    <button type="button" class="today-mini-btn" id="puzzle-retry-btn" onclick="loadDailyPuzzle(new Date())" hidden>Retry</button>
+                    <button type="button" class="today-mini-btn" id="puzzle-clear-btn" onclick="clearDailyPuzzle()">Clear</button>
+                    <button type="button" class="btn-primary" id="puzzle-check-btn" onclick="checkDailyPuzzle()">Check puzzle</button>
+                  </div>
+                </div>
+                </section>
+                <details class="puzzle-studio" id="puzzle-studio">
+                  <summary><strong>A little more play</strong><span>Optional practice · no points</span></summary>
+                  <div class="puzzle-studio-content"></div>
+                </details>
+              </section>
+          </div>
+          </div>
+        </div>
+
+        <!-- Hermes Tab — the private per-user assistant thread, moved off
+             Today into its own nav tab (docs/HERMES-THREADS-CONTRACT.md).
+             "Waiting on you" lists actionable open hermes-nudge/approval
+             cards; the conversation below shows every message; the composer
+             posts through the same send path as the chat dock's Hermes room
+             (see handleSendHermesMessage in app.js). Filled by
+             renderHermesPage(). -->
+        <div class="tab-panel" id="tab-hermes">
+          <header class="hermes-page-header">
+            <h1 class="page-title">Hermes</h1>
+            <p class="hermes-page-meta">Your private assistant · only you see this thread</p>
+          </header>
+          <section class="hermes-pending-card" id="hermes-pending" aria-label="Waiting on you" hidden>
+            <div class="hermes-section-label">Waiting on you</div>
+            <div id="hermes-pending-list"></div>
+          </section>
+          <section class="hermes-conversation-card">
+            <div class="hermes-page-messages" id="hermes-page-messages"></div>
+            <form id="hermes-page-form" class="hermes-page-send-row" onsubmit="handleSendHermesMessage(event, document.getElementById('hermes-page-input'))">
+              <input type="text" id="hermes-page-input" class="hermes-page-input" placeholder="Message Hermes…" aria-label="Message Hermes" autocomplete="off" maxlength="4000">
+              <button type="submit" class="hermes-page-send-btn" title="Send" aria-label="Send"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg></button>
+            </form>
+          </section>
+        </div>
+
+        <!-- Unified Home Tab — Meals & Groceries, Trips, and Decisions & Notes
+             inside the main SPA shell (zero full-page reloads; Family Pulse stays docked). -->
+        <div class="tab-panel" id="tab-home">
+          <header class="fos-home-header">
+            <div>
+              <h1 class="page-title">Home</h1>
+            </div>
+            <div class="fos-seg-control" role="tablist" aria-label="Home sections">
+              <button type="button" class="fos-seg-btn fos-home-seg active" data-home-sub="meals" onclick="window.famOS.setHomeSubTab('meals')">Meals &amp; Groceries</button>
+              <button type="button" class="fos-seg-btn fos-home-seg" data-home-sub="trips" onclick="window.famOS.setHomeSubTab('trips')">Trips</button>
+              <button type="button" class="fos-seg-btn fos-home-seg" data-home-sub="notes" onclick="window.famOS.setHomeSubTab('notes')">Decisions &amp; Notes</button>
+            </div>
+          </header>
+          <div id="fos-home-body"></div>
+        </div>
+
+        <!-- Calendar Tab (canvas 1b) — one calendar surface with the header
+             carrying view/date controls plus compact utility actions. -->
+        <div class="tab-panel" id="tab-calendar">
+          <div class="fos-pillar-subnav" aria-label="Schedule views">
+            <button type="button" class="fos-pillar-subbtn active" onclick="switchNavTab('calendar')">Calendar &amp; Timetables</button>
+            <button type="button" class="fos-pillar-subbtn" onclick="switchNavTab('activities')">Recurring Activities &amp; Gear</button>
+          </div>
+          <section class="fos-workload-radar" id="fos-schedule-radar" aria-label="Week workload radar" hidden></section>
+          <div class="cal-page-header">
+            <h1 class="page-title">Calendar</h1>
+            <div id="kid-switcher-calendar" class="kid-switcher"></div>
+            <div class="page-header-spacer"></div>
+            <div class="cal-view-btns">
+              <button class="view-btn active" id="btn-week" onclick="setCalView('week')">Week</button>
+              <button class="view-btn" id="btn-month" onclick="setCalView('month')">Month</button>
+            </div>
+            <div class="cal-pager">
+              <button class="cal-nav-btn" onclick="calPrev()" aria-label="Previous">‹</button>
+              <span id="cal-title" class="cal-title micro-label"></span>
+              <button class="cal-nav-btn" onclick="calNext()" aria-label="Next">›</button>
+            </div>
+            <div class="cal-header-actions" aria-label="Calendar tools">
+              <div class="cal-upload-utility">
+                <button type="button" class="btn-secondary cal-header-action" onclick="openUploadModal()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m21.4 11.6-8.9 8.9a6 6 0 0 1-8.5-8.5l9.1-9.1a4 4 0 0 1 5.7 5.7L9.7 17.7a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg> Upload schedule
+                </button>
+                <div class="calendar-footer" id="calendar-footer"></div>
+              </div>
+              <button type="button" class="btn-secondary cal-header-action" id="sidebar-add-school-cal" onclick="openAddSchoolCalendarModal()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 10 9-5 9 5-9 5z"/><path d="M7 12.2V17c2.8 1.7 7.2 1.7 10 0v-4.8M21 10v5"/></svg> Add school calendar
+              </button>
+            </div>
+            <button class="btn-primary" id="calendar-add-event-btn" onclick="openCalendarAddEvent()">+ Add</button>
+          </div>
+
+          <div class="calendar-tab-layout">
+            <section class="calendar-main">
+              <div class="calendar-grid-scroll"><div id="calendar-grid" class="calendar-grid"></div></div>
+              <div class="calendar-upload-history" id="uploads-history" hidden>
+                <div class="micro-label">Uploaded schedules</div>
+                <div id="uploads-list" class="uploads-list"></div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- Homework Tab (canvas 1c) — grouped by urgency: Overdue/Due today/
+             This week/Later/Done this week (renderHomeworkHub in app.js). -->
+        <div class="tab-panel" id="tab-homework">
+          <div class="fos-pillar-subnav" aria-label="Kids and work views">
+            <button type="button" class="fos-pillar-subbtn active" onclick="switchNavTab('homework')">Homework Queue</button>
+            <button type="button" class="fos-pillar-subbtn" onclick="switchNavTab('goals')">Habits &amp; Goals</button>
+          </div>
+          <div class="homework-hub-header">
+            <h1 class="page-title">Homework</h1>
+            <div id="kid-switcher-homework" class="kid-switcher"></div>
+            <select id="homework-subject-filter" aria-label="Filter homework by subject" class="homework-filter-select" onchange="renderHomeworkHub()">
+              <option value="">All subjects</option>
+            </select>
+            <div class="page-header-spacer"></div>
+            <button type="button" class="btn-secondary" id="school-import-btn" onclick="openSchoolAccountModal()" style="display:none"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 10 9-5 9 5-9 5z"/><path d="M7 12.2V17c2.8 1.7 7.2 1.7 10 0v-4.8M21 10v5"/></svg> Import from school</button>
+            <button type="button" class="btn-secondary" onclick="openSnapHomeworkModal()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"></rect><circle cx="12" cy="13" r="4"></circle><path d="M9 7l1.5-3h3L15 7"></path></svg>
+              Scan diary
+            </button>
+            <button type="button" class="btn-primary" onclick="openAddHomeworkModal()">+ Add</button>
+          </div>
+          <div id="homework-list" class="homework-list"></div>
+        </div>
+
+        <!-- Notes Tab — day-grouped timeline of notes (quotes reflections,
+             social-emotional check-ins, news responses, SAT + chat pins, manual
+             entries), only showing days that have a note. -->
+        <div class="tab-panel" id="tab-notes">
+          <section class="card notes-hub">
+            <div class="notes-hub-header">
+              <h3>📝 Notes</h3>
+              <button type="button" class="btn-primary" onclick="openAddNoteComposer()">+ Add a note</button>
+            </div>
+            <div id="notes-composer" class="notes-composer" hidden>
+              <textarea id="notes-composer-text" class="fam-reflect-textarea" rows="3" placeholder="Write a note…"></textarea>
+              <div class="notes-composer-actions">
+                <button type="button" class="btn-secondary" onclick="closeAddNoteComposer()">Cancel</button>
+                <button type="button" class="btn-primary" onclick="handleSaveManualNote()">Save note</button>
+              </div>
+            </div>
+            <div id="notes-timeline" class="notes-timeline"></div>
+          </section>
+        </div>
+
+        <!-- Goals Tab (Phase W3, canvas-1d) — habit rings + milestone bars +
+             a weekly family recap. Gentle language throughout: no red/failure
+             states, a missed day just resets a streak, it doesn't punish. -->
+        <div class="tab-panel" id="tab-goals">
+          <div class="homework-hub-header">
+            <h1 class="page-title">Goals</h1>
+            <div class="page-header-spacer"></div>
+            <button type="button" class="btn-primary" onclick="openAddGoalModal()">+ New goal</button>
+          </div>
+          <div id="goals-list" class="goals-grid"></div>
+          <section class="card goals-recap-card" id="goals-recap-card" hidden>
+            <div class="goals-recap-header">
+              <span class="micro-label" id="goals-recap-week"></span>
+            </div>
+            <div id="goals-recap-rows" class="goals-recap-rows"></div>
+            <div class="goals-recap-footer">Missed days reset gently — streaks pause, they don't punish.</div>
+          </section>
+        </div>
+
+        <!-- Activities Tab (Phase W3, canvas-1e) — extracurricular registry
+             with a day-of helper banner rendered only from real data. -->
+        <div class="tab-panel" id="tab-activities">
+          <div class="homework-hub-header">
+            <h1 class="page-title">Activities</h1>
+            <div class="page-header-spacer"></div>
+            <button type="button" class="btn-primary" onclick="openAddActivityModal()">+ New activity</button>
+          </div>
+          <div id="activities-dayof-banner" class="activities-dayof-banner" hidden></div>
+          <div id="activities-list" class="activities-grid"></div>
+        </div>
+
+        <!-- Settings Tab: Manage Family -->
+        <div class="tab-panel" id="tab-settings">
+        <header class="settings-header"><h1>Settings</h1><p>Make Fam ETC work for your family.</p></header>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="Settings sections">
+            <button type="button" data-settings-nav="family" aria-controls="settings-family" onclick="showSettingsSection('family')">Family</button>
+            <button type="button" data-settings-nav="school" aria-controls="settings-school" onclick="showSettingsSection('school')">School</button>
+            <button type="button" data-settings-nav="preferences" aria-controls="settings-preferences" onclick="showSettingsSection('preferences')">Preferences</button>
+            <button type="button" data-settings-nav="connections" aria-controls="settings-connections" onclick="showSettingsSection('connections')">Connections</button>
+            <button type="button" data-settings-nav="security" aria-controls="settings-security" onclick="showSettingsSection('security')">Security</button>
+          </nav>
+          <div class="settings-content">
+            <div id="settings-family" data-settings-section="family">        <section class="card" id="settings-your-name-card" hidden>
+          <h2>Your name</h2><p class="settings-description">How Fam ETC greets you and signs your messages.</p>
+          <form id="settings-your-name-form" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap" onsubmit="handleSettingsSaveName(event)">
+            <div class="form-group" style="margin:0;flex:1;min-width:180px">
+              <label for="settings-your-name">First and last name</label>
+              <input type="text" id="settings-your-name" maxlength="60" autocomplete="name" placeholder="e.g. Sam Rivera" required>
+            </div>
+            <button type="submit" class="btn-primary">Save</button>
+          </form>
+          <p id="settings-your-name-status" class="text-muted" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card">
+          <h2>Family</h2><p class="settings-description">A familiar face and color for everyone, wherever you plan or chat.</p>
+          <!-- Kid sessions are role-scoped: family management (parents, invite,
+               kid add/remove) is parent-only — see APP-BRIEF.md "Kid sign-in". -->
+          <p id="kid-settings-notice" class="text-muted" style="display:none">
+            Family management is available to parents only. Ask a parent to make changes here.
+          </p>
+
+          <div id="settings-parent-only">
+            <h4 style="margin-bottom:10px">Kids</h4>
+            <div id="manage-family-kids" style="margin-bottom:24px"></div>
+
+
+
+            <details class="settings-disclosure"><summary>Add a kid profile</summary>
+            <form id="add-kid-form" onsubmit="handleAddKid(event)">
+              <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="kid-name" placeholder="Maya" required>
+              </div>
+              <div class="form-group">
+                <label>Grade</label>
+                <select id="kid-grade">
+                  <option value="">Select grade…</option>
+                  <option>Kindergarten</option>
+                  <option>1st Grade</option><option>2nd Grade</option><option>3rd Grade</option>
+                  <option>4th Grade</option><option>5th Grade</option><option>6th Grade</option>
+                  <option>7th Grade</option><option>8th Grade</option><option>9th Grade</option>
+                  <option>10th Grade</option><option>11th Grade</option><option>12th Grade</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Color</label>
+                <div class="category-picker" id="kid-color-picker">
+                  <label class="cat-opt"><input type="radio" name="kid-color" value="#6C63FF" checked><span class="cat-chip" style="background:#EDE9FF;color:#6C63FF">●</span></label>
+                  <label class="cat-opt"><input type="radio" name="kid-color" value="#FF6B9D"><span class="cat-chip" style="background:#FFE4EF;color:#FF6B9D">●</span></label>
+                  <label class="cat-opt"><input type="radio" name="kid-color" value="#4ECDC4"><span class="cat-chip" style="background:#E0F7F6;color:#4ECDC4">●</span></label>
+                  <label class="cat-opt"><input type="radio" name="kid-color" value="#FFB84C"><span class="cat-chip" style="background:#FFF3E0;color:#FFB84C">●</span></label>
+                  <label class="cat-opt"><input type="radio" name="kid-color" value="#5AC8FA"><span class="cat-chip" style="background:#E3F6FF;color:#5AC8FA">●</span></label>
+                  <label class="cat-opt"><input type="radio" name="kid-color" value="#FF7A7A"><span class="cat-chip" style="background:#FFEDED;color:#FF7A7A">●</span></label>
+                </div>
+              </div>
+              <div id="kid-form-error" class="error-msg"></div>
+              <button type="submit" class="btn-primary">Add kid 👋</button>
+            </form>
+            </details>
+            <h4 style="margin-bottom:10px">Parents</h4>
+            <div id="manage-family-parents" style="margin-bottom:12px"></div>
+            <div id="co-parent-invite" tabindex="-1" style="margin-bottom:28px"></div>
+
+
+          </div>
+        </section></div>
+            <div id="settings-school" data-settings-section="school" hidden>        <!-- Private per-child capability feeds. The server stores only the
+             encrypted access code and never returns it to the browser. -->
+        <section class="card" id="school-api-feeds-card">
+          <h3>School timetable &amp; homework</h3>
+          <p id="kid-school-api-notice" class="text-muted" style="display:none">
+            A parent manages the private school links. Connected homework and timetable entries sync automatically.
+          </p>
+          <div id="settings-parent-only-school-api">
+            <div class="school-api-intro">
+              <div>
+                <p>Connect each child once. Fam ETC checks both private feeds every eight hours and keeps homework, lessons, and timetable activities current.</p>
+                <p class="text-muted">These links work like passwords. They are encrypted, never shown again, and should not be shared.</p>
+                <p class="text-muted">The first successful homework sync replaces that child's existing homework list with the feed.</p>
+              </div>
+              <a class="btn-secondary school-api-source-link" href="https://bangkok.learn.nae.school/local/sta/pages/childfeed.php" target="_blank" rel="noopener noreferrer">Get private links</a>
+            </div>
+            <div id="school-api-feeds-list" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <!-- School calendars (Phase 2) — per-kid feed subscriptions + custom
+             iCal import. Parent-only mutation (subscribe/unsubscribe), same
+             scoping as Manage Family below. -->
+        <section class="card" id="school-calendars-card">
+          <h3>School calendars</h3>
+          <p id="kid-school-notice" class="text-muted" style="display:none">
+            Your school calendar is synced automatically — ask a parent to add or change subscriptions here.
+          </p>
+          <div id="settings-parent-only-school">
+            <label class="school-sync-mode-row">
+              <input type="checkbox" id="school-sync-mode-toggle" checked onchange="handleToggleSchoolSyncMode(this.checked)">
+              <span>
+                <strong>Use School Sync</strong>
+                <span class="text-muted">Turn off to use Fam ETC as a family organizer only. Today stops asking you to set up school calendars.</span>
+              </span>
+            </label>
+            <p class="text-muted" style="margin-bottom:12px">
+              Subscribe each kid to their school calendars. Events sync automatically and show up
+              on the calendar with a badge — read-only, since they come straight from the school.
+            </p>
+            <div class="school-sync-row">
+              <button type="button" class="btn-primary" id="school-sync-now-btn" onclick="handleSyncNowClick()">Sync now 🔄</button>
+              <span id="school-last-synced" class="text-muted">Never synced yet</span>
+            </div>
+            <p id="school-sync-errors" class="error-msg" style="display:none;margin-top:8px"></p>
+
+            <div id="school-calendars-list" style="margin:16px 0"></div>
+
+            <button type="button" class="btn-secondary" onclick="openAddSchoolCalendarModal()">
+              ➕ Add your school's calendar
+            </button>
+          </div>
+        </section>
+
+</div>
+            <div id="settings-preferences" data-settings-section="preferences" hidden>        <section class="card" id="install-app-card" hidden>
+          <h3>Install Fam ETC</h3>
+          <p class="text-muted" style="margin-bottom:12px">
+            Open Fam ETC from your desktop or shelf in its own app window.
+          </p>
+          <button type="button" class="btn-primary" id="install-app-btn" onclick="handleInstallApp()">
+            Install Fam ETC
+          </button>
+          <p id="install-app-status" class="text-muted" role="status" aria-live="polite" style="margin-top:8px"></p>
+        </section>
+
+        <section class="card" id="appearance-settings-card">
+          <h3>Appearance</h3>
+          <p class="text-muted" style="margin-bottom:12px">Match your device, or pick a theme.</p>
+          <div class="cal-view-btns" id="theme-toggle" style="display:inline-flex">
+            <button type="button" class="view-btn" data-theme-choice="system" onclick="setTheme('system')">Auto</button>
+            <button type="button" class="view-btn" data-theme-choice="light" onclick="setTheme('light')">Light</button>
+            <button type="button" class="view-btn" data-theme-choice="dark" onclick="setTheme('dark')">Dark</button>
+          </div>
+        </section>
+
+        <section class="card" id="notifications-settings-card">
+          <h3>Notifications</h3>
+          <p class="text-muted" style="margin-bottom:12px">
+            Get a browser notification when a new family chat message arrives while this app isn't open.
+          </p>
+          <div id="notifications-control">
+            <button type="button" class="btn-primary" id="notifications-toggle-btn" onclick="handleToggleNotifications()">
+              Turn on notifications
+            </button>
+            <p id="notifications-status-text" class="text-muted" style="margin-top:8px"></p>
+          </div>
+        </section>
+
+</div>
+            <div id="settings-connections" data-settings-section="connections" hidden><h2>Connections</h2><p class="settings-description">Manage paired watches and your assistant connection.</p><p id="kid-connections-notice" hidden>A parent manages your family’s connections.</p><div id="connections-parent-only">            <section class="settings-subcard" id="watch-devices-card" aria-labelledby="watch-devices-heading">
+              <h4 id="watch-devices-heading" style="margin-bottom:6px">Apple Watches</h4>
+              <p class="text-muted" style="margin:0 0 12px">
+                Pair a standalone watch for yourself or a kid. The watch can then show My next over Wi‑Fi or cellular.
+              </p>
+              <div class="form-row" style="align-items:end">
+                <div class="form-group" style="margin-bottom:0;flex:1">
+                  <label for="watch-pair-target">Pair watch for</label>
+                  <select id="watch-pair-target"></select>
+                </div>
+                <button type="button" class="btn-primary" onclick="handleStartWatchPairing()">Create watch code</button>
+              </div>
+              <div id="watch-pairing-result" role="status" aria-live="polite" style="margin-top:12px"></div>
+              <div id="watch-devices-list" style="margin-top:12px"></div>
+            </section></div></div>
+            <div id="settings-security" data-settings-section="security" hidden>        <!-- Security & Passkeys / Backup Codes -->
+        <section class="card" id="security-settings-card">
+          <h3>Security &amp; Backup Codes</h3>
+          <p id="kid-security-notice" class="text-muted" style="display:none">
+            Security settings and recovery codes are available to parents only.
+          </p>
+          <div id="settings-parent-only-security">
+            <h4 style="margin-bottom:8px">Passkeys</h4>
+            <p class="text-muted" style="margin-bottom:12px">Passkeys let you sign in securely with Touch ID, Face ID, or your device lock without passwords.</p>
+            <div id="settings-credentials-list" style="margin-bottom:14px"></div>
+            <form id="settings-add-passkey-form" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px" onsubmit="handleSettingsAddPasskey(event)">
+              <div class="form-group" style="margin:0;flex:1;min-width:180px">
+                <label>Passkey label (optional)</label>
+                <input type="text" id="settings-new-passkey-label" placeholder="e.g. My Phone, Laptop">
+              </div>
+              <button type="submit" class="btn-secondary">+ Add passkey</button>
+            </form>
+            <div id="settings-passkey-error" class="error-msg" style="margin-bottom:12px"></div>
+
+            <hr class="card-divider" style="margin:20px 0">
+
+            <h4 style="margin-bottom:8px">Account Recovery &amp; Backup Codes</h4>
+            <p class="text-muted" style="margin-bottom:12px">
+              Backup codes let you sign in on new devices (like Android or Windows) or recover your account if you lose access to your passkeys. Each code is single-use.
+            </p>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn-primary" id="settings-regen-backup-btn" onclick="handleSettingsRegenerateBackupCodes()">
+                🔑 Generate backup codes
+              </button>
+              <span id="settings-backup-codes-count" class="text-muted" style="font-size:13px;font-weight:600"></span>
+            </div>
+            <div id="settings-backup-codes-output" style="margin-top:14px"></div>
+          </div>
+        </section></div>
+          </div>
+        </div>
+      </div>
+
+      </main>
+
+      <!-- Family/Hermes Chat — docked right-hand column on Today; collapses to
+           a slim avatar strip on Calendar/Homework/Goals/Activities (see
+           switchNavTab), hidden entirely on Notes/Settings and
+           for kid sessions (which get a floating slide-over button instead,
+           see .chat-fab + toggleKidChat()). Two rooms share this one dock —
+           the Family|Hermes chips in the header switch which room #chat-
+           messages/#chat-send-form show (see switchChatRoom in app.js);
+           there's no per-room markup beyond that. Poll lifecycle is tied to
+           the shell being visible (see start/stopChatPolling and
+           start/stopHermesPolling calls in switchNavTab). -->
+      <aside class="chat-dock" id="chat-dock" onclick="handleChatDockClick(event)">
+        <div class="chat-dock-resize-handle" id="chat-dock-resize-handle"
+             role="separator" tabindex="0" aria-label="Resize family chat"
+             aria-orientation="vertical" aria-valuemin="296" aria-valuemax="520"
+             aria-valuenow="340" aria-controls="chat-dock" title="Drag to resize family chat"
+             onpointerdown="startChatDockResize(event)"
+             onkeydown="handleChatDockResizeKeydown(event)"
+             onclick="event.stopPropagation()"></div>
+        <div class="chat-dock-header">
+          <div class="chat-dock-title">
+            <div class="chat-room-switch" role="tablist" aria-label="Chat room">
+              <button type="button" class="chat-room-tab active" id="chat-room-tab-family" data-room="family" role="tab" aria-selected="true" onclick="switchChatRoom('family')">Family<span class="chat-room-dot" id="chat-room-dot-family" hidden></span></button>
+              <button type="button" class="chat-room-tab" id="chat-room-tab-hermes" data-room="hermes" role="tab" aria-selected="false" onclick="switchChatRoom('hermes')">Hermes<span class="chat-room-dot" id="chat-room-dot-hermes" hidden></span></button>
+            </div>
+          </div>
+          <div class="chat-dock-avatars" id="chat-dock-avatars"></div>
+          <span class="chat-unread-badge" id="chat-unread-badge" hidden>0</span>
+        </div>
+        <section class="chat-card">
+          <div class="chat-messages" id="chat-messages"></div>
+          <!-- Emoji + GIF popovers: absolutely positioned relative to
+               .chat-send-row (position:relative in CSS), toggled by
+               toggleEmojiPicker()/toggleGifPicker() in app.js. Hidden
+               entirely in the Hermes room (see switchChatRoom). -->
+          <div class="chat-picker-anchor">
+            <div class="chat-popover chat-emoji-popover" id="chat-emoji-popover" hidden></div>
+            <div class="chat-popover chat-gif-popover" id="chat-gif-popover" hidden>
+              <input type="text" id="chat-gif-search" class="chat-gif-search" placeholder="Search GIFs…" autocomplete="off" oninput="handleGifSearchInput()">
+              <div class="chat-gif-grid" id="chat-gif-grid"></div>
+            </div>
+          </div>
+          <form id="chat-send-form" class="chat-send-row" onsubmit="handleSendChatMessage(event)">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Message the family…" aria-label="Message the family" autocomplete="off" maxlength="4000">
+            <button type="submit" class="btn-primary chat-send-btn" title="Send" aria-label="Send"><svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg></button>
+            <button type="button" class="chat-picker-btn" id="chat-emoji-btn" title="Add an emoji" onclick="toggleEmojiPicker()">😀</button>
+            <button type="button" class="chat-picker-btn chat-gif-btn" id="chat-gif-btn" title="Send a GIF" onclick="toggleGifPicker()">GIF</button>
+            <button type="button" class="chat-media-add" id="chat-media-btn" title="Share a photo or video" aria-label="Share a photo or video" onclick="openFamilyChatMedia()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1 12.3 20.2a5.5 5.5 0 0 1-7.8-7.8l9.2-9.2a3.7 3.7 0 0 1 5.2 5.2l-9.2 9.2a1.8 1.8 0 0 1-2.6-2.6l8.5-8.5"/></svg></button>
+            <button type="button" class="chat-media-add chat-voice-btn" id="chat-voice-btn" title="Record a voice message" aria-label="Record a voice message" aria-pressed="false" onclick="startFamilyVoiceMessage()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11.5" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"/></svg></button>
+            <div class="chat-voice-bar" id="chat-voice-bar" role="group" aria-label="Voice message recorder" hidden>
+              <button type="button" class="chat-voice-cancel" aria-label="Cancel voice message"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+              <span class="chat-voice-rec-dot" aria-hidden="true"></span>
+              <span class="chat-voice-rec-time" aria-hidden="true">0:00</span>
+              <span class="chat-voice-rec-status" role="status" aria-live="polite"></span>
+              <button type="button" class="btn-primary chat-voice-send" aria-label="Stop and send voice message" hidden><svg class="chat-voice-send-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M2.3 20.5 22 12 2.3 3.5v6.6L16 12 2.3 13.9z"/></svg><svg class="chat-voice-retry-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+            </div>
+          </form>
+        </section>
+      </aside>
+
+    </div>
+
+    <!-- Floating chat button — every phone session uses the same slide-over. -->
+    <button type="button" class="chat-fab" id="chat-fab" onclick="toggleKidChat()" aria-label="Family chat">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.5 0-3-.4-4.2-1L3 20l1-5.3A8.5 8.5 0 1 1 21 11.5z"></path></svg>
+      <span class="chat-fab-badge" id="chat-fab-badge" hidden>0</span>
+    </button>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════════════════════ -->
+
+<!-- Add Event Modal -->
+<div id="add-event-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-event-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="add-event-modal-title">✏️ Add New Event</h3>
+      <button class="modal-close" onclick="closeModal('add-event-modal')">×</button>
+    </div>
+    <p id="edit-event-recurring-hint" class="text-muted" style="display:none;margin:0 0 12px">Editing updates the whole repeating series.</p>
+    <form onsubmit="saveEvent(event)">
+      <div class="form-group">
+        <label>Event Title *</label>
+        <input type="text" id="event-title" placeholder="Math homework, Soccer practice…" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="event-date" required oninput="document.getElementById('event-end-date').min=this.value">
+        </div>
+        <div class="form-group">
+          <label>Start Time</label>
+          <input type="time" id="event-time">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>End Time</label>
+        <input type="time" id="event-end-time">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>End Date</label>
+          <input type="date" id="event-end-date">
+        </div>
+        <div class="form-group">
+          <label>Repeat</label>
+          <select id="event-repeat" onchange="onEventRepeatChange()">
+            <option value="none">Doesn't repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Every 2 weeks</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="event-repeat-until-group" style="display:none">
+        <label>Until</label>
+        <input type="date" id="event-repeat-until">
+      </div>
+      <div class="form-group">
+        <label>For</label>
+        <select id="event-audience"></select>
+      </div>
+      <div class="form-group" id="event-driver-group">
+        <label for="event-driver">Who's driving?</label>
+        <select id="event-driver" aria-label="Who's driving?"></select>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <div class="category-picker">
+          <label class="cat-opt"><input type="radio" name="cat" value="school" checked><span class="cat-chip school">🏫 School</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="sports"><span class="cat-chip sports">⚽ Sports</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="arts"><span class="cat-chip arts">🎨 Arts</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="social"><span class="cat-chip social">👫 Social</span></label>
+          <label class="cat-opt"><input type="radio" name="cat" value="other"><span class="cat-chip other">⭐ Other</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="event-notes" placeholder="Any extra details…" rows="2"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-event-modal')">Cancel</button>
+        <button type="submit" class="btn-primary" id="add-event-submit-btn">Save Event 🎯</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Shopping Item from Family Chat -->
+<div id="chat-shopping-modal" class="modal-overlay" onclick="closeModalOnBg(event,'chat-shopping-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>🛒 Add to Shopping</h3>
+      <button class="modal-close" onclick="closeModal('chat-shopping-modal')">×</button>
+    </div>
+    <p class="text-muted" style="margin:0 0 12px">Confirm the item before adding it for the family.</p>
+    <form id="chat-shopping-form" onsubmit="handleChatShoppingSubmit(event)">
+      <div class="form-group">
+        <label for="chat-shopping-text">Item *</label>
+        <input type="text" id="chat-shopping-text" maxlength="200" required autocomplete="off">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="chat-shopping-category">Category</label>
+          <select id="chat-shopping-category">
+            <option value="produce">Produce</option>
+            <option value="protein">Protein</option>
+            <option value="dairy">Dairy</option>
+            <option value="grain">Grain</option>
+            <option value="pantry">Pantry</option>
+            <option value="frozen">Frozen</option>
+            <option value="spice">Spice</option>
+            <option value="other" selected>Other</option>
+          </select>
+        </div>
+        <div class="form-group" id="chat-shopping-assignee-group">
+          <label for="chat-shopping-assignee">Assign to</label>
+          <select id="chat-shopping-assignee"></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('chat-shopping-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Add item 🛒</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Upload Schedule Modal -->
+<div id="upload-modal" class="modal-overlay" onclick="closeModalOnBg(event,'upload-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📎 Upload Schedule</h3>
+      <button class="modal-close" onclick="closeModal('upload-modal')">×</button>
+    </div>
+    <div class="upload-zone" id="upload-zone"
+         onclick="document.getElementById('file-input').click()"
+         ondragover="handleDragOver(event)"
+         ondragleave="handleDragLeave(event)"
+         ondrop="handleDrop(event)">
+      <div class="upload-icon">📄</div>
+      <p class="upload-text">Click or drag &amp; drop your schedule here</p>
+      <p class="upload-hint">Supports PDF, JPG, PNG</p>
+      <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleFileSelect(event)">
+    </div>
+    <div id="upload-preview" class="upload-preview" style="display:none">
+      <div class="preview-header">
+        <span id="preview-filename" class="preview-fname"></span>
+        <button class="btn-link-danger" onclick="clearUpload()">Remove</button>
+      </div>
+      <div id="preview-content" class="preview-content"></div>
+    </div>
+    <!-- AI parse status (auto-shown when file selected) -->
+    <div id="ai-parse-section" class="ai-parse-section" style="display:none">
+      <div class="ai-parse-status" id="ai-parse-status">
+        <span class="ai-spinner" id="ai-spinner">⏳</span>
+        <span id="ai-status-text">Parsing schedule with AI…</span>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:16px">
+      <label>Schedule Name</label>
+      <input type="text" id="schedule-name" placeholder="e.g. Spring Semester 2026">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('upload-modal')">Cancel</button>
+      <button type="button" class="btn-primary" onclick="saveSchedule()">Save Schedule 📚</button>
+    </div>
+  </div>
+</div>
+
+<!-- Event Detail Modal -->
+<div id="event-detail-modal" class="modal-overlay" onclick="closeModalOnBg(event,'event-detail-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="detail-category-badge" id="detail-badge"></div>
+        <span class="cal-source-badge" id="detail-source-badge" style="display:none"></span>
+        <span class="cal-moved-tag" id="detail-moved-tag" style="display:none"></span>
+      </div>
+      <button class="modal-close" onclick="closeModal('event-detail-modal')">×</button>
+    </div>
+    <h3 class="detail-title" id="detail-title"></h3>
+    <div class="detail-rows">
+      <div class="detail-row"><span class="detail-icon">📅</span><span id="detail-date"></span></div>
+      <div class="detail-row"><span class="detail-icon">⏰</span><span id="detail-time"></span></div>
+      <div class="detail-row" id="detail-through-row" style="display:none"><span class="detail-icon">📆</span><span id="detail-through"></span></div>
+      <div class="detail-row" id="detail-repeat-row" style="display:none"><span class="detail-icon">↻</span><span id="detail-repeat"></span></div>
+      <div class="detail-row" id="detail-driver-row" style="display:none"><span class="detail-icon">🚗</span><span id="detail-driver"></span></div>
+      <div class="detail-row" id="detail-notes-row"><span class="detail-icon">📝</span><span id="detail-notes"></span></div>
+    </div>
+    <p id="detail-readonly-hint" class="text-muted" style="display:none;margin:8px 0 0"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('event-detail-modal')">Close</button>
+      <button type="button" class="btn-secondary" id="btn-edit-event" onclick="editCurrentEvent()" style="display:none">Edit ✏️</button>
+      <button type="button" class="btn-danger" id="btn-delete-event" onclick="deleteCurrentEvent()" style="display:none">Delete 🗑️</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guess Event Modal -->
+<div id="guess-modal" class="modal-overlay" onclick="closeModalOnBg(event,'guess-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="guess-badge">Guess</span>
+        <span class="text-muted" style="font-size:12px;font-weight:600">Usual routine</span>
+      </div>
+      <button class="modal-close" onclick="closeModal('guess-modal')" aria-label="Close">×</button>
+    </div>
+    <h3 class="detail-title" id="guess-title"></h3>
+    <div class="detail-rows">
+      <div class="detail-row"><span class="detail-icon">📅</span><span id="guess-date"></span></div>
+      <div class="detail-row"><span class="detail-icon">⏰</span><span id="guess-time"></span></div>
+      <div class="detail-row" id="guess-kid-row" style="display:none"><span class="detail-icon">👤</span><span id="guess-kid"></span></div>
+    </div>
+    <p class="text-muted" style="margin:10px 0 0;font-size:13px">This routine usually happens on this day, but isn't on your calendar yet.</p>
+    <div class="modal-actions" style="margin-top:16px;display:flex;gap:10px">
+      <button type="button" class="btn-secondary" id="btn-dismiss-guess" onclick="dismissCurrentGuess()">Not this week</button>
+      <button type="button" class="btn-primary" id="btn-add-guess" onclick="addCurrentGuess()">Add it</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Your School's Calendar Modal (Phase 2 — provider-neutral guided
+     import: works for ANY school's calendar system, not just St Andrews'
+     built-in feeds). Validate + preview server-side before saving. -->
+<div id="add-school-calendar-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-school-calendar-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>🎓 Add your school's calendar</h3>
+      <button class="modal-close" onclick="closeModal('add-school-calendar-modal')">×</button>
+    </div>
+    <p class="text-muted" style="margin-bottom:14px">
+      Paste any public calendar link your school (or a club) gives you — we'll check it works before saving.
+    </p>
+
+    <div class="form-group">
+      <label>Calendar link</label>
+      <input type="text" id="custom-feed-url" placeholder="https://... or webcal://...">
+    </div>
+    <div class="modal-actions" style="justify-content:flex-start;margin:0 0 12px">
+      <button type="button" class="btn-secondary" id="custom-feed-preview-btn" onclick="handlePreviewCustomFeed()">Check this link</button>
+    </div>
+    <div id="custom-feed-preview-result" class="text-muted" style="display:none;margin-bottom:12px"></div>
+    <div id="custom-feed-error" class="error-msg"></div>
+
+    <div id="custom-feed-confirm-section" style="display:none">
+      <div class="form-group">
+        <label>Name this calendar</label>
+        <input type="text" id="custom-feed-name" placeholder="e.g. School, Football club">
+      </div>
+      <div class="form-group">
+        <label>Applies to</label>
+        <select id="custom-feed-kid"></select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-school-calendar-modal')">Cancel</button>
+        <button type="button" class="btn-primary" onclick="handleSaveCustomFeed(event)">Save calendar 🎓</button>
+      </div>
+    </div>
+
+    <hr style="margin:20px 0;border:none;border-top:1px solid var(--border)">
+
+    <h4 style="margin-bottom:10px">Where do I find this link?</h4>
+    <div class="feed-guide-tabs">
+      <button type="button" class="feed-guide-tab active" data-guide="google" onclick="switchFeedGuideTab('google')">Google Calendar</button>
+      <button type="button" class="feed-guide-tab" data-guide="moodle" onclick="switchFeedGuideTab('moodle')">Moodle / school portal</button>
+      <button type="button" class="feed-guide-tab" data-guide="apple" onclick="switchFeedGuideTab('apple')">Apple / Outlook</button>
+      <button type="button" class="feed-guide-tab" data-guide="other" onclick="switchFeedGuideTab('other')">Other</button>
+    </div>
+    <div class="feed-guide-panels">
+      <ol class="feed-guide-panel active" id="guide-google">
+        <li>Open Google Calendar on the web.</li>
+        <li>Hover the school's calendar in the left sidebar → click the <strong>⋮</strong> (Options) → <strong>Settings and sharing</strong>.</li>
+        <li>Scroll to <strong>Integrate calendar</strong>.</li>
+        <li>Copy the <strong>Public address in iCal format</strong> (or the <strong>Secret address in iCal format</strong> if the calendar isn't public) and paste it above.</li>
+        <li>A school "Add to Google Calendar" link works too — open it, then follow the steps above.</li>
+      </ol>
+      <ol class="feed-guide-panel" id="guide-moodle">
+        <li>Go to your school portal's <strong>Calendar</strong> page.</li>
+        <li>Click <strong>Export calendar</strong>.</li>
+        <li>Choose <strong>All events</strong> and a date range.</li>
+        <li>Click <strong>Get calendar URL</strong> and copy the iCal link above.</li>
+      </ol>
+      <ol class="feed-guide-panel" id="guide-apple">
+        <li>Find the calendar's <strong>Publish</strong> or <strong>Subscribe</strong> link (Apple/iCloud) or the shared calendar's ICS link (Outlook / Office 365).</li>
+        <li>Copy the link — it may start with <code>webcal://</code>, that's fine, we'll convert it automatically.</li>
+      </ol>
+      <p class="feed-guide-panel" id="guide-other">
+        Paste any <code>.ics</code> or <code>webcal://</code> link your school gives you — most calendar
+        systems (Google, Moodle, Blackbaud, ManageBac, club sign-up sites) can generate one.
+        If a link doesn't work, it's usually a private web page rather than a calendar feed — look
+        for wording like "iCal", "ICS", "subscribe", or "export calendar".
+      </p>
+    </div>
+
+    <p class="text-muted" style="margin-top:16px;font-size:13px">
+      Feed stopped working? Just re-paste the URL above — schools sometimes reset a "secret" calendar address.
+    </p>
+  </div>
+</div>
+
+<!-- View Schedule Modal -->
+<div id="view-schedule-modal" class="modal-overlay" onclick="closeModalOnBg(event,'view-schedule-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3 id="view-schedule-title">📋 My Schedule</h3>
+      <button class="modal-close" onclick="closeModal('view-schedule-modal')">×</button>
+    </div>
+    <div id="view-schedule-content" class="preview-content"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('view-schedule-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Parse Review Modal -->
+<div id="parse-modal" class="modal-overlay" onclick="closeModalOnBg(event,'parse-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📅 Review Parsed Schedule</h3>
+      <button class="modal-close" onclick="closeModal('parse-modal')">×</button>
+    </div>
+    <p class="parse-intro">Review the classes below. Edit times or categories, then choose which week(s) to add them to.</p>
+
+    <div class="parse-week-row">
+      <div class="form-group" style="margin:0;flex:1">
+        <label>Apply to week starting (Monday)</label>
+        <input type="date" id="parse-week-date">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Repeat for</label>
+        <select id="parse-repeat" onchange="updateParseSummary()">
+          <option value="1">1 week only</option>
+          <option value="4">4 weeks</option>
+          <option value="8">8 weeks</option>
+          <option value="12">12 weeks (semester)</option>
+          <option value="18">18 weeks</option>
+          <option value="36">36 weeks (full year)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="parse-table-wrap">
+      <table class="parse-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="parse-check-all" onchange="toggleAllParsed(this.checked)" checked title="Select all"></th>
+            <th>Day</th>
+            <th>Subject</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Teacher / Room</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody id="parse-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="parse-summary" id="parse-summary"></div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('parse-modal')">Cancel</button>
+      <button type="button" class="btn-primary" onclick="applyParsedSchedule()">Add to Calendar 🗓️</button>
+    </div>
+  </div>
+</div>
+
+<dialog id="family-actions-dialog" class="family-actions-dialog" aria-labelledby="family-actions-dialog-title">
+  <header><h2 id="family-actions-dialog-title">All family actions</h2><form method="dialog"><button type="submit" class="btn-secondary" aria-label="Close all family actions">Close</button></form></header>
+  <button type="button" class="btn-primary parent-only" id="today-action-add-btn" onclick="document.getElementById('family-actions-dialog').close();openTodayActionComposer()" aria-expanded="false" aria-controls="today-action-composer">Add action</button>
+  <div id="family-actions-dialog-list"></div>
+</dialog>
+
+<!-- Add/Edit Homework Modal (Phase 3) -->
+<div id="add-homework-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-homework-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="add-homework-title">📚 Add homework</h3>
+      <button class="modal-close" onclick="closeModal('add-homework-modal')">×</button>
+    </div>
+    <form onsubmit="saveHomeworkForm(event)">
+      <div class="form-group" id="homework-kid-group">
+        <label>Kid</label>
+        <select id="homework-kid"></select>
+      </div>
+      <div class="form-group">
+        <label>Title *</label>
+        <input type="text" id="homework-title" placeholder="Math worksheet, Book report…" required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Subject</label>
+          <input type="text" id="homework-subject" placeholder="Math, English…">
+        </div>
+        <div class="form-group">
+          <label>Est. effort (min)</label>
+          <input type="number" id="homework-effort" min="1" step="5" placeholder="30">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Due date *</label>
+          <input type="date" id="homework-due-date" required>
+        </div>
+        <div class="form-group">
+          <label>Due time</label>
+          <input type="time" id="homework-due-time">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="homework-notes" placeholder="Any extra details…" rows="2"></textarea>
+      </div>
+      <div class="form-group" id="homework-checklist-group">
+        <label>Checklist sub-steps</label>
+        <div id="homework-checklist-editor" class="homework-checklist-editor"></div>
+        <button type="button" class="btn-link" onclick="addHomeworkChecklistRow()">+ Add step</button>
+      </div>
+      <div id="homework-form-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-homework-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save homework 📚</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Homework Detail Modal (Phase 3) -->
+<div id="homework-detail-modal" class="modal-overlay" onclick="closeModalOnBg(event,'homework-detail-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="detail-category-badge" id="hw-detail-badge"></div>
+      <button class="modal-close" onclick="closeModal('homework-detail-modal')">×</button>
+    </div>
+    <h3 class="detail-title" id="hw-detail-title"></h3>
+    <div class="detail-rows">
+      <div class="detail-row"><span class="detail-icon">📅</span><span id="hw-detail-due"></span></div>
+      <div class="detail-row" id="hw-detail-effort-row"><span class="detail-icon">⏱️</span><span id="hw-detail-effort"></span></div>
+      <div class="detail-row" id="hw-detail-notes-row"><span class="detail-icon">📝</span><span id="hw-detail-notes"></span></div>
+      <div class="detail-row" id="hw-detail-school-link-row"><span class="detail-icon">↗</span><a id="hw-detail-school-link" target="_blank" rel="noopener noreferrer">Open school assignment</a></div>
+    </div>
+    <div id="hw-detail-checklist" class="homework-checklist-view"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('homework-detail-modal')">Close</button>
+      <button type="button" class="btn-secondary" id="hw-detail-plan-btn" onclick="planWorkSessionForCurrentHomework()">🗓️ Plan a work session</button>
+      <button type="button" class="btn-secondary" id="hw-detail-edit-btn" onclick="editCurrentHomework()">✏️ Edit</button>
+      <button type="button" class="btn-danger" id="hw-detail-delete-btn" onclick="deleteCurrentHomework()">Delete 🗑️</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Goal Modal (Phase W3) — habit (checked-in per week) or milestone
+     (total count) goal. A parent picks which kid it's for; a kid session
+     creates a goal for themselves only, so the Kid picker is hidden (see
+     openAddGoalModal). -->
+<div id="add-goal-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-goal-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>🎯 New goal</h3>
+      <button class="modal-close" onclick="closeModal('add-goal-modal')">×</button>
+    </div>
+    <form onsubmit="saveGoalForm(event)">
+      <div class="form-group" id="goal-kid-group">
+        <label>Kid</label>
+        <select id="goal-kid"></select>
+      </div>
+      <div class="form-group">
+        <label>Title</label>
+        <input type="text" id="goal-title" placeholder="Read 20 min daily, Learn 50 SAT words…" required>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <div class="category-picker">
+          <label class="cat-opt"><input type="radio" name="goal-type" value="habit" checked onchange="updateGoalTargetLabel()"><span class="cat-chip other">🔁 Habit</span></label>
+          <label class="cat-opt"><input type="radio" name="goal-type" value="milestone" onchange="updateGoalTargetLabel()"><span class="cat-chip other">🏁 Milestone</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label id="goal-target-label">Times per week</label>
+        <input type="number" id="goal-target" min="1" step="1" placeholder="7" required>
+      </div>
+      <div id="goal-form-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-goal-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save goal 🎯</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add Activity Modal (Phase W3) — extracurricular registry entry,
+     parent-only creation/editing (see openAddActivityModal). -->
+<div id="add-activity-modal" class="modal-overlay" onclick="closeModalOnBg(event,'add-activity-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="add-activity-title">⚽ New activity</h3>
+      <button class="modal-close" onclick="closeModal('add-activity-modal')">×</button>
+    </div>
+    <form onsubmit="saveActivityForm(event)">
+      <div class="form-group">
+        <label>Kid</label>
+        <select id="activity-kid"></select>
+      </div>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="activity-name" placeholder="Football, Art club, Piano…" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <div class="category-picker">
+          <label class="cat-opt"><input type="radio" name="activity-category" value="sports" checked><span class="cat-chip sports">⚽ Sports</span></label>
+          <label class="cat-opt"><input type="radio" name="activity-category" value="arts"><span class="cat-chip arts">🎨 Arts</span></label>
+          <label class="cat-opt"><input type="radio" name="activity-category" value="music"><span class="cat-chip other">🎵 Music</span></label>
+          <label class="cat-opt"><input type="radio" name="activity-category" value="other"><span class="cat-chip other">⭐ Other</span></label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Schedule</label>
+        <div id="activity-schedule-editor" class="activity-schedule-editor"></div>
+        <button type="button" class="btn-link" onclick="addActivityScheduleRow()">+ Add a time</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" id="activity-location" placeholder="Main field, Room B204…">
+        </div>
+        <div class="form-group">
+          <label>Coach / teacher name</label>
+          <input type="text" id="activity-coach-name" placeholder="Mr. Daniels">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Gear (comma separated)</label>
+        <input type="text" id="activity-gear" placeholder="shin guards, water bottle, boots">
+      </div>
+      <div class="form-group">
+        <label>Note (fee, season, etc.)</label>
+        <input type="text" id="activity-note" placeholder="Term fee due Aug 15">
+      </div>
+      <div id="activity-form-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeModal('add-activity-modal')">Cancel</button>
+        <button type="submit" class="btn-primary">Save activity ⚽</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- School account (Moodle) connect + import modal. Parent-only — see
+     applyRoleScopingToUI() / #school-import-btn. Three steps rendered in
+     one modal, toggled via display: (1) connect credentials, (2) map kid ->
+     Moodle user id + Import, (3) preview homework/timetable -> Add to Fam ETC. -->
+<div id="school-account-modal" class="modal-overlay" onclick="closeModalOnBg(event,'school-account-modal')">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>🏫 Import from school</h3>
+      <button class="modal-close" onclick="closeModal('school-account-modal')">×</button>
+    </div>
+
+    <!-- Step 1: connect credentials -->
+    <div id="school-step-connect">
+      <p class="text-muted" style="margin-bottom:12px">
+        Used only to fetch your child's homework and timetable. Stored encrypted on our server, never shown again.
+        Use your school username &amp; password — if your school makes you "Sign in with Microsoft/Google", this won't work.
+      </p>
+      <form onsubmit="handleConnectSchoolAccount(event)">
+        <div class="form-group">
+          <label>School username</label>
+          <input type="text" id="school-username" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+          <label>School password</label>
+          <input type="password" id="school-password" autocomplete="current-password" required>
+        </div>
+        <div id="school-connect-error" class="error-msg"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onclick="closeModal('school-account-modal')">Cancel</button>
+          <button type="submit" class="btn-primary" id="school-connect-submit-btn">Connect 🔗</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Step 2: connected — per-kid Moodle id + Import -->
+    <div id="school-step-connected" style="display:none">
+      <p class="text-muted" style="margin-bottom:8px">✅ School account connected.</p>
+      <div class="form-group">
+        <label>Kid</label>
+        <select id="school-import-kid" onchange="renderSchoolKidMapping()"></select>
+      </div>
+      <div class="form-group">
+        <label>Moodle user id for this child</label>
+        <input type="text" id="school-moodle-userid" inputmode="numeric" placeholder="e.g. 14197">
+        <p class="text-muted" style="margin-top:4px">Ask the school, or find it in your child's Moodle profile URL.</p>
+      </div>
+      <div id="school-import-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-danger" onclick="handleDisconnectSchoolAccount()">Disconnect</button>
+        <button type="button" class="btn-primary" id="school-import-btn-2" onclick="handleImportSchoolData()">Import 📥</button>
+      </div>
+    </div>
+
+    <!-- Step 3: preview + confirm -->
+    <div id="school-step-preview" style="display:none">
+      <h4 style="margin-bottom:8px">Homework</h4>
+      <div id="school-preview-homework" class="homework-list" style="max-height:180px;overflow-y:auto;margin-bottom:16px"></div>
+      <h4 style="margin-bottom:8px">Timetable</h4>
+      <div id="school-preview-timetable" style="max-height:180px;overflow-y:auto;margin-bottom:16px"></div>
+      <div id="school-preview-error" class="error-msg"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="showSchoolStep('connected')">Back</button>
+        <button type="button" class="btn-primary" onclick="handleConfirmSchoolImport()">Add to Fam ETC ✅</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Snap Homework (AI parse from a photo of the homework diary) — reuses the
+     same photo-upload + Claude parse pipeline as the timetable importer, but
+     extracts homework items instead of class periods. Phase 3. -->
+<div id="snap-homework-modal" class="modal-overlay" onclick="closeModalOnBg(event,'snap-homework-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📸 Snap homework</h3>
+      <button class="modal-close" onclick="closeModal('snap-homework-modal')">×</button>
+    </div>
+    <div class="upload-zone" id="hw-upload-zone"
+         onclick="document.getElementById('hw-file-input').click()"
+         ondragover="handleDragOver(event)"
+         ondragleave="handleDragLeave(event)"
+         ondrop="handleHomeworkDrop(event)">
+      <div class="upload-icon">📷</div>
+      <p class="upload-text">Click or drag &amp; drop a photo of the homework diary/planner</p>
+      <p class="upload-hint">Supports JPG, PNG, PDF</p>
+      <input type="file" id="hw-file-input" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="handleHomeworkFileSelect(event)">
+    </div>
+    <div id="hw-upload-preview" class="upload-preview" style="display:none">
+      <div class="preview-header">
+        <span id="hw-preview-filename" class="preview-fname"></span>
+        <button class="btn-link-danger" onclick="clearHomeworkUpload()">Remove</button>
+      </div>
+      <div id="hw-preview-content" class="preview-content"></div>
+    </div>
+    <div id="hw-ai-parse-section" class="ai-parse-section" style="display:none">
+      <div class="ai-parse-status" id="hw-ai-parse-status">
+        <span class="ai-spinner" id="hw-ai-spinner">⏳</span>
+        <span id="hw-ai-status-text">Parsing homework diary with AI…</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Snap Homework Review Modal — parent reviews+edits parsed items before saving as source:"ai" homework -->
+<div id="snap-homework-review-modal" class="modal-overlay" onclick="closeModalOnBg(event,'snap-homework-review-modal')">
+  <div class="modal-card modal-wide">
+    <div class="modal-header">
+      <h3>📸 Review parsed homework</h3>
+      <button class="modal-close" onclick="closeModal('snap-homework-review-modal')">×</button>
+    </div>
+    <p class="parse-intro">Review the homework items below, then save the ones you want to keep.</p>
+    <div class="form-group" id="hw-parse-kid-group">
+      <label>Assign to kid</label>
+      <select id="hw-parse-kid"></select>
+    </div>
+    <div class="parse-table-wrap">
+      <table class="parse-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="hw-parse-check-all" onchange="toggleAllHomeworkParsed(this.checked)" checked title="Select all"></th>
+            <th>Subject</th>
+            <th>Title</th>
+            <th>Due date</th>
+          </tr>
+        </thead>
+        <tbody id="hw-parse-tbody"></tbody>
+      </table>
+    </div>
+    <div class="parse-summary" id="hw-parse-summary"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeModal('snap-homework-review-modal')">Cancel</button>
+      <button type="button" class="btn-primary" onclick="applyParsedHomework()">Save homework 📚</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast" role="alert" aria-live="polite"></div>
+<!-- Confetti canvas (celebration animation for kid completions) -->
+<canvas id="confetti-canvas" class="confetti-canvas" aria-hidden="true"></canvas>
+
+<script src="/js/auth.js"></script>
+<script src="/js/school-stats.js"></script>
+<script src="/js/util.js"></script>
+<script src="/js/chat-width.js"></script>
+<script src="/js/notes.js"></script>
+<script src="/js/sat.js"></script>
+<script src="/js/school.js"></script>
+<script src="/js/action-queue.js"></script>
+<script src="/js/homework-workspace.js"></script>
+<script src="/js/media-compression.js"></script>
+<script src="/js/chat-media.js"></script>
+<script src="/js/chat-voice.js"></script>
+<script src="/js/onboarding.js"></script>
+<script src="/js/settings.js"></script>
+<script src="/js/child-progress.js"></script>
+<script src="/js/child-view.js"></script>
+<script src="/js/mood-check-in.js"></script>
+<script src="/js/puzzle-studio.js"></script>
+<script src="/js/today-calm.js"></script>
+<script src="/js/family-os.js"></script>
+<script src="/js/app-beta.js"></script>
+<script>
+  document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);
+  document.getElementById('first-run-join-form').addEventListener('submit', handleJoinFamily);
+</script>
+</body>
+</html>

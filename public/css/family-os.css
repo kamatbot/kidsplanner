@@ -1,0 +1,1149 @@
+/* ============================================================
+   FAM ETC — FAMILY OS WEB DESIGN LAYER
+   First-principles Actions & Insights hub on shared --fr-* tokens.
+   Works across Desktop Web, iPad Landscape/Portrait, and Mobile,
+   in both Light and Dark themes.
+   ============================================================ */
+
+/* ---------- 1. UNIFIED 4-PILLAR SIDEBAR & SHELL ---------- */
+.app-sidebar {
+  width: 224px;
+  padding: 18px 12px 14px;
+  background: var(--fr-card);
+  border-right: 1px solid var(--fr-rule);
+}
+
+.sidebar-brand {
+  padding: 2px 8px 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--fr-rule);
+}
+
+.sidebar-brand-mark {
+  border-radius: 10px;
+  background: var(--fr-you);
+  color: var(--fr-on-you);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--fr-you) 28%, transparent);
+}
+
+.fos-nav-group-label {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fr-ink-3);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sidebar-nav-item {
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fr-ink-2);
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--fr-card-2);
+  color: var(--fr-ink);
+}
+
+.sidebar-nav-item.active {
+  background: var(--fr-you-soft);
+  color: var(--fr-you-ink);
+}
+
+.fos-sidebar-secondary {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--fr-rule);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fos-sidebar-secondary .sidebar-nav-item {
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Kid top bar — clean labeled 4-pillar navigation instead of mystery icons */
+.kid-topbar {
+  padding: 10px 18px;
+  background: var(--fr-card);
+  border-bottom: 1px solid var(--fr-rule);
+  gap: 12px;
+}
+
+.kid-topbar-nav {
+  gap: 6px;
+}
+
+.kid-topbar-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fr-ink-2);
+}
+
+.kid-topbar-nav-item.active {
+  background: var(--fr-you-soft);
+  color: var(--fr-you-ink);
+}
+
+/* Persistent right-hand Family Pulse dock polish */
+.chat-dock {
+  background: var(--fr-card);
+  border-left: 1px solid var(--fr-rule);
+}
+
+.chat-dock-header {
+  border-bottom: 1px solid var(--fr-rule);
+  padding: 14px 16px;
+}
+
+.chat-room-switch {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--fr-card-2);
+  border: 1px solid var(--fr-rule);
+  gap: 2px;
+}
+
+.chat-room-tab {
+  border-radius: 8px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.chat-room-tab.active {
+  background: var(--fr-card);
+  color: var(--fr-you-ink);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+
+/* ---------- 2. COMMAND HEADER & QUICK CAPTURE ---------- */
+#tab-today .today-header {
+  align-items: center;
+  padding: 2px 0 4px;
+}
+
+#tab-today .fos-header-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+#tab-today .today-greeting {
+  font-size: 26px;
+  letter-spacing: -0.025em;
+}
+
+.fos-phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--fr-you-soft);
+  color: var(--fr-you-ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fos-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fos-quick-capture-wrap {
+  position: relative;
+}
+
+.fos-quick-capture-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fr-you);
+  color: var(--fr-on-you);
+  font: 600 13px/1 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--fr-you) 25%, transparent);
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.fos-quick-capture-btn:hover {
+  opacity: 0.92;
+}
+
+.fos-quick-capture-btn:active {
+  transform: scale(0.98);
+}
+
+.fos-quick-capture-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 40;
+  width: 248px;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--fr-card);
+  border: 1px solid var(--fr-rule);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fos-quick-capture-menu[hidden] {
+  display: none !important;
+}
+
+.fos-qc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fr-ink);
+  text-align: left;
+  cursor: pointer;
+  font: 500 13px/1.3 var(--today-font, "Geist", sans-serif);
+}
+
+.fos-qc-item:hover {
+  background: var(--fr-card-2);
+}
+
+.fos-qc-item strong {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.fos-qc-item small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--fr-ink-2);
+}
+
+.fos-qc-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--fr-you-soft);
+  color: var(--fr-you-ink);
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-size: 14px;
+}
+
+/* ---------- 3. PROACTIVE INSIGHTS STRIP ---------- */
+.fos-insights-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fos-insights-strip[hidden] {
+  display: none !important;
+}
+
+.fos-strip-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fr-ink-2);
+}
+
+.fos-strip-label small {
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fr-ink-3);
+}
+
+.fos-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 12px;
+}
+
+.fos-insight-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  background: var(--fr-card);
+  border: 1px solid var(--fr-rule);
+  border-left: 4px solid var(--fr-you);
+  box-shadow: var(--fr-shadow);
+}
+
+.fos-insight-card.tone-danger {
+  border-left-color: var(--fr-danger);
+}
+
+.fos-insight-card.tone-warn {
+  border-left-color: var(--fr-hw);
+}
+
+.fos-insight-card.tone-teal {
+  border-left-color: var(--fr-d3);
+}
+
+.fos-insight-tag {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--fr-you-ink);
+}
+
+.fos-insight-card.tone-danger .fos-insight-tag { color: var(--fr-danger); }
+.fos-insight-card.tone-warn .fos-insight-tag { color: var(--fr-hw-ink); }
+.fos-insight-card.tone-teal .fos-insight-tag { color: var(--fr-d3-ink); }
+
+.fos-insight-text {
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--fr-ink);
+}
+
+.fos-insight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fos-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fr-you);
+  color: var(--fr-on-you);
+  font: 600 12.5px/1 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-btn-primary:hover { opacity: 0.92; }
+
+.fos-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--fr-rule);
+  border-radius: 999px;
+  background: var(--fr-card-2);
+  color: var(--fr-ink);
+  font: 600 12.5px/1 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-btn-ghost:hover {
+  border-color: var(--fr-you);
+  color: var(--fr-you-ink);
+}
+
+.fos-btn-danger-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--fr-danger) 35%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fr-danger);
+  font: 600 12.5px/1 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+/* ---------- 4. 2-COLUMN COMMAND CANVAS ---------- */
+.fos-command-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.24fr) minmax(300px, 0.94fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.fos-col-main,
+.fos-col-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Put Live Day Runsheet visually at the top of the right column while keeping
+   DOM order (#today-fams-body before #today-agenda-title) contract-compliant! */
+.fos-col-side > .today-agenda-card {
+  order: -1;
+}
+
+@container today (max-width: 840px) {
+  .fos-command-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- 5. COMPACT OPERATIONAL ACTION HERO ---------- */
+#tab-today .fr-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  padding: 18px 20px;
+  min-height: 0;
+  border-radius: 20px;
+}
+
+#tab-today .fos-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fr-rule);
+}
+
+#tab-today .fr-you-ring {
+  width: 64px;
+  height: 64px;
+  margin: 0;
+  flex: none;
+}
+
+#tab-today .fr-you-ring svg {
+  width: 64px;
+  height: 64px;
+}
+
+#tab-today .fr-ring-center b {
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+#tab-today .fr-ring-center span,
+#tab-today .fr-ring-center small {
+  display: none;
+}
+
+#tab-today .fos-hero-heading-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+#tab-today .fos-hero-heading-wrap .today-section-head {
+  min-height: 0;
+}
+
+#tab-today .fos-hero-sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--fr-ink-2);
+}
+
+#tab-today .fos-action-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fos-filter-pill {
+  padding: 5px 11px;
+  border: 1px solid var(--fr-rule);
+  border-radius: 999px;
+  background: var(--fr-card-2);
+  color: var(--fr-ink-2);
+  font: 600 12px/1.2 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-filter-pill.active {
+  background: var(--fr-you);
+  border-color: var(--fr-you);
+  color: var(--fr-on-you);
+}
+
+/* Unified extra action signals (Screen Time, Hermes, Decisions, Drivers, Packing) */
+.fos-unified-inbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fos-unified-inbox:empty {
+  display: none;
+}
+
+.fos-signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  background: var(--fr-card-2);
+  border: 1px solid var(--fr-rule);
+}
+
+.fos-signal-row.priority-P0 {
+  border-color: color-mix(in srgb, var(--fr-danger) 40%, var(--fr-rule));
+  background: color-mix(in srgb, var(--fr-danger) 5%, var(--fr-card));
+}
+
+.fos-signal-main {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.fos-signal-title-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.fos-prio-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--fr-you-soft);
+  color: var(--fr-you-ink);
+}
+
+.fos-prio-badge.p0 {
+  background: color-mix(in srgb, var(--fr-danger) 14%, transparent);
+  color: var(--fr-danger);
+}
+
+.fos-prio-badge.p1 {
+  background: var(--fr-hw-soft);
+  color: var(--fr-hw-ink);
+}
+
+.fos-signal-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fr-ink);
+}
+
+.fos-signal-meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--fr-ink-2);
+}
+
+.fos-signal-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fos-vote-pill {
+  min-height: 32px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--fr-rule);
+  background: var(--fr-card);
+  color: var(--fr-ink);
+  font: 600 12px/1.2 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-vote-pill.is-voted {
+  border-color: var(--fr-you);
+  background: var(--fr-you-soft);
+  color: var(--fr-you-ink);
+}
+
+/* ---------- 6. DINNER & HOME PULSE CARD ---------- */
+.fos-home-pulse {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 18px;
+  border-radius: 20px;
+  background: var(--fr-card);
+  box-shadow: var(--fr-shadow);
+}
+
+.fos-home-pulse[hidden] {
+  display: none !important;
+}
+
+.fos-home-pulse-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.fos-home-pulse-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--fr-fams-soft);
+  color: var(--fr-fams-ink);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex: none;
+}
+
+.fos-home-pulse-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fr-ink-2);
+}
+
+.fos-home-pulse-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--fr-ink);
+}
+
+.fos-home-pulse-sub {
+  font-size: 12px;
+  color: var(--fr-ink-2);
+}
+
+/* ---------- 7. LIVE DAY RUNSHEET (RIGHT COLUMN TOP) ---------- */
+#tab-today .today-agenda-card {
+  padding: 18px 20px;
+  border-radius: 20px;
+}
+
+.fos-runsheet-mode-btn {
+  border: 1px solid var(--fr-rule);
+  border-radius: 999px;
+  background: var(--fr-card-2);
+  color: var(--fr-ink-2);
+  padding: 4px 10px;
+  font: 600 11.5px/1.2 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-runsheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fos-runsheet-item {
+  display: flex;
+  align-items: stretch;
+  gap: 11px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: var(--fr-card-2);
+  border: 1px solid var(--fr-rule);
+}
+
+.fos-runsheet-bar {
+  width: 4px;
+  border-radius: 999px;
+  flex: none;
+  background: var(--fr-you);
+}
+
+.fos-runsheet-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.fos-runsheet-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fr-ink-2);
+}
+
+.fos-runsheet-time {
+  font-weight: 700;
+  color: var(--fr-ink);
+}
+
+.fos-runsheet-title {
+  margin-top: 2px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--fr-ink);
+}
+
+.fos-runsheet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.fos-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--fr-card);
+  border: 1px solid var(--fr-rule);
+  color: var(--fr-ink-2);
+}
+
+.fos-chip-driver-gap {
+  background: color-mix(in srgb, var(--fr-danger) 10%, var(--fr-card));
+  border-color: color-mix(in srgb, var(--fr-danger) 35%, transparent);
+  color: var(--fr-danger);
+  cursor: pointer;
+}
+
+.fos-chip-driver-gap:hover {
+  background: var(--fr-danger);
+  color: #fff;
+}
+
+.fos-chip-moved {
+  background: var(--fr-hw-soft);
+  border-color: transparent;
+  color: var(--fr-hw-ink);
+}
+
+.fos-tomorrow-peek {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fr-rule);
+}
+
+.fos-tomorrow-peek-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fr-ink-3);
+  margin-bottom: 6px;
+}
+
+.fos-tomorrow-peek-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--fr-ink-2);
+  padding: 3px 0;
+}
+
+/* ---------- 8. COMPACT KID READINESS CARDS ---------- */
+#tab-today .fr-kids {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+#tab-today .fr-kid-card {
+  padding: 15px 16px;
+  border-radius: 20px;
+  gap: 10px;
+}
+
+#tab-today .fr-kid-body {
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+}
+
+#tab-today .fr-kid-rings,
+#tab-today .fr-kid-rings svg {
+  width: 82px;
+  height: 82px;
+}
+
+#tab-today .fr-stat {
+  min-height: 32px;
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+#tab-today .fr-stat b {
+  font-size: 19px;
+}
+
+#tab-today .fr-kid-fams {
+  padding-top: 9px;
+}
+
+#tab-today .fr-kid-fams b {
+  font-size: 16px;
+}
+
+.fos-kid-st-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--fr-rule);
+  font-size: 12px;
+  color: var(--fr-ink-2);
+}
+
+/* ---------- 9. COLLAPSIBLE TABLE TALK (PARENT DAILY 4) ---------- */
+.fos-learning-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fos-tabletalk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 18px;
+  border: 1px solid var(--fr-rule);
+  border-radius: 16px;
+  background: var(--fr-card);
+  color: var(--fr-ink);
+  cursor: pointer;
+  text-align: left;
+  font: 600 13px/1.3 var(--today-font, "Geist", sans-serif);
+  box-shadow: var(--fr-shadow);
+}
+
+.fos-tabletalk-bar small {
+  font-weight: 400;
+  color: var(--fr-ink-2);
+  margin-left: 6px;
+}
+
+.fos-tabletalk-cta {
+  color: var(--fr-you-ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Hide parent toggle bar in Kid Mode so Daily 4 is always prominent for kids */
+#tab-today.fr-kid-today .fos-tabletalk-bar {
+  display: none;
+}
+
+/* Parent collapsed state: cleanly collapses learning tiles & band until opened */
+#tab-today:not(.fr-kid-today) .fos-learning-shell.is-collapsed .fr-learning-tiles,
+#tab-today:not(.fr-kid-today) .fos-learning-shell.is-collapsed .today-band-learn {
+  display: none;
+}
+
+/* ---------- 10. KID "START NEXT" FOCUS HERO ---------- */
+.fos-kid-focus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--fr-you) 10%, var(--fr-card)), var(--fr-card));
+  border: 1px solid color-mix(in srgb, var(--fr-you) 25%, var(--fr-rule));
+  box-shadow: var(--fr-shadow);
+}
+
+.fos-kid-focus[hidden] {
+  display: none !important;
+}
+
+.fos-kid-focus-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fr-you-ink);
+}
+
+.fos-kid-focus-title {
+  margin-top: 3px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fr-ink);
+}
+
+.fos-kid-focus-meta {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--fr-ink-2);
+}
+
+.fos-kid-focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 11. UNIFIED HOME TAB (MEALS · TRIPS · DECISIONS & NOTES) ---------- */
+#tab-home {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+}
+
+.fos-home-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.fos-seg-control {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--fr-card);
+  border: 1px solid var(--fr-rule);
+  gap: 4px;
+}
+
+.fos-seg-btn {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--fr-ink-2);
+  font: 600 13px/1.2 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-seg-btn.active {
+  background: var(--fr-you);
+  color: var(--fr-on-you);
+}
+
+.fos-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.fos-card {
+  background: var(--fr-card);
+  border: 1px solid var(--fr-rule);
+  border-radius: 20px;
+  padding: 18px 20px;
+  box-shadow: var(--fr-shadow);
+}
+
+.fos-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--fr-rule);
+}
+
+.fos-card-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fr-ink);
+}
+
+.fos-shop-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--fr-rule);
+  font-size: 13.5px;
+}
+
+.fos-shop-row:last-child { border-bottom: 0; }
+.fos-shop-row.is-done span { text-decoration: line-through; color: var(--fr-ink-3); }
+
+.fos-inline-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.fos-inline-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--fr-rule);
+  background: var(--fr-card-2);
+  color: var(--fr-ink);
+  font: 400 13px/1.4 var(--today-font, "Geist", sans-serif);
+}
+
+/* ---------- 12. SCHEDULE WORKLOAD RADAR & PILLAR SUB-NAV ---------- */
+.fos-workload-radar {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--fr-card);
+  border: 1px solid var(--fr-rule);
+  box-shadow: var(--fr-shadow);
+}
+
+.fos-workload-radar[hidden] { display: none !important; }
+
+.fos-workload-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--fr-ink-2);
+}
+
+.fos-workload-head strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fr-ink-2);
+}
+
+.fos-workload-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fos-workload-day {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--fr-card-2);
+  border: 1px solid var(--fr-rule);
+}
+
+.fos-workload-day.is-today {
+  border-color: var(--fr-you);
+  background: var(--fr-you-soft);
+}
+
+.fos-workload-day-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fos-workload-bar {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fr-rule);
+  overflow: hidden;
+}
+
+.fos-workload-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fr-you);
+}
+
+.fos-workload-day.level-busy .fos-workload-bar i { background: var(--fr-hw); }
+.fos-workload-day.level-heavy .fos-workload-bar i { background: var(--fr-danger); }
+
+.fos-workload-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fr-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fos-pillar-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.fos-pillar-subbtn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--fr-rule);
+  background: var(--fr-card);
+  color: var(--fr-ink-2);
+  font: 600 12.5px/1.2 var(--today-font, "Geist", sans-serif);
+  cursor: pointer;
+}
+
+.fos-pillar-subbtn.active {
+  background: var(--fr-you-soft);
+  border-color: var(--fr-you);
+  color: var(--fr-you-ink);
+}
+
+@media (max-width: 760px) {
+  .fos-workload-days {
+    grid-template-columns: repeat(7, minmax(76px, 1fr));
+    overflow-x: auto;
+  }
+}
