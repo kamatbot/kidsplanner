@@ -5161,7 +5161,7 @@ function toggleKidChat() {
   if (open) markChatSeen();
 }
 
-const CHAT_DOCK_MODE = { today: 'open', child: 'collapsed', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', hermes: 'collapsed', notes: 'hidden', settings: 'hidden' };
+const CHAT_DOCK_MODE = { today: 'open', home: 'open', child: 'collapsed', calendar: 'collapsed', homework: 'collapsed', goals: 'collapsed', activities: 'collapsed', hermes: 'collapsed', notes: 'hidden', settings: 'hidden' };
 function applyChatDockState(tab) {
   const dock = document.getElementById('chat-dock');
   if (!dock) return;
@@ -6604,6 +6604,7 @@ function renderTodayScreen() {
   renderTodayHomework(todayIso);
   renderTodayHabitsAndMomentum();
   famRenderTodayMeals(todayIso);
+  window.famOS?.refresh();
 }
 
 let famsHomeGeneration = 0;
@@ -7586,6 +7587,8 @@ function switchNavTab(tab) {
 
   // Re-render dynamic panels each time they're opened so they reflect current state.
   if (tab === 'today') { renderTodayScreen(); }
+  if (tab === 'home') { window.famOS?.renderHomeTab(); }
+  if (tab === 'calendar') { window.famOS?.refresh(); }
   if (tab === 'settings') { renderYourNameSettings(); renderManageFamily(); renderSchoolSettings(); renderSchoolApiSettings(); renderSecuritySettings(); showSettingsSection(settingsSection); }
   if (tab === 'homework') { const pending = loadHomework(); renderHomeworkHub(); pending.then(() => { renderHomeworkHub(); updateHomeworkBadge(); }); }
   if (tab === 'goals') { loadGoals().then(() => renderGoalsHub()); }
@@ -7675,6 +7678,7 @@ async function handleLogout() {
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
+  window.famOS?.clear();
   window.location.href = notificationCleanupFailed ? '/login?notifications=cleanup-failed' : '/login';
 }
 
