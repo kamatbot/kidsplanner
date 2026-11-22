@@ -697,6 +697,7 @@ require("./lib/routes/hermes-threads")(app, routeDeps);
 require("./lib/routes/calendar")(app, routeDeps);
 require("./lib/routes/homework")(app, routeDeps);
 require("./lib/routes/actions")(app, routeDeps);
+require("./lib/routes/command-brief")(app, routeDeps);
 require("./lib/routes/student-support")(app, routeDeps);
 require("./lib/routes/my-corner")(app, routeDeps);
 require("./lib/routes/decisions")(app, routeDeps);
@@ -867,6 +868,16 @@ app.get("/", (req, res) => {
   if (!user) return sendPage(req, res, "landing.html", PUB);
   if (isScreenTimeOnlyUser(user)) return sendAppOnly(req, res);
   sendPage(req, res, "index.html");
+});
+// Beta preview of the Family OS web redesign (branch feat/web-family-os-redesign).
+// Same signed-in session and data as "/"; only the page shell and its script
+// differ (beta.html + js/app-beta.js). Production "/" is unchanged.
+app.get(["/beta", "/beta/"], (req, res) => {
+  res.set("X-Robots-Tag", "noindex, nofollow");
+  const user = currentUser(req);
+  if (!user) return res.redirect("/login?next=" + encodeURIComponent("/beta"));
+  if (isScreenTimeOnlyUser(user)) return sendAppOnly(req, res);
+  sendPage(req, res, "beta.html");
 });
 app.get("/favicon.ico", (req, res) => res.status(204).end());
 
