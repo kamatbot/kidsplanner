@@ -203,3 +203,53 @@ test("re-pairing replaces the old agent token; another family's token sees only 
   assert.deepEqual(ids, [b.mia.id, b.leo.id]);
   assert.equal(call("POST /api/home-network/pairing", { user: { ...a.parent, data: { profile: { role: "kid" } } } }).statusCode, 403);
 });
+
+test("wifi state: kid is told when home Wi-Fi is paused, changes reason, or comes back", () => {
+  clock = new Date("2026-09-27T08:00:00Z");
+  const ctx = setup();
+  const { token } = pair(ctx);
+  const auth = `FamHome ${token}`;
+  const kidUser = store.createUser(`k${crypto.randomUUID()}@example.com`, "Mia");
+  kidUser.data = { ...(kidUser.data || {}), profile: { role: "kid" }, kid: { familyId: ctx.fam.id, kidId: ctx.mia.id } };
+  require("../lib/db").load().users[kidUser.id] = kidUser;
+  const sent = [];
+  homeNetwork.configure({ notify: (args) => { sent.push(args); return Promise.resolve(); } });
+  const send = (wifi, kidId = ctx.mia.id) => call("POST /api/home-network/report", { auth, body: {
+    date: "2026-09-27", kids: [{ kidId, usedMinutes: 10, wifi }],
+  } });
+  try {
+    send({ status: "online", label: "Online" });
+    assert.equal(sent.length, 0, "first state after pairing is only recorded");
+    send({ status: "online", label: "Online" });
+    assert.equal(sent.length, 0, "no change, no push");
+
+    send({ status: "paused", label: "Dinner Time until 7:30 PM" });
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].kidUserIds, [kidUser.id]);
+    assert.equal(sent[0].kidId, ctx.mia.id);
+    assert.equal(sent[0].status, "paused");
+    assert.match(sent[0].title, /Home Wi-Fi paused/);
+    assert.match(sent[0].body, /^Dinner Time until 7:30 PM\. Ask a parent/);
+
+    send({ status: "paused", label: "Paused until 8:00 PM" });
+    assert.equal(sent.length, 1, "same reason, new end time: no second push");
+
+    send({ status: "bedtime", label: "Bedtime until 7:00 AM" });
+    assert.equal(sent.length, 2);
+    assert.match(sent[1].title, /Bedtime/);
+
+    send({ status: "online", label: "Online" });
+    assert.equal(sent.length, 3);
+    assert.match(sent[2].title, /back on/);
+
+    send({ status: "nonsense", label: "x" });
+    assert.equal(sent.length, 3, "unknown states are ignored");
+
+    // Leo has no kid login: nothing to send.
+    send({ status: "online" }, ctx.leo.id);
+    send({ status: "limit_reached", label: "Daily limit reached" }, ctx.leo.id);
+    assert.equal(sent.length, 3);
+  } finally {
+    homeNetwork.configure({ notify: () => Promise.resolve() });
+  }
+});
