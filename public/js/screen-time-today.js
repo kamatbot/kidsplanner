@@ -90,6 +90,14 @@
   }
 
   // ---------- parent ----------
+  // " · 🏠 1h 20m at home" once the home Wi-Fi filter (Canopy) has reported today.
+  function homeLine(kidId) {
+    const u = state.homeNetwork && state.homeNetwork.usage && state.homeNetwork.usage[kidId];
+    if (!u || !u.usedMinutes) return "";
+    const hrs = Math.floor(u.usedMinutes / 60);
+    return ` · 🏠 ${hrs ? `${hrs}h ${u.usedMinutes % 60}m` : `${u.usedMinutes}m`} at home`;
+  }
+
   function parentHtml() {
     const kids = (state.kids || []).filter((k) => k.policy && k.policy.enabled);
     if (!kids.length) return "";
@@ -115,7 +123,7 @@
       const paused = k.policy.pauseUntil && Date.parse(k.policy.pauseUntil) > Date.now();
       return `
         <div class="st-row st-kid-row">
-          <div class="st-row-text"><strong>${name}</strong><span>${paused ? "⏸ Paused · " : ""}🌙 Bedtime ${h(bt.start)}${bt.late ? ` tonight <em class="st-badge">later</em>` : ""}</span></div>
+          <div class="st-row-text"><strong>${name}</strong><span>${paused ? "⏸ Paused · " : ""}🌙 Bedtime ${h(bt.start)}${bt.late ? ` tonight <em class="st-badge">later</em>` : ""}${homeLine(k.kidId)}</span></div>
           <div class="st-row-actions">
             ${bt.late
               ? `<button type="button" class="st-btn st-btn-ghost is-on" title="Put bedtime back to ${h(bt.usual || "")}" onclick="famScreenTimeToday.allowTonight('${h(k.kidId)}',0)">Undo</button>`
