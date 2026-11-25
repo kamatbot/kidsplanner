@@ -487,3 +487,29 @@ developer.apple.com/contact/request/family-controls-distribution.
   successful device check-in after denied authorization, the parent's account
   receives a neutral permission-loss alert. Push delivery is best-effort. Unknown
   authorization or missing check-ins do not prove revocation or app removal.
+
+## Bedtime exceptions ("stay up later tonight", owner direction 2026-11-25)
+
+Supersedes "bedtime/downtime are never extended" above. Free on every plan;
+the parent decides. A kid asks with `POST /api/screen-time/requests
+{ kind: "bedtime", minutes: 15|30|60, date, note? }` (`kind` defaults to
+`"time"`, the more-time flow). One pending ask of either kind at a time; it
+expires with its date. Parents approve/decline with the same request routes,
+or use **Allow tonight**: `POST /api/screen-time/kids/:kidId/bedtime
+{ minutes: 0|15|30|60 }` (adds up; 0 puts bedtime back).
+
+- Storage: `policy.bedtimeException = { date, minutes, until }` (family date).
+  Request JSON gains `kind` and, for bedtime, `bedtimeFrom`/`bedtimeUntil`.
+- Enforcement needs **no client change**: the device projection (enroll,
+  heartbeat, `/mine`) removes that night's weekday from the bedtime window and
+  adds a one-day `bedtime_late` window (same end, later start). A single-day
+  bedtime is shifted in place. The id `bedtime_late` is reserved. Refused when
+  it would pass midnight, outlast a same-day window, or need a 5th window.
+- The monitor sweep (and any parent action) drops the exception once its date
+  has passed, bumps `version` and pings devices so bedtime returns.
+- Usage `extraMinutes` counts only `kind: "time"` approvals.
+- Web: Family OS beta (`/beta`) shows the parent card ("🌙 Yes, until 21:00" /
+  "Not tonight"), a "🌙 +30m tonight" / Undo button on each kid card, and a
+  kid "Ask a parent" card (more time or stay up later).
+- Known gap until the next iOS build: native screens show a bedtime ask as
+  "+N more minutes" (approving it still does the right thing on the server).
