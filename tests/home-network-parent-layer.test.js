@@ -356,7 +356,7 @@ test("F3 school days: weekends, school calendar holidays, manual events, and par
   assert.equal("days" in kidPol, false, "iOS Screen Time policy format must not change");
 });
 
-test("F3 bedtime: school-night bedtime applies when tomorrow is school, weekend bedtime when tomorrow is free", () => {
+test("F3 bedtime: a no-school day changes Canopy's days, never the iPhone/iPad Screen Time bedtime", () => {
   // Wed Nov 25, 2026 (tomorrow Thu Nov 26)
   clock = new Date("2026-11-25T10:00:00Z");
   const ctx = setup("Asia/Bangkok");
@@ -382,13 +382,29 @@ test("F3 bedtime: school-night bedtime applies when tomorrow is school, weekend 
   // Reset exception
   call("POST /api/screen-time/kids/:kidId/bedtime", { user: ctx.parent, params: { kidId: ctx.mia.id }, body: { minutes: 0 } });
 
-  // Mark tomorrow Thu Nov 26 as "No school" -> tomorrow is FREE -> weekend bedtime (22:00) applies tonight!
+  const before = JSON.stringify(call("GET /api/screen-time/mine", { user: ctx.miaUser }).body.policy.downtime);
+
+  // Mark tomorrow Thu Nov 26 as "No school": Canopy is told tomorrow is free
+  // (it moves the home Wi-Fi bedtime itself); the iOS policy stays calendar-based.
   call("POST /api/home-network/no-school", { user: ctx.parent, body: { date: "2026-11-26" } });
+  const homePolicy = require("../lib/screen-time").homeAgentPolicy(require("../lib/family").getFamily(ctx.fam.id));
+  assert.deepEqual(homePolicy.days[ctx.mia.id], { today: "school", tomorrow: "free" });
+  assert.equal(JSON.stringify(call("GET /api/screen-time/mine", { user: ctx.miaUser }).body.policy.downtime), before);
   res = call("POST /api/screen-time/kids/:kidId/bedtime", {
     user: ctx.parent, params: { kidId: ctx.mia.id }, body: { minutes: 30 },
   });
   assert.equal(res.statusCode, 200);
-  assert.equal(res.body.policy.bedtimeException.until, "22:30", "weekend bedtime applies because tomorrow is free");
+  assert.equal(res.body.policy.bedtimeException.until, "21:00", "iOS bedtime exceptions stay on the weekday window");
+});
+
+test("F3 no-school matcher: real breaks count, school events that mention a break do not", () => {
+  const { meansNoSchool } = require("../lib/school-days");
+  for (const t of ["Half Term", "Christmas Holiday", "INSET Day", "No School", "Mid-term break", "School closed", "Loy Krathong holiday"]) {
+    assert.equal(meansNoSchool(t), true, t);
+  }
+  for (const t of ["Holiday concert", "Mid-term exams", "Last day before break", "Library closed", "School returns after holiday", "Breakfast club"]) {
+    assert.equal(meansNoSchool(t), false, t);
+  }
 });
 
 // ===================== Feature 4: Parent safety alerts =====================
