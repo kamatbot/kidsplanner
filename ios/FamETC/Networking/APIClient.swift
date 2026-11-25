@@ -954,8 +954,8 @@ extension APIClient {
 
     /// Kid session: ask for extra `total` minutes today, paid in fams on approval.
     /// 409 when one is already pending or the balance is too low.
-    func requestScreenTime(minutes: Int, date: String, note: String?) async throws -> ScreenTimeRequest {
-        var body: [String: Any] = ["minutes": minutes, "date": date]
+    func requestScreenTime(minutes: Int, date: String, note: String?, kind: String = "time") async throws -> ScreenTimeRequest {
+        var body: [String: Any] = ["minutes": minutes, "date": date, "kind": kind]
         if let note { body["note"] = note }
         let r: ScreenTimeRequestResponse = try await request("/api/screen-time/requests", method: "POST", body: body)
         return r.request

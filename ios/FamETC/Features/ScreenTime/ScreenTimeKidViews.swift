@@ -2032,14 +2032,18 @@ private struct AskMoreTimeButton: View {
     private var service: ScreenTimeService { .shared }
 
     var body: some View {
-        if service.policy?.limits.contains(where: \.isTotal) == true {
+        let hasTotal = service.policy?.limits.contains(where: \.isTotal) == true
+        let hasBedtime = ScreenTimeMoreTimeSheet.tonightBedtime(service.policy) != nil
+        if hasTotal || hasBedtime {
             let waiting = service.pendingRequest != nil
             Button {
                 Haptics.selection()
                 isPresented = true
             } label: {
                 HStack(spacing: Space.sm) {
-                    Text(waiting ? "Asked for more time · waiting ⏳" : "Ask for more time ⏱️")
+                    Text(waiting ? "Asked a grown-up · waiting ⏳"
+                         : hasTotal && hasBedtime ? "More time or stay up later? ⏱️🌙"
+                         : hasTotal ? "Ask for more time ⏱️" : "Ask to stay up later 🌙")
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: Space.xs)
                     Image(systemName: "chevron.right").accessibilityHidden(true)
@@ -2053,7 +2057,7 @@ private struct AskMoreTimeButton: View {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(waiting ? "Asked for more time, waiting for a grown-up" : "Ask for more time")
+            .accessibilityLabel(waiting ? "Asked a grown-up, waiting for an answer" : hasTotal ? "Ask for more time" : "Ask to stay up later")
             .accessibilityHint(store.productPlan == .screenTime
                                ? "Ask a grown-up for extra screen time today"
                                : "Swap fams for extra screen time today")
@@ -2096,6 +2100,8 @@ struct ScreenTimeMoreTimeSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var minutes: Int?
+    /// "time" (more screen time today) or "bedtime" (stay up later tonight, always free).
+    @State private var kind = "time"
     @State private var note = ""
     @State private var sending = false
     @State private var error: String?
@@ -2112,9 +2118,31 @@ struct ScreenTimeMoreTimeSheet: View {
         return latest
     }
 
+    private var hasTotal: Bool { service.policy?.limits.contains(where: \.isTotal) == true }
+    private var bedtime: String? { Self.tonightBedtime(service.policy) }
+    private var isBedtime: Bool { kind == "bedtime" }
+
+    /// Tonight's bedtime as this device enforces it ("HH:mm"): a later one a grown-up
+    /// already allowed (`bedtime_late`) wins over the usual `bedtime`. Nil without one.
+    static func tonightBedtime(_ policy: ScreenTimePolicy?, now: Date = Date()) -> String? {
+        guard let policy, policy.enabled else { return nil }
+        let wd = Calendar.current.component(.weekday, from: now)
+        if let late = policy.downtime.first(where: { $0.id == "bedtime_late" && $0.days.contains(wd) }) { return late.start }
+        return policy.downtime.first(where: { $0.id == "bedtime" && $0.days.contains(wd) })?.start
+    }
+
+    /// `bedtime` moved `m` minutes later, or nil past midnight (the server refuses that).
+    private func later(_ m: Int) -> String? {
+        guard let bedtime else { return nil }
+        let parts = bedtime.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return nil }
+        let t = parts[0] * 60 + parts[1] + m
+        return t >= 1440 ? nil : String(format: "%02d:%02d", t / 60, t % 60)
+    }
+
     /// Fams still to earn for `minutes` (0 = affordable; unknown balance lets the server decide).
     private func shortfall(_ minutes: Int) -> Int {
-        guard !noFams, let balance else { return 0 }
+        guard !noFams, !isBedtime, let balance else { return 0 }
         return max(0, Int((Double(ScreenTimeRequest.cost(minutes: minutes)) - balance).rounded(.up)))
     }
 
@@ -2139,7 +2167,8 @@ struct ScreenTimeMoreTimeSheet: View {
                     .background(Palette.bg.opacity(0.94))
             }
             .background(ScreenBackground())
-            .navigationTitle("More time")
+            .navigationTitle("Ask a grown-up")
+            .onAppear { if !hasTotal && bedtime != nil { kind = "bedtime" } }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(sending) }
@@ -2168,18 +2197,28 @@ struct ScreenTimeMoreTimeSheet: View {
 
     @ViewBuilder private var chooser: some View {
         if let answer = todaysAnswer { answerCard(answer) }
-        Text("⏱️").font(.system(size: 56)).accessibilityHidden(true)
-        Text("Need a bit more time?")
+        if hasTotal && bedtime != nil {
+            Picker("What to ask for", selection: $kind) {
+                Text("⏱️ More time").tag("time")
+                Text("🌙 Stay up later").tag("bedtime")
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: kind) { _, _ in minutes = nil; error = nil }
+        }
+        Text(isBedtime ? "🌙" : "⏱️").font(.system(size: 56)).accessibilityHidden(true)
+        Text(isBedtime ? "Stay up a bit later?" : "Need a bit more time?")
             .font(Typography.largeTitle)
             .foregroundStyle(Palette.text)
             .fixedSize(horizontal: false, vertical: true)
-        Text(noFams
+        Text(isBedtime
+             ? "Bedtime tonight is \(bedtime ?? "soon"). Ask to stay up a little later — a grown-up says yes or no."
+             : noFams
              ? "Ask for extra screen time today. A grown-up says yes or no."
              : "Swap fams for extra screen time today. A grown-up says yes or no — fams are only spent if they say yes.")
             .font(Typography.body)
             .foregroundStyle(Palette.textSecond)
             .fixedSize(horizontal: false, vertical: true)
-        if let balance {
+        if let balance, !isBedtime {
             HStack(spacing: Space.sm) {
                 Text("You have").font(Typography.body).foregroundStyle(Palette.textSecond)
                 FamsBadge(amount: Int(balance.rounded(.down)))
@@ -2187,7 +2226,8 @@ struct ScreenTimeMoreTimeSheet: View {
             .accessibilityElement(children: .combine)
         }
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: Space.md)], spacing: Space.md) {
-            ForEach(ScreenTimeRequest.choices, id: \.self) { choice($0) }
+            ForEach(isBedtime ? ScreenTimeRequest.bedtimeChoices.filter { later($0) != nil } : ScreenTimeRequest.choices,
+                    id: \.self) { choice($0) }
         }
         VStack(alignment: .leading, spacing: Space.xs) {
             TextField("Add a note (optional)", text: $note, axis: .vertical)
@@ -2198,7 +2238,7 @@ struct ScreenTimeMoreTimeSheet: View {
                 .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).stroke(Palette.frRule, lineWidth: 1))
                 .onChange(of: note) { _, v in if v.count > 80 { note = String(v.prefix(80)) } }
                 .submitLabel(.done)
-            Text("Like “Just finishing my level” · \(note.count)/80")
+            Text("\(isBedtime ? "Like “Family movie night”" : "Like “Just finishing my level”") · \(note.count)/80")
                 .font(Typography.caption)
                 .foregroundStyle(Palette.textSecond)
                 .monospacedDigit()
@@ -2220,14 +2260,14 @@ struct ScreenTimeMoreTimeSheet: View {
             minutes = m
         } label: {
             VStack(spacing: Space.xs) {
-                Text("+\(m)")
-                    .font(Typography.display(40, .heavy))
+                Text(isBedtime ? (later(m) ?? "+\(m)") : "+\(m)")
+                    .font(Typography.display(isBedtime ? 34 : 40, .heavy))
                     .foregroundStyle(selected ? Palette.frYouInk : Palette.text)
                     .monospacedDigit()
-                Text("minutes")
+                Text(isBedtime ? "+\(m) min" : "minutes")
                     .font(Typography.label.weight(.semibold))
                     .foregroundStyle(Palette.textSecond)
-                if noFams {
+                if noFams || isBedtime {
                     EmptyView()
                 } else if short > 0 {
                     Text("Earn \(short) more fams")
@@ -2250,7 +2290,8 @@ struct ScreenTimeMoreTimeSheet: View {
         .buttonStyle(.plain)
         .disabled(short > 0 || sending)
         .opacity(short > 0 ? 0.55 : 1)
-        .accessibilityLabel(noFams ? "\(m) more minutes" : "\(m) more minutes, \(cost) fams")
+        .accessibilityLabel(isBedtime ? "Stay up until \(later(m) ?? "\(m) minutes later")"
+                            : noFams ? "\(m) more minutes" : "\(m) more minutes, \(cost) fams")
         .accessibilityValue(short > 0 ? "Earn \(short) more fams first" : "")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -2258,11 +2299,13 @@ struct ScreenTimeMoreTimeSheet: View {
     private func answerCard(_ r: ScreenTimeRequest) -> some View {
         let yes = r.status == "approved"
         return VStack(alignment: .leading, spacing: Space.xs) {
-            Text(yes ? "🎉 +\(r.minutes) minutes today" : "Not today — that's OK 💜")
+            Text(r.isBedtime
+                 ? (yes ? "🎉 Stay up until \(r.bedtimeUntil ?? "later") tonight" : "Not tonight — sleep well 💜")
+                 : (yes ? "🎉 +\(r.minutes) minutes today" : "Not today — that's OK 💜"))
                 .font(Typography.title)
                 .foregroundStyle(Palette.text)
                 .monospacedDigit()
-            Text(noFams
+            Text(noFams || r.isBedtime
                  ? (yes ? "A grown-up said yes — enjoy!" : "You can ask again another time.")
                  : (yes ? "A grown-up said yes. \(r.fams) fams spent — enjoy!"
                         : "Your fams are safe. You can ask again another time."))
@@ -2289,11 +2332,11 @@ struct ScreenTimeMoreTimeSheet: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(spacing: Space.sm) {
-                Text("+\(r.minutes) more minutes")
+                Text(r.isBedtime ? "🌙 Stay up until \(r.bedtimeUntil ?? "later")" : "+\(r.minutes) more minutes")
                     .font(Typography.title)
                     .foregroundStyle(Palette.frYouInk)
                     .monospacedDigit()
-                if !noFams { FamsBadge(amount: r.fams) }
+                if !noFams && !r.isBedtime { FamsBadge(amount: r.fams) }
                 if let note = r.note, !note.isEmpty {
                     Text("“\(note)”")
                         .font(Typography.body)
@@ -2329,7 +2372,10 @@ struct ScreenTimeMoreTimeSheet: View {
                 .frame(maxWidth: .infinity, minHeight: 54)
         } else {
             let ok = minutes.map { shortfall($0) == 0 } ?? false
-            BigButton(title: minutes.map { ok ? "Ask for \($0) more minutes" : "Pick another amount" } ?? "Pick how much time",
+            BigButton(title: minutes.map { m in
+                          !ok ? "Pick another amount"
+                          : isBedtime ? "Ask to stay up until \(later(m) ?? "later")" : "Ask for \(m) more minutes"
+                      } ?? (isBedtime ? "Pick how much later" : "Pick how much time"),
                       systemImage: ok ? "paperplane.fill" : nil, enabled: ok) { send() }
         }
     }
@@ -2340,7 +2386,7 @@ struct ScreenTimeMoreTimeSheet: View {
         error = nil
         Task {
             do {
-                try await service.requestMoreTime(minutes: minutes, note: note)
+                try await service.requestMoreTime(minutes: minutes, note: note, kind: kind)
                 Haptics.notify(.success)
                 note = ""
                 self.minutes = nil

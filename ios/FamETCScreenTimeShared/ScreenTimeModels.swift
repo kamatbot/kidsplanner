@@ -241,10 +241,18 @@ struct ScreenTimeRequest: Codable, Identifiable, Hashable, Sendable {
     var createdAt: String?
     var decidedAt: String?
     var decidedBy: String?
+    /// "time" (more screen time) or "bedtime" (stay up later tonight). Older servers omit it.
+    var kind: String?
+    /// Bedtime asks: the usual and the asked-for (or approved) bedtime, "HH:mm".
+    var bedtimeFrom: String?
+    var bedtimeUntil: String?
 
     var isPending: Bool { status == "pending" }
+    var isBedtime: Bool { kind == "bedtime" }
 
     static let choices = [15, 30, 45, 60]
+    /// Stay up later tonight: free, a grown-up decides.
+    static let bedtimeChoices = [15, 30, 60]
     /// 1 fam per 3 minutes (15 min = 5 fams).
     static func cost(minutes: Int) -> Int { minutes / 3 }
 }
