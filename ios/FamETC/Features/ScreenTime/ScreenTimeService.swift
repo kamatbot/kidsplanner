@@ -495,12 +495,13 @@ enum ScreenTimeServiceError: LocalizedError {
     }
 
     /// Asks the grown-ups for `minutes` more today (dated with this device's local day).
-    func requestMoreTime(minutes: Int, note: String?) async throws {
+    func requestMoreTime(minutes: Int, note: String?, kind: String = "time") async throws {
         let generation = accountGeneration
         let trimmed = note?.trimmingCharacters(in: .whitespacesAndNewlines)
         let r = try await api.requestScreenTime(minutes: minutes,
                                                 date: ScreenTimeSchedule.dayString(Date()),
-                                                note: trimmed?.isEmpty == false ? String(trimmed!.prefix(80)) : nil)
+                                                note: trimmed?.isEmpty == false ? String(trimmed!.prefix(80)) : nil,
+                                                kind: kind)
         guard generation == accountGeneration else { throw CancellationError() }
         requests = [r] + requests.filter { $0.id != r.id }
         await sync(source: "app")

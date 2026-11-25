@@ -147,6 +147,15 @@ enum ScreenTimeFormat {
 
     /// "Mia asks for 15 more minutes", plus " · 5 fams" on the whole Fam ETC plan.
     /// The Screen Time plan has no fams (docs/SCREEN-TIME-ONLY-PLAN.md D3).
+    /// One line for a kid's ask: more time, or stay up later tonight (always free).
+    static func requestLine(name: String, request r: ScreenTimeRequest, plan: ProductPlan) -> String {
+        if r.isBedtime {
+            return r.bedtimeUntil.map { "\(name) asks to stay up until \($0) tonight" }
+                ?? "\(name) asks to stay up \(r.minutes) min later tonight"
+        }
+        return moreTimeLine(name: name, minutes: r.minutes, fams: r.fams, plan: plan)
+    }
+
     static func moreTimeLine(name: String, minutes: Int, fams: Int, plan: ProductPlan) -> String {
         plan == .screenTime
             ? "\(name) asks for \(minutes) more minutes"
@@ -409,7 +418,7 @@ struct ScreenTimeAlertBanner: View {
                           hint: "Hides this banner. The request still waits in Screen Time.",
                           identifier: "screentime.banner.request.dismiss") { hideRequest(r.id) }
             VStack(alignment: .leading, spacing: 2) {
-                Text(ScreenTimeFormat.moreTimeLine(name: name, minutes: r.minutes, fams: r.fams, plan: store.productPlan))
+                Text(ScreenTimeFormat.requestLine(name: name, request: r, plan: store.productPlan))
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                     .monospacedDigit()
@@ -1281,7 +1290,7 @@ struct ScreenTimeKidControls: View {
         let name = DealWords.firstName(kid?.name) ?? "Your child"
         return VStack(alignment: .leading, spacing: Space.sm) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("⏱️ \(ScreenTimeFormat.moreTimeLine(name: name, minutes: r.minutes, fams: r.fams, plan: store.productPlan))")
+                Text("\(r.isBedtime ? "🌙" : "⏱️") \(ScreenTimeFormat.requestLine(name: name, request: r, plan: store.productPlan))")
                     .font(Typography.body.weight(.semibold))
                     .foregroundStyle(Palette.text)
                     .monospacedDigit()
@@ -1322,9 +1331,10 @@ struct ScreenTimeKidControls: View {
                 .background(Palette.frYou, in: Capsule())
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel(noFams ? "Approve \(r.minutes) more minutes" : "Approve \(r.minutes) more minutes for \(r.fams) fams")
+        .accessibilityLabel(r.isBedtime ? "Approve staying up \(r.minutes) minutes later tonight"
+                            : noFams ? "Approve \(r.minutes) more minutes" : "Approve \(r.minutes) more minutes for \(r.fams) fams")
         Button { decide(r, approve: false) } label: {
-            Text("Not today")
+            Text(r.isBedtime ? "Not tonight" : "Not today")
                 .font(Typography.label.weight(.semibold))
                 .foregroundStyle(Palette.frYouInk)
                 .padding(.horizontal, Space.lg)
@@ -1914,7 +1924,7 @@ struct ScreenTimeKidControls: View {
                 let chip = Self.requestChip(r.status)
                 HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(noFams ? "\(r.minutes) min" : "\(r.minutes) min · \(r.fams) fams")
+                        Text(r.isBedtime ? "🌙 Bedtime \(r.bedtimeUntil ?? "+\(r.minutes) min")" : noFams ? "\(r.minutes) min" : "\(r.minutes) min · \(r.fams) fams")
                             .font(Typography.body.weight(.semibold))
                             .foregroundStyle(Palette.text)
                             .monospacedDigit()
