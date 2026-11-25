@@ -1,0 +1,38 @@
+/* Screen Time on the main Today page (js/screen-time-today.js). */
+.st-today { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; padding: 16px 18px; border-radius: 20px;
+  border: 1px solid var(--fr-rule, var(--border)); background: linear-gradient(135deg, var(--fr-you-soft, var(--accent-soft)), var(--fr-card, var(--surface)));
+  box-shadow: var(--fr-shadow, none); }
+.st-today[hidden] { display: none !important; }
+.st-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.st-head h2 { margin: 0; font-size: 15px; font-weight: 700; color: var(--fr-ink, var(--text)); }
+.st-count { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--fr-you, var(--accent)); color: var(--fr-on-you, #fff); }
+.st-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px;
+  border-radius: 14px; background: var(--fr-card, var(--surface)); border: 1px solid var(--fr-rule, var(--border)); }
+.st-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-row-text strong { font-size: 14px; color: var(--fr-ink, var(--text)); }
+.st-row-text span { font-size: 13px; color: var(--fr-ink-2, var(--text-2)); }
+.st-row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.st-btn-primary { border: 0; background: var(--fr-you, var(--accent)); color: var(--fr-on-you, #fff); }
+.st-btn-primary[disabled] { opacity: .45; cursor: default; }
+.st-btn-ghost { border: 1px solid var(--fr-rule, var(--border)); background: var(--fr-card, var(--surface)); color: var(--fr-ink, var(--text)); }
+.st-btn-ghost:hover, .st-btn-ghost.is-on { border-color: var(--fr-you, var(--accent)); color: var(--fr-you-ink, var(--accent)); }
+.st-btn:focus-visible, .st-chip:focus-visible, .st-note:focus-visible { outline: 2px solid var(--fr-you, var(--accent)); outline-offset: 2px; }
+.st-badge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; font-style: normal; font-size: 11px; font-weight: 700;
+  background: var(--fr-you-soft, var(--accent-soft)); color: var(--fr-you-ink, var(--accent)); }
+.st-kid { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.st-kicker { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fr-you-ink, var(--accent)); }
+.st-title { margin-top: 3px; font-size: 17px; font-weight: 700; color: var(--fr-ink, var(--text)); }
+.st-status { margin-top: 3px; font-size: 13px; color: var(--fr-ink-2, var(--text-2)); }
+.st-picker { display: flex; flex-direction: column; gap: 10px; }
+.st-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.st-chip { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 68px; min-height: 52px; padding: 6px 12px;
+  border-radius: 16px; border: 1.5px solid var(--fr-rule, var(--border)); background: var(--fr-card, var(--surface)); color: var(--fr-ink, var(--text));
+  font: inherit; font-size: 16px; font-weight: 700; cursor: pointer; transition: transform .12s ease, border-color .12s ease; }
+.st-chip small { font-size: 11px; font-weight: 600; color: var(--fr-ink-2, var(--text-2)); }
+.st-chip:hover { transform: translateY(-1px); border-color: var(--fr-you, var(--accent)); }
+.st-chip.is-on { border-color: var(--fr-you, var(--accent)); background: var(--fr-you-soft, var(--accent-soft)); }
+.st-note { width: 100%; min-height: 38px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--fr-rule, var(--border));
+  background: var(--fr-card, var(--surface)); color: var(--fr-ink, var(--text)); font: inherit; font-size: 14px; box-sizing: border-box; }
+@media (prefers-reduced-motion: reduce) { .st-chip { transition: none; } .st-chip:hover { transform: none; } }

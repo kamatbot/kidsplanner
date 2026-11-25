@@ -33,6 +33,7 @@
   <link rel="stylesheet" href="/css/chat-media.css">
   <link rel="stylesheet" href="/css/settings.css">
   <link rel="stylesheet" href="/css/today-home.css">
+  <link rel="stylesheet" href="/css/screen-time-today.css">
   <link rel="stylesheet" href="/css/mood-check-in.css">
   <link rel="stylesheet" href="/css/today-learning.css">
   <link rel="stylesheet" href="/css/puzzle-studio.css">
@@ -338,6 +339,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </div>
             <div id="today-setup-content"></div>
           </section>
+
+          <!-- Screen Time: kids' asks + bedtime tonight (parents), "Ask a parent" (kids). js/screen-time-today.js -->
+          <section class="st-today" id="st-today" aria-label="Screen Time" hidden></section>
 
           <section class="today-people" aria-label="Children's progress">
             <h2 id="today-fams-title" class="today-sr">Children</h2>
@@ -1657,6 +1661,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <script src="/js/mood-check-in.js"></script>
 <script src="/js/puzzle-studio.js"></script>
 <script src="/js/today-calm.js"></script>
+<script src="/js/screen-time-today.js"></script>
 <script src="/js/app.js"></script>
 <script>
   document.getElementById('first-run-create-form').addEventListener('submit', handleCreateFamily);

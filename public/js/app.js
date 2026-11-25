@@ -557,6 +557,7 @@ async function bootstrapSession() {
   resetCompanionSession();
   const sessionState = companionState;
   window.famMoodCheckIn?.clear();
+  window.famScreenTimeToday?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
@@ -6597,6 +6598,7 @@ function renderTodayScreen() {
   document.getElementById('tab-today')?.classList.toggle('fr-kid-today', isKidSession());
   renderTodaySetupCard();
   renderTodayFams();
+  window.famScreenTimeToday?.refresh();
   initDaily5Tabs();
   renderTodayLearningRings();
   renderTodayActionQueue();
@@ -7672,6 +7674,7 @@ async function handleLogout() {
   window.famPuzzleStudio?.setScope('');
   resetCompanionSession();
   window.famMoodCheckIn?.clear();
+  window.famScreenTimeToday?.clear();
   activeChildViewId = null;
   window.famChildView?.clear();
   window.famChildProgress?.clear();
