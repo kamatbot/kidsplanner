@@ -897,6 +897,7 @@ const listenTarget = process.env.SOCKET_PATH || PORT;
 function startBackgroundJobs() {
   schoolApi.startScheduler();
   screenTime.startMonitor();
+  require("./lib/home-network").startMonitor();
   require("./lib/chat-attachments").startMaintenance();
   // Hermes reminders (school end, tonight's homework, dinner): decided here now
   // that no always-on Mac runs the old proactive loop. FAM_PROACTIVE=off stops it.

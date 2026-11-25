@@ -36,3 +36,13 @@
 .st-note { width: 100%; min-height: 38px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--fr-rule, var(--border));
   background: var(--fr-card, var(--surface)); color: var(--fr-ink, var(--text)); font: inherit; font-size: 14px; box-sizing: border-box; }
 @media (prefers-reduced-motion: reduce) { .st-chip { transition: none; } .st-chip:hover { transform: none; } }
+.st-digest { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.st-digest-range { font-size: 12px; font-weight: 500; color: var(--fr-ink-2, var(--text-2)); margin-left: 4px; }
+.st-digest-kid { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 14px; background: var(--fr-card, var(--surface)); border: 1px solid var(--fr-rule, var(--border)); }
+.st-digest-kid-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 13px; color: var(--fr-ink-2, var(--text-2)); }
+.st-digest-kid-head strong { font-size: 14px; color: var(--fr-ink, var(--text)); }
+.st-digest-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-digest-day { padding: 2px 8px; border-radius: 8px; font-size: 12px; background: var(--panel-2, rgba(0, 0, 0, .04)); color: var(--fr-ink-2, var(--text-2)); }
+.st-digest-day strong { color: var(--fr-ink, var(--text)); font-weight: 600; }
+.st-digest-day.is-free { background: var(--fr-you-soft, var(--accent-soft)); }
+.st-digest-meta { font-size: 12px; color: var(--fr-ink-2, var(--text-2)); line-height: 1.4; }
