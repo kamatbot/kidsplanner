@@ -111,7 +111,7 @@ test("parent GET lists every kid with the default policy, no-store", () => {
   assert.equal(res.headers["Cache-Control"], "no-store");
   assert.deepEqual(res.body.kids.map((k) => k.kidId), [ctx.mia.id, ctx.leo.id]);
   for (const k of res.body.kids) {
-    assert.deepEqual({ ...k.policy, updatedAt: undefined }, { version: 0, enabled: false, updatedAt: undefined, limits: [], downtime: [], pauseUntil: null, bonus: null });
+    assert.deepEqual({ ...k.policy, updatedAt: undefined }, { version: 0, enabled: false, updatedAt: undefined, limits: [], downtime: [], pauseUntil: null, bonus: null, bedtimeException: null });
     assert.deepEqual(k.devices, []);
     assert.deepEqual(k.alerts, []);
   }
@@ -868,7 +868,7 @@ test("more time: request validation", () => {
   const ok = ask(ctx, { minutes: 30, note: "  finish my level  " });
   assert.equal(ok.statusCode, 200);
   assert.deepEqual({ ...ok.body.request, id: undefined, createdAt: undefined }, {
-    id: undefined, kidId: ctx.mia.id, minutes: 30, fams: 10, date: TODAY, note: "finish my level", status: "pending",
+    id: undefined, kind: "time", kidId: ctx.mia.id, minutes: 30, fams: 10, date: TODAY, note: "finish my level", status: "pending",
     createdAt: undefined, decidedAt: null, decidedBy: null,
   });
   assert.equal(requested.length, 1);
