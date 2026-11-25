@@ -37,9 +37,22 @@ function homeNetworkMinutes(m) {
   const h = Math.floor(m / 60);
   return h ? `${h}h ${m % 60}m` : `${m}m`;
 }
+function homeNetworkDayBadge(info) {
+  if (!info) return '';
+  if (info.today === 'free') {
+    const why = info.todayReason && info.todayReason !== 'Weekend' ? ` (${info.todayReason})` : '';
+    return `<span class="hn-day-badge is-free">Free day — weekend limits${esc(why)}</span>`;
+  }
+  return '<span class="hn-day-badge">School day</span>';
+}
 
-async function homeNetworkApi(method, url) {
-  const res = await fetch(url, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } });
+async function homeNetworkApi(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
   return data;
@@ -71,9 +84,10 @@ async function renderHomeNetworkSettings() {
       : (a.online ? '<span style="color:#2e8b57">● Connected</span>' : `<span style="color:#b9770e">● Last seen ${esc(homeNetworkAgo(a.lastSeenAt))}</span>`);
     const kids = (currentFamily.kids || []).map((k) => {
       const u = st.usage && st.usage[k.id];
+      const dayInfo = st.days && st.days[k.id];
       const apps = u && u.topApps && u.topApps.length ? ` · ${u.topApps.slice(0, 3).map((x) => esc(x.name)).join(', ')}` : '';
       return `<div class="kid-row"><span class="kid-row-swatch" style="background:${esc(k.color || '#4ECDC4')}"></span>
-        <span class="kid-row-name">${esc(k.name)}</span>
+        <span class="kid-row-name">${esc(k.name)} ${homeNetworkDayBadge(dayInfo)}</span>
         <span class="kid-row-grade">${u ? `${homeNetworkMinutes(u.usedMinutes)} at home today${apps}` : 'No home devices seen today'}</span></div>`;
     }).join('');
     body = `<p style="margin:0 0 10px"><strong>${esc(a.name)}</strong> · ${health}</p>
@@ -94,7 +108,110 @@ async function renderHomeNetworkSettings() {
         </div>
         <p class="text-muted" style="margin:8px 0 0">It expires in 10 minutes and works once. Then match each Canopy profile to a kid there.</p>
       </div>` : '';
-  card.innerHTML = `<h3 id="home-network-heading">🏠 Home Wi-Fi</h3>${intro}${body}<div role="status" aria-live="polite">${code}</div>`;
+
+  const prefs = st.settings || { weeklyDigest: true, alerts: { risk: true, bypass: true, new_device: true } };
+  const alertPrefs = prefs.alerts || { risk: true, bypass: true, new_device: true };
+  const alerts = Array.isArray(st.alerts) ? st.alerts : [];
+  const alertsHtml = `<div class="hn-subsection">
+    <div class="hn-subhead">
+      <h4>Safety alerts</h4>
+      ${alerts.length > 1 ? '<button type="button" class="btn-secondary" data-hn-dismiss-all>Dismiss all</button>' : ''}
+    </div>
+    ${alerts.length
+      ? `<ul class="hermes-memory-list hn-alert-list">${alerts.map((al) => `<li>
+          <span class="hn-alert-text"><span>${esc(al.message)}</span><span class="text-muted hn-alert-meta">${esc(homeNetworkAgo(al.at))}</span></span>
+          <button type="button" class="btn-secondary" data-hn-dismiss-alert="${esc(al.id)}">Dismiss</button>
+        </li>`).join('')}</ul>`
+      : '<p class="text-muted" style="margin:0">No safety alerts.</p>'}
+  </div>`;
+
+  const togglesHtml = `<div class="hn-subsection">
+    <h4>Digest &amp; alerts</h4>
+    <label class="hermes-help-option">
+      <span><strong>Weekly digest</strong><span class="text-muted">Sunday 6 PM summary of each kid’s home Wi-Fi time, top apps, late-night use and requests.</span></span>
+      <input type="checkbox" data-hn-setting="weeklyDigest" aria-label="Weekly digest"${prefs.weeklyDigest !== false ? ' checked' : ''}>
+    </label>
+    <label class="hermes-help-option">
+      <span><strong>Critical-risk site alerts</strong><span class="text-muted">Notify parents after repeated blocked attempts to open adult, gambling, stranger chat or harmful sites.</span></span>
+      <input type="checkbox" data-hn-alert-toggle="risk" aria-label="Critical-risk site alerts"${alertPrefs.risk !== false ? ' checked' : ''}>
+    </label>
+    <label class="hermes-help-option">
+      <span><strong>Bypass attempt alerts</strong><span class="text-muted">Notify parents when a device tries to bypass the home Wi-Fi filter (VPN, proxy or encrypted DNS).</span></span>
+      <input type="checkbox" data-hn-alert-toggle="bypass" aria-label="Bypass attempt alerts"${alertPrefs.bypass !== false ? ' checked' : ''}>
+    </label>
+    <label class="hermes-help-option">
+      <span><strong>New device alerts</strong><span class="text-muted">Notify parents when a new unknown device joins the home Wi-Fi.</span></span>
+      <input type="checkbox" data-hn-alert-toggle="new_device" aria-label="New device alerts"${alertPrefs.new_device !== false ? ' checked' : ''}>
+    </label>
+  </div>`;
+
+  const noSchool = Array.isArray(st.noSchoolDates) ? st.noSchoolDates : [];
+  const noSchoolHtml = `<div class="hn-subsection">
+    <h4>No school dates</h4>
+    <p class="text-muted" style="margin:0 0 8px">School holidays on your synced calendars are detected automatically. Add extra days off here so weekend limits apply.</p>
+    ${noSchool.length
+      ? `<ul class="hermes-memory-list">${noSchool.map((d) => `<li>
+          <span>${esc(d)}</span>
+          <button type="button" class="btn-secondary" data-hn-remove-noschool="${esc(d)}" aria-label="Remove ${esc(d)}">Remove</button>
+        </li>`).join('')}</ul>`
+      : '<p class="text-muted" style="margin:0 0 8px">No custom dates added.</p>'}
+    <form data-hn-noschool-form class="hermes-memory-form">
+      <input type="date" aria-label="No school date" required>
+      <button type="submit" class="btn-secondary">Add date</button>
+    </form>
+  </div>`;
+
+  card.innerHTML = `<h3 id="home-network-heading">🏠 Home Wi-Fi</h3>${intro}${body}<div role="status" aria-live="polite">${code}</div>${alertsHtml}${togglesHtml}${noSchoolHtml}`;
+
+  card.querySelector('[data-hn-setting="weeklyDigest"]')?.addEventListener('change', (ev) => {
+    handleHomeNetworkSetting({ weeklyDigest: ev.target.checked });
+  });
+  card.querySelectorAll('[data-hn-alert-toggle]').forEach((input) => {
+    input.addEventListener('change', () => {
+      handleHomeNetworkSetting({ alerts: { [input.dataset.hnAlertToggle]: input.checked } });
+    });
+  });
+  card.querySelectorAll('[data-hn-dismiss-alert]').forEach((btn) => {
+    btn.addEventListener('click', () => handleHomeNetworkDismissAlert(btn.dataset.hnDismissAlert));
+  });
+  card.querySelector('[data-hn-dismiss-all]')?.addEventListener('click', () => handleHomeNetworkDismissAllAlerts());
+  card.querySelectorAll('[data-hn-remove-noschool]').forEach((btn) => {
+    btn.addEventListener('click', () => handleHomeNetworkRemoveNoSchool(btn.dataset.hnRemoveNoschool));
+  });
+  card.querySelector('[data-hn-noschool-form]')?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const val = ev.target.querySelector('input[type="date"]')?.value;
+    if (val) handleHomeNetworkAddNoSchool(val);
+  });
+}
+
+async function handleHomeNetworkSetting(patch) {
+  try { await homeNetworkApi('PUT', '/api/home-network/settings', patch); }
+  catch (err) { if (typeof toast === 'function') toast(err.message); renderHomeNetworkSettings(); }
+}
+
+async function handleHomeNetworkDismissAlert(id) {
+  try { await homeNetworkApi('POST', `/api/home-network/alerts/${encodeURIComponent(id)}/dismiss`); }
+  catch (err) { if (typeof toast === 'function') toast(err.message); }
+  renderHomeNetworkSettings();
+}
+
+async function handleHomeNetworkDismissAllAlerts() {
+  try { await homeNetworkApi('POST', '/api/home-network/alerts/dismiss'); }
+  catch (err) { if (typeof toast === 'function') toast(err.message); }
+  renderHomeNetworkSettings();
+}
+
+async function handleHomeNetworkAddNoSchool(date) {
+  try { await homeNetworkApi('POST', '/api/home-network/no-school', { date }); }
+  catch (err) { if (typeof toast === 'function') toast(err.message); }
+  renderHomeNetworkSettings();
+}
+
+async function handleHomeNetworkRemoveNoSchool(date) {
+  try { await homeNetworkApi('DELETE', `/api/home-network/no-school/${encodeURIComponent(date)}`); }
+  catch (err) { if (typeof toast === 'function') toast(err.message); }
+  renderHomeNetworkSettings();
 }
 
 async function handleHomeNetworkPair() {

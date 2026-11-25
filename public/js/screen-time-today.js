@@ -90,17 +90,83 @@
   }
 
   // ---------- parent ----------
+  function fmtMin(m) {
+    const n = Math.max(0, Math.round(Number(m) || 0));
+    const hrs = Math.floor(n / 60);
+    const rem = n % 60;
+    if (!hrs) return `${rem}m`;
+    return rem ? `${hrs}h ${rem}m` : `${hrs}h`;
+  }
+  function shortDay(ymd) {
+    const ms = Date.parse(`${ymd}T00:00:00Z`);
+    if (!Number.isFinite(ms)) return ymd || "";
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(ms).getUTCDay()];
+  }
+  function shortRange(start, end) {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const fmt = (d) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || ""));
+      return m ? `${months[Number(m[2]) - 1]} ${Number(m[3])}` : String(d || "");
+    };
+    return `${fmt(start)} – ${fmt(end)}`;
+  }
+  function digestDismissKey(weekEnd) { return `fam_home_digest_dismissed_${weekEnd}`; }
+  function isDigestDismissed(weekEnd) {
+    try { return !!(weekEnd && localStorage.getItem(digestDismissKey(weekEnd))); } catch (_) { return false; }
+  }
+  function dismissDigest(weekEnd) {
+    try { if (weekEnd) localStorage.setItem(digestDismissKey(weekEnd), "1"); } catch (_) {}
+    paint();
+  }
+
   // " · 🏠 1h 20m at home" once the home Wi-Fi filter (Canopy) has reported today.
   function homeLine(kidId) {
     const u = state.homeNetwork && state.homeNetwork.usage && state.homeNetwork.usage[kidId];
     if (!u || !u.usedMinutes) return "";
-    const hrs = Math.floor(u.usedMinutes / 60);
-    return ` · 🏠 ${hrs ? `${hrs}h ${u.usedMinutes % 60}m` : `${u.usedMinutes}m`} at home`;
+    return ` · 🏠 ${fmtMin(u.usedMinutes)} at home`;
+  }
+
+  function digestHtml() {
+    const d = state.homeNetwork && state.homeNetwork.digest;
+    if (!d || !Array.isArray(d.kids) || !d.kids.length || isDigestDismissed(d.weekEnd)) return "";
+    const kidBlocks = d.kids.map((k) => {
+      const delta = k.deltaMinutes == null ? "" : (k.deltaMinutes === 0 ? " · same as last week"
+        : ` · ${k.deltaMinutes > 0 ? "+" : "-"}${fmtMin(Math.abs(k.deltaMinutes))} vs last week`);
+      const daysRow = (k.days || []).map((day) => {
+        const lim = day.limitMinutes != null ? `/${fmtMin(day.limitMinutes)}` : "";
+        return `<span class="st-digest-day${day.dayType === "free" ? " is-free" : ""}">${h(shortDay(day.date))} <strong>${h(fmtMin(day.usedMinutes))}${h(lim)}</strong></span>`;
+      }).join("");
+      const meta = [];
+      if (k.topApps && k.topApps.length) meta.push(`Top: ${k.topApps.slice(0, 3).map((a) => `${a.name} (${fmtMin(a.minutes)})`).join(", ")}`);
+      if (k.lateNightMinutes > 0) meta.push(`${fmtMin(k.lateNightMinutes)} late-night`);
+      if (k.blocked > 0) meta.push(`${k.blocked} blocked`);
+      const reqs = k.requests || {};
+      if (reqs.approved > 0 || reqs.declined > 0) {
+        const rb = [];
+        if (reqs.approved > 0) rb.push(`${reqs.approved} approved`);
+        if (reqs.declined > 0) rb.push(`${reqs.declined} declined`);
+        meta.push(`Requests: ${rb.join(", ")}`);
+      }
+      if (k.famsSpent > 0) meta.push(`${k.famsSpent} Fams spent`);
+      return `
+        <div class="st-digest-kid">
+          <div class="st-digest-kid-head"><strong>${h(k.kidName)}</strong><span>${h(fmtMin(k.totalMinutes))}${h(delta)}</span></div>
+          ${daysRow ? `<div class="st-digest-days">${daysRow}</div>` : ""}
+          ${meta.length ? `<div class="st-digest-meta">${h(meta.join(" · "))}</div>` : ""}
+        </div>`;
+    }).join("");
+    return `
+      <div class="st-digest" aria-label="Weekly Wi-Fi digest">
+        <div class="st-head">
+          <h2>📊 Weekly Wi-Fi digest <span class="st-digest-range">${h(shortRange(d.weekStart, d.weekEnd))}</span></h2>
+          <button type="button" class="st-btn st-btn-ghost" onclick="famScreenTimeToday.dismissDigest('${h(d.weekEnd)}')">Dismiss</button>
+        </div>
+        ${kidBlocks}
+      </div>`;
   }
 
   function parentHtml() {
     const kids = (state.kids || []).filter((k) => k.policy && k.policy.enabled);
-    if (!kids.length) return "";
     const pending = [];
     for (const k of kids) for (const r of k.requests || []) if (r.status === "pending") pending.push({ ...r, kidId: k.kidId });
     const rows = pending.map((r) => {
@@ -131,10 +197,12 @@
           </div>
         </div>`;
     }).join("");
-    if (!rows && !chips) return "";
-    return `
-      <div class="st-head"><h2>Screen Time</h2>${pending.length ? `<span class="st-count">${pending.length} waiting</span>` : ""}</div>
-      ${rows}${chips}`;
+    const digest = digestHtml();
+    if (!rows && !chips && !digest) return "";
+    const screenTimeBlock = (rows || chips)
+      ? `<div class="st-head"><h2>Screen Time</h2>${pending.length ? `<span class="st-count">${pending.length} waiting</span>` : ""}</div>${rows}${chips}`
+      : "";
+    return `${screenTimeBlock}${digest}`;
   }
 
   async function decide(kidId, id, approve, kind) {
@@ -229,5 +297,5 @@
     if (el) { el.hidden = true; el.innerHTML = ""; }
   }
 
-  window.famScreenTimeToday = { refresh, clear, decide, allowTonight, open, pick, send };
+  window.famScreenTimeToday = { refresh, clear, decide, allowTonight, open, pick, send, dismissDigest };
 })();
