@@ -513,3 +513,36 @@ or use **Allow tonight**: `POST /api/screen-time/kids/:kidId/bedtime
   kid "Ask a parent" card (more time or stay up later).
 - Known gap until the next iOS build: native screens show a bedtime ask as
   "+N more minutes" (approving it still does the right thing on the server).
+
+## Home Wi-Fi agent (Canopy, owner direction 2026-11-25)
+
+Canopy (github.com/kamatbot/canopy-parental-control) is the family's home DNS
+filter on a Mac on the home network; the router hands it out as DNS, so it
+sees every device at home (TV, consoles, laptops) that Apple Screen Time
+can't. Parents keep ONE rule set in Fam ETC; Canopy is a second enforcer.
+
+- **Pairing.** Settings › Connections › Home Wi-Fi creates a one-time
+  8-character code (10 minutes, single use). Canopy POSTs it to
+  `/api/home-network/claim` and gets a `fhn_…` token (`Authorization: FamHome
+  <token>`); only its SHA-256 is stored. One agent per family; pairing again
+  replaces the token; Disconnect revokes it. Code: `lib/home-network.js`,
+  `lib/routes/home-network.js`.
+- **Rules feed.** `GET /api/home-network/policy` (ETag / 304) returns
+  `{ timezone, today, kids: [{ id, name, enabled, version, pauseUntil,
+  dailyLimit {weekdayMinutes, weekendMinutes}, bonus, bedtimeException,
+  downtime }] }`. `downtime` is the same projection devices get, so tonight's
+  approved "stay up later" is already in it. A kid with Screen Time off is
+  sent `enabled:false` and Canopy keeps its own rules for them. App-specific
+  limits stay Apple-only (their selections are opaque device tokens).
+- **What Canopy owns vs. follows.** For a Canopy profile linked to a kid,
+  Fam ETC owns pause, daily time (+ today's extra time) and bedtime
+  schedules; Canopy keeps blocked apps, filters, focus schedules and device
+  assignment. Canopy polls every 30 s and applies a kid's rules only when
+  they change, so a quick local pause in Canopy still works until the next
+  Fam ETC change.
+- **Usage back.** `POST /api/home-network/report` (about every 5 minutes):
+  per kid today's home minutes, blocked lookups, device count and top apps,
+  plus engine health. Shown in Settings and as "🏠 1h 20m at home" on the
+  Today Screen Time card. Only today's numbers are kept.
+- Allowances are enforced separately by each enforcer (iPad minutes and home
+  DNS minutes are not added together).

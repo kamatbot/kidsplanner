@@ -16,7 +16,101 @@ function showSettingsSection(section) {
     renderHermesHelpSettings();
     renderHermesMemorySettings();
     renderDisplaySettingsLink();
+    renderHomeNetworkSettings();
   }
+}
+
+// ---------- Home Wi-Fi (Canopy) ----------
+// The home DNS filter pairs with a one-time code and then follows the same
+// pause, daily time and bedtime set in Screen Time for every device at home.
+let homeNetworkCode = null;
+
+function homeNetworkAgo(iso) {
+  const ms = Date.now() - Date.parse(iso || '');
+  if (!Number.isFinite(ms)) return 'never';
+  if (ms < 90 * 1000) return 'just now';
+  if (ms < 3600 * 1000) return `${Math.round(ms / 60000)} min ago`;
+  if (ms < 86400 * 1000) return `${Math.round(ms / 3600000)} h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+function homeNetworkMinutes(m) {
+  const h = Math.floor(m / 60);
+  return h ? `${h}h ${m % 60}m` : `${m}m`;
+}
+
+async function homeNetworkApi(method, url) {
+  const res = await fetch(url, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Something went wrong. Please try again.');
+  return data;
+}
+
+async function renderHomeNetworkSettings() {
+  const parent = document.getElementById('connections-parent-only');
+  let card = document.getElementById('home-network-settings');
+  if (!parent || isKidSession() || !currentFamily?.id) { card?.remove(); return; }
+  if (!card) {
+    card = document.createElement('section');
+    card.id = 'home-network-settings';
+    card.className = 'settings-subcard';
+    card.setAttribute('aria-labelledby', 'home-network-heading');
+    parent.appendChild(card);
+  }
+  let st;
+  try { st = await homeNetworkApi('GET', '/api/home-network'); }
+  catch (err) {
+    card.innerHTML = `<h3 id="home-network-heading">🏠 Home Wi-Fi</h3><p class="text-muted">${esc(err.message)}</p>`;
+    return;
+  }
+  const intro = '<p class="text-muted" style="margin:0 0 12px">Connect your home filter (Canopy) so every device on home Wi-Fi, like the TV, consoles and laptops, follows the same pause, daily time and bedtime you set in Screen Time. Tonight’s “stay up later” applies there too.</p>';
+  let body;
+  if (st.agent) {
+    const a = st.agent;
+    const health = a.engine && a.engine.healthy === false
+      ? `<span style="color:#c0392b">Needs attention${a.engine.message ? `: ${esc(a.engine.message)}` : ''}</span>`
+      : (a.online ? '<span style="color:#2e8b57">● Connected</span>' : `<span style="color:#b9770e">● Last seen ${esc(homeNetworkAgo(a.lastSeenAt))}</span>`);
+    const kids = (currentFamily.kids || []).map((k) => {
+      const u = st.usage && st.usage[k.id];
+      const apps = u && u.topApps && u.topApps.length ? ` · ${u.topApps.slice(0, 3).map((x) => esc(x.name)).join(', ')}` : '';
+      return `<div class="kid-row"><span class="kid-row-swatch" style="background:${esc(k.color || '#4ECDC4')}"></span>
+        <span class="kid-row-name">${esc(k.name)}</span>
+        <span class="kid-row-grade">${u ? `${homeNetworkMinutes(u.usedMinutes)} at home today${apps}` : 'No home devices seen today'}</span></div>`;
+    }).join('');
+    body = `<p style="margin:0 0 10px"><strong>${esc(a.name)}</strong> · ${health}</p>
+      ${kids}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button type="button" class="btn-secondary" onclick="handleHomeNetworkPair()">Pair again</button>
+        <button type="button" class="btn-secondary" onclick="handleHomeNetworkUnpair()">Disconnect</button>
+      </div>`;
+  } else {
+    body = `<button type="button" class="btn-primary" onclick="handleHomeNetworkPair()">Connect home Wi-Fi</button>`;
+  }
+  const code = homeNetworkCode && Date.parse(homeNetworkCode.expiresAt) > Date.now()
+    ? `<div class="invite-box" style="margin-top:12px">
+        <strong>Enter this code in Canopy → Settings → Fam ETC</strong>
+        <div class="invite-code-row" style="margin-top:8px">
+          <code class="invite-code">${esc(homeNetworkCode.code)}</code>
+          <button type="button" class="btn-secondary" onclick="copyTextToClipboard('${esc(homeNetworkCode.code)}')">Copy</button>
+        </div>
+        <p class="text-muted" style="margin:8px 0 0">It expires in 10 minutes and works once. Then match each Canopy profile to a kid there.</p>
+      </div>` : '';
+  card.innerHTML = `<h3 id="home-network-heading">🏠 Home Wi-Fi</h3>${intro}${body}<div role="status" aria-live="polite">${code}</div>`;
+}
+
+async function handleHomeNetworkPair() {
+  try {
+    homeNetworkCode = await homeNetworkApi('POST', '/api/home-network/pairing');
+  } catch (err) {
+    if (typeof toast === 'function') toast(err.message);
+  }
+  renderHomeNetworkSettings();
+}
+
+async function handleHomeNetworkUnpair() {
+  if (!confirm('Disconnect home Wi-Fi? Canopy keeps its last rules but stops following Fam ETC until you pair it again.')) return;
+  try { await homeNetworkApi('DELETE', '/api/home-network'); homeNetworkCode = null; }
+  catch (err) { if (typeof toast === 'function') toast(err.message); }
+  renderHomeNetworkSettings();
 }
 
 function renderDisplaySettingsLink() {

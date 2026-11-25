@@ -716,6 +716,7 @@ require("./lib/routes/fams")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
 require("./lib/routes/push")(app, routeDeps);
 require("./lib/routes/screen-time")(app, routeDeps);
+require("./lib/routes/home-network")(app, routeDeps);
 require("./lib/routes/ai")(app, routeDeps);
 
 // ===================== PAGES =====================
