@@ -206,7 +206,6 @@ private struct FamilyWidgetView: View {
     }
 }
 
-@main
 struct FamETCFamilyWidget: Widget {
     let kind = "FamETCFamilyWidget"
 

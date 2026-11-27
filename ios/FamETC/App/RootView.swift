@@ -93,6 +93,13 @@ struct RootView: View {
     }
 
     private func openAssistanceRoute(_ url: URL) {
+        // Calendar widgets: open the Calendar tab on the tapped day.
+        if let day = FamilyCalendarRoute.dayKey(from: url) {
+            guard !store.needsAuth else { return }
+            store.pendingCalendarDayKey = day ?? Agenda.todayKey()
+            selection = .calendar
+            return
+        }
         guard url.scheme == "https", let host = url.host?.lowercased(),
               ["fametc.com", "www.fametc.com"].contains(host), url.path == "/",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
