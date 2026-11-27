@@ -63,8 +63,8 @@ final class WatchPlansTests: XCTestCase {
         }
     }
 
-    func testForbiddenExplainsKidOnly() async {
+    func testForbiddenSaysReconnect() async {
         let text = await MainActor.run { WatchPlansService.message(for: WatchAPIError.forbidden) }
-        XCTAssertTrue(text.contains("kid's watch"))
+        XCTAssertTrue(text.contains("Reconnect it to Fam ETC"))
     }
 }
