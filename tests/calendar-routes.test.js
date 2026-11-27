@@ -488,3 +488,44 @@ test("POST, GET, PATCH /api/calendar/events: driverMemberId and driverName handl
   assert.equal(clearPatchRes.body.event.driverMemberId, null);
   assert.equal(clearPatchRes.body.event.driverName, null);
 });
+
+test("POST /api/calendar/events: device-calendar imports dedup across family members and label as Apple Calendar", () => {
+  const { routes, chatPosts } = buildHarness();
+  const fam = freshFamily();
+  const parent = store.getUser(fam.parentIds[0]);
+  const coParent = store.createUser(`dev${Math.random()}@example.com`, "Co-parent");
+  family.joinFamilyAsParent(fam.inviteCode, coParent.id);
+  const sourceId = "ek-0123456789abcdef0123456789abcdef";
+  const body = { title: "Bowling", date: "2026-11-28", time: "19:00", sourceType: "device", sourceId, silent: true };
+
+  const first = call(routes["POST /api/calendar/events"], { familyId: fam.id, user: parent, body });
+  assert.equal(first.statusCode, 200);
+  assert.equal(first.body.existing, false);
+  assert.equal(first.body.event.sourceType, "device");
+  assert.equal(first.body.event.sourceLabel, "Apple Calendar");
+
+  // The co-parent's phone sees the same shared iCloud event: no duplicate.
+  const second = call(routes["POST /api/calendar/events"], { familyId: fam.id, user: coParent, body });
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.body.existing, true);
+  assert.equal(second.body.event.id, first.body.event.id);
+  assert.equal(chatPosts.length, 0, "silent imports never announce in chat");
+
+  // A kid may import into their own calendar too.
+  const { kid } = family.addKid(fam.id, parent.id, { name: "Device Kid" });
+  const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
+  const kidEvent = call(routes["POST /api/calendar/events"], {
+    familyId: fam.id, user: kidUser,
+    body: { ...body, sourceId: "ek-ffffffffffffffffffffffffffffffff", kidId: kid.id },
+  });
+  assert.equal(kidEvent.statusCode, 200);
+  assert.equal(kidEvent.body.event.kidId, kid.id);
+
+  for (const bad of ["ek-XYZ", "ek-0123", "../etc", "m_family_1", 42]) {
+    const res = call(routes["POST /api/calendar/events"], {
+      familyId: fam.id, user: parent, body: { ...body, sourceId: bad },
+    });
+    assert.equal(res.statusCode, 400, `bad device id ${bad}`);
+    assert.equal(res.body.error, "Invalid device calendar source.");
+  }
+});

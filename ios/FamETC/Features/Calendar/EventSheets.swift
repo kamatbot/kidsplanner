@@ -64,6 +64,7 @@ struct AddEventSheet: View {
                             Label("Say several plans at once", systemImage: "mic.fill")
                         }
                         .accessibilityIdentifier("event.add.sayPlans")
+                        DeviceCalendarRow()
                     }
                 }
                 Section {

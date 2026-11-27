@@ -61,6 +61,7 @@ struct KidAddPlansSheet: View {
                             .accessibilityIdentifier("kid.add.error")
                     }
                 }
+                Section { DeviceCalendarRow() }
             }
             .navigationTitle("Add plans")
             .navigationBarTitleDisplayMode(.inline)
