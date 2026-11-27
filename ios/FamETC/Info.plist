@@ -31,6 +31,10 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Fam ETC shows events from the calendars you choose (including ones Siri adds) on your family calendar.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Fam ETC shows events from the calendars you choose (including ones Siri adds) on your family calendar.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Fam ETC uses the camera to scan timetables, homework, and your pantry so items can be added automatically.</string>
 	<key>NSMicrophoneUsageDescription</key>

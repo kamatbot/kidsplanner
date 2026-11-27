@@ -86,6 +86,7 @@ struct CalendarScreen: View {
                         .padding(.top, Space.sm)
                     }
                 }
+                DeviceCalendarBanner()
                 if store.isLoadingCalendar && store.events.isEmpty && store.familyEvents.isEmpty {
                     ProgressView("Loading your calendar…")
                         .font(Typography.body)

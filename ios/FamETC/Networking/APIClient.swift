@@ -230,9 +230,11 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         return r.event
     }
 
-    func addFamilyEventResult(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil, driverMemberId: String? = nil) async throws -> FamilyEventResponse {
+    func addFamilyEventResult(title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, sourceType: String? = nil, sourceId: String? = nil, driverMemberId: String? = nil, endTime: String? = nil, silent: Bool = false) async throws -> FamilyEventResponse {
         var body: [String: Any] = ["title": title, "date": date]
         if let time, !time.isEmpty { body["time"] = time }
+        if let endTime, !endTime.isEmpty { body["endTime"] = endTime }
+        if silent { body["silent"] = true }
         if let notes, !notes.isEmpty { body["notes"] = notes }
         if let category { body["category"] = category }
         if let kidId { body["kidId"] = kidId }
@@ -254,9 +256,12 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
     /// set (rather than a sparse diff) so the sheet can also clear an optional field
     /// back to empty — an omitted optional is sent as JSON `null`, which the server
     /// clears; a supplied "none" repeat rule likewise clears recurrence.
-    func updateFamilyEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, driverMemberId: String? = nil) async throws -> FamilyEvent {
+    func updateFamilyEvent(_ id: String, title: String, date: String, time: String?, notes: String?, category: String?, kidId: String?, endDate: String? = nil, repeatRule: String? = nil, repeatUntil: String? = nil, driverMemberId: String? = nil, endTime: String?? = .none) async throws -> FamilyEvent {
         var body: [String: Any] = ["title": title, "date": date]
         body["time"] = (time?.isEmpty == false) ? time! : NSNull()
+        // endTime is only sent when the caller passes it (device-calendar sync);
+        // the edit sheet leaves the stored end time alone.
+        if case .some(let end) = endTime { body["endTime"] = (end?.isEmpty == false) ? end! : NSNull() }
         body["notes"] = (notes?.isEmpty == false) ? notes! : NSNull()
         body["category"] = category ?? NSNull()
         body["kidId"] = kidId ?? NSNull()

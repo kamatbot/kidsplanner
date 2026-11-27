@@ -82,6 +82,16 @@ struct RootView: View {
     @State private var showFamilyAccount = false
     private struct AssistanceChildRoute: Identifiable { let id: String }
 
+    /// Copy the phone's chosen Calendar events into Fam ETC (no-op until the
+    /// person turns it on in Calendar › Phone calendar).
+    private func syncDeviceCalendar() async {
+        guard !store.needsAuth else { return }
+        let sync = DeviceCalendarSync.shared
+        sync.bind(userId: store.me?.id, familyId: store.family?.id, role: store.me?.role, kidId: store.me?.kidId)
+        sync.onImported = { [store] in await store.loadCalendarAndHomework() }
+        await sync.sync()
+    }
+
     private func openAssistanceRoute(_ url: URL) {
         guard url.scheme == "https", let host = url.host?.lowercased(),
               ["fametc.com", "www.fametc.com"].contains(host), url.path == "/",
@@ -132,6 +142,7 @@ struct RootView: View {
         }
         .task {
             await store.load()
+            await syncDeviceCalendar()
             if let url = pendingAssistanceURL { openAssistanceRoute(url) }
             consumePendingChatRoute()
             // Now that we know there's an authenticated session, ask for push
@@ -152,7 +163,9 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await store.refreshKidRequests() }
+            Task { await syncDeviceCalendar() }
         }
+        .onChange(of: store.me?.id) { _, _ in Task { await syncDeviceCalendar() } }
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToChat)) { _ in
             routeFromLiveChatNotification(fallbackRoomId: familyRoomId)
         }
