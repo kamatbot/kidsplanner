@@ -139,12 +139,14 @@ test("errors are specific: no API key, Claude down, empty text", async () => {
   } finally { claude.restore(); }
 });
 
-test("kid watches may call kid-plans; parent watches may not", () => {
+test("kid and parent watches may call kid-plans", () => {
   const kid = { targetType: "kid" };
   const parent = { targetType: "parent" };
   assert.equal(watchAuth.allowedRequest("POST", "/api/kid-plans", kid), true);
   assert.equal(watchAuth.allowedRequest("POST", "/api/kid-plans/abc12345/undo", kid), true);
-  assert.equal(watchAuth.allowedRequest("POST", "/api/kid-plans", parent), false);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/kid-plans", parent), true);
+  assert.equal(watchAuth.allowedRequest("POST", "/api/kid-plans/abc12345/undo", parent), true);
+  assert.equal(watchAuth.allowedRequest("GET", "/api/kid-plans", parent), false);
   assert.equal(watchAuth.allowedRequest("POST", "/api/family/actions", kid), false);
 });
 
@@ -223,12 +225,9 @@ test("kids still cannot edit or delete reminders a parent gave them, and watches
   assert.equal(watch.code, 403);
 });
 
-test("kid-plans route: parents are refused with a pointer to Hermes, kids get the reply", async () => {
-  const { parent, fam, mayaId } = fixture();
+test("kid-plans route: kids get the reply and can undo", async () => {
+  const { fam, mayaId } = fixture();
   const h = harness(registerKidPlans);
-  const refused = await h.call("POST", "/api/kid-plans", { user: { id: parent.id, data: { profile: { role: "parent" } } }, family: fam, body: { text: "soccer" } });
-  assert.equal(refused.code, 403);
-  assert.match(refused.body.error, /Hermes/);
   const claude = mockClaude([{ content: [tool("add_event", { title: "Soccer", date: tomorrow(), time: "10:00" })] }]);
   try {
     const ok = await h.call("POST", "/api/kid-plans", { user: kidUser(fam, mayaId), family: fam, watchAuth: { targetType: "kid", targetKidId: mayaId }, body: { text: "soccer", requestId: "route-1234567" } });
@@ -239,4 +238,61 @@ test("kid-plans route: parents are refused with a pointer to Hermes, kids get th
     assert.equal(undo.code, 200);
     assert.equal(undo.body.undone, true);
   } finally { claude.restore(); }
+});
+
+const parentUser = (parent) => ({ id: parent.id, data: { profile: { role: "parent", name: "Kamat" } } });
+
+test("parents add their own plans: family-calendar events and reminders assigned to them", async () => {
+  const { parent, fam, mayaId } = fixture();
+  const h = harness(registerKidPlans);
+  const day = tomorrow();
+  const claude = mockClaude([{ content: [
+    tool("add_event", { title: "Dentist", date: day, time: "16:00", for: "me" }),
+    tool("add_reminder", { title: "Call plumber", date: day, time: "09:00", for: "me" }),
+    tool("add_event", { title: "Soccer", date: day, time: "10:00", for: "Maya" }),
+    tool("add_reminder", { title: "Pack kit", date: day, time: "07:30", for: "Maya" }),
+  ] }]);
+  try {
+    const res = await h.call("POST", "/api/kid-plans", { user: parentUser(parent), family: fam, watchAuth: { targetType: "parent", targetUserId: parent.id }, body: { text: "dentist and plumber and maya soccer", requestId: "parent-1234567", via: "siri" } });
+    assert.equal(res.code, 200, JSON.stringify(res.body));
+    assert.equal(res.body.items.length, 4);
+    const sent = claude.calls[0].body;
+    assert.match(sent.system, /Kamat/);
+    assert.deepEqual(sent.tools[0].input_schema.properties.for.enum, ["me", "Maya", "Leo"]);
+    const [dentist, plumber, soccer, kit] = res.body.items;
+    assert.equal(events.getById(fam.id, dentist.id).kidId, null);
+    assert.equal(events.getById(fam.id, soccer.id).kidId, mayaId);
+    const mine = actions.getAction(fam.id, plumber.id);
+    assert.equal(mine.assigneeType, "parent");
+    assert.equal(mine.assigneeId, parent.id);
+    const forMaya = actions.getAction(fam.id, kit.id);
+    assert.equal(forMaya.assigneeType, "kid");
+    assert.equal(forMaya.kidId, mayaId);
+    assert.equal(forMaya.createdByKidId, null);
+    // Replays return the first result; undo removes everything.
+    const again = await h.call("POST", "/api/kid-plans", { user: parentUser(parent), family: fam, body: { text: "x", requestId: "parent-1234567" } });
+    assert.equal(again.body.items.length, 4);
+    const undo = await h.call("POST", "/api/kid-plans/parent-1234567/undo", { user: parentUser(parent), family: fam });
+    assert.equal(undo.code, 200);
+    assert.equal(events.getById(fam.id, dentist.id), null);
+    assert.equal(actions.getAction(fam.id, kit.id), null);
+  } finally { claude.restore(); }
+});
+
+test("a parent's request is not visible to a kid, and a watch must belong to the speaker", async () => {
+  const { parent, fam, mayaId } = fixture();
+  const h = harness(registerKidPlans);
+  const claude = mockClaude([{ content: [tool("add_event", { title: "Gym", date: tomorrow(), time: "06:30", for: "me" })] }]);
+  try {
+    const ok = await h.call("POST", "/api/kid-plans", { user: parentUser(parent), family: fam, body: { text: "gym", requestId: "parent-abcdefg" } });
+    assert.equal(ok.code, 200);
+    const kidUndo = await h.call("POST", "/api/kid-plans/parent-abcdefg/undo", { user: kidUser(fam, mayaId), family: fam });
+    assert.equal(kidUndo.code, 404);
+  } finally { claude.restore(); }
+  const wrongWatch = await h.call("POST", "/api/kid-plans", { user: parentUser(parent), family: fam, watchAuth: { targetType: "kid", targetKidId: mayaId }, body: { text: "x" } });
+  assert.equal(wrongWatch.code, 403);
+  const otherParent = await h.call("POST", "/api/kid-plans", { user: parentUser(parent), family: fam, watchAuth: { targetType: "parent", targetUserId: "someone-else" }, body: { text: "x" } });
+  assert.equal(otherParent.code, 403);
+  const stranger = await h.call("POST", "/api/kid-plans", { user: { id: "nobody", data: { profile: { role: "parent" } } }, family: fam, body: { text: "x" } });
+  assert.equal(stranger.code, 403);
 });

@@ -39,7 +39,7 @@ struct MyListView: View {
                     }
                     ForEach(items) { item in row(item, at: clock.date) }
 
-                    if store.snapshot.context?.profile.role == "kid" {
+                    if ["kid", "parent"].contains(store.snapshot.context?.profile.role ?? "") {
                         NavigationLink { WatchAddPlansView() } label: {
                             capsuleLabel("Add plans", symbol: "mic.fill", tint: WatchChatPalette.coral)
                         }

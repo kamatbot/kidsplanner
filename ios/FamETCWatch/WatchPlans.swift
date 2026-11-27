@@ -74,7 +74,7 @@ final class WatchPlansService {
         case WatchAPIError.http(let status, let message):
             return status == 503 || status == 502 || status == 429 ? message : "\(message) (\(status))"
         case WatchAPIError.forbidden:
-            return "Adding plans works on a kid's watch. This watch is signed in as a parent or another account (403)."
+            return "This watch isn't allowed to add plans for this account. Reconnect it to Fam ETC (403)."
         case WatchAPIError.unauthenticated:
             return "This watch needs to be reconnected to Fam ETC (401)."
         case WatchAPIError.disconnected:

@@ -577,10 +577,12 @@ struct FamilyRingsActionsSheet: View {
                             .accessibilityIdentifier("today.action.add")
                     }
                 }
-                if !store.isParent && store.me?.kidId != nil {
+                if store.isParent || store.me?.kidId != nil {
                     Section {
-                        Button { showKidAdd = true } label: { Label("Add a reminder or plans", systemImage: "plus.circle.fill") }
-                            .accessibilityIdentifier("today.kid.addPlans")
+                        Button { showKidAdd = true } label: {
+                            Label(store.isParent ? "Say plans and reminders" : "Add a reminder or plans", systemImage: "plus.circle.fill")
+                        }
+                        .accessibilityIdentifier("today.kid.addPlans")
                     } footer: { Text("Your reminders buzz on your watch.") }
                 }
                 if let error = store.actionError { Text(error).foregroundStyle(Palette.frDanger) }

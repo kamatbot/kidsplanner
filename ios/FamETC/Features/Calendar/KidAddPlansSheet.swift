@@ -4,6 +4,8 @@ import SwiftUI
 /// by typing or dictating ("soccer Saturday at 10, dentist Tuesday at 4,
 /// remind me to pack my recorder tomorrow at 7:30"). Everything is added for
 /// the signed-in kid only, and reminders buzz on their watch.
+/// Parents get the "Say it" part only (their single event has its own sheet):
+/// their plans go on their own list unless they name a kid.
 struct KidAddPlansSheet: View {
     enum Mode: String, CaseIterable, Identifiable {
         case say, event, reminder
@@ -40,13 +42,13 @@ struct KidAddPlansSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
+                if !store.isParent { Section {
                     Picker("Add", selection: $mode) {
                         ForEach(Mode.allCases) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("kid.add.mode")
-                }
+                } }
                 switch mode {
                 case .say: saySection
                 case .event: eventSection
@@ -74,7 +76,7 @@ struct KidAddPlansSheet: View {
                 }
             }
             .onAppear {
-                mode = initialMode
+                mode = store.isParent ? .say : initialMode
                 date = initialDate
                 if let initialTime, let parsed = EventFmt.hm.date(from: initialTime) {
                     let parts = Calendar.current.dateComponents([.hour, .minute], from: parsed)
@@ -97,7 +99,9 @@ struct KidAddPlansSheet: View {
 
     @ViewBuilder private var saySection: some View {
         Section {
-            TextField("Soccer Saturday at 10, dentist Tuesday at 4, remind me to pack my recorder tomorrow at 7:30",
+            TextField(store.isParent
+                      ? "Dentist Tuesday at 4, remind me to call the plumber tomorrow at 9, Maya has soccer Saturday at 10"
+                      : "Soccer Saturday at 10, dentist Tuesday at 4, remind me to pack my recorder tomorrow at 7:30",
                       text: $note, axis: .vertical)
                 .lineLimit(3...8)
                 .accessibilityIdentifier("kid.add.note")
@@ -114,7 +118,9 @@ struct KidAddPlansSheet: View {
         } header: {
             Text("Type or tap the keyboard mic and say your plans")
         } footer: {
-            Text("You can say lots of plans at once. Events and reminders are only added for you.")
+            Text(store.isParent
+                 ? "Say lots of plans at once. They're added for you unless you name one of the kids."
+                 : "You can say lots of plans at once. Events and reminders are only added for you.")
         }
         if let result { resultSection(result) }
     }

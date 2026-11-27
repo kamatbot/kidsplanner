@@ -27,6 +27,7 @@ struct AddEventSheet: View {
     @State private var repeatRule = "none"
     @State private var hasRepeatUntil = false
     @State private var repeatUntilDate = Date()
+    @State private var showSayPlans = false
 
     private let categories = ["school", "sports", "arts", "social", "other"]
     private let repeatOptions: [(value: String, label: String)] = [
@@ -57,6 +58,14 @@ struct AddEventSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if !isEditing && store.isParent {
+                    Section {
+                        Button { showSayPlans = true } label: {
+                            Label("Say several plans at once", systemImage: "mic.fill")
+                        }
+                        .accessibilityIdentifier("event.add.sayPlans")
+                    }
+                }
                 Section {
                     TextField("Title — e.g. Soccer practice ⚽", text: $title)
                     DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -130,6 +139,7 @@ struct AddEventSheet: View {
                     Button(isEditing ? "Save" : "Add") { save() }.fontWeight(.bold).disabled(!canSave)
                 }
             }
+            .sheet(isPresented: $showSayPlans) { KidAddPlansSheet(initialMode: .say, initialDate: date) }
         }
         .interactiveDismissDisabled(protectsDraftFromInteractiveDismissal)
         .onAppear {

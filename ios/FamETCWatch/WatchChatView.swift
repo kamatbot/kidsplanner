@@ -74,7 +74,7 @@ struct WatchChatView: View {
     private var companionIdentity: WatchCompanionIdentity? { WatchCompanionIdentity(profile) }
     private var canSend: Bool { !store.chatUnavailable && store.snapshot.context != nil }
     /// Adding plans by voice is for a kid's own calendar and reminders.
-    private var canAddPlans: Bool { profile?.role == "kid" && profile?.kidId != nil }
+    private var canAddPlans: Bool { profile?.role == "parent" || (profile?.role == "kid" && profile?.kidId != nil) }
     private var isLive: Bool {
         scenePhase == .active && !showHub && !showMyList && !showCompanion && !showAddPlans && playing == nil
     }
