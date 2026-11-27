@@ -52,6 +52,8 @@ struct FamilyCalendarEvent: Codable, Equatable, Identifiable {
     let allDay: Bool
     /// Kid profile id; nil means a family-wide event.
     let memberID: String?
+    /// "school", "sports", "arts", "social", "deadline" or nil. Picks the icon.
+    var category: String? = nil
 
     var lastDayKey: String { max(endDayKey ?? dayKey, dayKey) }
 

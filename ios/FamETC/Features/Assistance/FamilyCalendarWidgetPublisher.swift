@@ -32,14 +32,16 @@ enum FamilyCalendarSnapshotBuilder {
                 }
                 return FamilyCalendarEvent(id: "school:\(event.id)", title: clean(event.title, fallback: "School event"),
                     dayKey: day, endDayKey: endDay, start: nil, end: nil, allDay: true,
-                    memberID: event.kidId.flatMap { kidIDs.contains($0) ? $0 : nil })
+                    memberID: event.kidId.flatMap { kidIDs.contains($0) ? $0 : nil },
+                    category: schoolCategory(event))
             }
             guard let start = Agenda.parseISO(raw) else { return nil }
             let end = event.end.flatMap(Agenda.parseISO)
             return FamilyCalendarEvent(id: "school:\(event.id)", title: clean(event.title, fallback: "School event"),
                 dayKey: FamilyCalendarEvent.dayKey(start, calendar: calendar), endDayKey: nil,
                 start: start, end: end, allDay: false,
-                memberID: event.kidId.flatMap { kidIDs.contains($0) ? $0 : nil })
+                memberID: event.kidId.flatMap { kidIDs.contains($0) ? $0 : nil },
+                category: schoolCategory(event))
         }
 
         let manual: [FamilyCalendarEvent] = familyEvents.map { event in
@@ -48,7 +50,8 @@ enum FamilyCalendarSnapshotBuilder {
             let endDay = (event.endDate ?? "") > event.date ? event.endDate : nil
             return FamilyCalendarEvent(id: "event:\(event.id):\(event.date)", title: clean(event.title, fallback: "Family event"),
                 dayKey: event.date, endDayKey: endDay, start: start, end: end, allDay: start == nil,
-                memberID: event.kidId.flatMap { kidIDs.contains($0) ? $0 : nil })
+                memberID: event.kidId.flatMap { kidIDs.contains($0) ? $0 : nil },
+                category: event.category.flatMap { $0 == "other" || $0.isEmpty ? nil : String($0.prefix(20)) })
         }
 
         let upcoming = (school + manual).filter { event in
@@ -80,6 +83,10 @@ enum FamilyCalendarSnapshotBuilder {
         let l = lhs.start ?? .distantPast, r = rhs.start ?? .distantPast
         if l != r { return l < r }
         return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+
+    private static func schoolCategory(_ event: CalendarEvent) -> String {
+        (event.isDeadline == true || event.type == "deadline") ? "deadline" : "school"
     }
 
     private static func dateTime(day: String, time: String, calendar: Calendar) -> Date? {
