@@ -49,6 +49,7 @@ final class AppStore {
     var me: User? {
         didSet {
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
+            FamilyCalendarWidgetPublisher.schedule(from: self)
             // Account switch without sign-out (re-auth, backup-code sign-in): drop
             // everything the previous user could see. First load from nil is a no-op.
             if oldValue != nil, oldValue?.id != me?.id { resetUserScopedState() }
@@ -63,6 +64,7 @@ final class AppStore {
     var family: Family? {
         didSet {
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
+            FamilyCalendarWidgetPublisher.schedule(from: self)
             if oldValue?.id != family?.id {
                 clearGoals()
                 notes = []
@@ -72,8 +74,12 @@ final class AppStore {
         }
     }
     var kidRequests: [KidAccessRequest] = []   // pending kid sign-ins (parents approve)
-    var events: [CalendarEvent] = []           // school-feed events (read-only)
-    var familyEvents: [FamilyEvent] = []       // manually-added appointments (server-synced)
+    var events: [CalendarEvent] = [] {         // school-feed events (read-only)
+        didSet { FamilyCalendarWidgetPublisher.schedule(from: self) }
+    }
+    var familyEvents: [FamilyEvent] = [] {     // manually-added appointments (server-synced)
+        didSet { FamilyCalendarWidgetPublisher.schedule(from: self) }
+    }
     var homework: [HomeworkItem] = []          // homework hub (Today / Calendar)
     var actions: [FamilyAction] = []            // Today / My next action queue
     var isLoadingActions = false
@@ -126,6 +132,8 @@ final class AppStore {
     var needsAuth = false {
         didSet {
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
+            if needsAuth { FamilyCalendarWidgetPublisher.clear() }
+            else { FamilyCalendarWidgetPublisher.schedule(from: self) }
         }
     }
     var syncError: String?
@@ -358,6 +366,7 @@ final class AppStore {
         assistanceIdentityVerified = false
         actionLoadGeneration &+= 1
         ParentFamilyAssistancePublisher.clear()
+        FamilyCalendarWidgetPublisher.clear()
         stopChatLoop()
         familyPollTask?.cancel()
         familyPollTask = nil
