@@ -1532,8 +1532,77 @@ final class AppStore {
         }
     }
 
+    // MARK: A kid's own plans (iPad)
+
+    /// The exact reason, with the HTTP status, for the kid's add sheets. A test
+    /// cycle on the kid's iPad is expensive, so never hide the server message.
+    static func kidPlanErrorText(_ error: Error) -> String {
+        if case APIError.http(let status, let message) = error { return "\(message) (\(status))" }
+        return error.localizedDescription
+    }
+
+    /// Adds a reminder for the signed-in kid. Returns nil on success, otherwise
+    /// the exact error to show. The server pushes it to the kid's watch.
+    func createKidReminder(title: String, dueDate: String, dueTime: String?, notes: String?) async -> String? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isParent, me?.kidId != nil else { return "Only a kid's account can add their own reminders here." }
+        guard !title.isEmpty else { return "Give the reminder a name." }
+        do {
+            _ = try await api.createKidReminder(title: title, dueDate: dueDate, dueTime: dueTime, notes: notes)
+            await loadFamilyActions()
+            return nil
+        } catch {
+            if case APIError.unauthenticated = error { handle(error) }
+            return Self.kidPlanErrorText(error)
+        }
+    }
+
+    /// Adds an event on the signed-in kid's own calendar. Returns nil on
+    /// success, otherwise the exact error. Timed events buzz on their watch
+    /// 10 minutes before.
+    func addKidEvent(title: String, date: String, time: String?, notes: String?) async -> String? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !isParent, let kidId = me?.kidId else { return "Only a kid's account can add events here." }
+        guard !title.isEmpty else { return "Give the event a name." }
+        do {
+            _ = try await api.addFamilyEvent(title: title, date: date, time: time, notes: notes, category: "other", kidId: kidId,
+                                             endDate: nil, repeatRule: nil, repeatUntil: nil, driverMemberId: nil)
+            await reloadAfterKidPlans()
+            return nil
+        } catch {
+            if case APIError.unauthenticated = error { handle(error) }
+            return Self.kidPlanErrorText(error)
+        }
+    }
+
+    /// Several plans from one typed or dictated note (POST /api/kid-plans).
+    func addKidPlans(text: String, requestId: String) async throws -> KidPlansResult {
+        let result = try await api.addKidPlans(text: text, requestId: requestId)
+        if !result.items.isEmpty { await reloadAfterKidPlans() }
+        return result
+    }
+
+    func undoKidPlans(requestId: String) async throws -> KidPlansResult {
+        let result = try await api.undoKidPlans(requestId: requestId)
+        await reloadAfterKidPlans()
+        return result
+    }
+
+    private func reloadAfterKidPlans() async {
+        if let fe = try? await api.familyEvents() { familyEvents = fe }
+        await loadFamilyActions()
+        Task { await NotificationScheduler.reschedule(events: visibleFamilyEvents, homework: homework, kids: family?.kids ?? []) }
+    }
+
+    /// Parents delete any action; a kid deletes only reminders they added.
+    func canDeleteAction(_ action: FamilyAction) -> Bool {
+        if isParent { return true }
+        guard let kidId = me?.kidId else { return false }
+        return action.createdByKidId == kidId && action.kidId == kidId
+    }
+
     func deleteFamilyAction(_ action: FamilyAction) async {
-        guard isParent, me != nil, canViewAction(action),
+        guard canDeleteAction(action), me != nil, canViewAction(action),
               actions.contains(where: { $0.id == action.id }),
               completingActionIDs.insert(action.id).inserted else { return }
         let session = sessionGeneration
@@ -1545,7 +1614,7 @@ final class AppStore {
         do {
             try await api.deleteFamilyAction(id: action.id)
             guard session == sessionGeneration, me?.id == accountID, family?.id == familyID,
-                  isParent, canViewAction(action) else { return }
+                  canDeleteAction(action), canViewAction(action) else { return }
             actionLoadGeneration &+= 1
             isLoadingActions = false
             actions.removeAll { $0.id == action.id }
