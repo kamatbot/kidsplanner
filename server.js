@@ -702,6 +702,7 @@ require("./lib/routes/student-support")(app, routeDeps);
 require("./lib/routes/my-corner")(app, routeDeps);
 require("./lib/routes/decisions")(app, routeDeps);
 require("./lib/routes/watch")(app, routeDeps);
+require("./lib/routes/kid-plans")(app, routeDeps);
 // Household displays have their own restricted bearer middleware; they never
 // become a parent or child session in requireAuth/currentUser.
 require("./lib/routes/display")(app, routeDeps);
