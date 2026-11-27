@@ -40,7 +40,8 @@ final class WatchPlansTests: XCTestCase {
         XCTAssertTrue(result.items[1].isReminder)
         XCTAssertFalse(result.spokenReply.contains("📅"))
         XCTAssertTrue(result.spokenReply.contains("Soccer, tomorrow 10am, Pack recorder"))
-        let request = try XCTUnwrap(await recorder.requests.first)
+        let first = await recorder.requests.first
+        let request = try XCTUnwrap(first)
         XCTAssertEqual(request.url?.path, "/api/kid-plans")
         XCTAssertEqual(request.httpMethod, "POST")
         let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: String])
