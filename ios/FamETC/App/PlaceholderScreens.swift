@@ -316,7 +316,7 @@ struct HomeworkScreen: View {
     }
 
     private func queueWidth(for width: CGFloat) -> CGFloat {
-        min(390, max(330, width * 0.34))
+        min(440, max(340, width * 0.38))
     }
 
     /// A regular size class can still be a narrow Split View window. Keep the
