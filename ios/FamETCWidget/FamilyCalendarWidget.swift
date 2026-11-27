@@ -472,8 +472,9 @@ struct EventCard: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(tint)
                     Text(event.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        .foregroundStyle(Color.primary)
                 }
-                Text(detail).font(.caption2.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                Text(detail).font(.caption2.weight(.medium)).foregroundStyle(Color.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
