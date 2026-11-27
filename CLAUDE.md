@@ -93,10 +93,14 @@ Hostinger deployments must come from committed, merged `main`, never a feature b
   live domain — a change is not "done" until confirmed where the user sees it
   (live fametc.com for web; the device/simulator for iOS), not just localhost.
 - iOS builds ship via **TestFlight** first, then App Store — never auto-shipped.
-- **iOS version (user rule 2026-10-27):** `MARKETING_VERSION` lives only in
-  `ios/project.yml` (all targets inherit it). 1.3 is being submitted to the App
-  Store and can no longer be used; new builds use **1.4**. Never set a version
-  at or below one already uploaded — App Store Connect rejects it.
+- **iOS version (user rule 2026-10-27, updated 2026-11-27):** `MARKETING_VERSION`
+  lives only in `ios/project.yml` (all targets inherit it). 1.3 was approved and
+  1.4 archived, so new builds use **1.5 or higher**. Never set a version or build
+  number at or below one already uploaded — App Store Connect rejects it.
+- **Opening Xcode (user rule 2026-11-27):** finished work is merged to `main`.
+  When asked to open Xcode, first update the owner's checkout to the latest
+  `origin/main` and run `xcodegen`; never open a checkout missing the latest
+  changes.
 - CI trigger and branch-protection observations are recorded in
   [`docs/CI-RELEASE.md`](docs/CI-RELEASE.md); refresh the dated provider read
   there before each release.
