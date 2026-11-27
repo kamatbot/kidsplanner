@@ -11,16 +11,16 @@ struct AddPlansIntent: AppIntent {
     static let description = IntentDescription("Add events and reminders to your Fam ETC calendar by saying them. You can say several at once.")
     static let openAppWhenRun = false
 
-    @Parameter(title: "Plans", requestValueDialog: IntentDialog("What should I add?"))
+    @Parameter(title: "Plans", requestValueDialog: IntentDialog("What should I add to Fam ETC?"))
     var text: String
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         do {
             let result = try await WatchPlansService.shared.add(text, requestId: UUID().uuidString, via: "siri")
-            return .result(dialog: "\(result.spokenReply)")
+            return .result(dialog: "\(result.siriReply)")
         } catch {
-            return .result(dialog: "\(WatchPlansService.message(for: error))")
+            return .result(dialog: "Fam ETC couldn't add that. \(WatchPlansService.message(for: error))")
         }
     }
 }
