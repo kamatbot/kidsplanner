@@ -39,15 +39,6 @@ struct MyListView: View {
                     }
                     ForEach(items) { item in row(item, at: clock.date) }
 
-                    if ["kid", "parent"].contains(store.snapshot.context?.profile.role ?? "") {
-                        NavigationLink { WatchAddPlansView() } label: {
-                            capsuleLabel("Add plans", symbol: "mic.fill", tint: WatchChatPalette.coral)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("watch.mylist.addPlans")
-                        .padding(.top, 4)
-                    }
-
                     if reminderNeedsEnabling {
                         Button {
                             Task { await store.enableReminders() }

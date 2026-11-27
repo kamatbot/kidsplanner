@@ -34,8 +34,6 @@ enum WatchChatPalette {
 final class WatchChatRoute: ObservableObject {
     static let shared = WatchChatRoute()
     @Published var talkRequested = false
-    /// `fametc-watch://add` (complication / Siri follow-up) opens Add plans.
-    @Published var addPlansRequested = false
 
     /// Complication deep links. `fametc-watch://talk` starts a recording.
     static let chatURL = URL(string: "fametc-watch://chat")!
@@ -45,8 +43,7 @@ final class WatchChatRoute: ObservableObject {
     func handle(_ url: URL) -> Bool {
         guard url.scheme == "fametc-watch" else { return false }
         if url.host == "talk" { talkRequested = true }
-        if url.host == "add" { addPlansRequested = true }
-        return url.host == "talk" || url.host == "chat" || url.host == "add"
+        return url.host == "talk" || url.host == "chat"
     }
 }
 
@@ -65,7 +62,6 @@ struct WatchChatView: View {
     @State private var showQuickReplies = false
     @State private var showCompanion = false
     @State private var showRecorder = false
-    @State private var showAddPlans = false
     @State private var playing: WatchChatMessage?
     var onDisconnect: () -> Void = {}
 
@@ -74,9 +70,8 @@ struct WatchChatView: View {
     private var companionIdentity: WatchCompanionIdentity? { WatchCompanionIdentity(profile) }
     private var canSend: Bool { !store.chatUnavailable && store.snapshot.context != nil }
     /// Adding plans by voice is for a kid's own calendar and reminders.
-    private var canAddPlans: Bool { profile?.role == "parent" || (profile?.role == "kid" && profile?.kidId != nil) }
     private var isLive: Bool {
-        scenePhase == .active && !showHub && !showMyList && !showCompanion && !showAddPlans && playing == nil
+        scenePhase == .active && !showHub && !showMyList && !showCompanion && playing == nil
     }
 
     var body: some View {
@@ -114,13 +109,9 @@ struct WatchChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { todoCapsule }
-                ToolbarItem(placement: .topBarLeading) {
-                    if canAddPlans { addPlansCapsule }
-                }
             }
             .navigationDestination(isPresented: $showHub) { MyNextView(onDisconnect: onDisconnect) }
             .navigationDestination(isPresented: $showMyList) { MyListView(onDisconnect: onDisconnect) }
-            .navigationDestination(isPresented: $showAddPlans) { WatchAddPlansView() }
             .navigationDestination(isPresented: $showCompanion) {
                 if let identity = companionIdentity { WatchCompanionChatView(identity: identity).id(identity) }
             }
@@ -152,14 +143,13 @@ struct WatchChatView: View {
             .onChange(of: companionIdentity) { _, _ in showCompanion = false; consumeCompanionRoute() }
             .onChange(of: companionRoute.requested) { _, _ in consumeCompanionRoute() }
             .onChange(of: chatRoute.talkRequested) { _, _ in consumeTalkRoute() }
-            .onChange(of: chatRoute.addPlansRequested) { _, _ in consumeAddPlansRoute() }
             .onChange(of: store.connection) { _, state in
                 if state == .connected { Task { await store.drainVoice() } }
             }
             .onOpenURL { url in
-                if chatRoute.handle(url) { showHub = false; showMyList = false; showCompanion = false; showAddPlans = false; playing = nil; consumeAddPlansRoute() }
+                if chatRoute.handle(url) { showHub = false; showMyList = false; showCompanion = false; playing = nil }
             }
-            .onAppear { consumeCompanionRoute(); consumeTalkRoute(); consumeAddPlansRoute() }
+            .onAppear { consumeCompanionRoute(); consumeTalkRoute() }
             // Live only while this screen is on a raised wrist; dropping the
             // wrist or opening another screen cancels the parked request.
             .task(id: isLive) {
@@ -189,23 +179,6 @@ struct WatchChatView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("My list, \(store.openTodoCount) to do")
         .accessibilityIdentifier("watch.chat.todo")
-    }
-
-    /// Coral "+" capsule (kids only): say several plans at once.
-    private var addPlansCapsule: some View {
-        Button { WKInterfaceDevice.current().play(.click); showAddPlans = true } label: {
-            HStack(spacing: 1) {
-                Image(systemName: "plus").font(.caption2.weight(.black))
-                Image(systemName: "mic.fill").font(.caption2.weight(.bold))
-            }
-            .foregroundStyle(.black)
-            .padding(.horizontal, 7)
-            .frame(minHeight: 24)
-            .background(WatchChatPalette.coral, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add plans by voice")
-        .accessibilityIdentifier("watch.chat.addPlans")
     }
 
     /// Top of the history: the kid's companion and the calendar/settings hub.
@@ -286,13 +259,6 @@ struct WatchChatView: View {
         chatRoute.talkRequested = false
         showHub = false; showMyList = false; showCompanion = false; playing = nil; showQuickReplies = false
         showRecorder = true
-    }
-
-    private func consumeAddPlansRoute() {
-        guard chatRoute.addPlansRequested, canAddPlans else { return }
-        chatRoute.addPlansRequested = false
-        showHub = false; showMyList = false; showCompanion = false; playing = nil; showQuickReplies = false; showRecorder = false
-        showAddPlans = true
     }
 
     private func send(_ text: String) {
