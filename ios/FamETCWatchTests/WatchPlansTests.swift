@@ -40,6 +40,7 @@ final class WatchPlansTests: XCTestCase {
         XCTAssertTrue(result.items[1].isReminder)
         XCTAssertFalse(result.spokenReply.contains("📅"))
         XCTAssertTrue(result.spokenReply.contains("Soccer, tomorrow 10am, Pack recorder"))
+        XCTAssertTrue(result.siriReply.hasPrefix("Fam ETC added "))
         let first = await recorder.requests.first
         let request = try XCTUnwrap(first)
         XCTAssertEqual(request.url?.path, "/api/kid-plans")

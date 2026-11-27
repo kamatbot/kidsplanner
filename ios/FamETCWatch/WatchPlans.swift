@@ -35,6 +35,14 @@ struct WatchPlansResult: Decodable, Equatable {
             .replacingOccurrences(of: " · ", with: ", ")
             .replacingOccurrences(of: "  ", with: " ")
     }
+
+    /// What Siri says: always names Fam ETC, so it can't be mistaken for
+    /// Apple's Calendar or Reminders answering.
+    var siriReply: String {
+        let spoken = spokenReply.trimmingCharacters(in: .whitespaces)
+        if spoken.hasPrefix("Added ") { return "Fam ETC added " + spoken.dropFirst("Added ".count) }
+        return "Fam ETC: " + spoken
+    }
 }
 
 protocol WatchPlansClient {
