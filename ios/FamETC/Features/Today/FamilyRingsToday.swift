@@ -562,6 +562,7 @@ struct FamilyRingsActionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var saving = false
+    @State private var showKidAdd = false
     private var active: [FamilyAction] { ActionQueue.sortActive(store.actions.filter { store.canViewAction($0) }) }
     var body: some View {
         NavigationStack {
@@ -576,6 +577,12 @@ struct FamilyRingsActionsSheet: View {
                             .accessibilityIdentifier("today.action.add")
                     }
                 }
+                if !store.isParent && store.me?.kidId != nil {
+                    Section {
+                        Button { showKidAdd = true } label: { Label("Add a reminder or plans", systemImage: "plus.circle.fill") }
+                            .accessibilityIdentifier("today.kid.addPlans")
+                    } footer: { Text("Your reminders buzz on your watch.") }
+                }
                 if let error = store.actionError { Text(error).foregroundStyle(Palette.frDanger) }
                 Section("Actions") {
                     ForEach(active) { action in
@@ -589,7 +596,7 @@ struct FamilyRingsActionsSheet: View {
                                         .accessibilityIdentifier("today.action.snooze.\(action.id)")
                                 }
                                 Spacer()
-                                if store.isParent {
+                                if store.canDeleteAction(action) {
                                     Button("Delete", systemImage: "trash", role: .destructive) { Task { await store.deleteFamilyAction(action) } }
                                         .frame(minHeight: 44).buttonStyle(.borderless)
                                         .disabled(store.completingActionIDs.contains(action.id))
@@ -604,6 +611,7 @@ struct FamilyRingsActionsSheet: View {
             .scrollContentBackground(.hidden).background(Palette.frBg)
             .navigationTitle("Family actions")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } } }
+            .sheet(isPresented: $showKidAdd) { KidAddPlansSheet(initialMode: .reminder) }
         }.tint(Palette.frYou)
     }
 }

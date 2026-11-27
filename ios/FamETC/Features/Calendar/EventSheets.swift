@@ -160,6 +160,8 @@ struct AddEventSheet: View {
                     repeatUntilDate = d
                 }
             } else {
+                // A kid's new event is theirs by default, so it buzzes on their watch.
+                if !store.isParent { kidId = store.me?.kidId }
                 date = initialDate
                 endDate = initialDate
                 repeatUntilDate = initialDate

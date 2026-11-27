@@ -322,6 +322,26 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         return response.action
     }
 
+    /// A kid's own reminder (iPad). The server forces it to the signed-in kid,
+    /// and it buzzes on their watch like a chore.
+    func createKidReminder(title: String, dueDate: String, dueTime: String?, notes: String?) async throws -> FamilyAction {
+        var body: [String: Any] = ["title": title, "dueDate": dueDate]
+        if let dueTime { body["dueTime"] = dueTime }
+        if let notes, !notes.isEmpty { body["notes"] = notes }
+        let response: FamilyActionResponse = try await request("/api/family/actions", method: "POST", body: body)
+        return response.action
+    }
+
+    /// Several plans in one go ("soccer Saturday at 10 and remind me to pack my
+    /// recorder"). The server reads the words and adds each one for this kid.
+    func addKidPlans(text: String, requestId: String) async throws -> KidPlansResult {
+        try await request("/api/kid-plans", method: "POST", body: ["text": text, "requestId": requestId], timeout: 40)
+    }
+
+    func undoKidPlans(requestId: String) async throws -> KidPlansResult {
+        try await request("/api/kid-plans/\(pathComponent(requestId))/undo", method: "POST", body: [:])
+    }
+
     func deleteFamilyAction(id: String) async throws {
         let _: OKResponse = try await request("/api/family/actions/\(pathComponent(id))", method: "DELETE")
     }

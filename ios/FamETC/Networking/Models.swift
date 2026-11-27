@@ -386,6 +386,8 @@ struct FamilyAction: Codable, Identifiable {
     var updatedAt: String?
     var snoozedUntil: String?
     var completedAt: String? = nil
+    /// Set when a kid added this reminder for themselves (they may delete it).
+    var createdByKidId: String? = nil
 
     var isDone: Bool { status == "done" }
 }
@@ -677,6 +679,28 @@ struct HomeworkResponse: Codable { var homework: [HomeworkItem] }
 struct HomeworkItemResponse: Codable { var homework: HomeworkItem }
 struct FamilyActionsResponse: Codable { var actions: [FamilyAction] }
 struct FamilyActionResponse: Codable { var action: FamilyAction }
+
+/// `POST /api/kid-plans`: what the server added from a kid's spoken note.
+struct KidPlansResult: Codable, Equatable {
+    struct Item: Codable, Equatable, Identifiable {
+        var type: String   // "event" | "reminder"
+        var id: String
+        var title: String
+        var date: String
+        var time: String?
+        var label: String?
+        var isReminder: Bool { type == "reminder" }
+    }
+    struct Skipped: Codable, Equatable {
+        var title: String?
+        var reason: String
+    }
+    var requestId: String
+    var reply: String
+    var items: [Item]
+    var undone: Bool
+    var skipped: [Skipped]?
+}
 struct FamilyResponse: Codable { var family: Family }
 struct FamilyKidResponse: Codable { var family: Family; var kid: Kid }
 struct KidAccessRequestsResponse: Codable { var requests: [KidAccessRequest] }

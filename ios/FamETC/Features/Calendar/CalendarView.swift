@@ -144,7 +144,13 @@ struct CalendarScreen: View {
         }
         .background(ScreenBackground(glow: true))
         .sheet(isPresented: $showAddEvent) {
-            AddEventSheet(initialDate: addEventDate, initialTime: addEventTime)
+            if store.isParent {
+                AddEventSheet(initialDate: addEventDate, initialTime: addEventTime)
+            } else {
+                // Kids add their own events and reminders, or several plans at
+                // once by voice; reminders buzz on their watch.
+                KidAddPlansSheet(initialMode: .event, initialDate: addEventDate, initialTime: addEventTime)
+            }
         }
         .onChange(of: store.kids.map(\.id)) { _, kidIDs in
             guard case let .kid(id) = audience, !kidIDs.contains(id) else { return }
