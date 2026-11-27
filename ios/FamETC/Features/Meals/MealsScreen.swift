@@ -8,6 +8,14 @@ import SwiftUI
 private enum MealsSection: String, CaseIterable, Identifiable {
     case pantry = "Pantry", menu = "Menu", shopping = "Shopping", recipes = "Recipes"
     var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .pantry: "basket"
+        case .menu: "fork.knife"
+        case .shopping: "cart"
+        case .recipes: "book"
+        }
+    }
 }
 
 private enum RecipeFilter: String, CaseIterable, Identifiable {
@@ -71,10 +79,15 @@ struct MealsScreen: View {
 
     var body: some View {
         SurfaceScaffold(title: "Meals") {
-            Picker("Section", selection: $section) {
-                ForEach(store.isParent ? MealsSection.allCases : [.shopping]) { Text($0.rawValue).tag($0) }
+            // Kids only see Shopping, so the switch only appears for parents.
+            // The pill matches Planning's Trips | Meals switch above it.
+            if store.isParent {
+                PillSegmentedControl(label: "Meals section", selection: $section,
+                                     options: MealsSection.allCases,
+                                     title: { $0.rawValue }, systemImage: { $0.icon },
+                                     identifier: "meals.section")
+                    .frame(maxWidth: 560)
             }
-            .pickerStyle(.segmented)
 
             switch store.isParent ? section : .shopping {
             case .pantry: mealsDataContent { pantryContent }
@@ -160,14 +173,20 @@ struct MealsScreen: View {
     private var pantryContent: some View {
         let items = pantryItems
         return VStack(alignment: .leading, spacing: Space.md) {
-            AccentButton(title: "Scan pantry \u{1F4F7}", systemImage: "camera.fill") {
-                Haptics.selection(); showScanner = true
+            // One row: a sized primary action, not a 1,000pt-wide bar on iPad.
+            HStack(spacing: Space.lg) {
+                AccentButton(title: "Scan pantry", systemImage: "camera.fill") {
+                    Haptics.selection(); showScanner = true
+                }
+                .frame(maxWidth: 260)
+                Button { showAddPantry = true } label: {
+                    Label("Add item manually", systemImage: "plus")
+                        .frame(minHeight: 44)
+                }
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Palette.accent)
+                Spacer(minLength: 0)
             }
-            Button { showAddPantry = true } label: {
-                Label("Add item manually", systemImage: "plus")
-            }
-            .font(Typography.body.weight(.semibold))
-            .foregroundStyle(Palette.accent)
 
             if items.isEmpty {
                 emptyCard(

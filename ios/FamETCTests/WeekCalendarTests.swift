@@ -33,6 +33,22 @@ final class WeekCalendarTests: XCTestCase {
         XCTAssertEqual(WeekCalendarMath.initialHour, 8)
     }
 
+    func testFirstVisibleHourOpensAtEightUnlessTheWeekStartsEarlier() {
+        XCTAssertEqual(WeekCalendarMath.firstVisibleHour(startMinutes: []), 8)
+        XCTAssertEqual(WeekCalendarMath.firstVisibleHour(startMinutes: [17 * 60 + 30, 19 * 60]), 8)
+        XCTAssertEqual(WeekCalendarMath.firstVisibleHour(startMinutes: [6 * 60 + 45, 19 * 60]), 6)
+    }
+
+    func testFittedHourHeightFillsTallGridsButNeverShrinksBelowMinimum() {
+        // A 13-inch iPad in landscape: about 770pt for 8 AM to midnight.
+        XCTAssertEqual(WeekCalendarMath.fittedHourHeight(visibleHeight: 770, firstHour: 8, minimum: 44), 48)
+        // A short grid keeps the minimum and scrolls.
+        XCTAssertEqual(WeekCalendarMath.fittedHourHeight(visibleHeight: 400, firstHour: 8, minimum: 44), 44)
+        // A very tall grid caps the row height.
+        XCTAssertEqual(WeekCalendarMath.fittedHourHeight(visibleHeight: 2000, firstHour: 8, minimum: 44), 88)
+        XCTAssertEqual(WeekCalendarMath.fittedHourHeight(visibleHeight: 0, firstHour: 8, minimum: 52), 52)
+    }
+
     func testMinuteOffsetRoundTripsAndSnapsToHalfHour() {
         let hourHeight: CGFloat = 60
         let minute = WeekCalendarMath.minute(for: 10.27 * hourHeight, hourHeight: hourHeight)
