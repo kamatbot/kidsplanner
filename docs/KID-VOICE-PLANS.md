@@ -50,3 +50,15 @@ actions directly; they go through `/api/kid-plans`.
 Reminders buzz only if the kid turned reminders on (the result screen offers
 the button). Quiet hours 21:00–07:00 still apply. Timed events give a single
 "Starts in 10 minutes" buzz; reminders are the strong, repeating kind.
+
+## Parents (2026-11-27)
+
+Parents use the same flow: the watch mic capsule and My list "Add plans",
+watch Siri ("Add plans in Fam ETC"), and on iPad/iPhone "Say several plans at
+once" in Add event plus "Say plans and reminders" on Today. The same
+`POST /api/kid-plans` call accepts a parent session or a parent's own watch.
+A parent's events go on the family calendar (no kid) and their reminders are
+assigned to them, so they buzz on their watch. If the parent names a kid
+("Maya has soccer Saturday at 10", "remind Leo to pack his kit"), that item is
+for the kid and the kid's watch is told. Undo works the same way, for the
+person who made the request only.

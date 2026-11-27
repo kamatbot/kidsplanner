@@ -1,9 +1,10 @@
 import AppIntents
 import Foundation
 
-/// "Hey Siri, add plans in Fam ETC" on the kid's watch. Siri asks "What should
-/// I add?", the kid says everything at once, and the server adds each event and
-/// reminder for that kid (same call as the Add plans screen). Siri reads back
+/// "Hey Siri, add plans in Fam ETC" on a kid's or parent's watch. Siri asks
+/// "What should I add?", they say everything at once, and the server adds each
+/// event and reminder for whoever is signed in (a parent may name a kid). Same
+/// call as the Add plans screen. Siri reads back
 /// what was added or the exact reason it wasn't.
 struct AddPlansIntent: AppIntent {
     static let title: LocalizedStringResource = "Add plans"
@@ -15,11 +16,6 @@ struct AddPlansIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        // The server decides who may add; the cached profile only gives a
-        // friendlier answer to a parent's watch without a round trip.
-        if let profile = WatchStore.shared.snapshot.context?.profile, profile.role != "kid" {
-            return .result(dialog: "Adding plans by voice is for kids' watches. Parents can ask Hermes in the family chat.")
-        }
         do {
             let result = try await WatchPlansService.shared.add(text, requestId: UUID().uuidString, via: "siri")
             return .result(dialog: "\(result.spokenReply)")
