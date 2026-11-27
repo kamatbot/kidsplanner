@@ -139,12 +139,6 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         let r: FamilyResponse = try await request("/api/family", method: "POST", body: ["name": name])
         return r.family
     }
-    /// `POST /api/family/upgrade` — Screen Time family -> whole Fam ETC. The server
-    /// answers a bad code with 403 and an `error` message, surfaced via `APIError.http`.
-    func upgradeFamily(inviteCode: String) async throws -> Family {
-        let r: FamilyResponse = try await request("/api/family/upgrade", method: "POST", body: ["inviteCode": inviteCode])
-        return r.family
-    }
     /// `POST /api/family/kids/:kidId/setup-code` (parent only): a fresh 30-minute code
     /// the kid types on their own device. Replaces any previous code for that kid.
     func kidSetupCode(kidId: String) async throws -> KidSetupCode {
@@ -879,112 +873,5 @@ final class APIClient: FamilyActionService, ChatMessageService, ChatMutationServ
         try Task.checkCancellation()
         try await rawSend("/api/daily5/progress", method: "POST",
                           body: ["date": date, "part": part, "status": status], cookie: cookie)
-    }
-}
-
-// MARK: Screen Time (docs/SCREEN-TIME-PLAN.md)
-
-extension APIClient {
-    /// Parent: every kid's policy, devices and alerts.
-    func screenTimeOverview() async throws -> ScreenTimeOverview {
-        try await request("/api/screen-time")
-    }
-
-    func checkScreenTimeProtection(kidId: String) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/check", method: "POST", body: [:])
-    }
-
-    func decideScreenTimeEssentialApps(kidId: String, deviceId: String, requestId: String, approve: Bool) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))/essential-apps/\(approve ? "approve" : "decline")",
-                          method: "POST", body: ["requestId": requestId])
-    }
-
-    func removeScreenTimeEssentialApps(kidId: String, deviceId: String) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))/essential-apps", method: "DELETE")
-    }
-
-    /// Parent. Limits without an id get one server-side; `selection: null` clears it.
-    func saveScreenTimePolicy(kidId: String, enabled: Bool, limits: [ScreenTimeLimit], downtime: [ScreenTimeDowntime]) async throws -> ScreenTimeKidState {
-        let limitBodies: [[String: Any]] = limits.map { l in
-            var b: [String: Any] = ["name": l.name, "minutesPerDay": l.minutesPerDay,
-                                    "weekendMinutes": l.weekendMinutes ?? NSNull(), "selection": l.selection ?? NSNull()]
-            if !l.id.isEmpty { b["id"] = l.id }
-            if let kind = l.kind { b["kind"] = kind }
-            return b
-        }
-        let downtimeBodies: [[String: Any]] = downtime.map { d in
-            var b: [String: Any] = ["name": d.name, "start": d.start, "end": d.end, "days": d.days]
-            if !d.id.isEmpty { b["id"] = d.id }
-            return b
-        }
-        return try await request("/api/screen-time/kids/\(pathComponent(kidId))/policy", method: "PUT",
-                                 body: ["enabled": enabled, "limits": limitBodies, "downtime": downtimeBodies])
-    }
-
-    /// Parent. `minutes` 0 resumes, else 15–1440.
-    func pauseScreenTime(kidId: String, minutes: Int) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/pause", method: "POST", body: ["minutes": minutes])
-    }
-
-    /// Parent: adds `minutes` (15, 30 or 60) to today's daily limit. 409 when Screen Time is
-    /// off or the kid has no daily limit.
-    func grantScreenTimeBonus(kidId: String, minutes: Int) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/bonus", method: "POST", body: ["minutes": minutes])
-    }
-
-    func ackScreenTimeAlerts(kidId: String) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/alerts/ack", method: "POST", body: [:])
-    }
-
-    /// Parent: acks one alert (the banner's and the sheet's ✕). 404 for an unknown alert.
-    func ackScreenTimeAlert(kidId: String, alertId: String) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/alerts/\(pathComponent(alertId))/ack",
-                          method: "POST", body: [:])
-    }
-
-    func forgetScreenTimeDevice(kidId: String, deviceId: String) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))", method: "DELETE")
-    }
-
-    /// Parent: moves a device to another kid. 400 for a bad `toKidId`, 404 unknown kid/device.
-    func moveScreenTimeDevice(kidId: String, deviceId: String, toKidId: String) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/devices/\(pathComponent(deviceId))/move",
-                          method: "POST", body: ["toKidId": toKidId])
-    }
-
-    /// Kid session: ask for extra `total` minutes today, paid in fams on approval.
-    /// 409 when one is already pending or the balance is too low.
-    func requestScreenTime(minutes: Int, date: String, note: String?, kind: String = "time") async throws -> ScreenTimeRequest {
-        var body: [String: Any] = ["minutes": minutes, "date": date, "kind": kind]
-        if let note { body["note"] = note }
-        let r: ScreenTimeRequestResponse = try await request("/api/screen-time/requests", method: "POST", body: body)
-        return r.request
-    }
-
-    /// Parent: `approve` spends the fams and adds the bonus (409 if the balance is now too low).
-    func decideScreenTimeRequest(kidId: String, requestId: String, approve: Bool) async throws -> ScreenTimeKidState {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/requests/\(pathComponent(requestId))/\(approve ? "approve" : "decline")",
-                          method: "POST", body: [:])
-    }
-
-    /// Parent: coarse daily totals (15-minute steps) for the last `days` (1–30) dates.
-    func screenTimeUsage(kidId: String, days: Int) async throws -> ScreenTimeUsage {
-        try await request("/api/screen-time/kids/\(pathComponent(kidId))/usage?days=\(min(max(days, 1), 30))")
-    }
-
-    /// Kid session: the family's policy + signed deal for this kid (no device projection).
-    func myScreenTime() async throws -> ScreenTimePolicyResponse {
-        try await request("/api/screen-time/mine")
-    }
-
-    /// Kid session (cookie). Returns the device credentials + device-projected policy.
-    /// `installKey` (from `ScreenTimeInstallKey`) lets a reinstall on the same device
-    /// reuse its old device record instead of the server creating a ghost.
-    func enrollScreenTimeDevice(label: String, mode: ScreenTimeMode, authStatus: ScreenTimeAuthState, pushToken: String?,
-                                installKey: String? = nil) async throws -> ScreenTimeEnrollResponse {
-        var body: [String: Any] = ["label": label, "mode": mode.rawValue, "authStatus": authStatus.rawValue]
-        if let pushToken { body["pushToken"] = pushToken }
-        if let installKey { body["installKey"] = installKey }
-        return try await request("/api/screen-time/device/enroll", method: "POST", body: body)
     }
 }

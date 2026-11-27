@@ -61,7 +61,7 @@ enum AuthError: Error {
 }
 
 /// A server refusal that carries the machine-readable `code` the server sends
-/// alongside `error` (docs/SCREEN-TIME-ONLY-PLAN.md §10.1): `invite_invalid`,
+/// alongside `error`: `invite_invalid`,
 /// `invite_required`, `setup_code_invalid`, … Only the requests that need to branch
 /// on a code opt in (`postJSON(coded: true)`), so every existing `AuthError.verify`
 /// caller keeps its behaviour.
@@ -93,7 +93,7 @@ struct OnboardingServerState: Equatable {
     var parentName: String?
     var hasFamily: Bool
     var familyName: String?
-    var plan: String?          // "full" | "screen_time" | nil (older server = full)
+    var plan: String?          // always "full" now (the Screen Time plan was removed)
     var kidNames: [String]
 }
 
@@ -173,9 +173,9 @@ final class AuthService: NSObject {
     private var authContinuation: CheckedContinuation<ASAuthorization, Error>?
 
     /// Create a passwordless account with a passkey and establish a web session.
-    /// The invite code is OPTIONAL (it gates the whole Fam ETC plan, not the account):
-    /// absent/empty creates a Screen Time-eligible account; a wrong code throws
-    /// `AuthServerError` with `code == "invite_invalid"`.
+    /// The invite code is OPTIONAL here (it gates creating a family, not the account; a
+    /// co-parent joins without one): a wrong code throws `AuthServerError` with
+    /// `code == "invite_invalid"`.
     /// Recovery codes are NOT minted here — they're issued + shown later, once the
     /// account is worth protecting (after onboarding), via `issueBackupCodesIfNeeded`.
     func signUpWithPasskey(inviteCode: String?, name: String? = nil) async throws {
@@ -400,7 +400,7 @@ final class AuthService: NSObject {
         await syncCookiesToWebView()
     }
 
-    /// Kid code path (docs/SCREEN-TIME-ONLY-PLAN.md §3): the kid types the 6-character
+    /// Kid code path: the kid types the 6-character
     /// setup code a parent is showing. The server opens a request targeted at that kid
     /// and pushes the parents; nothing is granted until a parent approves. Throws
     /// `AuthServerError` (`setup_code_invalid` for a wrong/expired/used code).
@@ -438,16 +438,16 @@ final class AuthService: NSObject {
     // These call the same /api/family* routes server.js exposes to the web app.
 
     /// Create a new family (this parent becomes its first/only parent member).
-    /// Kept for older call sites: the server then picks the plan (full only if the
-    /// account was created with a valid invite code).
+    /// Kept for older call sites: works when the account was created with a valid
+    /// invite code.
     @discardableResult
     func createFamily(name: String) async throws -> [String: Any] {
         try await createFamily(name: name, plan: nil, inviteCode: nil, timezone: nil)
     }
 
-    /// Create a family on a plan: `"screen_time"` (always allowed) or `"full"` (the
-    /// server needs a valid invite code, here or from sign-up, else 403
-    /// `invite_required` and nothing is created). `timezone` is the device's IANA zone;
+    /// Create a family. The server needs a valid invite code, here or from sign-up,
+    /// else 403 `invite_required` and nothing is created. `plan` is ignored by the
+    /// server now and normally nil. `timezone` is the device's IANA zone;
     /// the server ignores an invalid one. A second create answers 409.
     @discardableResult
     func createFamily(name: String, plan: String?, inviteCode: String? = nil,

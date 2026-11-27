@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Six large character boxes for the kid's setup code (docs/SCREEN-TIME-ONLY-PLAN.md D6): typed
+/// Six large character boxes for the kid's setup code: typed
 /// or pasted, uppercase, alphabet `KidSetupCodeFormat.alphabet`, no camera. One real (but
 /// invisible) text field sits over the boxes so the system keyboard, paste, and the
 /// one-time-code suggestion all work; the boxes only draw what it holds.

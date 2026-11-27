@@ -103,7 +103,7 @@ struct KidCompanionScope: Hashable {
     var isParent: Bool { kidID == nil }
 
     @MainActor static func current(in app: AppStore) -> Self? {
-        guard !app.needsAuth, let user = app.me, let family = app.family, family.productPlan == .full else { return nil }
+        guard !app.needsAuth, let user = app.me, let family = app.family else { return nil }
         if user.role == "kid" {
             guard let kidID = user.kidId, family.kids.contains(where: { $0.id == kidID }) else { return nil }
             return Self(userID: user.id, familyID: family.id, kidID: kidID)

@@ -1,10 +1,9 @@
 import SwiftUI
 
-// Fam ETC native onboarding (docs/SCREEN-TIME-ONLY-PLAN.md §2 and §3).
+// Fam ETC native onboarding.
 //
-//   Parent: Welcome → Choose (Screen Time · the whole Fam ETC) → name + passkey → Family →
-//           Kids → Recovery codes → Notifications → Device setup → the app.
-//           (The whole-Fam-ETC path ends after Notifications; the checklist is Screen Time's.)
+//   Parent: Welcome → Invite code (or "joining my partner") → name + passkey → Family →
+//           Kids → Recovery codes → Notifications → the app.
 //   Kid:    Welcome → I'm a kid → type the code → "Hi {Kid}!" → waiting → passkey (or continue
 //           without) → the app. See KidSignInView.
 //
@@ -63,11 +62,9 @@ struct OnboardingView: View {
 
     // MARK: Parent steps
 
-    /// Setup runs account → devices: six steps on the Screen Time plan (it ends with the device
-    /// checklist), five on the whole Fam ETC. An unknown plan counts as the whole Fam ETC, like
-    /// `advance(from:)`.
-    private var setupSteps: Int { (plan ?? .full) == .screenTime ? 6 : 5 }
-    /// Where the current step sits in the setup progress bar (account = 1 … devices = 6).
+    /// Setup runs account → notifications: five steps.
+    private let setupSteps = 5
+    /// Where the current step sits in the setup progress bar (account = 1 … notifications = 5).
     private var setupPosition: Int { step.rawValue - 1 }
 
     @ViewBuilder private var parentScreen: some View {
@@ -90,14 +87,14 @@ struct OnboardingView: View {
             )
         case .account:
             OnbAccountView(
-                plan: plan ?? .screenTime,
+                plan: plan ?? .full,
                 parentName: $parentName,
                 inviteCode: inviteCode,
                 step: setupPosition, steps: setupSteps,
                 onBack: { go(.choose) },
                 onCreated: { go(.family) },
                 onInviteInvalid: {
-                    inviteMessage = "That code didn't work — check it, or start with Screen Time and upgrade later."
+                    inviteMessage = "That code didn't work. Check it and try again."
                     go(.choose)
                 }
             )
@@ -117,7 +114,8 @@ struct OnboardingView: View {
         case .notifications:
             OnbNotificationsView(step: setupPosition, steps: setupSteps, onDone: { advance(from: .notifications) })
         case .devices:
-            OnbDevicesView(step: setupPosition, steps: setupSteps, onLater: { finish(track: true) })
+            // The old Screen Time device step: never shown, finish instead.
+            ProgressView().task { finish(track: true) }
         }
     }
 
@@ -152,8 +150,8 @@ struct OnboardingView: View {
         go(target)
     }
 
-    /// Onboarding is over: `fam_onboarded` is set by the root, which then picks the layout for the
-    /// family's plan. `track` is false when an existing account simply signed in.
+    /// Onboarding is over: `fam_onboarded` is set by the root, which then shows the app.
+    /// `track` is false when an existing account simply signed in.
     private func finish(track: Bool) {
         if track { APIClient.shared.track("onboarding_complete") }
         OnboardingProgress.reset()
@@ -167,7 +165,7 @@ struct OnboardingView: View {
     private func applyDebugStart() -> Bool {
         if DebugLaunch.kidStage != nil { kidFlow = true; return true }
         guard let target = DebugLaunch.onboardingStep else { return false }
-        plan = .screenTime
+        plan = .full
         parentName = "Kate Walker"
         step = target
         return true

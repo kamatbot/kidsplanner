@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Native kid sign-in on the kid's OWN device (docs/SCREEN-TIME-ONLY-PLAN.md §3). The main path
+// Native kid sign-in on the kid's OWN device. The main path
 // is a code: a parent shows a short setup code, the kid TYPES it (no camera), sees "Hi Maya!",
 // waits for the parent's approval, then makes a passkey — or continues without one.
 //   AuthService.claimKidSetupCode → poll kidAccessStatus → completeKidPasskey
