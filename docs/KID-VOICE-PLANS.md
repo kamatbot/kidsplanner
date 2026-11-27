@@ -6,7 +6,6 @@ Kids add their own events and reminders, several at once, by speaking.
 
 | Where | How |
 | --- | --- |
-| Watch app | Coral **+🎙** capsule (top left of chat) or **Add plans** in My list. Tap **Talk**, tap the mic in the input sheet, say everything, tap Done. |
 | Siri on the watch | "Hey Siri, add plans in Fam ETC" → Siri asks "What should I add?" → the kid says the plans → Siri reads back what was added. |
 | iPad (kid account) | Calendar **+** opens *Add plans* with three tabs: **Say it** (type or use the keyboard mic for several plans), **Event**, **Reminder**. Also in Family actions. |
 
@@ -53,8 +52,7 @@ the button). Quiet hours 21:00–07:00 still apply. Timed events give a single
 
 ## Parents (2026-11-27)
 
-Parents use the same flow: the watch mic capsule and My list "Add plans",
-watch Siri ("Add plans in Fam ETC"), and on iPad/iPhone "Say several plans at
+Parents use the same flow: watch Siri ("Add plans in Fam ETC"), and on iPad/iPhone "Say several plans at
 once" in Add event plus "Say plans and reminders" on Today. The same
 `POST /api/kid-plans` call accepts a parent session or a parent's own watch.
 A parent's events go on the family calendar (no kid) and their reminders are
@@ -62,3 +60,10 @@ assigned to them, so they buzz on their watch. If the parent names a kid
 ("Maya has soccer Saturday at 10", "remind Leo to pack his kit"), that item is
 for the kid and the kid's watch is told. Undo works the same way, for the
 person who made the request only.
+
+## Watch: Siri only (2026-11-27)
+
+The in-app watch screen (chat +🎙 capsule, My list "Add plans",
+`fametc-watch://add`) was removed: watchOS can't open dictation directly, so
+its Talk button showed the text input sheet with a keyboard. On the watch,
+plans are added only through Siri. The iPad/iPhone sheets are unchanged.
