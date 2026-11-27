@@ -23,17 +23,11 @@ explicit confirmation first.
   `WebShellController`, was superseded by the plain-WKWebView `HybridWebView`
   (no bridge). Re-wire the bridge into `HybridWebView` before relying on the
   scanner — see the iOS note in [docs/ARCHITECTURE-PLAN.md](docs/ARCHITECTURE-PLAN.md).
-- **Screen Time** (parent controls): both with-Family-Sharing (`.child`,
-  strong enforcement) and without-Family-Sharing (`.individual`, revocable,
-  detected) modes are first-class. Server: `lib/screen-time.js` +
-  `lib/routes/screen-time.js`. iOS: `ScreenTimeService` plus the
-  FamETCScreenTimeMonitor/FamETCShieldConfig extensions. Tamper alerts
-  (revoked/stale/removed/etc.) go to parents only, never family chat — full
-  contract in [docs/SCREEN-TIME-PLAN.md](docs/SCREEN-TIME-PLAN.md).
-- **Plans**: a family is `full` (the whole hub, invite code) or `screen_time`
-  (free, app-only, any family). The server gates hub APIs on `family.plan`
-  (`requireHub`); iOS switches its root on `AppStore.productPlan`. Spec and
-  build contract: [docs/SCREEN-TIME-ONLY-PLAN.md](docs/SCREEN-TIME-ONLY-PLAN.md).
+- **Screen Time / parental controls**: removed on 2026-11-27. They live in the
+  separate Canopy product now (github.com/kamatbot/canopy-parental-control); do
+  not add Screen Time, FamilyControls or home-network code back into Fam ETC.
+  Every family is the whole Fam ETC (no plan gate); creating a family needs an
+  invite code.
 - **Family assistant** (`lib/family-assistant.js`): the built-in "Hermes" seat.
   A parent's @Hermes message (or any message in their private Hermes thread)
   makes the server call the Claude API with a compact family snapshot and tools

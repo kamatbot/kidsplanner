@@ -13,7 +13,7 @@
 | Decision | Value |
 |---|---|
 | Name | Fam ETC |
-| Pitch / target user | "The etcetera hub for your family — school calendars, homework, activities, goals, and family chat in one place." Target: families (2 parents + kids), starting with St Andrews (standrews.ac.th) parents. Second line (owner-confirmed 2026-10-01): "Screen Time for any family, free, in the app." — the Screen Time plan is open to every family; the full hub stays invite-code gated. |
+| Pitch / target user | "The etcetera hub for your family — school calendars, homework, activities, goals, and family chat in one place." Target: families (2 parents + kids), starting with St Andrews (standrews.ac.th) parents. The 2026-10-01 second line ("Screen Time for any family, free, in the app.") was dropped on 2026-11-27 when Screen Time moved to Canopy; Fam ETC is invite-code gated. |
 | Domain (www canonical) | fametc.com |
 | Hostinger status | on Hostinger (purchased + set up) |
 | Prefix (JS globals, env) | `FAM` / `fam` (note: existing KidsPlanner uses `kp_` localStorage keys — migrate to `fam_` during scaffold) |
@@ -26,7 +26,7 @@
 | Native screens at launch | **Today/dashboard, Chat, Calendar, Homework fully native**; Settings, Goals, Activities, billing, marketing stay web via HybridWebView | native where interaction speed matters; web where content churns |
 | iPad support | **iPad is a KEY app surface, co-equal with iPhone** (kids may have iPhones and/or iPads — both personal devices). Every native screen designed for both from the start: iPad landscape = nav rail + main content + docked family chat column; iPad portrait = chat collapses to slide-over; iPhone = tab-bar layout. Not a stretched-iPhone afterthought. Auth/usage model unchanged: one passkey login per person per device. | SwiftUI size classes + responsive web |
 | Chat backend | lightweight custom (WebSocket/polling on our Node/Hostinger backend, same auth + encryption) | net-new chat.js module; not a copy-ready RetireOdds component |
-| Auth | passkey-only + backup codes; family invite code links members into one Fam ETC group. Since 2026-10-01 the signup invite code gates the **full plan** (at family creation or upgrade), not account creation — see the Screen Time plan section | webauthn.js, backup-codes.js, AuthService.swift |
+| Auth | passkey-only + backup codes; family invite code links members into one Fam ETC group. The invite code gates creating a family (at signup or family creation), not account creation, so a co-parent can sign up and join with a parent invite | webauthn.js, backup-codes.js, AuthService.swift |
 | Account sync | shared cookie session (AuthService syncs HTTPCookieStorage ↔ WKWebsiteDataStore) — one passkey login covers native tabs AND the embedded web surfaces; web app also serves billing/settings/marketing + desktop access | AuthService.swift as-is |
 | Encryption at rest | **yes** — chat messages + kids' schedule/activity data. Key backup location: ⚠ TBD, record before first prod deploy (Hostinger panel DATA_ENCRYPTION_KEY + offline backup) | datacrypto.js, gen-encryption-key.js |
 | Worker pool | no | skip simpool.js |
@@ -45,34 +45,15 @@
 | Superseded | Horizon app design dated 2026-07-11 and the Needs-You Stack dated 2026-09-24 are replaced on the web by Family Rings (seed `19a71449`). The native contract supersedes the earlier native Today design; marketing remains separate. On iOS the Family Rings layout and type are superseded by the soft layout (2026-10-17); its colours, rings, data and roles remain. |
 | Personal study space | Koko opens a child’s next homework task or a parent’s Needs you actions, an energy check-in and My Corner. Available to kids and parents, primarily on iPad. Mood sharing requires explicit preview/send; once someone answers, the check-in hides until the next day on that device (only the day is kept, never the energy). Each account owns a private Corner; parents cannot open children’s or other parents’ Corners. Koko, My Corner and its stickers are iOS-only; the web has none of them, and keeps only the explicit energy check-in (owner decisions 2026-09-26). |
 
-## Screen Time (parent controls, added 2026-09-27; spec: docs/SCREEN-TIME-PLAN.md)
+## Screen Time (removed 2026-11-27)
 | Decision | Value |
 |---|---|
-| Core tenet | Both with-Family-Sharing and without-Family-Sharing modes are first-class — many kids' devices were set up without a child Apple Account and can't easily move into Family Sharing. |
-| Modes | `family` — `.child` authorization, strong (kid cannot delete the app or revoke access). `cooperative` — `.individual` authorization, revocable by the kid; Fam ETC detects revocation and alerts parents. |
-| Enforcement | Policy lives on our server; the kid's device enforces it locally via ManagedSettings/DeviceActivity. "Pause now" is best-effort, shown to parents as Pending vs Applied, never a hard "blocked" guarantee. |
-| Tamper alerts | `revoked` / `restored` / `stale` / `removed` / `selection_changed` go to parents only, via APNs + web push — never into family chat, which kids can read. |
-| Extensions | FamETCScreenTimeMonitor (DeviceActivity monitor) and FamETCShieldConfig (ManagedSettings shield configuration). |
-| Distribution gate | Apple's Family Controls (Distribution) entitlement is required for com.fametc.app and both extensions before TestFlight/App Store distribution. |
-| Deferred | Shared allowance across a kid's iPhone+iPad, "ask for more time" shield action, usage reports, always-allowed apps during downtime, web (desktop) Screen Time UI, Android. |
-
-## Screen Time plan (app-only signup tier, decided 2026-10-01; spec: docs/SCREEN-TIME-ONLY-PLAN.md)
-| Decision | Value |
-|---|---|
-| Plans | A family is `full` (the whole Fam ETC) or `screen_time`. Plan lives on the family; families created before this read as `full`. |
-| Who | Screen Time plan: any family, no invite code, created in the iOS app. Full plan: invite code, at family creation or later upgrade. |
-| Gate | The server enforces features from `family.plan` (`requireHub` on every hub API); only the server sets `full`, after an invite-code check. |
-| Price | Screen Time plan free; no paywall code. |
-| Fams | Not on the Screen Time plan — kids ask for more time without spending fams; fams start after upgrade. |
-| Home | Parent: Home (setup checklist, per-kid status and quick actions, requests) + Family settings; iPad shows the kid list as a sidebar. Kid: a single Screen Time home. No hub tabs. |
-| Kid devices | Parent shows a per-kid 6-character code; kid types it, parent approves, kid makes a passkey or continues without one, then the required Screen Time deal. |
-| Web | fametc.com shows Screen Time families an "it lives in the app" page only. |
-| Upgrade | Family settings → invite code → whole family moves to `full`, keeping all Screen Time data. No downgrade in v1. |
+| Removed | Owner decision 2026-11-27: every Screen Time and parental-control feature moved to the separate Canopy product (github.com/kamatbot/canopy-parental-control). Removed from Fam ETC: the iOS FamilyControls enforcer, its three extensions and the Family Controls entitlement; `lib/screen-time.js`, the Canopy Home Wi-Fi link (`lib/home-network.js`), school-day rules; web Screen Time cards and Settings > Home Wi-Fi; and the free `screen_time` plan with its plan gate. Every family is the whole Fam ETC. Stored Screen Time records are left in place, unused. |
 
 ## Monetization
 | Decision | Value | → Components |
 |---|---|---|
-| Model | free 30-day no-card trial → paid annual (+ optional lifetime later) for the full hub; the **Screen Time plan is free** (owner decision 2026-10-01) | billing.js |
+| Model | free 30-day no-card trial → paid annual (+ optional lifetime later) for the full hub | billing.js |
 | Web payments | Stripe, env-gated, test mode until launch | webhook-before-json-parser pattern |
 | iOS payments | ship iOS free at launch → StoreKit 2 IAP later; NEVER Stripe in-app; grandfather existing iOS users when IAP flips on | docs/IAP-PLAN.md + IAP-GUIDE.md playbook |
 | Promo codes / grandfathering | both | promo-codes.json, grandfatherExisting() |

@@ -115,7 +115,7 @@ test("signup page and client require and submit the invite code", () => {
 });
 
 // Signup verify records the validated invite on the account so the family step
-// can create the full plan without asking again (docs/SCREEN-TIME-ONLY-PLAN.md §10.1).
+// can create the family without asking again.
 async function verifyWith(pendingSignup) {
   const routes = {};
   const app = {
