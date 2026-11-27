@@ -89,7 +89,7 @@ enum WatchAPIError: Error, LocalizedError {
 /// surface. Authentication is deliberately supplied by a credential store;
 /// this type never starts a login, pairs devices, polls, or uses
 /// WatchConnectivity.
-final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient, WatchCompanionChatClient, WatchVoiceClient {
+final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchPushAPIClient, WatchContextClient, WatchStudentSupportClient, WatchChatClient, WatchCompanionChatClient, WatchVoiceClient, WatchPlansClient {
     private struct ActionsResponse: Decodable { let actions: [WatchAction] }
     private struct HomeworkResponse: Decodable { let homework: [WatchHomework] }
     private struct ShoppingResponse: Decodable { let shopping: [WatchShoppingItem] }
@@ -206,6 +206,20 @@ final class URLSessionWatchAPIClient: WatchAPIClient, WatchPairingClient, WatchP
     }
     private func companionComponent(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? ""
+    }
+
+    /// A kid's spoken note becomes events and reminders on the server
+    /// (docs/KID-VOICE-PLANS.md). Reading the note can take a few seconds, so
+    /// this uses the longer timeout; a retry with the same id never doubles up.
+    func addPlans(text: String, requestId: String, via: String) async throws -> WatchPlansResult {
+        try await request("/api/kid-plans", method: "POST",
+                          body: ["text": text, "requestId": requestId, "via": via],
+                          response: WatchPlansResult.self, longPoll: true)
+    }
+
+    func undoPlans(requestId: String) async throws -> WatchPlansResult {
+        try await request("/api/kid-plans/\(pathComponent(requestId))/undo", method: "POST", body: [:],
+                          response: WatchPlansResult.self)
     }
 
     func fetchContext() async throws -> WatchContext {
