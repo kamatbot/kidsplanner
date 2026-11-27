@@ -20,7 +20,7 @@ function fixture() {
   const deps = {
     CANONICAL_HOST: "https://www.fametc.com",
     currentUser: (req) => req.cookieUser || null,
-    family: { familiesForUser: () => [fam], isFull: (family) => family.plan !== "screen_time" },
+    family: { familiesForUser: () => [fam] },
     authLimiter: (req, res, next) => next(), apiLimiter: (req, res, next) => next(),
     displayAuth: {
       createPairing: (settings) => { calls.push({ action: "pairing", settings }); return { pairing: { id: "pair-a", code: "ABCDEFGH" } }; },
@@ -71,13 +71,11 @@ test("management requires a signed interactive parent before any device operatio
   assert.equal(f.calls.length, 0);
 });
 
-test("the management guard enforces the current plan but preserves legacy parent profiles", () => {
+test("the management guard ignores the removed plan and preserves legacy parent profiles", () => {
   const f = fixture();
   f.fam.plan = "screen_time";
-  const blocked = f.request("POST", "/api/displays/pairing", { user: f.parent });
-  assert.equal(blocked.statusCode, 403);
-  assert.equal(blocked.body.code, "upgrade_required");
-  assert.equal(f.calls.length, 0);
+  const allowed = f.request("GET", "/api/displays", { user: f.parent });
+  assert.equal(allowed.statusCode, 200);
   delete f.fam.plan;
   delete f.parent.data.profile.role;
   const listed = f.request("GET", "/api/displays", { user: f.parent });
@@ -135,10 +133,10 @@ test("device context accepts only its own scoped bearer and never creates a user
   assert.equal(response.req.family, undefined);
   assert.equal(response.req.displayParent, undefined);
   assert.equal(response.req.displayAccess.family.id, "family-a");
-  f.deps.displayAuth.resolveToken = () => ({ error: "This display requires the whole Fam ETC.", status: 403, code: "upgrade_required" });
+  f.deps.displayAuth.resolveToken = () => ({ error: "This display is not allowed.", status: 403, code: "display_forbidden" });
   const downgraded = f.request("GET", "/api/display/context", { headers: { Authorization: `Bearer ${f.token}` } });
   assert.equal(downgraded.statusCode, 403);
-  assert.equal(downgraded.body.code, "upgrade_required");
+  assert.equal(downgraded.body.code, "display_forbidden");
 });
 
 test("device disconnect revokes the credential's family and id, ignoring request-body scope", () => {

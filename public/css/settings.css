@@ -79,11 +79,3 @@
 /* Family Rings control geometry. */
 .settings-nav button { border-radius: 12px; }.settings-nav button[aria-current] { background: var(--fr-you-soft, var(--accent-soft)); color: var(--fr-you-ink, var(--accent)); }
 .settings-content .card { background: var(--fr-card, var(--panel)); border-radius: 24px; box-shadow: var(--fr-shadow, var(--shadow)); padding: 20px; }
-.hn-subsection { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
-.hn-subsection h4 { font-size: 0.95rem; margin: 0 0 8px; color: var(--text); }
-.hn-subhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.hn-subhead h4 { margin: 0; }
-.hn-day-badge { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: var(--panel-2); color: var(--text-2); vertical-align: middle; }
-.hn-day-badge.is-free { background: var(--accent-soft); color: var(--accent); }
-.hn-alert-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.hn-alert-meta { font-size: 0.8rem; }

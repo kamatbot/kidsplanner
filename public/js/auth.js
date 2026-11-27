@@ -163,7 +163,6 @@
     const body = { name: name || "" };
     if (opts && typeof opts === "object") {
       if (typeof opts.schoolSync === "boolean") body.schoolSync = opts.schoolSync;
-      if (opts.plan) body.plan = opts.plan;
       if (opts.timezone) body.timezone = opts.timezone;
       if (opts.inviteCode) body.inviteCode = opts.inviteCode;
     }

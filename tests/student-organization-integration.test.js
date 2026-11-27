@@ -35,9 +35,9 @@ function session(user) {
   const value = Buffer.from(JSON.stringify({ uid: user.id, authGen: store.sessionGeneration(user) })).toString("base64");
   return `fam_sess=${value}; fam_sess.sig=${new Keygrip([process.env.SESSION_SECRET]).sign(`fam_sess=${value}`)}`;
 }
-function setup(plan = "full") {
+function setup() {
   const parent = store.createUser(`${crypto.randomUUID()}@example.test`, "Parent");
-  const fam = family.createFamily(parent.id, "Synthetic school family", { plan, timezone: "Asia/Bangkok" });
+  const fam = family.createFamily(parent.id, "Synthetic school family", { timezone: "Asia/Bangkok" });
   const kid = family.addKid(fam.id, parent.id, { name: "Student" }).kid;
   const sibling = family.addKid(fam.id, parent.id, { name: "Sibling" }).kid;
   const child = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
@@ -148,18 +148,6 @@ test("real session and Watch routes reject privilege escalation and isolate sibl
   assert.equal(deniedOther.status, 403);
   const narrow = await request(token, "/api/student-support/admin");
   assert.ok([403, 404].includes(narrow.status));
-});
-
-test("Screen Time-only families cannot access either new support endpoint", async () => {
-  const group = setup("screen_time");
-  for (const identity of [group.parent, group.child, watchFor(group)]) {
-    const get = await read(identity, group.kid.id);
-    assert.equal(get.status, 403);
-    assert.equal(get.body.code, "upgrade_required");
-    const post = await write(identity, command(group.kid.id, 0, "configure", { enabled: true }));
-    assert.equal(post.status, 403);
-    assert.equal(post.body.code, "upgrade_required");
-  }
 });
 
 test("removing a child clears the new support records and prevents further Watch access", async () => {

@@ -14,17 +14,19 @@ const store = require("../lib/store");
 const family = require("../lib/family");
 const chat = require("../lib/chat");
 const chatAttachments = require("../lib/chat-attachments");
-const screenTime = require("../lib/screen-time");
 const watchAuth = require("../lib/watch-auth");
 const notifications = require("../lib/fam-notifications");
 const { deleteParentAccount } = require("../lib/account-deletion");
 
 function seedFamily(label) {
   const parent = store.createUser(`${label}@example.test`, "Kate");
-  const fam = family.createFamily(parent.id, `${label} family`, { plan: "full" });
+  const fam = family.createFamily(parent.id, `${label} family`, {});
   const { kid } = family.addKid(fam.id, parent.id, { name: "Mia" });
   const kidUser = store.findOrCreateKidUser(fam.id, kid.id, kid.name);
-  const device = screenTime.enroll(fam, kid.id, { label: "iPad", mode: "family", authStatus: "approved", installKey: "a".repeat(20) });
+  // Leftover record from the removed Screen Time feature: still family-keyed.
+  const legacy = db.load();
+  legacy.screenTime ||= {};
+  legacy.screenTime[fam.id] = { kids: { [kid.id]: { devices: [{ id: "dev-1" }] } } };
   chat.sendMessage(fam.id, { senderType: "parent", senderId: parent.id, postedByUserId: parent.id, text: "Dinner at 6" });
   chat.sendMessage("hermes:" + kidUser.id, { senderType: "agent", text: "Private kid thread" });
   const attachment = chatAttachments.save({
@@ -40,7 +42,7 @@ function seedFamily(label) {
   const displayPairingId = `display-pairing-${label}`;
   root.displayAuth.devices[displayId] = { id: displayId, familyId: fam.id, createdBy: parent.id };
   root.displayAuth.pairings[displayPairingId] = { id: displayPairingId, familyId: fam.id, createdBy: parent.id };
-  return { parent, fam, kid, kidUser, device, attachment, watch, displayId, displayPairingId };
+  return { parent, fam, kid, kidUser, attachment, watch, displayId, displayPairingId };
 }
 
 test("deleting the last parent removes the whole family and everything keyed to it", () => {
@@ -56,7 +58,6 @@ test("deleting the last parent removes the whole family and everything keyed to 
   assert.equal(family.getFamily(s.fam.id), null);
   assert.equal(family.findByInviteCode(s.fam.inviteCode), null, "family code no longer joinable");
   assert.equal(root.screenTime?.[s.fam.id], undefined);
-  assert.equal(screenTime.resolveDevice(s.device.deviceSecret), null, "kid device secret no longer resolves");
   assert.equal(chat.listMessages(s.fam.id).length, 0);
   assert.equal(chat.listMessages("hermes:" + s.kidUser.id).length, 0);
   assert.equal(chatAttachments.read(s.attachment.id), null, "attachment file is gone");
@@ -75,7 +76,7 @@ test("deleting the last parent removes the whole family and everything keyed to 
   assert.ok(family.getFamily(other.fam.id));
   assert.ok(store.getUser(other.kidUser.id));
   assert.equal(chat.listMessages(other.fam.id).length, 1);
-  assert.ok(screenTime.resolveDevice(other.device.deviceSecret));
+  assert.ok(root.screenTime[other.fam.id]);
   assert.ok(watchAuth.resolveToken(other.watch.token));
   assert.ok(chatAttachments.read(other.attachment.id));
   assert.ok(root.displayAuth.devices[other.displayId], "another family's display remains");
@@ -101,7 +102,6 @@ test("a parent with a co-parent leaves; the family, kids and chat stay and the c
   assert.equal(db.load().deviceTokens[s.parent.id], undefined);
   assert.ok(store.getUser(s.kidUser.id));
   assert.equal(chat.listMessages(s.fam.id).length, 1);
-  assert.ok(screenTime.resolveDevice(s.device.deviceSecret));
   assert.equal(db.load().displayAuth.devices[s.displayId], undefined, "leaving parent's grant is removed");
   assert.equal(db.load().displayAuth.pairings[s.displayPairingId], undefined);
   assert.ok(db.load().displayAuth.devices["co-parent-display"], "remaining parent's display remains");

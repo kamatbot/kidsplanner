@@ -33,10 +33,10 @@ test("a household display cannot become a parent, switch families, or outlive re
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}`;
   const parent = store.createUser("display-parent@example.test", "Display Parent");
-  const fam = family.createFamily(parent.id, "Kitchen household", { plan: "full" });
+  const fam = family.createFamily(parent.id, "Kitchen household");
   const { kid } = family.addKid(fam.id, parent.id, { name: "Jamie" });
   const stranger = store.createUser("other-display-parent@example.test", "Other Parent");
-  family.createFamily(stranger.id, "Another household", { plan: "full" });
+  family.createFamily(stranger.id, "Another household");
   const parentCookie = cookieFor(parent);
 
   async function request(route, { method = "GET", cookie, token, body } = {}) {
@@ -96,17 +96,11 @@ test("a household display cannot become a parent, switch families, or outlive re
   });
   assert.equal(foreignRevoke.status, 404);
 
-  // The device route must check the family plan itself: the global cookie-
-  // based hub gate has no user session when a Portal makes this request.
+  // A family stored with the removed "screen_time" plan keeps its display.
   family.getFamily(fam.id).plan = "screen_time";
-  const downgraded = await request("/api/display/context", { token });
-  assert.equal(downgraded.status, 403);
-  assert.equal((await downgraded.json()).code, "upgrade_required");
-  const gatedParent = await request("/api/displays", { cookie: parentCookie });
-  assert.equal(gatedParent.status, 403);
-  assert.match(gatedParent.headers.get("cache-control") || "", /no-store/,
-    "even an earlier plan gate must not leave display responses cacheable");
-  family.getFamily(fam.id).plan = "full";
+  const legacyPlan = await request("/api/display/context", { token });
+  assert.equal(legacyPlan.status, 200);
+  delete family.getFamily(fam.id).plan;
   db.persist();
 
   const revoke = await request(`/api/displays/${device.id}/revoke`, {

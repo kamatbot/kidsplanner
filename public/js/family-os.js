@@ -124,9 +124,7 @@
     renderHomePulse(brief);
     renderRunsheet(brief);
     renderKidFocus(brief);
-    renderKidAsk(brief);
     renderScheduleRadar(brief);
-    decorateKidCardsWithScreenTime(brief);
     syncTableTalkUI();
   }
 
@@ -237,17 +235,7 @@
     inboxEl.innerHTML = filtered.map((s) => {
       const pCls = s.priority === "P0" ? "p0" : s.priority === "P1" ? "p1" : "";
       let controls = "";
-      if (s.kind === "screen_time_alert") {
-        controls = `<button type="button" class="fos-btn-ghost" onclick="window.famOS.ackScreenTimeAlert('${e(s.payload.kidId)}','${e(s.payload.id)}')">Acknowledge</button>`;
-      } else if (s.kind === "screen_time_request" && s.payload.kind === "bedtime") {
-        controls = `
-          <button type="button" class="fos-btn-primary" onclick="window.famOS.decideScreenTimeRequest('${e(s.payload.kidId)}','${e(s.payload.id)}',true,'bedtime')">🌙 Yes, until ${e(s.payload.bedtimeUntil || `+${s.payload.minutes}m`)}</button>
-          <button type="button" class="fos-btn-danger-ghost" onclick="window.famOS.decideScreenTimeRequest('${e(s.payload.kidId)}','${e(s.payload.id)}',false,'bedtime')">Not tonight</button>`;
-      } else if (s.kind === "screen_time_request") {
-        controls = `
-          <button type="button" class="fos-btn-primary" onclick="window.famOS.decideScreenTimeRequest('${e(s.payload.kidId)}','${e(s.payload.id)}',true)">Approve +${e(s.payload.minutes)}m</button>
-          <button type="button" class="fos-btn-danger-ghost" onclick="window.famOS.decideScreenTimeRequest('${e(s.payload.kidId)}','${e(s.payload.id)}',false)">Decline</button>`;
-      } else if (s.kind === "hermes_nudge") {
+      if (s.kind === "hermes_nudge") {
         controls = (s.payload.actions || []).map((a, idx) =>
           `<button type="button" class="${idx === 0 || a.style === "primary" ? "fos-btn-primary" : "fos-btn-ghost"}" onclick="window.famOS.actHermes('${e(s.payload.messageId)}','${e(a.id)}')">${e(a.label)}</button>`
         ).join("");
@@ -453,37 +441,6 @@
     shell.classList.toggle("is-collapsed", collapsed);
     if (cta) cta.textContent = tableTalkOpen ? "Hide" : "Open";
     if (btn) btn.setAttribute("aria-expanded", String(!collapsed));
-  }
-
-  // ---------------- SCREEN TIME DECORATION ON KID CARDS ----------------
-  function decorateKidCardsWithScreenTime(brief) {
-    if (brief.role !== "parent" || !brief.screenTimeKids) return;
-    document.querySelectorAll("#today-fams-body .fr-kid-card").forEach((card) => {
-      const btn = card.querySelector("[onclick*='openChildView']");
-      if (!btn) return;
-      const m = /openChildView\('([^']+)'\)/.exec(btn.getAttribute("onclick") || "");
-      if (!m) return;
-      const kidId = m[1];
-      const st = brief.screenTimeKids[kidId];
-      const existing = card.querySelector(".fos-kid-st-bar");
-      if (existing) existing.remove();
-      if (!st || !st.deviceCount) return;
-      const bar = document.createElement("div");
-      bar.className = "fos-kid-st-bar";
-      const ex = st.bedtimeException;
-      const bedTonight = st.bedtime && st.bedtime.days && st.bedtime.days.includes(new Date().getDay() + 1);
-      let bedBtn = "";
-      if (ex) {
-        bedBtn = `<button type="button" class="fos-btn-ghost fos-st-bed is-on" title="Put bedtime back to ${e(st.bedtime ? st.bedtime.start : "usual")}" onclick="window.famOS.allowLateBedtime('${e(kidId)}',0)">🌙 ${e(ex.until)} tonight · Undo</button>`;
-      } else if (bedTonight) {
-        bedBtn = `<button type="button" class="fos-btn-ghost fos-st-bed" title="Let them stay up 30 minutes later tonight" onclick="window.famOS.allowLateBedtime('${e(kidId)}',30)">🌙 +30m tonight</button>`;
-      }
-      bar.innerHTML = `
-        <span>${st.paused ? "⏸ Screen Time paused" : `Screen Time active (${st.deviceCount} device${st.deviceCount === 1 ? "" : "s"})`}</span>
-        <span class="fos-kid-st-actions">${bedBtn}
-        <button type="button" class="fos-btn-ghost" onclick="window.famOS.toggleKidPause('${e(kidId)}',${st.paused ? "false" : "true"})">${st.paused ? "Resume" : "Pause 30m"}</button></span>`;
-      card.appendChild(bar);
-    });
   }
 
   // ---------------- SCHEDULE WORKLOAD RADAR ----------------
@@ -783,190 +740,6 @@
     }
   }
 
-  async function decideScreenTimeRequest(kidId, reqId, approve, kind) {
-    try {
-      await apiJson(`/api/screen-time/kids/${encodeURIComponent(kidId)}/requests/${encodeURIComponent(reqId)}/${approve ? "approve" : "decline"}`, {
-        method: "POST",
-        body: "{}",
-      });
-      notify(kind === "bedtime"
-        ? (approve ? "Bedtime moved for tonight 🌙" : "Bedtime stays the same")
-        : (approve ? "Extra time approved" : "Request declined"));
-      await refresh(true);
-    } catch (err) {
-      notify(err.message || "Could not update request");
-    }
-  }
-
-  async function ackScreenTimeAlert(kidId, alertId) {
-    try {
-      await apiJson(`/api/screen-time/kids/${encodeURIComponent(kidId)}/alerts/${encodeURIComponent(alertId)}/ack`, {
-        method: "POST",
-        body: "{}",
-      });
-      notify("Alert acknowledged");
-      await refresh(true);
-    } catch (err) {
-      notify(err.message || "Could not acknowledge alert");
-    }
-  }
-
-  async function allowLateBedtime(kidId, minutes) {
-    try {
-      const st = await apiJson(`/api/screen-time/kids/${encodeURIComponent(kidId)}/bedtime`, {
-        method: "POST",
-        body: JSON.stringify({ minutes }),
-      });
-      const ex = st && st.policy && st.policy.bedtimeException;
-      notify(minutes && ex ? `Bedtime is ${ex.until} tonight 🌙` : "Bedtime is back to normal");
-      await refresh(true);
-    } catch (err) {
-      notify(err.message || "Could not change bedtime");
-    }
-  }
-
-  // ---------------- KID: ASK A PARENT (more time / stay up later) ----------------
-  let kidAskOpen = null; // null | 'time' | 'bedtime'
-  let kidAskMinutes = null;
-  let kidAskState = null;
-
-  function todayLocalIso() {
-    return typeof isoDate === "function" ? isoDate(new Date()) : new Date().toISOString().slice(0, 10);
-  }
-
-  // Tonight's bedtime as the kid's devices see it (a later one when a parent said yes).
-  function tonightBedtime(policy) {
-    const wd = new Date().getDay() + 1; // 1 = Sunday, like Calendar.weekday
-    const list = (policy && policy.downtime) || [];
-    const late = list.find((d) => d.id === "bedtime_late" && d.days.includes(wd));
-    if (late) return { start: late.start, late: true };
-    const bed = list.find((d) => d.id === "bedtime" && d.days.includes(wd));
-    return bed ? { start: bed.start, late: false } : null;
-  }
-
-  async function renderKidAsk(brief) {
-    const el = document.getElementById("fos-kid-ask");
-    if (!el) return;
-    if (!brief || brief.role !== "kid") { el.hidden = true; return; }
-    try {
-      kidAskState = await apiJson("/api/screen-time/mine");
-    } catch (_) {
-      el.hidden = true;
-      return;
-    }
-    paintKidAsk();
-  }
-
-  function paintKidAsk() {
-    const el = document.getElementById("fos-kid-ask");
-    if (!el || !kidAskState) return;
-    const policy = kidAskState.policy || {};
-    if (!policy.enabled) { el.hidden = true; return; }
-    const hasTotal = (policy.limits || []).some((l) => l.kind === "total");
-    const bed = tonightBedtime(policy);
-    const today = todayLocalIso();
-    const reqs = (kidAskState.requests || []).filter((r) => r.date === today);
-    const pending = reqs.find((r) => r.status === "pending");
-    const lastDecided = reqs.find((r) => r.status === "approved" || r.status === "declined");
-    el.hidden = false;
-
-    let status = "";
-    if (pending) {
-      status = pending.kind === "bedtime"
-        ? `⏳ Waiting for a parent: stay up until ${e(pending.bedtimeUntil || "")}`
-        : `⏳ Waiting for a parent: +${e(pending.minutes)} min`;
-    } else if (lastDecided) {
-      const yes = lastDecided.status === "approved";
-      status = lastDecided.kind === "bedtime"
-        ? (yes ? `🎉 Yes! You can stay up until ${e(lastDecided.bedtimeUntil || "")}` : "Not tonight — sleep well 💜")
-        : (yes ? `🎉 +${e(lastDecided.minutes)} minutes today` : "Not today — that's OK 💜");
-    }
-
-    const choices = kidAskOpen === "bedtime" ? [15, 30, 60] : [15, 30, 45, 60];
-    const later = (m) => {
-      if (!bed) return `+${m}m`;
-      const [h, mm] = bed.start.split(":").map(Number);
-      const t = h * 60 + mm + m;
-      return t >= 1440 ? null : `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-    };
-    const picker = kidAskOpen ? `
-      <form class="fos-ask-picker" onsubmit="window.famOS.sendKidAsk(event)">
-        <div class="fos-ask-chips" role="radiogroup" aria-label="${kidAskOpen === "bedtime" ? "How much later" : "How many minutes"}">
-          ${choices.filter((m) => kidAskOpen !== "bedtime" || later(m)).map((m) => `
-            <button type="button" role="radio" aria-checked="${kidAskMinutes === m}" class="fos-ask-chip${kidAskMinutes === m ? " is-on" : ""}" onclick="window.famOS.pickKidAsk(${m})">
-              ${kidAskOpen === "bedtime" ? `${e(later(m))}<small>+${m} min</small>` : `+${m}<small>min</small>`}
-            </button>`).join("")}
-        </div>
-        <input id="fos-ask-note" class="fos-ask-note" maxlength="80" placeholder="${kidAskOpen === "bedtime" ? "Why tonight? e.g. family movie" : "What for? e.g. finish my level"}" aria-label="Reason (optional)">
-        <div class="fos-ask-send">
-          <button type="submit" class="fos-btn-primary" ${kidAskMinutes ? "" : "disabled"}>Ask a parent</button>
-          <button type="button" class="fos-btn-ghost" onclick="window.famOS.openKidAsk(null)">Cancel</button>
-        </div>
-      </form>` : "";
-
-    el.innerHTML = `
-      <div class="fos-ask-head">
-        <div>
-          <div class="fos-kid-focus-kicker">Ask a parent</div>
-          <div class="fos-ask-title">${bed ? `🌙 Bedtime tonight ${e(bed.start)}${bed.late ? " <span class=\"fos-ask-badge\">later tonight</span>" : ""}` : "Need a little more?"}</div>
-          ${status ? `<div class="fos-kid-focus-meta" aria-live="polite">${status}</div>` : ""}
-        </div>
-        ${pending || kidAskOpen ? "" : `<div class="fos-kid-focus-actions">
-          ${hasTotal ? `<button type="button" class="fos-btn-ghost" onclick="window.famOS.openKidAsk('time')">⏰ More time</button>` : ""}
-          ${bed ? `<button type="button" class="fos-btn-ghost" onclick="window.famOS.openKidAsk('bedtime')">🌙 Stay up later</button>` : ""}
-        </div>`}
-      </div>
-      ${picker}`;
-  }
-
-  function openKidAsk(kind) {
-    kidAskOpen = kind;
-    kidAskMinutes = null;
-    paintKidAsk();
-  }
-
-  function pickKidAsk(m) {
-    const note = document.getElementById("fos-ask-note");
-    const keep = note ? note.value : "";
-    kidAskMinutes = m;
-    paintKidAsk();
-    const again = document.getElementById("fos-ask-note");
-    if (again) again.value = keep;
-  }
-
-  async function sendKidAsk(event) {
-    if (event) event.preventDefault();
-    if (!kidAskOpen || !kidAskMinutes) return;
-    const noteEl = document.getElementById("fos-ask-note");
-    const note = noteEl && noteEl.value.trim();
-    try {
-      await apiJson("/api/screen-time/requests", {
-        method: "POST",
-        body: JSON.stringify({ kind: kidAskOpen, minutes: kidAskMinutes, date: todayLocalIso(), note: note || null }),
-      });
-      notify("Sent! A parent will answer soon.");
-      kidAskOpen = null;
-      kidAskMinutes = null;
-      kidAskState = await apiJson("/api/screen-time/mine").catch(() => kidAskState);
-      paintKidAsk();
-    } catch (err) {
-      notify(err.message || "Could not send");
-    }
-  }
-
-  async function toggleKidPause(kidId, pause) {
-    try {
-      await apiJson(`/api/screen-time/kids/${encodeURIComponent(kidId)}/pause`, {
-        method: "POST",
-        body: JSON.stringify({ minutes: pause ? 30 : 0 }),
-      });
-      notify(pause ? "Paused Screen Time for 30 min" : "Resumed Screen Time");
-      await refresh(true);
-    } catch (err) {
-      notify(err.message || "Could not update Screen Time");
-    }
-  }
-
   async function setDinnerTitle(title) {
     const clean = String(title || "").trim();
     if (!clean) return;
@@ -1060,10 +833,7 @@
     if (focusInterval) { clearInterval(focusInterval); focusInterval = null; }
     focusRunning = false;
     focusSeconds = 15 * 60;
-    kidAskOpen = null;
-    kidAskMinutes = null;
-    kidAskState = null;
-    for (const id of ["fos-kid-ask", "fos-insights-grid", "fos-unified-inbox", "fos-home-pulse", "fos-runsheet", "fos-kid-focus", "fos-schedule-radar", "fos-home-body"]) {
+    for (const id of ["fos-insights-grid", "fos-unified-inbox", "fos-home-pulse", "fos-runsheet", "fos-kid-focus", "fos-schedule-radar", "fos-home-body"]) {
       const el = document.getElementById(id);
       if (el) el.innerHTML = "";
     }
@@ -1086,13 +856,6 @@
     voteDecision,
     createDecision,
     actHermes,
-    decideScreenTimeRequest,
-    ackScreenTimeAlert,
-    toggleKidPause,
-    allowLateBedtime,
-    openKidAsk,
-    pickKidAsk,
-    sendKidAsk,
     setDinnerTitle,
     quickSetDinner,
     quickAddShopping,

@@ -80,13 +80,30 @@ test("/signup redirects a parent who already has a family, and any kid session",
 });
 
 test("POST /api/family stores the chosen mode; omitting it keeps School Sync on", async () => {
-  const organizer = await request(newUser(), "POST", "/api/family", { name: "Organizer", plan: "screen_time", schoolSync: false });
+  const organizer = await request(newUser(), "POST", "/api/family", { name: "Organizer", inviteCode: "Test-Invite", schoolSync: false });
   assert.equal(organizer.status, 200);
   assert.equal(organizer.body.family.schoolSync, false);
+  assert.equal(organizer.body.family.plan, "full");
 
-  const legacy = await request(newUser(), "POST", "/api/family", { name: "Legacy", plan: "screen_time" });
+  // An older app build may still send the removed "screen_time" plan: ignored.
+  const legacy = await request(newUser(), "POST", "/api/family", { name: "Legacy", plan: "screen_time", inviteCode: "test-invite" });
   assert.equal(legacy.status, 200);
   assert.equal(legacy.body.family.schoolSync, true);
+  assert.equal(legacy.body.family.plan, "full");
+});
+
+test("POST /api/family needs an invite code unless signup already validated one", async () => {
+  const noCode = await request(newUser(), "POST", "/api/family", { name: "No code", plan: "screen_time" });
+  assert.equal(noCode.status, 403);
+  assert.equal(noCode.body.code, "invite_required");
+
+  const wrong = await request(newUser(), "POST", "/api/family", { name: "Wrong", inviteCode: "nope" });
+  assert.equal(wrong.status, 403);
+
+  const stamped = newUser();
+  stamped.data.inviteValidatedAt = new Date().toISOString();
+  const ok = await request(stamped, "POST", "/api/family", { name: "Stamped" });
+  assert.equal(ok.status, 200);
 });
 
 test("PATCH /api/family/school-sync: a parent toggles it, bad input and non-members are refused", async () => {

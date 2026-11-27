@@ -96,9 +96,7 @@
     clearPrivateView();
     const message = error.status === 401
       ? "Your sign-in has expired. Sign in again to manage displays."
-      : error.code === "upgrade_required"
-        ? "Household displays are part of the whole Fam ETC. Open Family settings to manage your family’s plan."
-        : error.code === "origin_not_allowed"
+      : error.code === "origin_not_allowed"
           ? "Open display settings at www.fametc.com to connect your Portal."
           : "A parent in this family must sign in to manage household displays.";
     pageMessage(message, true);

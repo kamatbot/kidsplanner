@@ -57,7 +57,6 @@ try {
 const trips = require("./lib/trips");
 const activities = require("./lib/activities");
 const notes = require("./lib/notes");
-const screenTime = require("./lib/screen-time");
 const news = require("./lib/news");
 const dailyPuzzles = require("./lib/daily-puzzles");
 const wordbank = require("./lib/wordbank");
@@ -68,7 +67,6 @@ const moodleClient = require("./lib/moodle-client");
 const notifications = require("./lib/fam-notifications");
 const { rpForRequest, toB64url, fromB64url } = require("./lib/webauthn");
 const reviewerAccount = require("./lib/reviewer-account");
-const hubGate = require("./lib/hub-gate");
 
 // One-time cleanup (2026-07-11): wipe all synced school-calendar
 // subscriptions + cached events so families start fresh; guarded by a
@@ -460,23 +458,6 @@ function requireFamily(req, res, next) {
   next();
 }
 
-// Plan gate (docs/SCREEN-TIME-ONLY-PLAN.md §10.1): hub surfaces need the "full"
-// plan. Same role/family resolution as requireFamily, but tolerant of anonymous
-// requests and family-less users so each route's own guard still answers them.
-const requireHub = hubGate.createRequireHub({ currentUser, family, userRole });
-
-// The family a signed-in user belongs to (parents via parentIds, kids via link).
-function familyForUser(user) {
-  if (!user) return null;
-  if (userRole(user) === "kid") return family.familyForKidUser(user);
-  return family.familiesForUser(user.id)[0] || null;
-}
-// True for a signed-in member of a Screen Time-only family (web is app-only).
-function isScreenTimeOnlyUser(user) {
-  const fam = familyForUser(user);
-  return !!fam && !family.isFull(fam);
-}
-
 function isMobileClient(req) {
   const secret = process.env.IOS_CLIENT_SECRET || process.env.MOBILE_CLIENT_SECRET;
   if (secret) {
@@ -677,17 +658,14 @@ function friendlyDate(ymd) {
 // Each module destructures only what it uses.
 const routeDeps = {
   store, db, billing, backupCodes, analytics, family, chat, hermes, kidAccess, events, gifs,
-  schoolFeeds, homework, goals, actions, studentSupport, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications, screenTime,
-  requireAuth, requireParent, requireFamily, requireHub, requireAdmin, requireOperatorAdmin,
+  schoolFeeds, homework, goals, actions, studentSupport, decisions, watchAuth, meals, recipes, trips, activities, notes, news, dailyPuzzles, wordbank, brainteaser, schoolAccount, schoolApi, moodleClient, notifications,
+  requireAuth, requireParent, requireFamily, requireAdmin, requireOperatorAdmin,
   apiLimiter, gifLimiter, authLimiter, signupLimiter, buzzLimiter,
   generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse,
   rpForRequest, toB64url, fromB64url, upload, crypto,
   userRole, kidIdForUser, friendlyDate, isIOSClient, deviceLabelFromUA, publicProfile,
   currentUser, rateLimit, envNum, CANONICAL_HOST,
 };
-// Plan gate: every hub prefix is refused to Screen Time families before any
-// hub route module sees the request (see lib/hub-gate.js for the lists).
-app.use(hubGate.HUB_PREFIXES, requireHub);
 require("./lib/routes/billing")(app, routeDeps);
 require("./lib/routes/auth")(app, routeDeps);
 require("./lib/routes/family")(app, routeDeps);
@@ -715,8 +693,6 @@ require("./lib/routes/child-insights")(app, routeDeps);
 require("./lib/routes/fams")(app, routeDeps);
 require("./lib/routes/school")(app, routeDeps);
 require("./lib/routes/push")(app, routeDeps);
-require("./lib/routes/screen-time")(app, routeDeps);
-require("./lib/routes/home-network")(app, routeDeps);
 require("./lib/routes/ai")(app, routeDeps);
 
 // ===================== PAGES =====================
@@ -829,10 +805,7 @@ app.get("/privacy", (req, res) => sendPage(req, res, "privacy.html", PUB));
 app.get("/terms", (req, res) => sendPage(req, res, "terms.html", PUB));
 app.get("/pricing", (req, res) => sendPage(req, res, "pricing.html", PUB));
 app.get("/help", (req, res) => sendPage(req, res, "help.html", PUB));
-// Screen Time-only families get one page on the web (D4): "lives in the app".
-const sendAppOnly = (req, res) => sendPage(req, res, "app-only.html");
 app.get("/finance", requireAuth, requireFamily, (req, res) => {
-  if (isScreenTimeOnlyUser(req.user)) return sendAppOnly(req, res);
   if (userRole(req.user) === "parent") {
     const kid = req.family.kids.find(k => k.id === req.query.kidId) || req.family.kids[0];
     return res.redirect(kid ? "/?child=" + encodeURIComponent(kid.id) : "/?tab=settings");
@@ -842,7 +815,6 @@ app.get("/finance", requireAuth, requireFamily, (req, res) => {
 app.get("/security", requireAuth, (req, res) => sendPage(req, res, "security.html"));
 app.get("/displays", requireAuth, (req, res) => {
   res.set("X-Robots-Tag", "noindex, nofollow");
-  if (isScreenTimeOnlyUser(req.user)) return sendAppOnly(req, res);
   // The page contains no family data; its APIs enforce interactive-parent
   // access and return a useful role/setup error to signed-in non-parents.
   sendPage(req, res, "displays.html");
@@ -853,7 +825,6 @@ app.get("/billing", requireAuth, requireParent, (req, res) => sendPage(req, res,
 // renders. /trips/join/:code is the invite-link landing page and must stay
 // PUBLIC (signed-out visitors need to see it before signing up/in).
 app.get(["/trips", "/trips/:id"], requireAuth, (req, res) => {
-  if (isScreenTimeOnlyUser(req.user)) return sendAppOnly(req, res);
   sendPage(req, res, "trips.html");
 });
 app.get("/trips/join/:code", (req, res) => sendPage(req, res, "trip-join.html", PUB));
@@ -861,13 +832,11 @@ app.get("/trips/join/:code", (req, res) => sendPage(req, res, "trip-join.html", 
 // meals.html is built by another agent — sendPage 404s gracefully until then.
 // Parents get the full planner; kids get the family shopping surface only.
 app.get("/meals", requireAuth, requireFamily, (req, res) => {
-  if (isScreenTimeOnlyUser(req.user)) return sendAppOnly(req, res);
   sendPage(req, res, "meals.html");
 });
 app.get("/", (req, res) => {
   const user = currentUser(req);
   if (!user) return sendPage(req, res, "landing.html", PUB);
-  if (isScreenTimeOnlyUser(user)) return sendAppOnly(req, res);
   sendPage(req, res, "index.html");
 });
 // Beta preview of the Family OS web redesign (branch feat/web-family-os-redesign).
@@ -877,7 +846,6 @@ app.get(["/beta", "/beta/"], (req, res) => {
   res.set("X-Robots-Tag", "noindex, nofollow");
   const user = currentUser(req);
   if (!user) return res.redirect("/login?next=" + encodeURIComponent("/beta"));
-  if (isScreenTimeOnlyUser(user)) return sendAppOnly(req, res);
   sendPage(req, res, "beta.html");
 });
 app.get("/favicon.ico", (req, res) => res.status(204).end());
@@ -885,7 +853,6 @@ app.get("/favicon.ico", (req, res) => res.status(204).end());
 // SPA fallback for authenticated app routes (goals/activities/settings live
 // in the same shell — see HybridWebView tabs in the iOS brief).
 app.get(["/app", "/app/*", "/goals", "/activities", "/settings"], requireAuth, (req, res) => {
-  if (isScreenTimeOnlyUser(req.user)) return sendAppOnly(req, res);
   sendPage(req, res, "index.html");
 });
 
@@ -896,8 +863,6 @@ const listenTarget = process.env.SOCKET_PATH || PORT;
 // Outside production (tests, local dev) it is a plain app.listen().
 function startBackgroundJobs() {
   schoolApi.startScheduler();
-  screenTime.startMonitor();
-  require("./lib/home-network").startMonitor();
   require("./lib/chat-attachments").startMaintenance();
   // Hermes reminders (school end, tonight's homework, dinner): decided here now
   // that no always-on Mac runs the old proactive loop. FAM_PROACTIVE=off stops it.
