@@ -1,7 +1,7 @@
 import SwiftUI
 import UserNotifications
 
-// The parent steps of onboarding (docs/SCREEN-TIME-ONLY-PLAN.md §2), one view each. Every view
+// The parent steps of onboarding, one view each. Every view
 // owns its own form state and talks to AuthService itself; `OnboardingView` only routes
 // between them and records progress. All of them sit in `OnbPage`, so iPad gets the
 // centred card and Dynamic Type just scrolls.
@@ -37,7 +37,7 @@ struct OnbWelcomeView: View {
     @State private var error: String?
     @State private var showBackupSignIn = false
 
-    /// Sleep, play and reading — the three things a screen time deal protects.
+    /// Reading, play and rest: the family days Fam ETC helps plan.
     private static let collage: [OnbStickerCollage.Item] = [
         .init(sticker: .sleepyCat, size: 0.66, x: 0.32, y: 0.56, tilt: -8),
         .init(sticker: .cyclingBunny, size: 0.54, x: 0.70, y: 0.32, tilt: 8),
@@ -49,8 +49,8 @@ struct OnbWelcomeView: View {
             OnbStickerCollage(items: Self.collage, hue: .violet, height: 196)
 
             OnbTitle(
-                title: "More sleep. More play. Fewer screen fights.",
-                subtitle: "Make a screen time deal with your kids — bedtime, daily limits and promises you agree on together. Free for any family."
+                title: "School, homework and family plans in one place.",
+                subtitle: "Calendars, homework, family chat, trips and meals for parents and kids. Invite-only for now."
             )
 
             VStack(spacing: Space.md) {
@@ -88,23 +88,19 @@ struct OnbWelcomeView: View {
         }
     }
 
-    /// Why families set screen time — plain family reasons, no statistics.
+    /// Why families use Fam ETC — plain family reasons, no statistics.
     private var whyItMatters: some View {
         VStack(alignment: .leading, spacing: Space.lg) {
             Text("Why it matters")
                 .font(Theme.font(22, weight: .bold, relativeTo: .title2))
                 .foregroundStyle(Palette.text)
                 .accessibilityAddTraits(.isHeader)
-            OnbReasonRow(sticker: .sleepyCat, hue: .violet, title: "Sleep comes first",
-                         detail: "Phones go to bed at bedtime too, so kids wake up ready for the day.")
-            OnbReasonRow(sticker: .readingBear, hue: .teal, title: "Time for everything",
-                         detail: "Homework, play and friends each get their turn — not just the screen.")
-            OnbReasonRow(sticker: .gratefulOtter, hue: .pink, title: "Rules you make together",
-                         detail: "Kids help set the deal and sign it with you, so it feels fair to everyone.")
-            Text("Want school calendars, homework and family chat too? Add the whole Fam ETC any time.")
-                .font(Typography.label)
-                .foregroundStyle(Palette.textSecond)
-                .fixedSize(horizontal: false, vertical: true)
+            OnbReasonRow(sticker: .readingBear, hue: .teal, title: "Homework on track",
+                         detail: "Due dates, small steps and a calm nudge, so evenings run smoother.")
+            OnbReasonRow(sticker: .cyclingBunny, hue: .violet, title: "One family calendar",
+                         detail: "School events, clubs and pick-ups for everyone, in one place.")
+            OnbReasonRow(sticker: .gratefulOtter, hue: .pink, title: "Chat that stays in the family",
+                         detail: "Quick messages, voice notes and Buzz for everyone at home.")
         }
         .padding(.top, Space.xl)
     }
@@ -147,89 +143,34 @@ struct OnbChooseView: View {
     let onBack: () -> Void
     let onPick: (OnboardingPlan) -> Void
 
-    @State private var fullOpen: Bool
-
-    init(inviteCode: Binding<String>, inviteMessage: Binding<String?>,
-         onBack: @escaping () -> Void, onPick: @escaping (OnboardingPlan) -> Void) {
-        _inviteCode = inviteCode
-        _inviteMessage = inviteMessage
-        self.onBack = onBack
-        self.onPick = onPick
-        // Come back with the card open when the code was wrong (or already typed).
-        _fullOpen = State(initialValue: inviteMessage.wrappedValue != nil || !inviteCode.wrappedValue.isEmpty)
-    }
-
     private var trimmedCode: String { inviteCode.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         OnbPage(onBack: onBack) {
-            OnbTitle(title: "Where would you like to start?",
-                     subtitle: "Both include Screen Time. Pick the one that fits.")
+            OnbTitle(title: "Have an invite code?",
+                     subtitle: "Fam ETC is invite-only for now. Enter the code you were given.")
 
-            screenTimeCard
-            fullCard
-
-            Text("You can add the whole Fam ETC later.")
-                .font(Typography.label)
-                .foregroundStyle(Palette.textSecond)
-                .frame(maxWidth: .infinity, alignment: .center)
-        }
-    }
-
-    private var screenTimeCard: some View {
-        Button { onPick(.screenTime) } label: {
-            HStack(alignment: .top, spacing: Space.lg) {
-                OnbStickerBadge(sticker: .sleepyCat, hue: .violet, size: 64)
-                VStack(alignment: .leading, spacing: Space.sm) {
-                    HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                        Text("Screen Time")
-                            .font(Typography.cardTitle)
-                            .foregroundStyle(Palette.text)
-                        Spacer(minLength: Space.sm)
-                        OnbBadge(text: "Free")
-                    }
-                    Text("Bedtime, daily limits and a deal you make together. For any family.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.textSecond)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                }
-            }
-            .onbPanel()
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Starts with the free Screen Time plan.")
-        .accessibilityIdentifier(OnbID.chooseScreenTime)
-    }
-
-    private var fullCard: some View {
-        VStack(alignment: .leading, spacing: Space.md) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { fullOpen.toggle() }
-            } label: {
+            VStack(alignment: .leading, spacing: Space.md) {
                 HStack(alignment: .top, spacing: Space.lg) {
                     OnbStickerBadge(sticker: .rainbow, hue: .orange, size: 64)
                     VStack(alignment: .leading, spacing: Space.sm) {
                         HStack(alignment: .firstTextBaseline, spacing: Space.sm) {
-                            Text("The whole Fam ETC")
+                            Text("Fam ETC")
                                 .font(Typography.cardTitle)
                                 .foregroundStyle(Palette.text)
                             Spacer(minLength: Space.sm)
                             OnbBadge(text: "Invite code")
                         }
-                        Text("School calendar, homework, family chat, trips, meals — plus Screen Time.")
+                        Text("School calendar, homework, family chat, trips and meals.")
                             .font(Typography.body)
                             .foregroundStyle(Palette.textSecond)
                             .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
                     }
                 }
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint(fullOpen ? "Hides the invite code field." : "Shows a field for your invite code.")
-            .accessibilityIdentifier(OnbID.chooseFull)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(OnbID.chooseFull)
 
-            if fullOpen {
                 OnbTextField(title: "Invite code", prompt: "Enter your invite code", text: $inviteCode,
                              capitalization: .never, submitLabel: .go, onSubmit: continueFull,
                              identifier: OnbID.chooseInvite)
@@ -240,8 +181,17 @@ struct OnbChooseView: View {
                 OnbPrimaryButton(title: "Continue", enabled: !trimmedCode.isEmpty, action: continueFull)
                     .accessibilityIdentifier(OnbID.chooseContinue)
             }
+            .onbPanel(selected: true)
+
+            // A co-parent joins with their partner's parent code on the Family step,
+            // so they need no invite code here.
+            OnbLinkButton(title: "Joining your partner's family? Continue without a code") {
+                inviteCode = ""
+                inviteMessage = nil
+                onPick(.full)
+            }
+            .accessibilityIdentifier(OnbID.chooseNoCode)
         }
-        .onbPanel(selected: fullOpen)
     }
 
     private func continueFull() {
@@ -294,7 +244,8 @@ struct OnbAccountView: View {
         let name = parentName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { error = "Please enter your name."; return }
         busy = true; error = nil
-        let code: String? = plan == .full ? inviteCode : nil
+        let trimmedCode = inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let code: String? = trimmedCode.isEmpty ? nil : trimmedCode
         let chosen = plan
         Task {
             do {
@@ -333,9 +284,9 @@ struct OnbFamilyView: View {
     @State private var joinCode = ""
     @State private var busy = false
     @State private var error: String?
-    /// Set when the server refused the whole plan for want of an invite code.
-    @State private var offerScreenTime = false
-    @State private var planOverride: OnboardingPlan?
+    /// Set when the server refused to create a family for want of an invite code.
+    @State private var needsInvite = false
+    @State private var inviteEntry = ""
 
     init(plan: OnboardingPlan?, inviteCode: String, suggestedName: String,
          step: Int? = nil, steps: Int = 0, onDone: @escaping (OnbFamilyOutcome) -> Void) {
@@ -372,15 +323,13 @@ struct OnbFamilyView: View {
                     .accessibilityIdentifier(OnbID.familyCreate)
             }
 
-            if let error { OnbErrorText(message: error) }
-
-            if offerScreenTime && !joinOpen {
-                OnbSecondaryButton(title: "Start with Screen Time instead") {
-                    planOverride = .screenTime
-                    offerScreenTime = false
-                    create()
-                }
+            if needsInvite && !joinOpen {
+                OnbTextField(title: "Invite code", prompt: "Enter your invite code", text: $inviteEntry,
+                             capitalization: .never, submitLabel: .go, onSubmit: create,
+                             identifier: OnbID.familyInvite)
             }
+
+            if let error { OnbErrorText(message: error) }
 
             OnbLinkButton(title: joinOpen ? "Creating a new family instead? Go back"
                                           : "Joining your partner's family? Enter their parent invite code",
@@ -388,7 +337,6 @@ struct OnbFamilyView: View {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     joinOpen.toggle()
                     error = nil
-                    offerScreenTime = false
                 }
             }
             .accessibilityIdentifier(OnbID.familyJoinToggle)
@@ -397,16 +345,17 @@ struct OnbFamilyView: View {
 
     private func create() {
         guard !busy else { return }
-        busy = true; error = nil; offerScreenTime = false
-        let chosen = planOverride ?? plan
+        busy = true; error = nil
+        let chosen = plan
         let trimmed = familyName.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = trimmed.isEmpty ? "Our family" : trimmed
-        let code: String? = chosen == .full ? inviteCode : nil
+        let typed = (needsInvite ? inviteEntry : inviteCode).trimmingCharacters(in: .whitespacesAndNewlines)
+        let code: String? = typed.isEmpty ? nil : typed
         Task {
             do {
                 let fam = try await AuthService.shared.createFamily(
                     name: name,
-                    plan: chosen?.rawValue,
+                    plan: nil,
                     inviteCode: code,
                     timezone: TimeZone.current.identifier
                 )
@@ -432,8 +381,10 @@ struct OnbFamilyView: View {
         await MainActor.run {
             busy = false
             if let e = error as? AuthServerError, e.isInviteRequired {
-                self.error = "The whole Fam ETC needs an invite code. You can start with Screen Time and upgrade later."
-                offerScreenTime = true
+                self.error = needsInvite
+                    ? "That invite code didn't work. Check it and try again."
+                    : "Creating a family needs an invite code. Enter it above, or join your partner's family."
+                needsInvite = true
             } else {
                 self.error = OnbErrors.friendly(error)
             }
@@ -447,7 +398,7 @@ struct OnbFamilyView: View {
         busy = true; error = nil
         Task {
             do {
-                // The plan is inherited from the family; no invite code is needed.
+                // Joining a partner's family needs no invite code.
                 let fam = try await AuthService.shared.joinFamily(code: code)
                 let outcome = OnbFamilyOutcome(plan: OnboardingPlan(serverValue: fam["plan"] as? String),
                                                joined: true, kidNames: onbKidNames(from: fam))
@@ -632,7 +583,7 @@ struct OnbNotificationsView: View {
     var body: some View {
         OnbPage(hero: .paperPlane, hue: .violet, step: step, steps: steps) {
             OnbTitle(title: "Stay in the loop",
-                     subtitle: "Get a nudge when a kid asks for more time or a device needs a look. You can change this any time in Settings.")
+                     subtitle: "Get a nudge for family chat, homework and when a kid asks to sign in. You can change this any time in Settings.")
 
             OnbPrimaryButton(title: "Turn on notifications", busy: busy, action: enable)
                 .accessibilityIdentifier(OnbID.notificationsEnable)
@@ -651,82 +602,5 @@ struct OnbNotificationsView: View {
             if granted { PushRegistrationService.shared.requestAuthorizationAndRegister() }
             await MainActor.run { busy = false; onDone() }
         }
-    }
-}
-
-// MARK: - Device setup
-
-struct OnbDevicesView: View {
-    /// Position in the setup progress bar (1-based); nil hides it.
-    var step: Int? = nil
-    var steps: Int = 0
-    /// "Do it later" (Home keeps the checklist pinned) or the end of the list.
-    let onLater: () -> Void
-
-    @Environment(AppStore.self) private var store
-    @State private var ready = false
-
-    var body: some View {
-        // The checklist is a screen by itself (it draws its own scroll view, canvas and iPad
-        // width), so the heading and "Do it later" are pinned above and below it.
-        Group {
-            if ready {
-                DeviceSetupChecklistView(kidIds: nil)
-            } else {
-                ProgressView("Getting your kids' setup ready…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Palette.bg.ignoresSafeArea())
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) { header }
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
-        .task {
-            // The checklist reads the family's kids; make sure the account that was just
-            // created is loaded. (It loads the Screen Time overview itself.)
-            await store.load()
-            ready = true
-        }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Space.sm) {
-            OnbBrand()
-            if let step, steps > 0 { OnbStepProgress(current: step, total: steps) }
-            HStack(alignment: .center, spacing: Space.md) {
-                OnbStickerBadge(sticker: .spaceRocket, hue: .orange, size: 58)
-                VStack(alignment: .leading, spacing: Space.xs) {
-                    Text("Set up each kid's device")
-                        .font(Typography.title)
-                        .foregroundStyle(Palette.text)
-                        .accessibilityAddTraits(.isHeader)
-                    Text("This is where your deal comes to life — sit down together with each kid.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Text("Follow these steps for each kid. You can pick this up later from Home.")
-                .font(Typography.label)
-                .foregroundStyle(Palette.textSecond)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-        .padding(.horizontal, Space.xl)
-        .padding(.top, Space.sm)
-        .padding(.bottom, Space.md)
-        .frame(maxWidth: 640, alignment: .leading)
-        .frame(maxWidth: .infinity)
-        .background(Palette.bg)
-    }
-
-    private var footer: some View {
-        OnbSecondaryButton(title: "Do it later", action: onLater)
-            .accessibilityIdentifier(OnbID.devicesLater)
-            .padding(.horizontal, Space.xl)
-            .padding(.top, Space.md)
-            .padding(.bottom, Space.lg)
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
-            .background(.ultraThinMaterial)
     }
 }

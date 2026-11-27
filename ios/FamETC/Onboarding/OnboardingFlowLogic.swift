@@ -1,17 +1,19 @@
 import Foundation
 
-// Pure, UI-free pieces of the onboarding flow (docs/SCREEN-TIME-ONLY-PLAN.md §2/§3):
+// Pure, UI-free pieces of the onboarding flow:
 // the step order, where to resume after a relaunch, the kid setup-code alphabet,
 // and the family-name suggestion. Kept free of SwiftUI so they can be unit-tested.
 
-/// Which product a new family is on. Raw values are the server's `family.plan`.
+/// Which product a new family is on. Every family is the whole Fam ETC now: the free
+/// Screen Time plan was removed (parental controls live in Canopy). Kept as a type so the
+/// stored progress marker and the step views keep one shape; a stored "screen_time"
+/// value no longer decodes and simply reads as unknown.
 enum OnboardingPlan: String, Equatable {
-    case screenTime = "screen_time"
     case full
 
-    /// Absent or unknown (older server / cache) means the whole Fam ETC, like `Family.productPlan`.
+    /// Whatever the server says, the family is the whole Fam ETC.
     init(serverValue: String?) {
-        self = serverValue == "screen_time" ? .screenTime : .full
+        self = .full
     }
 }
 
@@ -22,9 +24,9 @@ enum OnboardingStep: Int, Comparable, CaseIterable {
 
     static func < (lhs: OnboardingStep, rhs: OnboardingStep) -> Bool { lhs.rawValue < rhs.rawValue }
 
-    /// The step after this one, or nil when onboarding is complete. The device-setup
-    /// checklist belongs to the Screen Time plan only: the whole-Fam-ETC path keeps
-    /// today's behaviour and ends after notifications.
+    /// The step after this one, or nil when onboarding is complete. `devices` was the
+    /// Screen Time device checklist; it stays in the enum only so a stored raw value
+    /// still decodes, and is never shown.
     func next(plan: OnboardingPlan) -> OnboardingStep? {
         switch self {
         case .welcome: return .choose
@@ -33,7 +35,7 @@ enum OnboardingStep: Int, Comparable, CaseIterable {
         case .family: return .kids
         case .kids: return .recovery
         case .recovery: return .notifications
-        case .notifications: return plan == .screenTime ? .devices : nil
+        case .notifications: return nil
         case .devices: return nil
         }
     }
@@ -63,7 +65,7 @@ enum OnboardingResolver {
         guard active else { return .finish }
         let serverFloor: OnboardingStep = kidCount == 0 ? .kids : .recovery
         let step = max(serverFloor, marker ?? .family)
-        if step == .devices && plan != .screenTime { return .finish }
+        if step == .devices { return .finish }
         return .step(step)
     }
 }

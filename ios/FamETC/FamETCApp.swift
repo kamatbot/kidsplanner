@@ -6,7 +6,7 @@ struct FamETCApp: App {
     // Persisted across launches: native onboarding shows once, then the native app
     // shell (RootView) is the home. Onboarding creates/joins a family server-side
     // via AuthService + APIClient, so the store just loads it. RootView then picks the
-    // layout for the family's plan (Screen Time or the whole Fam ETC); a relaunch
+    // app layout; a relaunch
     // mid-onboarding resumes at the first unfinished step (see OnboardingView).
     @AppStorage("fam_onboarded") private var onboarded = false
     @State private var store = AppStore()
@@ -68,7 +68,7 @@ struct FamETCApp: App {
 ///   FAM_THEME       "light" | "dark"                   — force the app theme
 ///   FAM_SCREEN      today|chat|calendar|homework        — deep-link target tab
 ///   FAM_RESET_ENERGY "1"                               — forget today's energy check-in answers
-///   FAM_ONBOARDING_STEP choose|account|family|kids|notifications|devices — open setup at that step
+///   FAM_ONBOARDING_STEP choose|account|family|kids|notifications — open setup at that step
 ///   FAM_KID_STAGE   code|hello|waiting|approved|denied|expired|familyCode — open the kid flow there (as "Mia")
 enum DebugLaunch {
     private static var env: [String: String] { ProcessInfo.processInfo.environment }
@@ -76,7 +76,7 @@ enum DebugLaunch {
     /// The deep-link target screen for this launch (read by RootView).
     static var screen: String? { env["FAM_SCREEN"] }
 
-    /// QA screenshots: open parent onboarding at this step on the Screen Time plan.
+    /// QA screenshots: open parent onboarding at this step.
     static var onboardingStep: OnboardingStep? {
         guard let name = env["FAM_ONBOARDING_STEP"] else { return nil }
         return OnboardingStep.allCases.first { "\($0)" == name }

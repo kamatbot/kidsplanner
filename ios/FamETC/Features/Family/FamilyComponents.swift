@@ -1,8 +1,7 @@
 import SwiftUI
 
-// Small shared pieces for the Screen Time plan screens (Home, setup checklist, Family,
-// kid home). Family Rings tokens only: violet for actions, cards on the grey canvas,
-// Geist type, 44 pt touch targets. Nothing here is plan logic.
+// Small shared pieces for the native Family & account screens. Family Rings tokens only:
+// violet for actions, cards on the grey canvas, Geist type, 44 pt touch targets.
 
 /// The look of a capsule action. `prominent` is the one primary action of a card;
 /// `secondary` is an outlined capsule; `quiet` is text only.
@@ -83,24 +82,23 @@ struct PlanErrorLine: View {
     }
 }
 
-/// Page scaffold for the plan's native screens: the grey canvas, a readable column on wide
-/// screens (never a stretched phone layout) and a 16 pt gutter on phones.
-struct PlanPage<Content: View>: View {
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    var maxWidth: CGFloat = 720
-    @ViewBuilder var content: () -> Content
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: sizeClass == .regular ? Space.xl : Space.lg) {
-                content()
-            }
-            .padding(.horizontal, sizeClass == .regular ? Space.xxl : Space.lg)
-            .padding(.vertical, Space.lg)
-            .frame(maxWidth: maxWidth)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .background(ScreenBackground())
+/// How a kid sign-in code is shown: one character per tile, plus a countdown.
+enum SetupCodeDisplay {
+    /// "ABC123" -> ["A", "B", "C", "1", "2", "3"]; spaces and dashes are never part of a code.
+    static func characters(_ code: String) -> [String] {
+        code.filter { !$0.isWhitespace && $0 != "-" }.map { String($0).uppercased() }
     }
+
+    /// "28:41" — never negative; an hour or more reads "1:02:03".
+    static func countdown(remaining: TimeInterval) -> String {
+        let total = max(0, Int(remaining.rounded(.down)))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+}
+
+enum FamETCLinks {
+    /// The public App Store listing (same link as fametc.com's landing page).
+    static let appStore = URL(string: "https://apps.apple.com/us/app/fam-etc-family-planner-chat/id6787317215")!
 }

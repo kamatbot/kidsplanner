@@ -509,7 +509,7 @@
   color: var(--fr-on-you);
 }
 
-/* Unified extra action signals (Screen Time, Hermes, Decisions, Drivers, Packing) */
+/* Unified extra action signals (Hermes, Decisions, Drivers, Packing) */
 .fos-unified-inbox {
   display: flex;
   flex-direction: column;
@@ -830,17 +830,6 @@
   font-size: 16px;
 }
 
-.fos-kid-st-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--fr-rule);
-  font-size: 12px;
-  color: var(--fr-ink-2);
-}
-
 /* ---------- 9. COLLAPSIBLE TABLE TALK (PARENT DAILY 4) ---------- */
 .fos-learning-shell {
   display: flex;
@@ -1147,42 +1136,3 @@
     overflow-x: auto;
   }
 }
-
-/* ---------- Kid "Ask a parent" (more time / stay up later) ---------- */
-.fos-kid-ask {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, var(--fr-you-soft), var(--fr-card));
-  border: 1px solid var(--fr-rule);
-}
-.fos-kid-ask[hidden] { display: none !important; }
-.fos-ask-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.fos-ask-title { margin-top: 3px; font-size: 17px; font-weight: 700; color: var(--fr-ink); }
-.fos-ask-badge {
-  display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px;
-  font-size: 11px; font-weight: 700; background: var(--fr-you-soft); color: var(--fr-ink);
-}
-.fos-ask-picker { display: flex; flex-direction: column; gap: 10px; }
-.fos-ask-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.fos-ask-chip {
-  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-  min-width: 68px; min-height: 52px; padding: 6px 12px; border-radius: 16px;
-  border: 1.5px solid var(--fr-rule); background: var(--fr-card); color: var(--fr-ink);
-  font: inherit; font-size: 16px; font-weight: 700; cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.12s ease;
-}
-.fos-ask-chip small { font-size: 11px; font-weight: 600; color: var(--fr-ink-2); }
-.fos-ask-chip:hover { transform: translateY(-1px); border-color: var(--fr-you); }
-.fos-ask-chip.is-on { border-color: var(--fr-you); background: color-mix(in srgb, var(--fr-you) 14%, var(--fr-card)); }
-.fos-ask-note {
-  width: 100%; min-height: 38px; padding: 0 12px; border-radius: 12px;
-  border: 1px solid var(--fr-rule); background: var(--fr-card); color: var(--fr-ink); font: inherit; font-size: 14px;
-}
-.fos-ask-send { display: flex; gap: 8px; }
-.fos-ask-send .fos-btn-primary[disabled] { opacity: 0.45; cursor: default; }
-.fos-kid-st-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.fos-st-bed.is-on { border-color: var(--fr-you); color: var(--fr-ink); background: var(--fr-you-soft); }
-@media (prefers-reduced-motion: reduce) { .fos-ask-chip { transition: none; } .fos-ask-chip:hover { transform: none; } }

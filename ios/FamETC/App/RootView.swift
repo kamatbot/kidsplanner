@@ -57,8 +57,8 @@ enum Tab: String, CaseIterable, Identifiable {
 }
 
 /// Signs the user out from anywhere under `RootView` (clears private content, revokes the
-/// server session, returns to onboarding). Injected for the Screen Time plan layout, whose
-/// native Family screen has no sidebar footer to host the button.
+/// server session, returns to onboarding). Used by the native Family & account settings,
+/// which have no sidebar footer to host the button.
 private struct FamSignOutKey: EnvironmentKey {
     static let defaultValue: () -> Void = {}
 }
@@ -80,29 +80,7 @@ struct RootView: View {
     @State private var signingOut = false
     @State private var showHermesGoals = false
     @State private var showFamilyAccount = false
-    @State private var screenTimeKid: ScreenTimeKidRoute?
     private struct AssistanceChildRoute: Identifiable { let id: String }
-    private struct ScreenTimeKidRoute: Identifiable { let id: String }
-
-    /// Parent-only: opens the Screen Time controls for a kid. "Review" must always do
-    /// something, so there is no family-membership guard here: the controls render
-    /// "isn't available right now" for a kid this family doesn't have (yet).
-    private func openScreenTime(kidId: String?) {
-        guard let kidId, !store.needsAuth, store.isParent else { return }
-        selection = .today
-        screenTimeKid = ScreenTimeKidRoute(id: kidId)
-    }
-
-    private func loadScreenTime() async {
-        guard !store.needsAuth, store.me != nil else { return }
-        if store.isParent {
-            await ScreenTimeService.shared.loadOverview()
-            openScreenTime(kidId: NotificationHandler.shared.consumePendingScreenTimeKidId())
-        } else {
-            ScreenTimeService.shared.startObserving()
-            await ScreenTimeService.shared.sync(source: "app")
-        }
-    }
 
     private func openAssistanceRoute(_ url: URL) {
         guard url.scheme == "https", let host = url.host?.lowercased(),
@@ -115,8 +93,7 @@ struct RootView: View {
             return
         }
         pendingAssistanceURL = nil
-        // The parent attention sheet is hub content; the Screen Time plan has none.
-        guard !store.needsAuth, store.productPlan == .full, store.assistanceIdentityVerified, let user = store.me, user.role != "kid",
+        guard !store.needsAuth, store.assistanceIdentityVerified, let user = store.me, user.role != "kid",
               store.family?.parentIds.contains(user.id) == true,
               store.kids.contains(where: { $0.id == id }) else { return }
         selection = .today
@@ -127,12 +104,6 @@ struct RootView: View {
     var body: some View {
         Group {
             if signingOut { ProgressView("Signing out…").frame(maxWidth: .infinity, maxHeight: .infinity) }
-            else if store.productPlan == .screenTime {
-                // Screen Time plan: its own native shell. Every modifier below
-                // (banners, deep links, Screen Time load, reauth, sign-out) wraps
-                // whichever layout is active.
-                ScreenTimePlanRootView()
-            }
             else { adaptiveLayout }
         }
         .environment(\.famSignOut, { signOut() })
@@ -145,27 +116,19 @@ struct RootView: View {
         .sheet(item: $assistanceChild) { route in
             ParentAttentionSheet(childID: route.id)
         }
-        // Full screen with the kid sidebar at regular width (iPad), a large sheet on iPhone.
-        .screenTimeControlsCover(item: $screenTimeKid) { route in
-            ScreenTimeParentSheet(initialKidId: route.id).tint(Palette.frYou)
-        }
         .onChange(of: store.isRefreshing) { _, refreshing in
             guard !refreshing else { return }
             if store.assistanceIdentityVerified, let url = pendingAssistanceURL { openAssistanceRoute(url) }
             else { pendingAssistanceURL = nil }
         }
-        .onChange(of: store.me?.id) { _, _ in assistanceChild = nil; screenTimeKid = nil }
+        .onChange(of: store.me?.id) { _, _ in assistanceChild = nil }
         .onChange(of: store.needsAuth) { _, needsAuth in
-            if needsAuth { assistanceChild = nil; pendingAssistanceURL = nil; screenTimeKid = nil }
+            if needsAuth { assistanceChild = nil; pendingAssistanceURL = nil }
         }
         // Parents: kids waiting to be let in appear as a banner above everything.
         .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                KidApprovalBanner()
-                    .animation(Motion.snappy, value: store.kidRequests.map(\.id))
-                ScreenTimeAlertBanner()
-                    .animation(Motion.snappy, value: ScreenTimeService.shared.bannerAlerts.map(\.id))
-            }
+            KidApprovalBanner()
+                .animation(Motion.snappy, value: store.kidRequests.map(\.id))
         }
         .task {
             await store.load()
@@ -181,7 +144,6 @@ struct RootView: View {
                 PushRegistrationService.shared.requestAuthorizationAndRegister()
                 #endif
             }
-            await loadScreenTime()
         }
         // A kid_access_request push (or returning to the foreground) refreshes the
         // pending list so the approval banner is current without waiting for a poll.
@@ -190,21 +152,8 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await store.refreshKidRequests() }
-            if store.isParent, !store.needsAuth, store.me != nil {
-                Task { await ScreenTimeService.shared.loadOverview() }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToScreenTime)) { note in
-            // Cold launch: the family isn't loaded yet, so leave the pending kid
-            // for `loadScreenTime()` in `.task` to consume.
-            guard store.me != nil, store.isParent else { return }
-            _ = NotificationHandler.shared.consumePendingScreenTimeKidId()
-            openScreenTime(kidId: note.userInfo?["kidId"] as? String)
-            Task { await ScreenTimeService.shared.loadOverview() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToChat)) { _ in
-            // Hub-only deep links (chat, trips, hermes, meals) are ignored on the Screen Time plan.
-            guard store.productPlan == .full else { _ = NotificationHandler.shared.consumePendingChatRoomId(); return }
             routeFromLiveChatNotification(fallbackRoomId: familyRoomId)
         }
         // Trips (docs/TRIPS-PLAN.md) push routing: surface the Chat tab/room.
@@ -212,14 +161,12 @@ struct RootView: View {
         // room) once `store.pendingChatRoomId` matches a room it knows about —
         // see `AppStore.pendingChatRoomId`.
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToTripChat)) { note in
-            guard store.productPlan == .full else { _ = NotificationHandler.shared.consumePendingChatRoomId(); return }
             guard let tripId = note.userInfo?["tripId"] as? String else { return }
             routeFromLiveChatNotification(fallbackRoomId: "trip:\(tripId)")
         }
         // meal_prep push (docs/HERMES-THREADS-CONTRACT.md §4): no Planning→Meals
         // deep link exists yet, so this lands on Today.
         .onReceive(NotificationCenter.default.publisher(for: .famDeepLinkToToday)) { _ in
-            guard store.productPlan == .full else { return }
             selection = .today
         }
         // A tapped hermes-nudge card's `open` action (docs/HERMES-THREADS-CONTRACT.md
@@ -228,7 +175,6 @@ struct RootView: View {
         .onChange(of: store.pendingHermesOpen) { _, target in
             guard let target else { return }
             store.pendingHermesOpen = nil
-            guard store.productPlan == .full else { return }
             switch target {
             case .today: selection = .today
             case .homework: selection = .homework
@@ -254,7 +200,6 @@ struct RootView: View {
     }
 
     private func routeToChat(roomId: String) {
-        guard store.productPlan == .full else { return }
         selection = .chat
         store.pendingChatRoomId = roomId
     }
@@ -346,7 +291,6 @@ struct RootView: View {
         signingOut = true
         assistanceChild = nil
         pendingAssistanceURL = nil
-        screenTimeKid = nil
         // Unmount private native/web content before the network revocation wait.
         store.signedOut()
         Task {

@@ -35,7 +35,7 @@ test("buildCommandBrief synthesizes parent insights/signals and strictly isolate
   const { buildCommandBrief } = require("../lib/command-brief");
 
   const parent = store.createUser("Ananya");
-  const created = family.createFamily(parent.id, "Kamat Family", { timezone: "Asia/Bangkok", plan: "full" });
+  const created = family.createFamily(parent.id, "Kamat Family", { timezone: "Asia/Bangkok" });
   const famId = created.id;
   const maya = family.addKid(famId, parent.id, { name: "Maya", grade: "6th Grade", color: "#0EA58C" }).kid;
   const leo = family.addKid(famId, parent.id, { name: "Leo", grade: "3rd Grade", color: "#D99A00" }).kid;
@@ -105,11 +105,10 @@ test("buildCommandBrief synthesizes parent insights/signals and strictly isolate
   const kidBrief = buildCommandBrief({ family: fam, user: kidUser, isParent: false, kidId: maya.id, now });
   assert.equal(kidBrief.role, "kid");
   assert.equal(kidBrief.home.dinner, null, "kid brief never exposes parent-only dinner management");
-  assert.deepEqual(kidBrief.screenTimeKids, {}, "kid brief never exposes parent Screen Time overview");
   assert.equal(kidBrief.pendingKidAccessCount, 0, "kid brief never exposes parent access requests");
   assert.ok(kidBrief.kidFocus && kidBrief.kidFocus.title === "Fractions Worksheet", "kid gets own next homework focus");
   assert.ok(!kidBrief.runsheet.today.some((e) => e.kidId === leo.id), "kid runsheet never includes sibling events");
-  assert.ok(!kidBrief.unifiedSignals.some((s) => s.kind === "driver_gap" || s.kind === "screen_time_alert" || s.kind === "screen_time_request" || s.kind === "hermes_nudge"), "kid never receives parent-only unified signals");
+  assert.ok(!kidBrief.unifiedSignals.some((s) => s.kind === "driver_gap" || s.kind === "hermes_nudge"), "kid never receives parent-only unified signals");
   assert.ok(kidBrief.unifiedSignals.some((s) => s.kind === "decision"), "kid still sees shared family decisions");
 });
 
@@ -133,7 +132,7 @@ test("Web Family OS shell & assets keep fam_ keys and zero legacy prefixes", () 
   }
 });
 
-test("GET /api/command/brief enforces auth, hub-plan gate, and serves live Family OS web assets", async (t) => {
+test("GET /api/command/brief enforces auth and serves live Family OS web assets", async (t) => {
   process.env.PORT = "0";
   process.env.SESSION_SECRET = "command-brief-http-test-secret-012345";
   process.env.NODE_ENV = "test";
@@ -162,9 +161,9 @@ test("GET /api/command/brief enforces auth, hub-plan gate, and serves live Famil
   assert.equal((await fetch(`${base}/css/family-os.css`)).status, 200);
   assert.equal((await fetch(`${base}/js/family-os.js`)).status, 200);
 
-  // Full-plan parent
+  // Parent
   const parent = store.createUser("parent-brief@example.com", "Ananya");
-  const fam = family.createFamily(parent.id, "Kamat Hub", { timezone: "Asia/Bangkok", plan: "full" });
+  const fam = family.createFamily(parent.id, "Kamat Hub", { timezone: "Asia/Bangkok" });
   const maya = family.addKid(fam.id, parent.id, { name: "Maya", grade: "6th Grade", color: "#0EA58C" }).kid;
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
   events.addEvent(fam.id, { title: "Football Practice", date: today, time: "16:00", endTime: "17:00", kidId: maya.id, createdBy: parent.id });
@@ -193,12 +192,10 @@ test("GET /api/command/brief enforces auth, hub-plan gate, and serves live Famil
   assert.ok(brief.unifiedSignals.some((s) => s.kind === "decision"));
   assert.equal(brief.weekWorkload.length, 7);
 
-  // Screen-Time-only family must be refused by hub-gate
-  const stParent = store.createUser("st-brief@example.com", "ST Parent");
-  family.createFamily(stParent.id, "ST Family", { plan: "screen_time" });
+  // A family stored with the removed "screen_time" plan gets the whole hub.
+  const stParent = store.createUser("st-brief@example.com", "Legacy Parent");
+  family.createFamily(stParent.id, "Legacy Family").plan = "screen_time";
   const stCookie = sign({ uid: stParent.id, authGen: store.sessionGeneration(stParent) });
   const stRes = await fetch(`${base}/api/command/brief`, { headers: { Cookie: stCookie } });
-  assert.equal(stRes.status, 403);
-  const stBody = await stRes.json();
-  assert.equal(stBody.code, "upgrade_required");
+  assert.equal(stRes.status, 200);
 });

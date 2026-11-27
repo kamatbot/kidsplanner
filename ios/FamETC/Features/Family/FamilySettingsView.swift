@@ -2,22 +2,20 @@ import SwiftUI
 import UIKit
 import UserNotifications
 
-// Family settings on the Screen Time plan (docs/SCREEN-TIME-ONLY-PLAN.md §4.1). Native, because
-// the plan has no web Settings (fametc.com shows these families an "it lives in the app" page).
-// Family name · parents (invite a co-parent) · kids (add, rename, remove, set up a device) ·
-// sign-in and recovery codes · notifications · Get the whole Fam ETC · sign out · delete account.
+// Native Family & account settings, opened from Today (App Store 5.1.1(v)).
+// Family name · parents (invite a co-parent) · kids (add, rename, remove, show a sign-in code) ·
+// Hermes topics · sign-in and recovery codes · notifications · sign out · delete account.
 
 struct FamilySettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.famSignOut) private var signOut
 
-    @State private var setupKid: KidRoute?
+    @State private var codeKid: Kid?
     @State private var showAddKid = false
     @State private var renaming: Kid?
     @State private var renameText = ""
     @State private var removing: Kid?
     @State private var removingParent: Parent?
-    @State private var showUpgrade = false
     @State private var copiedCode = false
     @State private var copiedFamilyCode = false
     @State private var parentInvite: ParentInvite?
@@ -37,12 +35,9 @@ struct FamilySettingsView: View {
     @State private var hermes: HermesSettings?
     @State private var hermesSaving: Set<String> = []
     @State private var hermesError: String?
-    private var service: ScreenTimeService { .shared }
     /// A family has at most two parents.
     private let maxParents = 2
-    private var isScreenTimePlan: Bool { store.productPlan == .screenTime }
 
-    private struct KidRoute: Identifiable { let id: String }
     private struct CodesPayload: Identifiable { let id = UUID(); let codes: [String] }
 
     private var familyCode: String? {
@@ -58,7 +53,6 @@ struct FamilySettingsView: View {
             if showsHermesSection { hermesSection }
             securitySection
             notificationsSection
-            if store.productPlan == .screenTime { upgradeSection }
             accountSection
         }
         .font(Typography.body)
@@ -71,32 +65,21 @@ struct FamilySettingsView: View {
         .task {
             await loadNotificationStatus()
             recoveryRemaining = await AuthService.shared.backupCodesRemaining()
-            if service.overview == nil { await service.loadOverview() }
         }
         .task { await loadHermes() }
-        .sheet(item: $setupKid) { route in
-            NavigationStack {
-                DeviceSetupChecklistView(kidIds: [route.id])
-                    .navigationTitle("Set up a device")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) { Button("Done") { setupKid = nil } }
-                    }
-            }
-            .tint(Palette.frYou)
+        .sheet(item: $codeKid) { kid in
+            KidSignInCodeSheet(kid: kid).tint(Palette.frYou)
         }
         .sheet(isPresented: $showAddKid) {
             AddKidSheet { added in
-                // Offer the device setup once the add sheet has finished closing.
+                // Offer the kid's sign-in code once the add sheet has finished closing.
                 Task {
-                    await service.loadOverview()
                     try? await Task.sleep(for: .milliseconds(450))
-                    setupKid = KidRoute(id: added.id)
+                    codeKid = added
                 }
             }
             .tint(Palette.frYou)
         }
-        .sheet(isPresented: $showUpgrade) { UpgradeView().tint(Palette.frYou) }
         .sheet(item: $codesPayload) { payload in
             RecoveryCodesView(codes: payload.codes, primaryTitle: "I've saved them") {
                 codesPayload = nil
@@ -116,9 +99,7 @@ struct FamilySettingsView: View {
             Button("Remove \(kid.name)", role: .destructive) { remove(kid) }
             Button("Cancel", role: .cancel) {}
         } message: { kid in
-            Text(isScreenTimePlan
-                 ? "This removes \(kid.name)'s profile, sign-in, devices and Screen Time rules from Fam ETC. It can't be undone."
-                 : "This removes \(kid.name)'s profile, sign-in, devices, homework and Screen Time rules from Fam ETC. It can't be undone.")
+            Text("This removes \(kid.name)'s profile, sign-in, devices and homework from Fam ETC. It can't be undone.")
         }
         .confirmationDialog("Remove \(removingParent.map(parentName) ?? "this parent")?", isPresented: Binding(
             get: { removingParent != nil }, set: { if !$0 { removingParent = nil } }
@@ -128,7 +109,7 @@ struct FamilySettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("They lose access to family chat, calendar and Screen Time controls right away. They can only come back with a new parent code from you.")
+            Text("They lose access to family chat and calendar right away. They can only come back with a new parent code from you.")
         }
                 .confirmationDialog("Make new recovery codes?", isPresented: $confirmNewCodes, titleVisibility: .visible) {
             Button("Make new codes") { regenerateCodes() }
@@ -151,7 +132,7 @@ struct FamilySettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await loadNotificationStatus() }
         }
-        .accessibilityIdentifier("screentimeplan.family")
+        .accessibilityIdentifier("family.settings")
     }
 
     // MARK: Family + parents
@@ -220,7 +201,7 @@ struct FamilySettingsView: View {
                     .textSelection(.enabled)
                     .accessibilityLabel("Parent code")
                     .accessibilityValue(invite.code.map(String.init).joined(separator: " "))
-                    .accessibilityIdentifier("screentimeplan.parentCode")
+                    .accessibilityIdentifier("family.parentCode")
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: Space.sm) { coParentButtons(invite.code) }
                     VStack(alignment: .leading, spacing: Space.sm) { coParentButtons(invite.code) }
@@ -229,7 +210,7 @@ struct FamilySettingsView: View {
                 PlanButton(title: "Make parent code", systemImage: "person.badge.plus", busy: makingInvite) {
                     makeParentInvite()
                 }
-                .accessibilityIdentifier("screentimeplan.makeParentCode")
+                .accessibilityIdentifier("family.makeParentCode")
             }
             if let inviteError { PlanErrorLine(message: inviteError) }
         }
@@ -253,12 +234,12 @@ struct FamilySettingsView: View {
     /// Two buttons in one List row: both use the borderless style so each taps on its own.
     @ViewBuilder
     private func coParentButtons(_ code: String) -> some View {
-        ShareLink(item: "Join our family on Fam ETC. Install the app from \(ScreenTimePlanLinks.appStore.absoluteString), create your account, then choose “Joining your partner's family?” and enter this parent invite code (single use, valid for 48 hours): \(code)",
+        ShareLink(item: "Join our family on Fam ETC. Install the app from \(FamETCLinks.appStore.absoluteString), create your account, then choose “Joining your partner's family?” and enter this parent invite code (single use, valid for 48 hours): \(code)",
                   subject: Text("Join our family on Fam ETC")) {
             PlanButtonLabel(title: "Share the parent code", systemImage: "square.and.arrow.up")
         }
         .buttonStyle(.borderless)
-        .accessibilityIdentifier("screentimeplan.shareParentCode")
+        .accessibilityIdentifier("family.shareParentCode")
         Button {
             copy(code, flag: $copiedCode)
         } label: {
@@ -291,7 +272,7 @@ struct FamilySettingsView: View {
                 Label("Add a kid", systemImage: "plus.circle.fill")
                     .frame(minHeight: 44, alignment: .leading)
             }
-            .accessibilityIdentifier("screentimeplan.addKid")
+            .accessibilityIdentifier("family.addKid")
             if let code = familyCode { familyCodeRow(code) }
         } header: {
             Text("Kids")
@@ -311,7 +292,7 @@ struct FamilySettingsView: View {
                 .textSelection(.enabled)
                 .accessibilityLabel("Family code for kids")
                 .accessibilityValue(code.map(String.init).joined(separator: " "))
-                .accessibilityIdentifier("screentimeplan.familyCode")
+                .accessibilityIdentifier("family.familyCode")
             Button {
                 copy(code, flag: $copiedFamilyCode)
             } label: {
@@ -323,15 +304,9 @@ struct FamilySettingsView: View {
         .padding(.vertical, Space.xs)
     }
 
-    private func deviceSummary(_ kid: Kid) -> String {
-        guard let state = service.state(for: kid.id) else { return isScreenTimePlan ? "Screen Time" : "Sign-in and devices" }
-        let count = max(state.setup?.devices ?? 0, state.devices.count)
-        return count == 0 ? "No device yet" : "\(count) device\(count == 1 ? "" : "s")"
-    }
-
     private func kidRow(_ kid: Kid) -> some View {
         Menu {
-            Button { setupKid = KidRoute(id: kid.id) } label: { Label("Set up a device", systemImage: "iphone") }
+            Button { codeKid = kid } label: { Label("Show sign-in code", systemImage: "number.square") }
             Button {
                 renameText = kid.name
                 renaming = kid
@@ -342,7 +317,6 @@ struct FamilySettingsView: View {
                 KidProfileAvatar(kid: kid, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(kid.name).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(1)
-                    Text(deviceSummary(kid)).font(Typography.label).foregroundStyle(Palette.textSecond)
                 }
                 Spacer(minLength: Space.sm)
                 Image(systemName: "ellipsis.circle")
@@ -353,9 +327,8 @@ struct FamilySettingsView: View {
             .contentShape(Rectangle())
         }
         .accessibilityLabel(kid.name)
-        .accessibilityValue(deviceSummary(kid))
-        .accessibilityHint("Opens options: set up a device, rename or remove")
-        .accessibilityIdentifier("screentimeplan.kidRow.\(kid.id)")
+        .accessibilityHint("Opens options: show a sign-in code, rename or remove")
+        .accessibilityIdentifier("family.kidRow.\(kid.id)")
     }
 
     private func saveRename() {
@@ -379,8 +352,6 @@ struct FamilySettingsView: View {
             await store.deleteKid(kid.id)
             if store.kids.contains(where: { $0.id == kid.id }) {
                 kidError = "Couldn't remove \(kid.name). Try again."
-            } else {
-                await service.loadOverview()
             }
         }
     }
@@ -393,7 +364,7 @@ struct FamilySettingsView: View {
         ("dinner", "Dinner & meal planning", "Offers to plan tonight's dinner and draft next week's meals."),
     ]
 
-    private var showsHermesSection: Bool { store.productPlan != .screenTime && store.isParent }
+    private var showsHermesSection: Bool { store.isParent }
 
     private var hermesSection: some View {
         Section {
@@ -496,7 +467,7 @@ struct FamilySettingsView: View {
                 PlanButton(title: "Make new recovery codes", systemImage: "key.horizontal", busy: regenerating) {
                     confirmNewCodes = true
                 }
-                .accessibilityIdentifier("screentimeplan.newRecoveryCodes")
+                .accessibilityIdentifier("family.newRecoveryCodes")
             }
             .padding(.vertical, Space.xs)
         } header: { Text("Sign-in and recovery") }
@@ -527,9 +498,7 @@ struct FamilySettingsView: View {
         Section {
             VStack(alignment: .leading, spacing: Space.sm) {
                 Text(notificationHeadline).font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                Text(isScreenTimePlan
-                     ? "Get a nudge when a kid asks for more time or a device needs a look."
-                     : "Get a nudge for family chat and when a kid asks for more time or a device needs a look.")
+                Text("Get a nudge for family chat, homework and when a kid asks to sign in.")
                     .font(Typography.label)
                     .foregroundStyle(Palette.textSecond)
                     .fixedSize(horizontal: false, vertical: true)
@@ -575,46 +544,13 @@ struct FamilySettingsView: View {
         if let target { UIApplication.shared.open(target) }
     }
 
-    // MARK: Upgrade
-
-    private var upgradeSection: some View {
-        Section {
-            Button {
-                Haptics.selection()
-                showUpgrade = true
-            } label: {
-                HStack(spacing: Space.md) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(Palette.frYouInk)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Get the whole Fam ETC").font(Typography.body.weight(.semibold)).foregroundStyle(Palette.text)
-                        Text("Add the school calendar, homework and family chat.")
-                            .font(Typography.label)
-                            .foregroundStyle(Palette.textSecond)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: Space.sm)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Palette.frInk3)
-                        .accessibilityHidden(true)
-                }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("screentimeplan.upgrade")
-        }
-    }
-
     // MARK: Account
 
     private var accountSection: some View {
         Section {
             Button("Sign out") { confirmSignOut = true }
                 .frame(minHeight: 44)
-                .accessibilityIdentifier("screentimeplan.signOut")
+                .accessibilityIdentifier("family.signOut")
             if deleting {
                 HStack(spacing: Space.sm) { ProgressView(); Text("Deleting your account…") }
                     .frame(minHeight: 44)
@@ -622,7 +558,7 @@ struct FamilySettingsView: View {
             } else {
                 Button("Delete my account", role: .destructive) { confirmDelete = true }
                     .frame(minHeight: 44)
-                    .accessibilityIdentifier("screentimeplan.deleteAccount")
+                    .accessibilityIdentifier("family.deleteAccount")
             }
             if let deleteError { PlanErrorLine(message: deleteError) }
         } header: {
@@ -636,9 +572,9 @@ struct FamilySettingsView: View {
     /// whole family with them; with a co-parent, only this account goes.
     private var deletionSummary: String {
         if (store.family?.parentIds.count ?? 1) > 1 {
-            return "Deleting your account removes your sign-in and passkeys. Your family, kids and Screen Time rules stay with your co-parent."
+            return "Deleting your account removes your sign-in and passkeys. Your family and kids stay with your co-parent."
         }
-        return "Deleting your account also deletes your family: every kid's profile and sign-in, family chat, Screen Time rules and devices."
+        return "Deleting your account also deletes your family: every kid's profile and sign-in, family chat and devices."
     }
 
     private func deleteAccount() {
@@ -684,7 +620,7 @@ private struct AddKidSheet: View {
                         .onChange(of: name) { _, value in if value.count > 40 { name = String(value.prefix(40)) } }
                         .accessibilityIdentifier("addKid.name")
                 } footer: {
-                    Text("Adding a profile is your OK for this child to use Fam ETC. We keep only what's needed: a first name and their Screen Time.")
+                    Text("Adding a profile is your OK for this child to use Fam ETC. We keep only what's needed: a first name to start with.")
                 }
                 if let error {
                     Section { PlanErrorLine(message: error) }
@@ -726,6 +662,122 @@ private struct AddKidSheet: View {
                 error = "Couldn't add \(kidName). Try again."
             }
             working = false
+        }
+    }
+}
+
+// MARK: - Kid sign-in code
+
+/// A parent shows a short, single-use code; the kid types it on their own device
+/// ("I'm a kid" in onboarding), which signs them in after the parent approves.
+private struct KidSignInCodeSheet: View {
+    let kid: Kid
+
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var code: KidSetupCode?
+    @State private var busy = false
+    @State private var error: String?
+
+    private var first: String { kid.name.split(separator: " ").first.map(String.init) ?? kid.name }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.lg) {
+                    if let code {
+                        codeDisplay(code)
+                    } else {
+                        Text("Show a code here, then \(first) types it on their own iPhone or iPad. It works once and lasts 30 minutes.")
+                            .font(Typography.body)
+                            .foregroundStyle(Palette.textSecond)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let error { PlanErrorLine(message: error) }
+                    PlanButton(title: code == nil ? "Show \(first)'s code" : "New code",
+                               systemImage: code == nil ? "number.square" : "arrow.clockwise",
+                               style: code == nil ? .prominent : .secondary,
+                               busy: busy,
+                               fullWidth: code == nil) { showCode() }
+                        .accessibilityIdentifier("family.showCode.\(kid.id)")
+                    ShareLink(item: FamETCLinks.appStore,
+                              subject: Text("Fam ETC"),
+                              message: Text("Install Fam ETC on your device so you can join our family.")) {
+                        PlanButtonLabel(title: "Send the App Store link", systemImage: "square.and.arrow.up")
+                    }
+                }
+                .padding(Space.lg)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
+            }
+            .background(ScreenBackground())
+            .navigationTitle("\(first)'s sign-in")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func codeDisplay(_ code: KidSetupCode) -> some View {
+        let characters = SetupCodeDisplay.characters(code.code)
+        return TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = code.expiresAtDate?.timeIntervalSince(context.date)
+            let expired = (remaining ?? 1) <= 0
+            VStack(alignment: .center, spacing: Space.sm) {
+                HStack(spacing: 6) {
+                    ForEach(Array(characters.enumerated()), id: \.offset) { _, character in
+                        Text(character)
+                            .font(Typography.display(34, .heavy))
+                            .foregroundStyle(expired ? Palette.frInk3 : Palette.text)
+                            .frame(minWidth: 34, maxWidth: 56, minHeight: 64)
+                            .background(Palette.frCard2, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous)
+                                .strokeBorder(Palette.frRule, lineWidth: 1))
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(first)'s sign-in code")
+                .accessibilityValue(characters.joined(separator: " ") + (expired ? ", expired" : ""))
+                .accessibilityIdentifier("family.code.\(kid.id)")
+                Group {
+                    if expired {
+                        Text("This code has expired. Tap New code.")
+                    } else if let remaining {
+                        Text("Expires in \(SetupCodeDisplay.countdown(remaining: remaining)) · works once")
+                            .monospacedDigit()
+                    } else {
+                        Text("Expires in 30 minutes · works once")
+                    }
+                }
+                .font(Typography.label)
+                .foregroundStyle(Palette.textSecond)
+                Text("On \(first)'s device, open Fam ETC, tap **I'm a kid**, and type this code.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.text)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func showCode() {
+        guard !busy else { return }
+        let account = store.me?.id
+        busy = true
+        error = nil
+        Task {
+            do {
+                let fresh = try await APIClient.shared.kidSetupCode(kidId: kid.id)
+                guard account == store.me?.id else { busy = false; return }
+                code = fresh
+                Haptics.notify(.success)
+            } catch {
+                self.error = error.localizedDescription
+            }
+            busy = false
         }
     }
 }

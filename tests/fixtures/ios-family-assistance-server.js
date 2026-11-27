@@ -233,71 +233,6 @@ const server = http.createServer(async (req, res) => {
   state.requests.push({ method: req.method, path: url.pathname, role });
 
   if (url.pathname === "/__qa/state" && req.method === "GET") return send(res, 200, state);
-  // Seed fams in the throwaway Screen Time db so "more time" requests can be paid.
-  if (url.pathname === "/__qa/screen-time/credit" && req.method === "POST") {
-    const { kidId, amount } = await readJSON(req);
-    await screenTimeRoute({ method: "NONE", headers: {} }, { writeHead() {}, end() {} }, url, { data: { profile: { role: "parent" } } }, sessionFamily);
-    const fams = require("../../lib/fams");
-    fams.summary(sessionFamily.id, kidId);
-    require("../../lib/db").load().fams[sessionFamily.id][kidId].transactions.push({ id: `qa-${Date.now()}`, event: `qa:${Date.now()}`, units: amount * 100, category: "qa", title: "QA credit", date: "2026-01-01", weekStart: "2025-12-29", regular: false, createdAt: new Date().toISOString() });
-    return send(res, 200, { balance: fams.balance(sessionFamily.id, kidId) });
-  }
-  // Screen Time QA hooks (throwaway db only): wipe this family's Screen Time
-  // state so the promo's "never set up" state is reachable again; enroll an
-  // approved device (the parent Off state needs one); or raise a real alert by
-  // calling the real heartbeat() with authStatus "denied" from a fresh device.
-  if (["/__qa/screen-time/reset", "/__qa/screen-time/device", "/__qa/screen-time/alert"].includes(url.pathname)
-      && req.method === "POST") {
-    const body = await readJSON(req);
-    await screenTimeRoute({ method: "NONE", headers: {} }, { writeHead() {}, end() {} }, url, { data: { profile: { role: "parent" } } }, sessionFamily);
-    const db = require("../../lib/db");
-    const screenTime = require("../../lib/screen-time");
-    if (url.pathname === "/__qa/screen-time/reset") {
-      const root = db.load();
-      if (root.screenTime) delete root.screenTime[sessionFamily.id];
-      db.persist();
-      return send(res, 200, { ok: true });
-    }
-    const qaKid = sessionFamily.kids.find((k) => k.id === body.kidId);
-    if (!qaKid) return send(res, 404, { error: "No such fixture kid." });
-    if (url.pathname === "/__qa/screen-time/alert" && body.type !== "revoked") {
-      return send(res, 400, { error: "Only type \"revoked\" can be seeded (it runs the real heartbeat)." });
-    }
-    const current = screenTime.kidState(sessionFamily, qaKid.id).policy;
-    if (url.pathname === "/__qa/screen-time/alert" && !current.enabled) {
-      // raise() is suppressed while Screen Time is off: turn it on with the saved
-      // rules (or a plain bedtime) first, exactly like the parent's Save.
-      const hasRules = current.limits.length || current.downtime.length;
-      const saved = screenTime.savePolicy(sessionFamily, qaKid.id, {
-        enabled: true,
-        limits: current.limits,
-        downtime: hasRules ? current.downtime : [{ id: "bedtime", name: "Bedtime", start: "21:00", end: "07:00", days: [1, 2, 3, 4, 5, 6, 7] }],
-      });
-      if (saved.error) return send(res, saved.status || 400, { error: saved.error });
-    }
-    const label = typeof body.label === "string" && body.label ? body.label : "iPad";
-    const enrolled = screenTime.enroll(sessionFamily, qaKid.id, { label, mode: "cooperative", authStatus: "approved" });
-    if (enrolled.error) return send(res, enrolled.status || 400, { error: enrolled.error });
-    const entry = db.load().screenTime[sessionFamily.id].kids[qaKid.id];
-    const device = entry.devices.find((d) => d.id === enrolled.deviceId);
-    const denied = url.pathname === "/__qa/screen-time/alert";
-    const beat = screenTime.heartbeat({ fam: sessionFamily, kid: qaKid, entry, device }, {
-      authStatus: denied ? "denied" : "approved", mode: "cooperative",
-      appliedVersion: entry.policy.version, source: "app",
-    });
-    if (beat.error) return send(res, beat.status || 400, { error: beat.error });
-    // finishSetup: the kid also picked "All Apps & Categories" for the daily limit, as real
-    // setup does last — without it the parent correctly sees "Finish setup on their phone".
-    if (body.finishSetup && entry.policy.limits.some((l) => l.id === "total")) {
-      const picked = screenTime.uploadSelection({ fam: sessionFamily, kid: qaKid, entry, device }, "total",
-        { selection: "qa-all-apps", summary: { categories: 1 } });
-      if (picked.error) return send(res, picked.status || 400, { error: picked.error });
-    }
-    const after = screenTime.kidState(sessionFamily, qaKid.id);
-    const alert = denied ? after.alerts.find((a) => a.deviceId === device.id && a.type === "revoked") : null;
-    if (denied && !alert) return send(res, 409, { error: "No alert was raised." });
-    return send(res, 200, { deviceId: device.id, alert });
-  }
   if (url.pathname === "/__qa/reset" && req.method === "POST") {
     state.eventPosts.length = 0; state.chatPosts.length = 0; state.notePosts.length = 0;
     state.daily5Posts.length = 0; state.notes.length = 0; state.requests.length = 0;
@@ -515,49 +450,8 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { date: today, parts });
   }
 
-  if (url.pathname.startsWith("/api/screen-time")) {
-    return screenTimeRoute(req, res, url, role === "kid"
-      ? { id: "qa-kid-user", data: { profile: { role: "kid" }, kid: { familyId: sessionFamily.id, kidId: sessionKid.id } } }
-      : { id: "qa-parent-1", data: { profile: { role: "parent" } } }, sessionFamily);
-  }
-
   return send(res, 404, { error: `Synthetic fixture has no route for ${req.method} ${url.pathname}` });
 });
-
-// Screen Time runs the REAL route module + lib/screen-time.js against a
-// throwaway data dir, so native parent/kid screens exercise production logic.
-// Pushes are no-ops here (no APNs keys). Device-secret routes 401 because the
-// synthetic family isn't in the db — enforcement needs a real device anyway.
-let screenTimeRoutes = null;
-async function screenTimeRoute(req, res, url, user, fam) {
-  if (!screenTimeRoutes) {
-    process.env.FAM_DATA_DIR ||= require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "fam-qa-st-"));
-    const screenTime = require("../../lib/screen-time");
-    screenTime.configure({ notify: async () => ({}), sendPing: async () => ({ ok: false }) });
-    screenTimeRoutes = [];
-    const add = (method) => (pattern, ...handlers) => screenTimeRoutes.push({ method, pattern, handler: handlers[handlers.length - 1] });
-    require("../../lib/routes/screen-time")({ get: add("GET"), post: add("POST"), put: add("PUT"), delete: add("DELETE") }, {
-      screenTime, requireAuth() {}, requireParent() {}, requireFamily() {},
-      userRole: (u) => u.data.profile.role, kidIdForUser: (r) => r.user.data.kid && r.user.data.kid.kidId,
-    });
-  }
-  for (const route of screenTimeRoutes) {
-    const keys = [];
-    const re = new RegExp("^" + route.pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return "([^/]+)"; }) + "$");
-    const m = route.method === req.method && re.exec(url.pathname);
-    if (!m) continue;
-    if (user.data.profile.role === "kid" && !/\/(mine|device\/|requests$)/.test(route.pattern)) return send(res, 403, { error: "Parents only." });
-    const body = ["POST", "PUT"].includes(req.method) ? await readJSON(req) : {};
-    const params = Object.fromEntries(keys.map((k, i) => [k, decodeURIComponent(m[i + 1])]));
-    const out = { status: 200 };
-    return route.handler({ user, family: fam, params, body, get: (h) => req.headers[h.toLowerCase()] }, {
-      set() { return this; },
-      status(c) { out.status = c; return this; },
-      json(v) { send(res, out.status, v); return this; },
-    });
-  }
-  return send(res, 404, { error: `Synthetic fixture has no route for ${req.method} ${url.pathname}` });
-}
 
 server.on("error", (error) => {
   console.error(`[fam-assistance-fixture] ${error.code || "ERROR"}: ${error.message}`);

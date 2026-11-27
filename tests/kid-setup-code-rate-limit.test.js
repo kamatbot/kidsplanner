@@ -31,7 +31,7 @@ test("setup-code claims are rate limited per IP, valid codes included", async (t
   });
 
   const parent = store.createUser("rl@example.com", "Parent");
-  const fam = family.createFamily(parent.id, "RL", { plan: "screen_time" });
+  const fam = family.createFamily(parent.id, "RL");
   const kid = family.addKid(fam.id, parent.id, { name: "Mia" }).kid;
   const { code } = kidAccess.issueSetupCode(fam.id, kid.id);
 

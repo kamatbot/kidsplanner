@@ -50,22 +50,11 @@ targets:
     sources:
       - path: FamETC
       - path: FamETCWidgetShared
-      - path: FamETCScreenTimeShared
     dependencies:
       - target: FamETCParentWatch
         embed: true
       - target: FamETCWidget
         embed: true
-      - target: FamETCScreenTimeMonitor
-        embed: true
-      - target: FamETCShieldConfig
-        embed: true
-      - target: FamETCUsageReport
-        embed: true
-      - sdk: FamilyControls.framework
-      - sdk: ManagedSettings.framework
-      - sdk: DeviceActivity.framework
-      - sdk: BackgroundTasks.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app
@@ -90,66 +79,6 @@ targets:
         INFOPLIST_FILE: FamETCWidget/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: FamETCWidget/FamETCWidget.entitlements
-        TARGETED_DEVICE_FAMILY: "1,2"
-
-  # Screen Time (docs/SCREEN-TIME-PLAN.md). Distribution needs Apple's Family
-  # Controls (Distribution) approval for each of these bundle ids.
-  FamETCScreenTimeMonitor:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: FamETCScreenTimeMonitor
-      - path: FamETCScreenTimeShared
-    dependencies:
-      - sdk: FamilyControls.framework
-      - sdk: ManagedSettings.framework
-      - sdk: DeviceActivity.framework
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.screentime-monitor
-        PRODUCT_NAME: FamETCScreenTimeMonitor
-        INFOPLIST_FILE: FamETCScreenTimeMonitor/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: FamETCScreenTimeMonitor/FamETCScreenTimeMonitor.entitlements
-        TARGETED_DEVICE_FAMILY: "1,2"
-
-  FamETCShieldConfig:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: FamETCShieldConfig
-    dependencies:
-      - sdk: ManagedSettings.framework
-      - sdk: ManagedSettingsUI.framework
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.shield-config
-        PRODUCT_NAME: FamETCShieldConfig
-        INFOPLIST_FILE: FamETCShieldConfig/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: FamETCShieldConfig/FamETCShieldConfig.entitlements
-        TARGETED_DEVICE_FAMILY: "1,2"
-
-  # Screen Time "Usage details": renders Apple's usage in the app (ExtensionKit, so it
-  # embeds under Extensions/). Reads the App Group policy for today's allowance.
-  FamETCUsageReport:
-    type: extensionkit-extension
-    platform: iOS
-    sources:
-      - path: FamETCUsageReport
-      - path: FamETCScreenTimeShared/ScreenTimeModels.swift
-      - path: FamETCScreenTimeShared/ScreenTimeSchedule.swift
-    dependencies:
-      - sdk: DeviceActivity.framework
-      - sdk: FamilyControls.framework
-      - sdk: ManagedSettings.framework
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.fametc.app.usage-report
-        PRODUCT_NAME: FamETCUsageReport
-        INFOPLIST_FILE: FamETCUsageReport/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: FamETCUsageReport/FamETCUsageReport.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
 
   FamETCTests:

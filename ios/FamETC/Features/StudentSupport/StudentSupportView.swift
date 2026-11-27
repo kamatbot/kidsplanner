@@ -4,7 +4,7 @@ struct StudentSupportEntry: View {
     @Environment(AppStore.self) private var app
     @State private var presented = false
     var body: some View {
-        if app.productPlan == .full, app.me != nil, app.family != nil, !app.needsAuth {
+        if app.me != nil, app.family != nil, !app.needsAuth {
             Button { presented = true } label: {
                 Label(app.isParent ? "Student organizer" : "My Next", systemImage: "checklist")
                     .font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding()

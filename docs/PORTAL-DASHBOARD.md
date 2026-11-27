@@ -218,7 +218,7 @@ Use the repository-required Node 24 environment, then run the focused backend
 checks:
 
 ```bash
-node --test tests/display-*.test.js tests/account-deletion.test.js tests/screen-time-plan.test.js tests/session-revocation.test.js
+node --test tests/display-*.test.js tests/account-deletion.test.js tests/session-revocation.test.js
 ```
 
 With JDK 17, Android SDK 35 and the repository's Gradle wrapper available:

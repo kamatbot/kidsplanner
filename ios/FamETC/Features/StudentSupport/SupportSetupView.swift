@@ -9,7 +9,7 @@ struct SupportSetupView: View {
         NavigationStack {
             Form {
                 Section("Agree together") {
-                    Text("Choose useful routines with your student. Start small. No diagnosis, rewards or Screen Time restrictions are required.")
+                    Text("Choose useful routines with your student. Start small. No diagnosis or rewards are required.")
                     Toggle("Enable My Next", isOn: $snapshot.enabled).accessibilityIdentifier("studentSupport.enable")
                 }
                 Section("Preferences • \(snapshot.timezone)") {

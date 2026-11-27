@@ -33,9 +33,9 @@ async function call(body, existingSignup = { challenge: "old" }) {
   return { req, response };
 }
 
-// CONTRACT CHANGE (docs/SCREEN-TIME-ONLY-PLAN.md §10.1): the invite code no longer
-// gates ACCOUNT creation, it gates the full plan. A missing code is allowed (the
-// parent can start a Screen Time family); a supplied-but-wrong code is still a
+// The invite code does not gate ACCOUNT creation, it gates creating a family. A
+// missing code is allowed (a co-parent joins with a parent invite, or the code
+// is given at family creation); a supplied-but-wrong code is still a
 // 403 with `code: "invite_invalid"` and never leaves a pending challenge behind.
 test("signup rejects an incorrect invite code without creating a passkey challenge", async () => {
   const { req, response } = await call({ name: "Parent", inviteCode: "wrong" });
@@ -115,7 +115,7 @@ test("signup page and client require and submit the invite code", () => {
 });
 
 // Signup verify records the validated invite on the account so the family step
-// can create the full plan without asking again (docs/SCREEN-TIME-ONLY-PLAN.md §10.1).
+// can create the family without asking again.
 async function verifyWith(pendingSignup) {
   const routes = {};
   const app = {
@@ -155,7 +155,7 @@ test("signup verify stamps inviteValidatedAt only when the invite was validated;
   assert.match(invited.created[0].inviteValidatedAt, /^\d{4}-\d\d-\d\dT/);
 
   const open = await verifyWith({ challenge: "c", userId: "u_b", name: "B", inviteValidated: false });
-  assert.equal(open.response.statusCode, 200, "a Screen Time-only signup (no invite) completes");
+  assert.equal(open.response.statusCode, 200, "a signup without an invite completes");
   assert.equal(open.created[0].inviteValidatedAt, undefined);
   assert.equal(open.req.session.uid, "u_b");
 });

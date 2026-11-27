@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// App Store 5.1.1(v): every signed-in user can reach sign out, and parents can delete their
-/// account, from the full-plan Today screen. Parents open Family & account (the same native
-/// settings the Screen Time plan uses); kids only get a confirmed sign-out.
+/// account, from the Today screen. Parents open Family & account (native settings); kids only
+/// get a confirmed sign-out.
 enum FamilyAccountEntryKind: Equatable {
     case familyAndAccount, signOut
 
@@ -21,7 +21,7 @@ struct FamilyAccountEntry: View {
     private var kind: FamilyAccountEntryKind { FamilyAccountEntryKind(isParent: store.isParent) }
 
     var body: some View {
-        if store.productPlan == .full, store.me != nil, !store.needsAuth {
+        if store.me != nil, !store.needsAuth {
             Button {
                 Haptics.selection()
                 if kind == .familyAndAccount { showSettings = true } else { confirmSignOut = true }

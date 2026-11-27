@@ -48,7 +48,6 @@ final class AppStore {
     private var readReportedByRoom: [String: String] = [:]
     var me: User? {
         didSet {
-            ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
             // Account switch without sign-out (re-auth, backup-code sign-in): drop
             // everything the previous user could see. First load from nil is a no-op.
@@ -63,7 +62,6 @@ final class AppStore {
     }
     var family: Family? {
         didSet {
-            ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
             if oldValue?.id != family?.id {
                 clearGoals()
@@ -127,7 +125,6 @@ final class AppStore {
     var isRefreshing = false
     var needsAuth = false {
         didSet {
-            ScreenTimeService.shared.accountChanged(user: needsAuth ? nil : me, familyId: family?.id)
             StudentSupportStore.shared.accountChanged(userID: needsAuth ? nil : me?.id, familyID: family?.id)
         }
     }
@@ -290,14 +287,7 @@ final class AppStore {
             assistanceIdentityVerified = currentUser.map { user in
                 user.role != "kid" && family?.parentIds.contains(user.id) == true
             } ?? false
-            if family?.productPlan == .screenTime {
-                // Screen Time plan: chat, calendar, homework, notes, meals and goals are
-                // hub endpoints that answer 403 here, so skip them. Parents still need
-                // pending kid sign-ins for the approval banner.
-                await refreshKidRequests()
-                guard generation == refreshGeneration else { return }
-                chatRooms = [ChatRoom(roomId: familyRoomId, tripId: nil, title: family?.name ?? "Family")]
-            } else if family != nil {
+            if family != nil {
                 // These loads are independent — run them concurrently so the
                 // initial sync takes as long as the slowest call, not the sum.
                 let previousChatIDs = Set(messages.map(\.id))
@@ -332,12 +322,7 @@ final class AppStore {
             refreshRetries = 0
             needsAuth = false
             persist()
-            if family?.productPlan == .screenTime {
-                // The assistance snapshot reads calendar/homework (hub endpoints, 403 here).
-                ParentFamilyAssistancePublisher.clear()
-            } else {
-                await ParentFamilyAssistancePublisher.publish(from: self)
-            }
+            await ParentFamilyAssistancePublisher.publish(from: self)
         } catch APIError.unauthenticated {
             guard generation == refreshGeneration else { return }
             assistanceIdentityVerified = false
@@ -455,19 +440,6 @@ final class AppStore {
     func createFamily(name: String) async throws {
         family = try await api.createFamily(name: name)
         persist()
-    }
-    /// The product the loaded family is on; `.full` while the family is unknown.
-    var productPlan: ProductPlan { family?.productPlan ?? .full }
-
-    /// Upgrades a Screen Time family to the whole Fam ETC. On success the family is
-    /// replaced, so `productPlan` flips and `RootView` rebuilds into the full layout.
-    /// Throws `APIError.http` carrying the server's message (e.g. a wrong invite code).
-    func upgradeFamily(inviteCode: String) async throws {
-        family = try await api.upgradeFamily(inviteCode: inviteCode)
-        persist()
-        // The hub data (chat, calendar, homework, ...) was skipped on the Screen Time
-        // plan; load it in the background now that those endpoints are open.
-        Task { [weak self] in await self?.refresh() }
     }
     func joinFamily(code: String) async throws {
         family = try await api.joinFamily(code: code)
@@ -643,7 +615,7 @@ final class AppStore {
             }
             // The active-room loop already keeps the family room near-live —
             // don't double-poll it here.
-            if activeRoomId != familyRoomId, productPlan != .screenTime {
+            if activeRoomId != familyRoomId {
                 guard await refreshRoomNow(familyRoomId) else { return }
             }
             // Approvals must never block rearming the active chat listener.

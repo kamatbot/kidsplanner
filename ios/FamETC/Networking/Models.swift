@@ -41,21 +41,8 @@ struct Family: Codable, Identifiable {
     var parents: [Parent]? = nil   // id + display name for each parent (optional for cache back-compat)
     var kids: [Kid]
     let createdAt: String
-    /// Product plan (docs/SCREEN-TIME-ONLY-PLAN.md): "full" | "screen_time". Optional
-    /// for cache back-compat — absent (old servers/caches) means the whole Fam ETC.
-    var plan: String? = nil
-    /// Server-derived feature list: ["screen_time"] or ["screen_time", "hub"].
-    var features: [String]? = nil
     /// IANA time zone stored on the family (nil until set).
     var timezone: String? = nil
-
-    /// `.screenTime` only when `plan == "screen_time"`; absent or unknown values are `.full`.
-    var productPlan: ProductPlan { plan == "screen_time" ? .screenTime : .full }
-}
-
-/// Which product a family is on. Decided by the server from `Family.plan`.
-enum ProductPlan: Equatable, Sendable {
-    case full, screenTime
 }
 
 /// `POST /api/family/parent-invite` — the single-use, 48-hour code a parent gives a co-parent.
@@ -88,7 +75,7 @@ struct HermesSettings: Decodable, Equatable {
 }
 
 /// `POST /api/family/kids/:kidId/setup-code` — the short code a parent shows so the
-/// kid can type it on their own device (docs/SCREEN-TIME-ONLY-PLAN.md D6).
+/// kid can type it on their own device.
 struct KidSetupCode: Codable, Equatable {
     let code: String
     /// Expiry as an ISO-8601 string (an epoch-number response is normalised to one).

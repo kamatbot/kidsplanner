@@ -32,7 +32,7 @@ function fixture(saved) {
     },
     persistenceStatus: () => ({ ...persistence }),
   };
-  const familyStore = { getFamily: (id) => root.families[id], isFull: (fam) => fam.plan !== "screen_time" };
+  const familyStore = { getFamily: (id) => root.families[id] };
   const auth = createDisplayAuth({ database, familyStore, now: () => milliseconds });
   const pair = (settings = {}) => auth.createPairing({ familyId: "f1", createdBy: "parent", ...settings });
   return { root, auth, pair, persistence, advance: (ms) => { milliseconds += ms; },
@@ -81,12 +81,12 @@ test("reopening the committed snapshot preserves single use and later revocation
   assert.equal(reopened.restart().auth.resolveToken(linked.token), null);
 });
 
-test("device access follows the approving parent's live family membership and plan", () => {
+test("device access follows the approving parent's live family membership", () => {
   const f = fixture();
   const linked = f.auth.claimPairing(f.pair().pairing.code);
+  // A family stored with the removed "screen_time" plan keeps its display.
   f.root.families.f1.plan = "screen_time";
-  assert.equal(f.auth.resolveToken(linked.token).status, 403);
-  f.root.families.f1.plan = "full";
+  assert.ok(f.auth.resolveToken(linked.token).family);
   f.root.families.f1.parentIds = [];
   assert.equal(f.auth.resolveToken(linked.token), null);
   assert.equal(f.pair().status, 403);

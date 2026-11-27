@@ -1,18 +1,19 @@
 import XCTest
 @testable import FamETC
 
-/// The pure onboarding pieces (docs/SCREEN-TIME-ONLY-PLAN.md §2/§3) in `OnboardingFlowLogic.swift`:
+/// The pure onboarding pieces in `OnboardingFlowLogic.swift`:
 /// plan decoding, step order, relaunch resume, the kid setup-code format and the family-name suggestion.
 final class OnboardingFlowLogicTests: XCTestCase {
 
     // MARK: OnboardingPlan / OnboardingStep
 
-    func testPlanReadsTheServerValueAndDefaultsToFull() {
-        XCTAssertEqual(OnboardingPlan(serverValue: "screen_time"), .screenTime)
+    func testEveryServerPlanIsTheWholeFamETC() {
+        // The free Screen Time plan was removed: an old stored value is the whole Fam ETC too.
+        XCTAssertEqual(OnboardingPlan(serverValue: "screen_time"), .full)
         XCTAssertEqual(OnboardingPlan(serverValue: "full"), .full)
         XCTAssertEqual(OnboardingPlan(serverValue: nil), .full)
         XCTAssertEqual(OnboardingPlan(serverValue: "something_new"), .full)
-        XCTAssertEqual(OnboardingPlan.screenTime.rawValue, "screen_time")
+        XCTAssertNil(OnboardingPlan(rawValue: "screen_time"), "a stored Screen Time marker reads as unknown")
         XCTAssertEqual(OnboardingPlan.full.rawValue, "full")
     }
 
@@ -22,13 +23,6 @@ final class OnboardingFlowLogicTests: XCTestCase {
         XCTAssertTrue(OnboardingStep.family < OnboardingStep.kids)
         XCTAssertTrue(OnboardingStep.devices > OnboardingStep.notifications)
         XCTAssertEqual(max(OnboardingStep.kids, OnboardingStep.recovery), .recovery)
-    }
-
-    func testScreenTimePlanEndsWithTheDeviceChecklist() {
-        var steps: [OnboardingStep] = [.welcome]
-        while let next = steps.last?.next(plan: .screenTime) { steps.append(next) }
-        XCTAssertEqual(steps, OnboardingStep.allCases)
-        XCTAssertNil(OnboardingStep.devices.next(plan: .screenTime))
     }
 
     func testFullPlanEndsAfterNotifications() {
@@ -42,7 +36,7 @@ final class OnboardingFlowLogicTests: XCTestCase {
     // MARK: OnboardingResolver
 
     private func resolve(isSignedIn: Bool = true, role: String? = "parent", hasFamily: Bool = true,
-                         plan: OnboardingPlan = .screenTime, kidCount: Int = 0, active: Bool = true,
+                         plan: OnboardingPlan = .full, kidCount: Int = 0, active: Bool = true,
                          marker: OnboardingStep? = nil) -> OnboardingResume {
         OnboardingResolver.resolve(isSignedIn: isSignedIn, role: role, hasFamily: hasFamily, plan: plan,
                                    kidCount: kidCount, active: active, marker: marker)
@@ -91,8 +85,7 @@ final class OnboardingFlowLogicTests: XCTestCase {
         XCTAssertEqual(resolve(kidCount: 2, marker: .recovery), .step(.recovery))
     }
 
-    func testDeviceChecklistResumesOnlyOnTheScreenTimePlan() {
-        XCTAssertEqual(resolve(plan: .screenTime, kidCount: 2, marker: .devices), .step(.devices))
+    func testTheRemovedDeviceStepNeverResumes() {
         XCTAssertEqual(resolve(plan: .full, kidCount: 2, marker: .devices), .finish)
         XCTAssertEqual(resolve(plan: .full, kidCount: 0, marker: .devices), .finish)
     }

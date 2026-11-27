@@ -81,7 +81,7 @@ test("removeMember: cannot remove the last parent", () => {
   assert.ok(result.error);
 });
 
-test("removing a child purges only their Screen Time records after parent authorization", () => {
+test("removing a child purges only their leftover Screen Time records after parent authorization", () => {
   const parent = store.createUser("st-delete-parent@example.com", "Parent");
   const outsider = store.createUser("st-delete-outsider@example.com", "Outsider");
   const fam = family.createFamily(parent.id, "Screen Time deletion");
